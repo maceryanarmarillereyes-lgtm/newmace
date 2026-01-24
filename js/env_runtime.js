@@ -5,8 +5,8 @@
   }
 
   var env = {
-    SUPABASE_URL: 'https://ykujlabukpbufnziidcr.supabase.co',
-    SUPABASE_ANON_KEY: 'sb_publishable_dMi2z_vlfaz4IgN8BLeSAw_lvHMF5ce',
+    SUPABASE_URL: '',
+    SUPABASE_ANON_KEY: '',
     PRESENCE_TTL_SECONDS: 25,
     PRESENCE_POLL_MS: 3000
   };

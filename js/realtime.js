@@ -39,6 +39,8 @@
     connect(){
       try{
         if(Realtime.ws && (Realtime.ws.readyState === 0 || Realtime.ws.readyState === 1)) return;
+        // Prevent noisy ws://localhost attempts in production deployments.
+        if(!isLocalHost && /^ws:\/\/localhost/i.test(Realtime.url)) return;
         const ws = new WebSocket(Realtime.url);
         Realtime.ws = ws;
 

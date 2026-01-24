@@ -61,10 +61,14 @@
     </div>
   </div>
 
-  <!-- Load in order (no modules) so it works via file:// in Edge --><script src="./js/env_runtime.js?v=20260124-deploy"></script>
+  <!-- Load in order (no modules) so it works via file:// in Edge -->
+  <script src="./js/env_runtime.js?v=20260124-deploy"></script>
+  <script src="./js/remote_patch.js?v=20260125-hotfix"></script>
   <script src="./js/config.js?v=20260124-final-privileges-settings"></script>
-  <script src="./js/auth.js?v=20260124-final-privileges-settings"></script>
   <script src="./js/store.js?v=20260124-final-privileges-settings"></script>
+  <script src="./js/cloud_auth.js?v=20260125-cloud-auth"></script>
+  <script src="./js/cloud_users.js?v=20260125-cloud-users"></script>
+  <script src="./js/auth.js?v=20260125-cloud-auth"></script>
   <script src="./js/ui.js?v=20260124-final-privileges-settings"></script>
   <script>
   // Force native system cursor (no delay)

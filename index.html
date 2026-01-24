@@ -665,10 +665,14 @@
   </div>
 
   <script src="./js/env_runtime.js?v=20260124-deploy"></script>
-  <!-- Load in order (no modules) so it works via file:// in Edge --><script src="./js/config.js?v=20260124-final-privileges-settings"></script>
-  <script src="./js/auth.js?v=20260124-final-privileges-settings"></script>
-  <script src="./js/store.js?v=20260124-final-privileges-settings"></script>
-    <script src="./js/realtime.js?v=20260124-realtime"></script>
+  <script src="./js/remote_patch.js?v=20260125-hotfix"></script>
+  <!-- Load in order (no modules) so it works via file:// in Edge -->
+  <script src="./js/config.js?v=20260124-final-privileges-settings"></script>
+  <script src="./js/store.js?v=20260125-cloud"></script>
+  <script src="./js/cloud_auth.js?v=20260125-cloud"></script>
+  <script src="./js/cloud_users.js?v=20260125-cloud"></script>
+  <script src="./js/auth.js?v=20260125-cloud"></script>
+  <script src="./js/realtime.js?v=20260125-cloud"></script>
 <script src="./js/ui.js?v=20260124-final-privileges-settings"></script>
   <script>try{ window.UI && UI.initAppCursor && UI.initAppCursor(); }catch(e){} </script>
 

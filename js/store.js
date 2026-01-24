@@ -23,6 +23,8 @@
     profile: 'ums_user_profiles',
     theme: 'mums_theme',
     mailbox_time_override: 'mums_mailbox_time_override',
+    // Cloud-synced override (when scope = Global across devices)
+    mailbox_time_override_cloud: 'mums_mailbox_time_override_cloud',
     mailbox_tables: 'mums_mailbox_tables',
     mailbox_state: 'mums_mailbox_state',
     // Device/browser-scoped UI widgets
@@ -1610,6 +1612,18 @@
       o.freeze = (o.freeze !== false);
       o.setAt = Number(o.setAt)||0;
       o.scope = (String(o.scope||'sa_only') === 'global') ? 'global' : 'sa_only';
+
+      // Cloud-global override (across devices/browsers) takes precedence.
+      const cloud = read(KEYS.mailbox_time_override_cloud, null);
+      if (cloud && typeof cloud === 'object' && cloud.enabled && String(cloud.scope) === 'global') {
+        const c = Object.assign({}, def, cloud);
+        c.enabled = !!c.enabled;
+        c.ms = Number(c.ms)||0;
+        c.freeze = (c.freeze !== false);
+        c.setAt = Number(c.setAt)||0;
+        c.scope = 'global';
+        return c;
+      }
       return o;
     },
     saveMailboxTimeOverride(next, opts){
@@ -1643,6 +1657,27 @@
         o.setAt = 0;
       }
       write(KEYS.mailbox_time_override, o, opts);
+
+      // If user set Global scope, propagate to cloud so other devices/browsers are affected.
+      // This requires Supabase env and an authenticated session.
+      if (o.scope === 'global') {
+        write(KEYS.mailbox_time_override_cloud, o, opts);
+        if (window.CloudAuth && CloudAuth.isEnabled() && CloudAuth.accessToken()) {
+          fetch('/api/mailbox_override/set', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${CloudAuth.accessToken()}`,
+            },
+            body: JSON.stringify({
+              scope: 'global',
+              enabled: !!o.enabled,
+              freeze: !!o.freeze,
+              override_iso: new Date(Date.now() + o.ms).toISOString(),
+            })
+          }).catch(() => {});
+        }
+      }
       return o;
     },
 
@@ -1901,6 +1936,27 @@
       // Best-effort cleanup on tab close
       window.addEventListener('beforeunload', ()=>{ try{ Store.setOffline(uid); }catch(_){ } });
     }catch(e){ }
+  };
+
+  // Cloud-global mailbox override sync (cross-device). Polls the Vercel API (which reads Supabase).
+  Store.startMailboxOverrideSync = function(){
+    try{
+      if(window.__mumsMailboxOverrideTimer) return;
+      if(!window.CloudAuth || !CloudAuth.isEnabled || !CloudAuth.isEnabled()) return;
+      const poll = async () => {
+        try{
+          const res = await fetch('/api/mailbox_override/get?scope=global', { cache:'no-store' });
+          const json = await res.json();
+          if(json && json.ok && json.override){
+            write(KEYS.mailbox_time_override_cloud, json.override, { notify:false });
+            // Tell UI to re-render countdown immediately
+            try{ window.dispatchEvent(new CustomEvent('mums:store', { detail:{ key:'mailbox_override_cloud', source:'cloud' } })); }catch(_){ }
+          }
+        }catch(_){ }
+      };
+      poll();
+      window.__mumsMailboxOverrideTimer = setInterval(poll, 5000);
+    }catch(_){ }
   };
 
   

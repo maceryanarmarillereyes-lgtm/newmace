@@ -3559,6 +3559,7 @@ async function boot(){
 
     // Best-effort online presence heartbeat (offline-first).
     try{ if(window.Store && Store.startPresence) Store.startPresence(user); }catch(e){ console.error(e); }
+    try{ if(window.Store && Store.startMailboxOverrideSync) Store.startMailboxOverrideSync(); }catch(e){ console.error(e); }
 
     // Keep the Online Users bar fresh (TTL-driven)
     try{

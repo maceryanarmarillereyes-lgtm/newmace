@@ -62,6 +62,22 @@
       const pass = (password || '').trim();
       if (!idf || !pass) return { ok: false, message: 'Please enter username/email and password.' };
 
+      // Login mode B (cloud-first): when Supabase env is configured, authenticate via Supabase Auth.
+      if (window.CloudAuth && CloudAuth.isEnabled()) {
+        const out = await CloudAuth.signIn(idf, pass);
+        if (!out.ok) return out;
+        // Cache a local session for UI routing, but source-of-truth is Supabase.
+        currentUser = out.user;
+        try {
+          window.Store && Store.setSession && Store.setSession({ userId: out.user.id, at: Date.now(), mode: 'supabase' });
+        } catch (_) {}
+        // Refresh local user cache for pages that still rely on Store users.
+        try {
+          window.CloudUsers && CloudUsers.refreshIntoLocalStore && (await CloudUsers.refreshIntoLocalStore());
+        } catch (_) {}
+        return { ok: true, user: out.user };
+      }
+
       const u = window.Store && Store.findUserByLogin ? Store.findUserByLogin(idf, pass) : null;
       if (!u) return { ok: false, message: 'User not found.' };
 
