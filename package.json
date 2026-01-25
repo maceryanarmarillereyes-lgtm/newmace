@@ -4,5 +4,11 @@
   "description": "MUMS static webapp + Vercel Serverless API routes (Supabase-backed)",
   "engines": {
     "node": "24.x"
+  },
+  "version": "1.0.0",
+  "scripts": {
+    "build": "echo \"No build step for static site\"",
+    "vercel-build": "npm run build",
+    "start": "node -e \"console.log(\\\"Static site: no start script\\\")\""
   }
 }
