@@ -31,6 +31,7 @@
         <div class="rt-actions">
           <button class="btn btn-primary" type="button" id="rtRetryBtn">Retry connection</button>
           <button class="btn" type="button" id="rtReloadBtn">Reload page</button>
+          <button class="btn" type="button" id="rtLoginBtn" style="display:none;">Go to login</button>
         </div>
       </div>
     `;
@@ -43,6 +44,10 @@
         } catch (_) { location.reload(); }
       });
       el.querySelector('#rtReloadBtn').addEventListener('click', function(){ location.reload(); });
+      el.querySelector('#rtLoginBtn').addEventListener('click', function(){
+        const next = encodeURIComponent(window.location.href);
+        window.location.href = `login.html?next=${next}`;
+      });
     } catch (_) {}
     return el;
   }
@@ -57,6 +62,12 @@
       if (st) st.textContent = (mode === 'connecting') ? 'Connecting…' : 'Offline';
       const det = el.querySelector('.rt-detail');
       if (det) det.textContent = detail || '';
+
+      // Only show "Go to login" if we truly appear unauthenticated.
+      const loginBtn = el.querySelector('#rtLoginBtn');
+      const hasToken = !!(window.CloudAuth && typeof CloudAuth.accessToken === 'function' && CloudAuth.accessToken());
+      const needsLogin = /login required/i.test(String(detail || ''));
+      if (loginBtn) loginBtn.style.display = (needsLogin && !hasToken) ? 'inline-flex' : 'none';
     } catch (_) {}
   }
 
@@ -64,16 +75,10 @@
     var el = root();
     if (!el) return;
 
-    // When auth is required, go straight to the login page rather than leaving
-    // the user trapped behind the realtime blocker on the main app.
-    if (
-      mode !== 'realtime' &&
-      /login required/i.test(String(detail || '')) &&
-      !/\/login\.html$/i.test(window.location.pathname)
-    ) {
-      window.location.href = 'login.html';
-      return;
-    }
+    // IMPORTANT: Do not auto-redirect to login based on realtime status.
+    // Realtime may momentarily report "login required" during token refresh,
+    // cold starts, or transient 401s. Redirecting here causes a login loop.
+    // Auth routing must be handled by Auth.requireUser() (auth.js).
     el.classList.remove('ok','poll','off');
     if (mode === 'realtime') el.classList.add('ok');
     else if (mode === 'connecting' || mode === 'polling') el.classList.add('poll');

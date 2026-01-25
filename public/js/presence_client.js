@@ -36,13 +36,31 @@
     return id;
   }
 
-  function authHeader(){
+  // Ensure we have a fresh access token before hitting protected API routes.
+  var __jwtPromise = null;
+  async function getJwt(){
     try {
-      var jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
-      return jwt ? { Authorization: 'Bearer ' + jwt } : {};
+      if (window.CloudAuth && typeof CloudAuth.loadSession === 'function') {
+        // Debounce concurrent refreshes.
+        if (!__jwtPromise) {
+          __jwtPromise = (async function(){
+            try { await CloudAuth.loadSession(); } catch(_) {}
+            return (typeof CloudAuth.accessToken === 'function') ? CloudAuth.accessToken() : '';
+          })();
+          // Reset the promise after completion so future calls can refresh again.
+          __jwtPromise.finally(function(){ __jwtPromise = null; });
+        }
+        return await __jwtPromise;
+      }
+      return (window.CloudAuth && typeof CloudAuth.accessToken === 'function') ? CloudAuth.accessToken() : '';
     } catch (e) {
-      return {};
+      return '';
     }
+  }
+
+  async function authHeader(){
+    var jwt = await getJwt();
+    return jwt ? { Authorization: 'Bearer ' + jwt } : {};
   }
 
   function toMs(iso){
@@ -70,7 +88,7 @@
   async function postJson(url, body){
     var r = await fetch(url, {
       method: 'POST',
-      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeader()),
+      headers: Object.assign({ 'Content-Type': 'application/json' }, await authHeader()),
       body: JSON.stringify(body)
     });
     return r;
@@ -90,7 +108,7 @@
     async function heartbeat(){
       try {
         // Presence is meaningful only for authenticated sessions.
-        var jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+        var jwt = await getJwt();
         if (!jwt) return;
 
         await postJson('/api/presence/heartbeat', {
@@ -105,8 +123,17 @@
     // List: pull roster and update Store online map.
     async function refreshRoster(){
       try {
-        var r = await fetch('/api/presence/list', { cache: 'no-store', headers: authHeader() });
-        if (!r.ok) return;
+        var r = await fetch('/api/presence/list', { cache: 'no-store', headers: await authHeader() });
+        if (!r.ok) {
+          // Surface 401s to the debug overlay (and the sync banner) without forcing redirects.
+          if (r.status === 401) {
+            try {
+              window.dispatchEvent(new CustomEvent('mums:debug', { detail: { source: 'presence_client', kind: 'http', status: 401, url: '/api/presence/list' } }));
+              window.dispatchEvent(new CustomEvent('mums:syncstatus', { detail: { mode: 'offline', detail: 'Login required (presence API returned 401).' } }));
+            } catch(_) {}
+          }
+          return;
+        }
         var data = await r.json();
         if (!data || !data.rows) return;
         if (window.Store && window.Store.write) {
