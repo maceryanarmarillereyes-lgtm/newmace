@@ -10,6 +10,8 @@
   Only SAFE (public) env values are used from /api/env.
 */
 (function(){
+  const DBG = (window.MUMS_DEBUG || {log(){},warn(){},error(){}});
+
   const LS_SESSION = 'mums_supabase_session';
   // In-memory fallback for browsers/environments where localStorage is blocked
   // (e.g., strict privacy/tracking prevention settings).
@@ -75,28 +77,39 @@
   }
 
   function readSession(){
-    // localStorage → sessionStorage → cookie → in-memory
-    try {
-      const v = localStorage.getItem(LS_SESSION);
-      if (v) return JSON.parse(v);
-    } catch (_) {}
-    try {
-      const v2 = sessionStorage.getItem(LS_SESSION);
-      if (v2) return JSON.parse(v2);
-    } catch (_) {}
-    try {
-      const cv = _getCookie(LS_SESSION);
-      if (cv) return JSON.parse(cv);
-    } catch (_) {}
-    return memSession;
+    // Priority: localStorage → sessionStorage → cookie → in-memory
+    try{
+      const raw = localStorage.getItem(LS_SESSION);
+      if(raw){ return JSON.parse(raw); }
+    }catch(e){
+      DBG.warn('cloud_auth.readSession.localStorage_error', {e: String(e)});
+    }
+    try{
+      const raw = sessionStorage.getItem(LS_SESSION);
+      if(raw){ return JSON.parse(raw); }
+    }catch(e){
+      DBG.warn('cloud_auth.readSession.sessionStorage_error', {e: String(e)});
+    }
+    try{
+      const raw = _getCookie(LS_SESSION);
+      if(raw){ return JSON.parse(raw); }
+    }catch(e){
+      DBG.warn('cloud_auth.readSession.cookie_error', {e: String(e)});
+    }
+    if(memSession) return memSession;
+    return null;
   }
 
   function writeSession(session){
     memSession = session || null;
-    const payload = JSON.stringify(_minifySession(session));
-    try{ localStorage.setItem(LS_SESSION, payload); }catch(_){ }
-    try{ sessionStorage.setItem(LS_SESSION, payload); }catch(_){ }
-    try{ _setCookie(LS_SESSION, payload, 30); }catch(_){ }
+    const payload = JSON.stringify(session || null);
+    try{ localStorage.setItem(LS_SESSION, payload); }
+    catch(e){ DBG.warn('cloud_auth.writeSession.localStorage_error', {e: String(e), len: payload.length}); }
+    try{ sessionStorage.setItem(LS_SESSION, payload); }
+    catch(e){ DBG.warn('cloud_auth.writeSession.sessionStorage_error', {e: String(e), len: payload.length}); }
+    // Cookies are size-limited; best-effort only.
+    try{ _setCookie(LS_SESSION, payload, 30); }
+    catch(e){ DBG.warn('cloud_auth.writeSession.cookie_error', {e: String(e), len: payload.length}); }
   }
 
   function clearSession(){
@@ -225,7 +238,16 @@
 
   function enabled(){
     const e = env();
-    return Boolean(e.SUPABASE_URL && e.SUPABASE_ANON_KEY);
+    if(e.SUPABASE_URL && e.SUPABASE_ANON_KEY) return true;
+    // Cold start: EnvRuntime may not be ready yet. If a session exists, allow auth-dependent flows.
+    try{
+      const s = readSession();
+      if(s && (s.access_token || (s.session && s.session.access_token))){
+        DBG.warn('cloud_auth.enabled.env_missing_but_session_present', {hasUrl: !!e.SUPABASE_URL, hasKey: !!e.SUPABASE_ANON_KEY});
+        return true;
+      }
+    }catch(e){}
+    return false;
   }
 
   // Backward-compatible wrappers

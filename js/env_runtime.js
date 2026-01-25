@@ -1,4 +1,7 @@
 (function(){
+  const DBG = (window.MUMS_DEBUG || {log(){},warn(){},error(){}});
+  DBG.log('info','env_runtime.start');
+
   function safeParseInt(v, d){
     var n = parseInt(v, 10);
     return isNaN(n) ? d : n;

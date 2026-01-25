@@ -174,7 +174,9 @@
       const delay = Math.min(12000, reconnectBackoffMs);
       reconnectBackoffMs = Math.min(12000, Math.round(reconnectBackoffMs * 1.6));
       dispatchStatus('connecting', `Reconnecting… ${reason ? '('+reason+')' : ''}`);
-      reconnectTimer = setTimeout(()=>{
+      reconnectTimer = setTimeout(async ()=>{
+  try{ if(window.EnvRuntime && typeof EnvRuntime.ready==='function'){ await Promise.race([EnvRuntime.ready(), new Promise(res=>setTimeout(res, 2500))]); } }catch(e){ (window.MUMS_DEBUG||{}).warn && MUMS_DEBUG.warn('realtime.env_wait_failed',{e:String(e)}); }
+
         reconnectTimer = null;
         connectCloudMandatory();
       }, delay);

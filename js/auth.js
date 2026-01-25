@@ -1,4 +1,13 @@
 (function(){
+  const DBG = (window.MUMS_DEBUG || {
+    enabled: false,
+    log: function(){},
+    warn: function(){},
+    error: function(){},
+    snapshot: function(){},
+    redirect: function(target){ try{ window.location.href = target; } catch(_){} }
+  });
+
   // NOTE: Local mode is kept for offline/dev fallback. In production,
   // CloudAuth (Supabase) should be enabled via env variables.
 
