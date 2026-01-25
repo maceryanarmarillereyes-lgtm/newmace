@@ -199,7 +199,7 @@
       u.status = String(u.status||'active');
       // back-compat for older password field
       if(!u.passwordHash && u.password){
-        try{ u.passwordHash = window.Auth ? Auth.hash(u.password) : u.password; }catch(_){ }
+        try{ u.passwordHash = (window.Auth && typeof Auth.hash === "function") ? Auth.hash(u.password) : u.password; }catch(_){ }
         delete u.password;
       }
       out.push(u);
@@ -340,7 +340,7 @@
         // Requirement: Super Admin has no schedule assignment
         schedule: null,
         status: 'active',
-        passwordHash: window.Auth ? Auth.hash('supermace') : 'h0',
+        passwordHash: (window.Auth && typeof Auth.hash === "function") ? Auth.hash('supermace') : 'h0',
         createdAt: Date.now(),
       });
 
@@ -352,7 +352,7 @@
         // Migrate bootstrap admin to the Super Admin policy (no team/schedule assignment).
         out = out.map(u=>{
           if(u && u.id===hasBootstrapAdmin.id){
-            const keepHash = (u.passwordHash && String(u.passwordHash).trim()) ? u.passwordHash : (window.Auth ? Auth.hash('supermace') : 'h0');
+            const keepHash = (u.passwordHash && String(u.passwordHash).trim()) ? u.passwordHash : ((window.Auth && typeof Auth.hash === "function") ? Auth.hash('supermace') : 'h0');
             return {
               ...u,
               username: 'supermace',
