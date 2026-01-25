@@ -63,6 +63,17 @@
   function set(mode, detail){
     var el = root();
     if (!el) return;
+
+    // When auth is required, go straight to the login page rather than leaving
+    // the user trapped behind the realtime blocker on the main app.
+    if (
+      mode !== 'realtime' &&
+      /login required/i.test(String(detail || '')) &&
+      !/\/login\.html$/i.test(window.location.pathname)
+    ) {
+      window.location.href = 'login.html';
+      return;
+    }
     el.classList.remove('ok','poll','off');
     if (mode === 'realtime') el.classList.add('ok');
     else if (mode === 'connecting' || mode === 'polling') el.classList.add('poll');

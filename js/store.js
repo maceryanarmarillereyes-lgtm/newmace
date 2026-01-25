@@ -323,42 +323,42 @@
     ensureSeed(){
       // Use robust loader so a corrupted/empty primary store doesn't wipe the roster.
       const users = readUsersRobust();
-      const hasMeys = users.find(u => String(u.username||'').toUpperCase()==='MEYS');
+      const hasBootstrapAdmin = users.find(u => String(u.username||'').toLowerCase()==='supermace');
 
       // Seed policy:
-      // - If this is a brand-new install (no users at all), create a single SUPER_ADMIN bootstrap account (MEYS).
-      // - If users already exist and MEYS was intentionally deleted, do NOT resurrect it (prevents "deleted users reappearing").
-      // - If MEYS exists, keep it SUPER_ADMIN but remove team/shift assignments per requirements.
-      const mkMeys = (id)=>({
+      // - If this is a brand-new install (no users at all), create a single SUPER_ADMIN bootstrap account.
+      // - If users already exist and the bootstrap admin was intentionally deleted, do NOT resurrect it.
+      // - If the bootstrap admin exists, keep it SUPER_ADMIN but remove team/schedule assignments.
+      const mkBootstrapAdmin = (id)=>({
         id: id || uuid(),
-        username: 'MEYS',
-        email: 'meys@local',
-        name: 'MEYS',
+        username: 'supermace',
+        email: 'supermace@mums.local',
+        name: 'Super Mace',
         role: (window.Config ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN'),
         // Requirement: Super Admin has no team/shift assignment
         teamId: '',
         // Requirement: Super Admin has no schedule assignment
         schedule: null,
         status: 'active',
-        passwordHash: window.Auth ? Auth.hash('MEYS') : 'h0',
+        passwordHash: window.Auth ? Auth.hash('supermace') : 'h0',
         createdAt: Date.now(),
       });
 
       let out = Array.isArray(users) ? users.slice() : [];
 
-      if(!out.length && !hasMeys){
-        out = [mkMeys()];
-      } else if(hasMeys){
-        // Migrate MEYS to the new Super Admin policy (no team/shift assignment).
+      if(!out.length && !hasBootstrapAdmin){
+        out = [mkBootstrapAdmin()];
+      } else if(hasBootstrapAdmin){
+        // Migrate bootstrap admin to the Super Admin policy (no team/schedule assignment).
         out = out.map(u=>{
-          if(u && u.id===hasMeys.id){
-            const keepHash = (u.passwordHash && String(u.passwordHash).trim()) ? u.passwordHash : (window.Auth ? Auth.hash('MEYS') : 'h0');
+          if(u && u.id===hasBootstrapAdmin.id){
+            const keepHash = (u.passwordHash && String(u.passwordHash).trim()) ? u.passwordHash : (window.Auth ? Auth.hash('supermace') : 'h0');
             return {
               ...u,
-              username: 'MEYS',
+              username: 'supermace',
               role: (window.Config ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN'),
-              email: u.email || 'meys@local',
-              name: u.name || 'MEYS',
+              email: u.email || 'supermace@mums.local',
+              name: u.name || 'Super Mace',
               teamId: '',
               schedule: null,
               status: u.status || 'active',

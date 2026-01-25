@@ -66,6 +66,23 @@
       return { ok: true, user: u };
     },
 
+    // Deterministic lightweight hash used for legacy local-user `passwordHash`
+    // and client-side key derivation in offline mode.
+    //
+    // IMPORTANT: This is NOT intended to be a secure password hashing
+    // mechanism. Supabase Auth handles real credentials.
+    hash(input) {
+      const str = String(input ?? '');
+      // FNV-1a 32-bit
+      let h = 0x811c9dc5;
+      for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 0x01000193) >>> 0;
+      }
+      // Return fixed-width hex.
+      return ('00000000' + h.toString(16)).slice(-8);
+    },
+
     async logout() {
       currentUser = null;
       try {

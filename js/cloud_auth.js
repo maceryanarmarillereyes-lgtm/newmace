@@ -11,6 +11,9 @@
 */
 (function(){
   const LS_SESSION = 'mums_supabase_session';
+  // In-memory fallback for browsers/environments where localStorage is blocked
+  // (e.g., strict privacy/tracking prevention settings).
+  let memSession = null;
   let refreshTimer = null;
 
   function env(){
@@ -33,14 +36,21 @@
   }
 
   function readSession(){
-    try{ return JSON.parse(localStorage.getItem(LS_SESSION) || 'null'); }catch(_){ return null; }
+    try {
+      const v = localStorage.getItem(LS_SESSION);
+      return JSON.parse(v || 'null');
+    } catch (_) {
+      return memSession;
+    }
   }
 
   function writeSession(session){
+    memSession = session || null;
     try{ localStorage.setItem(LS_SESSION, JSON.stringify(session)); }catch(_){ }
   }
 
   function clearSession(){
+    memSession = null;
     try{ localStorage.removeItem(LS_SESSION); }catch(_){ }
   }
 
