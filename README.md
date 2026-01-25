@@ -34,8 +34,8 @@ This project is a **static HTML/JS webapp** deployed on **Vercel** with **Server
 4. Deploy.
 
 This repo includes:
-- `vercel.json` to pin API route runtime to **nodejs18.x**.
-- `package.json` with `engines.node=18.x`.
+- `vercel.json` to pin API route runtime to **nodejs24.x**.
+- `package.json` with `engines.node=24.x`.
 
 ## Local development
 
