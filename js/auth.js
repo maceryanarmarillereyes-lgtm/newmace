@@ -19,15 +19,66 @@
         }
       } catch (_) {}
       return null;
-    },
+    },// Require login (async; attempts to restore Supabase session before redirecting)
+    async requireUser(opts) {
+      opts = opts || {};
+      const redirect = (opts.redirect !== false);
 
-    // Require login (async; redirects if not logged in)
-    async requireUser() {
-      const u = this.getUser();
-      if (!u) window.location.href = './login.html';
-      return u;
+      // 1) Fast path
+      let u = this.getUser();
+      if (u) return u;
+
+      // 2) Supabase/CloudAuth restore path (prevents login redirect loops)
+      try {
+        if (window.CloudAuth && CloudAuth.enabled && CloudAuth.enabled()) {
+          const sbUser = CloudAuth.getUser ? CloudAuth.getUser() : null;
+
+          // If we have a Supabase user but local Store profile cache isn't ready yet,
+          // hydrate session and fetch profiles before deciding to redirect.
+          if (sbUser && sbUser.id) {
+            try {
+              const sess = (window.Store && Store.getSession) ? Store.getSession() : null;
+              if (!sess || String(sess.userId) !== String(sbUser.id) || sess.mode !== 'supabase') {
+                Store.setSession && Store.setSession({ userId: sbUser.id, mode: 'supabase', ts: Date.now() });
+              }
+            } catch (e) {}
+
+            // Try again after session hydration
+            u = this.getUser();
+            if (u) return u;
+
+            // Pull profile(s) into the local Store so getUser() can resolve role/username/name
+            try {
+              if (window.CloudUsers && CloudUsers.refreshIntoLocalStore) {
+                await CloudUsers.refreshIntoLocalStore();
+              }
+            } catch (e) {}
+
+            u = this.getUser();
+            if (u) return u;
+
+            // Last-resort minimal user (keeps app usable; role may be limited until profile exists)
+            u = {
+              id: sbUser.id,
+              username: (sbUser.email || '').split('@')[0] || 'user',
+              email: sbUser.email || '',
+              name: sbUser.email || 'User',
+              role: 'MEMBER',
+              teamId: null,
+              duty: ''
+            };
+            currentUser = u;
+            return u;
+          }
+        }
+      } catch (e) {}
+
+      // 3) No user → redirect (or return null)
+      if (redirect) window.location.href = './login.html';
+      return null;
     },
     async requireLogin() { return this.requireUser(); },
+
 
     async login(identifier, password) {
       const idf = (identifier || '').trim();

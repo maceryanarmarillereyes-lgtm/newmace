@@ -16,6 +16,45 @@
   let memSession = null;
   let refreshTimer = null;
 
+
+  function _cookieSecureFlag(){
+    try { return (location && location.protocol === 'https:'); } catch (_) { return false; }
+  }
+  function _setCookie(name, value, days){
+    try {
+      const maxAge = (days ? (days * 86400) : 86400 * 30);
+      const secure = _cookieSecureFlag() ? '; Secure' : '';
+      document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
+    } catch (_) {}
+  }
+  function _getCookie(name){
+    try {
+      const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()\[\]\\\/\+^])/g,'\\$1') + '=([^;]*)'));
+      return m ? decodeURIComponent(m[1]) : '';
+    } catch (_) { return ''; }
+  }
+  function _delCookie(name){
+    try {
+      const secure = _cookieSecureFlag() ? '; Secure' : '';
+      document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+    } catch (_) {}
+  }
+  function _minifySession(session){
+    if(!session) return null;
+    const u = session.user || null;
+    let expires_at = session.expires_at || null;
+    if(!expires_at && session.expires_in){
+      expires_at = Math.floor(Date.now()/1000) + Number(session.expires_in||0);
+    }
+    return {
+      access_token: session.access_token || '',
+      refresh_token: session.refresh_token || '',
+      expires_at,
+      user: u ? { id: u.id, email: u.email } : null
+    };
+  }
+
+
   function env(){
     try{ return (window.EnvRuntime && EnvRuntime.env) ? EnvRuntime.env() : (window.MUMS_ENV || {}); }catch(_){ return (window.MUMS_ENV || {}); }
   }
@@ -36,22 +75,35 @@
   }
 
   function readSession(){
+    // localStorage → sessionStorage → cookie → in-memory
     try {
       const v = localStorage.getItem(LS_SESSION);
-      return JSON.parse(v || 'null');
-    } catch (_) {
-      return memSession;
-    }
+      if (v) return JSON.parse(v);
+    } catch (_) {}
+    try {
+      const v2 = sessionStorage.getItem(LS_SESSION);
+      if (v2) return JSON.parse(v2);
+    } catch (_) {}
+    try {
+      const cv = _getCookie(LS_SESSION);
+      if (cv) return JSON.parse(cv);
+    } catch (_) {}
+    return memSession;
   }
 
   function writeSession(session){
     memSession = session || null;
-    try{ localStorage.setItem(LS_SESSION, JSON.stringify(session)); }catch(_){ }
+    const payload = JSON.stringify(_minifySession(session));
+    try{ localStorage.setItem(LS_SESSION, payload); }catch(_){ }
+    try{ sessionStorage.setItem(LS_SESSION, payload); }catch(_){ }
+    try{ _setCookie(LS_SESSION, payload, 30); }catch(_){ }
   }
 
   function clearSession(){
     memSession = null;
     try{ localStorage.removeItem(LS_SESSION); }catch(_){ }
+    try{ sessionStorage.removeItem(LS_SESSION); }catch(_){ }
+    try{ _delCookie(LS_SESSION); }catch(_){ }
   }
 
   function emitToken(){

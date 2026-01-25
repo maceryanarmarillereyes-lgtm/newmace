@@ -1,10 +1,38 @@
 (function(){
   function getClientId(){
     var key = 'mums_client_id';
-    var existing = localStorage.getItem(key);
-    if (existing) return existing;
+
+    function cookieSecure(){
+      try { return (location && location.protocol === 'https:'); } catch(_) { return false; }
+    }
+    function setCookie(name, value){
+      try {
+        var secure = cookieSecure() ? '; Secure' : '';
+        document.cookie = name + '=' + encodeURIComponent(value) + '; Path=/; Max-Age=' + (86400*365) + '; SameSite=Lax' + secure;
+      } catch(_) {}
+    }
+    function getCookie(name){
+      try {
+        var m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()\[\]\\/\+^])/g,'\$1') + '=([^;]*)'));
+        return m ? decodeURIComponent(m[1]) : '';
+      } catch(_) { return ''; }
+    }
+
+    try {
+      var existing = localStorage.getItem(key);
+      if (existing) return existing;
+    } catch(_) {}
+
+    try {
+      var c = getCookie(key);
+      if (c) return c;
+    } catch(_) {}
+
     var id = 'c_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    localStorage.setItem(key, id);
+
+    try { localStorage.setItem(key, id); } catch(_) {}
+    try { setCookie(key, id); } catch(_) {}
+
     return id;
   }
 

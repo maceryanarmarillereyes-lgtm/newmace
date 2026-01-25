@@ -928,7 +928,22 @@
     },
 
     // session
-    getSession(){ return read(KEYS.session, null); },
+    getSession() {
+      // localStorage → sessionStorage → cookie
+      try {
+        const s = read(KEYS.session, null);
+        if (s) return s;
+      } catch (_) {}
+      try {
+        const v = sessionStorage.getItem(KEYS.session);
+        if (v) return JSON.parse(v);
+      } catch (_) {}
+      try {
+        const cv = _getCookie(KEYS.session);
+        if (cv) return JSON.parse(cv);
+      } catch (_) {}
+      return null;
+    },
     setSession(sess){ write(KEYS.session, sess); },
     clearSession(){ localStorage.removeItem(KEYS.session); },
 

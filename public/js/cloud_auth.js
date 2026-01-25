@@ -13,6 +13,45 @@
   const LS_SESSION = 'mums_supabase_session';
   let refreshTimer = null;
 
+
+  function _cookieSecureFlag(){
+    try { return (location && location.protocol === 'https:'); } catch (_) { return false; }
+  }
+  function _setCookie(name, value, days){
+    try {
+      const maxAge = (days ? (days * 86400) : 86400 * 30);
+      const secure = _cookieSecureFlag() ? '; Secure' : '';
+      document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
+    } catch (_) {}
+  }
+  function _getCookie(name){
+    try {
+      const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()\[\]\\\/\+^])/g,'\\$1') + '=([^;]*)'));
+      return m ? decodeURIComponent(m[1]) : '';
+    } catch (_) { return ''; }
+  }
+  function _delCookie(name){
+    try {
+      const secure = _cookieSecureFlag() ? '; Secure' : '';
+      document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+    } catch (_) {}
+  }
+  function _minifySession(session){
+    if(!session) return null;
+    const u = session.user || null;
+    let expires_at = session.expires_at || null;
+    if(!expires_at && session.expires_in){
+      expires_at = Math.floor(Date.now()/1000) + Number(session.expires_in||0);
+    }
+    return {
+      access_token: session.access_token || '',
+      refresh_token: session.refresh_token || '',
+      expires_at,
+      user: u ? { id: u.id, email: u.email } : null
+    };
+  }
+
+
   function env(){
     try{ return (window.EnvRuntime && EnvRuntime.env) ? EnvRuntime.env() : (window.MUMS_ENV || {}); }catch(_){ return (window.MUMS_ENV || {}); }
   }
