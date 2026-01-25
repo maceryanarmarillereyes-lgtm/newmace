@@ -1,4 +1,4 @@
-const { getUserFromJwt, getProfileForUserId, serviceFetch } = require('../_supabase');
+const { getUserFromJwt, getProfileForUserId, serviceUpsert } = require('../_supabase');
 
 // POST /api/mailbox_override/set
 // Body: { scope: 'global'|'superadmin', enabled, freeze, override_iso }
@@ -17,9 +17,9 @@ module.exports = async (req, res) => {
     }
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const scope = (body.scope || 'superadmin').toString();
-    if (scope === 'global' && profile.role !== 'SUPER_ADMIN') {
-      return res.status(403).json({ error: 'Forbidden' });
+    const scope = (body.scope || 'superadmin').toString().toLowerCase();
+    if (!['global', 'superadmin'].includes(scope)) {
+      return res.status(400).json({ error: 'Invalid scope' });
     }
 
     const enabled = !!body.enabled;
@@ -29,45 +29,21 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'override_iso is required when enabled' });
     }
 
-    // Upsert singleton row per scope
     const payload = {
       scope,
       enabled,
       freeze,
       override_iso: enabled ? override_iso : null,
       updated_by: u.id,
-      updated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     };
 
-    // Prefer deterministic id per scope
-    const id = scope;
-    const { res: upRes, json: upJson } = await serviceFetch(
-      `/rest/v1/mums_mailbox_override?id=eq.${encodeURIComponent(id)}`,
-      {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Prefer: 'return=representation',
-        },
-        body: JSON.stringify(payload),
-      }
-    );
-
-    if (!upRes.ok) {
-      // If PATCH fails (row doesn't exist), do INSERT
-      const { res: insRes, json: insJson } = await serviceFetch('/rest/v1/mums_mailbox_override', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Prefer: 'return=representation',
-        },
-        body: JSON.stringify({ id, ...payload }),
-      });
-      if (!insRes.ok) return res.status(500).json({ error: 'Supabase insert failed', details: insJson });
-      return res.status(200).json({ ok: true, row: Array.isArray(insJson) ? insJson[0] : insJson });
+    const up = await serviceUpsert('mums_mailbox_override', [payload], 'scope');
+    if (!up.ok) {
+      return res.status(500).json({ error: 'Supabase upsert failed', details: up.json || up.text });
     }
 
-    return res.status(200).json({ ok: true, row: Array.isArray(upJson) ? upJson[0] : upJson });
+    return res.status(200).json({ ok: true, row: Array.isArray(up.json) ? up.json[0] : up.json });
   } catch (e) {
     return res.status(500).json({ error: 'Server error', details: String(e?.message || e) });
   }

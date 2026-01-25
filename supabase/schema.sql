@@ -92,3 +92,62 @@ with check (
 );
 
 -- NOTE: Presence tables are created by the app; you may optionally enable RLS there too.
+
+-- =====================================================================
+-- ADDITIONS (Realtime collaboration)
+-- =====================================================================
+
+-- Ensure role constraint supports SUPER_USER as well.
+alter table if exists public.mums_profiles
+  drop constraint if exists mums_profiles_role_check;
+alter table if exists public.mums_profiles
+  add constraint mums_profiles_role_check
+  check (role in ('SUPER_ADMIN', 'SUPER_USER', 'ADMIN', 'TEAM_LEAD', 'MEMBER'));
+
+-- Presence table (used for online user overlay). Keep RLS disabled.
+create table if not exists public.mums_presence (
+  client_id text primary key,
+  user_id text not null,
+  name text,
+  role text,
+  team_id text,
+  route text,
+  last_seen timestamptz not null default now()
+);
+create index if not exists mums_presence_last_seen_idx on public.mums_presence (last_seen desc);
+
+
+-- Collaborative documents store (server-managed; clients pull via /api/sync/*)
+create table if not exists public.mums_documents (
+  key text primary key,
+  value jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  updated_by_user_id uuid,
+  updated_by_name text,
+  updated_by_client_id text
+);
+create index if not exists mums_documents_updated_at_idx on public.mums_documents (updated_at desc);
+
+-- Maintain updated_at on updates.
+create or replace function public.mums_set_updated_at()
+returns trigger as $$
+begin
+  new.updated_at := now();
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists mums_documents_set_updated_at on public.mums_documents;
+create trigger mums_documents_set_updated_at
+before update on public.mums_documents
+for each row execute function public.mums_set_updated_at();
+
+-- Secure documents from direct client access (server functions use SERVICE ROLE and bypass RLS).
+alter table public.mums_documents enable row level security;
+
+-- Authenticated users may read (global read).
+drop policy if exists "mums_documents_read" on public.mums_documents;
+create policy "mums_documents_read" on public.mums_documents
+for select to authenticated using (true);
+
+-- No insert/update/delete policies -> denied by default for anon/authenticated.

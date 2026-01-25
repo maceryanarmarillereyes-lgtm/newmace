@@ -1,12 +1,19 @@
 
-function canEdit(actor, target){
-  if(actor.role===Config.ROLES.SUPER_ADMIN) return true;
-  if(target.role===Config.ROLES.SUPER_ADMIN) return false;
-  if(actor.role===Config.ROLES.ADMIN) return true;
-  if(actor.role===Config.ROLES.TEAM_LEAD){
-    return target.teamId===actor.teamId && target.role!==Config.ROLES.ADMIN;
+function canEdit(actor, row) {
+  if (!actor || !row) return false;
+  const aRole = (actor.role || '').toUpperCase();
+  const rRole = (row.role || '').toUpperCase();
+
+  if (aRole === 'SUPER_ADMIN') return true;
+
+  if (aRole === 'TEAM_LEAD') {
+    // Team lead can edit members of their own team only.
+    if (rRole !== 'MEMBER') return false;
+    return (actor.team_id || '') === (row.team_id || '');
   }
-  return false;
+
+  // Regular members can only edit themselves (limited fields enforced server-side/RLS).
+  return actor.user_id && row.user_id && actor.user_id === row.user_id;
 }
 
 function canSchedule(actor, target){
@@ -20,10 +27,19 @@ function canSchedule(actor, target){
   return false;
 }
 
-function canCreateRole(actor, role){
-  if(actor.role===Config.ROLES.SUPER_ADMIN) return true;
-  if(actor.role===Config.ROLES.ADMIN) return role!==Config.ROLES.SUPER_ADMIN;
-  if(actor.role===Config.ROLES.TEAM_LEAD) return role===Config.ROLES.MEMBER;
+function canCreateRole(actor, targetRole) {
+  if (!actor) return false;
+  const aRole = (actor.role || '').toUpperCase();
+  const tRole = (targetRole || '').toUpperCase();
+
+  if (aRole === 'SUPER_ADMIN') {
+    // Super admin can create TEAM_LEAD and MEMBER (optionally more later).
+    return tRole === 'TEAM_LEAD' || tRole === 'MEMBER';
+  }
+  if (aRole === 'TEAM_LEAD') {
+    // Team lead can only create MEMBER accounts.
+    return tRole === 'MEMBER';
+  }
   return false;
 }
 
@@ -160,6 +176,19 @@ function canCreateRole(actor, role){
 
   renderRows();
 
+// UI permission hardening: only SUPER_ADMIN and TEAM_LEAD can create/import/export users.
+const createAllowed = !!actor && ['SUPER_ADMIN', 'TEAM_LEAD'].includes((actor.role || '').toUpperCase());
+if (!createAllowed) {
+  const hide = (id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  };
+  hide('btnAddUser');
+  hide('btnImportUsers');
+  hide('btnExportUsers');
+}
+
+
   // fill selects
   const roleSel = UI.el('#u_role');
   const teamSel = UI.el('#u_team');
@@ -173,9 +202,12 @@ function canCreateRole(actor, role){
   // (no schedule select in Add User)
 
   // events
-  UI.el('#btnAddUser').onclick = ()=>openUserModal(actor, null);
-  UI.el('#btnExportUsers').onclick = ()=>UI.downloadJSON('users.json', Store.getUsers());
-  UI.el('#btnImportUsers').onclick = async()=>{
+  const btnAddUser = document.getElementById('btnAddUser');
+  if (btnAddUser) btnAddUser.onclick = ()=>openUserModal(actor, null);
+  const btnExportUsers = document.getElementById('btnExportUsers');
+  if (btnExportUsers) btnExportUsers.onclick = ()=>UI.downloadJSON('users.json', Store.getUsers());
+  const btnImportUsers = document.getElementById('btnImportUsers');
+  if (btnImportUsers) btnImportUsers.onclick = async()=>{
     const data = await UI.pickJSON();
     if(!Array.isArray(data)) return alert('Invalid JSON. Expected an array of users.');
     // apply restrictions

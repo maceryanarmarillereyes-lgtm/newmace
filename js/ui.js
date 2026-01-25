@@ -1550,4 +1550,33 @@ setCursorMode(mode){
   };
 
   window.UI = UI;
+
+    // Realtime Sync Status badge
+    // - Green: realtime connected
+    // - Yellow: connecting / reconnecting (or polling fallback in legacy mode)
+    // - Red: offline
+  (function bindSyncStatus(){
+    function root(){ return document.getElementById("realtimeSyncStatus"); }
+    function set(mode, detail){
+      var el = root();
+      if (!el) return;
+      el.classList.remove("ok","poll","off");
+      if (mode === "realtime") el.classList.add("ok");
+      else if (mode === "connecting" || mode === "polling") el.classList.add("poll");
+      else el.classList.add("off");
+      var state = el.querySelector(".state");
+      if (state) {
+        state.textContent = (mode === "realtime") ? "Connected" : (mode === "connecting") ? "Connecting" : (mode === "polling") ? "Polling" : "Offline";
+      }
+      if (typeof detail === "string" && detail) el.title = detail;
+    }
+    window.addEventListener("mums:syncstatus", function(e){
+      try {
+        var d = e && e.detail ? e.detail : {};
+        set(String(d.mode||"offline"), String(d.detail||""));
+      } catch (_) {}
+    });
+    document.addEventListener("DOMContentLoaded", function(){ set("offline", "Starting sync..."); });
+  })();
+
 })();

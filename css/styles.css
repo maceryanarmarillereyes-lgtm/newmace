@@ -2939,3 +2939,29 @@ body[data-mode="light"] .sp-photo{background:rgba(15,23,42,.04)}
   /* Cards spacing */
   .card{border-radius:18px}
 }
+
+/* Realtime Sync Status badge */
+.sync-status{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.72);box-shadow:var(--shadow2);font-size:12px;color:var(--muted);line-height:1}
+.sync-status .dot{width:8px;height:8px;border-radius:50%;background:var(--muted2)}
+.sync-status.ok .dot{background:var(--ok)}
+.sync-status.poll .dot{background:var(--warn)}
+.sync-status.off .dot{background:var(--danger)}
+.sync-status .label{font-weight:700;color:var(--muted)}
+.sync-status .state{font-weight:700;color:var(--text)}
+
+/* Mandatory realtime blocker (enterprise-safe: prevents divergent edits) */
+.realtime-blocker{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(10,12,16,.62);backdrop-filter:blur(5px)}
+.realtime-blocker-card{width:min(560px,calc(100% - 32px));background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow4);padding:18px 18px 14px;color:var(--text)}
+.realtime-blocker-card .rt-head{margin-bottom:12px}
+.realtime-blocker-card .rt-title{font-size:16px;font-weight:800;letter-spacing:.2px;margin-bottom:4px}
+.realtime-blocker-card .rt-sub{font-size:12px;color:var(--muted);line-height:1.4}
+.realtime-blocker-card .rt-body{display:flex;flex-direction:column;gap:10px}
+.realtime-blocker-card .rt-status{display:flex;align-items:center;gap:10px;font-weight:700}
+.realtime-blocker-card .rt-dot{width:10px;height:10px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 4px rgba(255,184,0,.15)}
+.realtime-blocker-card .rt-detail{font-size:12px;color:var(--muted);line-height:1.4;word-break:break-word}
+.realtime-blocker-card .rt-hint{font-size:12px;color:var(--muted);line-height:1.4;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:10px}
+.realtime-blocker-card .rt-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:14px}
+
+@media (max-width:720px){
+  .sync-status{display:none}
+}

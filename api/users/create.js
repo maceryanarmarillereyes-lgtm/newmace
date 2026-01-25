@@ -34,6 +34,17 @@ module.exports = async (req, res) => {
     if (creatorRole !== 'SUPER_ADMIN' && creatorRole !== 'TEAM_LEAD') {
       return res.status(403).json({ error: 'Insufficient permission' });
     }
+    const targetRole = String(role || 'MEMBER').toUpperCase();
+    const allowedRoles = new Set(['SUPER_ADMIN', 'TEAM_LEAD', 'MEMBER']);
+    if (!allowedRoles.has(targetRole)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+
+    // Hard rule: TEAM_LEAD can only create MEMBER accounts (their own team only).
+    if (creatorRole === 'TEAM_LEAD' && targetRole !== 'MEMBER') {
+      return res.status(403).json({ error: 'TEAM_LEAD can only create MEMBER accounts.' });
+    }
+
 
     // TEAM_LEAD is restricted to their own team
     if (creatorRole === 'TEAM_LEAD') {
@@ -67,7 +78,7 @@ module.exports = async (req, res) => {
       user_id: newUser.id,
       username,
       name,
-      role,
+      role: targetRole,
       team_id: team_id || (creatorRole === 'TEAM_LEAD' ? creatorProfile.team_id : null),
       duty: duty || null,
       created_by_user_id: authedUser.id

@@ -44,6 +44,11 @@
         <button class="btn ghost iconbtn" id="releaseNotesBtn" type="button" title="Release Notes" aria-label="Release Notes"><span class="ico" data-ico="notes" aria-hidden="true"></span></button>
         <button class="btn ghost iconbtn" id="dictionaryBtn" type="button" title="MUMS Dictionary" aria-label="MUMS Dictionary"><span class="ico" data-ico="book" aria-hidden="true"></span></button>
 <button class="btn ghost iconbtn" id="settingsBtn" type="button" title="Settings" aria-label="Settings"><span class="ico" data-ico="gear" aria-hidden="true"></span></button>
+        <div id="realtimeSyncStatus" class="sync-status" title="Realtime Sync Status">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="label">Sync:</span>
+          <span class="state">—</span>
+        </div>
         <button class="btn" id="logoutBtn" type="button">Logout</button>
       </div>
     </div>
@@ -666,6 +671,7 @@
 
   <script src="./js/env_runtime.js?v=20260124-deploy"></script>
   <script src="./js/remote_patch.js?v=20260125-hotfix"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.0/dist/umd/supabase.min.js"></script>
   <!-- Load in order (no modules) so it works via file:// in Edge -->
   <script src="./js/config.js?v=20260124-final-privileges-settings"></script>
   <script src="./js/store.js?v=20260125-cloud"></script>
@@ -673,6 +679,7 @@
   <script src="./js/cloud_users.js?v=20260125-cloud"></script>
   <script src="./js/auth.js?v=20260125-cloud"></script>
   <script src="./js/realtime.js?v=20260125-cloud"></script>
+  <script src="./js/sync_status_ui.js?v=20260125-cloud"></script>
 <script src="./js/ui.js?v=20260124-final-privileges-settings"></script>
   <script>try{ window.UI && UI.initAppCursor && UI.initAppCursor(); }catch(e){} </script>
 

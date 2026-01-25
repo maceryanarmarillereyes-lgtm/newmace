@@ -1,122 +1,205 @@
-// Cloud authentication and profile access via Supabase REST APIs.
-// This keeps the frontend dependency-free (no bundled supabase-js) and works on Vercel.
+/*
+  CloudAuth (Supabase Auth wrapper)
+  ------------------------------------------------------------
+  This module intentionally provides backward-compatible method
+  names used across earlier iterations of the app:
+    - isEnabled() / enabled()
+    - signIn()    / login()
+    - signOut()   / logout()
 
-const CloudAuth = (() => {
-  const SESSION_KEY = 'mums_sb_session_v1';
+  Only SAFE (public) env values are used from /api/env.
+*/
+(function(){
+  const LS_SESSION = 'mums_supabase_session';
+  let refreshTimer = null;
 
-  const env = () => (window.EnvRuntime ? window.EnvRuntime.env() : {});
-  const enabled = () => {
+  function env(){
+    try{ return (window.EnvRuntime && EnvRuntime.env) ? EnvRuntime.env() : (window.MUMS_ENV || {}); }catch(_){ return (window.MUMS_ENV || {}); }
+  }
+
+  function apiFetch(path, opts){
+    const e = env();
+    const base = String(e.SUPABASE_URL || '').replace(/\/$/, '');
+    const anon = String(e.SUPABASE_ANON_KEY || '');
+    if(!base || !anon) throw new Error('Supabase env missing (SUPABASE_URL/SUPABASE_ANON_KEY)');
+
+    const url = base + path;
+    const o = Object.assign({ method:'GET', headers:{} }, (opts||{}));
+    o.headers = Object.assign({
+      'apikey': anon,
+      'Authorization': `Bearer ${anon}`
+    }, (o.headers||{}));
+    return fetch(url, o);
+  }
+
+  function readSession(){
+    try{ return JSON.parse(localStorage.getItem(LS_SESSION) || 'null'); }catch(_){ return null; }
+  }
+
+  function writeSession(session){
+    try{ localStorage.setItem(LS_SESSION, JSON.stringify(session)); }catch(_){ }
+  }
+
+  function clearSession(){
+    try{ localStorage.removeItem(LS_SESSION); }catch(_){ }
+  }
+
+  function emitToken(){
+    try {
+      const t = accessToken();
+      if (!t) return;
+      window.dispatchEvent(new CustomEvent('mums:authtoken', { detail: { token: t } }));
+    } catch (_) {}
+  }
+
+  function clearRefreshTimer(){
+    try { if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; } } catch (_) {}
+  }
+
+  async function refreshSession(){
+    try {
+      const s = readSession();
+      const rt = s && s.refresh_token ? String(s.refresh_token) : '';
+      if (!rt) return;
+
+      const r = await apiFetch('/auth/v1/token?grant_type=refresh_token', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ refresh_token: rt })
+      });
+
+      const bodyText = await r.text().catch(()=> '');
+      let data = null;
+      try{ data = bodyText ? JSON.parse(bodyText) : null; }catch(_){ data = null; }
+
+      if (!r.ok || !data || !data.access_token) {
+        // If refresh fails, force re-login on next protected action.
+        return;
+      }
+
+      // Preserve refresh token if not returned.
+      if (!data.refresh_token && s && s.refresh_token) data.refresh_token = s.refresh_token;
+
+      // Normalize expires_at if missing.
+      if (!data.expires_at && data.expires_in) {
+        data.expires_at = Math.floor(Date.now()/1000) + Number(data.expires_in);
+      }
+
+      writeSession(data);
+      emitToken();
+      scheduleRefresh(data);
+    } catch (_) {}
+  }
+
+  function scheduleRefresh(session){
+    clearRefreshTimer();
+    try {
+      const s = session || readSession();
+      if (!s) return;
+      const expiresAt = s.expires_at ? Number(s.expires_at) : 0;
+      let msUntil = 0;
+      if (expiresAt) {
+        msUntil = Math.max(0, (expiresAt * 1000) - Date.now());
+      } else if (s.expires_in) {
+        msUntil = Math.max(0, Number(s.expires_in) * 1000);
+      }
+      // Refresh 60s before expiry (min 15s).
+      const refreshIn = Math.max(15000, msUntil - 60000);
+      refreshTimer = setTimeout(refreshSession, refreshIn);
+    } catch (_) {}
+  }
+
+  async function login(usernameOrEmail, password){
+    const e = env();
+    const domain = String(e.USERNAME_EMAIL_DOMAIN || 'mums.local');
+
+    const id = String(usernameOrEmail||'').trim();
+    if(!id) return { ok:false, message:'Missing username/email.' };
+
+    // Accept either full email or username.
+    const email = id.includes('@') ? id : `${id}@${domain}`;
+
+    const r = await apiFetch('/auth/v1/token?grant_type=password', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ email, password })
+    });
+
+    const bodyText = await r.text().catch(()=> '');
+    let data = null;
+    try{ data = bodyText ? JSON.parse(bodyText) : null; }catch(_){ data = null; }
+
+    if(!r.ok){
+      const msg = (data && (data.error_description || data.msg || data.message || data.error)) ? (data.error_description || data.msg || data.message || data.error) : bodyText;
+      return { ok:false, message: String(msg || 'Login failed.') };
+    }
+
+    // Supabase returns access_token + user
+    if (!data.expires_at && data.expires_in) {
+      data.expires_at = Math.floor(Date.now()/1000) + Number(data.expires_in);
+    }
+    writeSession(data);
+    emitToken();
+    scheduleRefresh(data);
+    return { ok:true, session:data, user:data.user || null };
+  }
+
+  async function logout(){
+    // Best-effort: clear local session. (Server revoke is optional.)
+    clearRefreshTimer();
+    clearSession();
+    return { ok:true };
+  }
+
+  function accessToken(){
+    const s = readSession();
+    return (s && s.access_token) ? String(s.access_token) : '';
+  }
+
+  function getUser(){
+    const s = readSession();
+    return (s && s.user) ? s.user : null;
+  }
+
+  function enabled(){
     const e = env();
     return Boolean(e.SUPABASE_URL && e.SUPABASE_ANON_KEY);
-  };
+  }
 
-  const getEmailFromUserInput = (usernameOrEmail) => {
-    const u = (usernameOrEmail || '').trim();
-    if (!u) return '';
-    if (u.includes('@')) return u;
-    const domain = (env().USERNAME_EMAIL_DOMAIN || 'mums.local').replace(/^@/, '');
-    return `${u}@${domain}`;
-  };
+  // Backward-compatible wrappers
+  async function signIn(usernameOrEmail, password){
+    const out = await login(usernameOrEmail, password);
+    if(out && out.ok) return { ok:true, user: out.user, session: out.session };
+    return { ok:false, message: (out && out.message) ? out.message : 'Login failed.' };
+  }
 
-  const saveSession = (session) => {
-    try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch {}
-  };
+  async function signOut(){
+    return logout();
+  }
 
-  const loadSession = () => {
-    try {
-      const raw = localStorage.getItem(SESSION_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const clearSession = () => {
-    try { localStorage.removeItem(SESSION_KEY); } catch {}
-  };
-
-  const accessToken = () => {
-    const s = loadSession();
-    return s?.access_token || '';
-  };
-
-  const supabaseFetch = async (path, opts = {}) => {
-    const e = env();
-    const url = `${e.SUPABASE_URL}${path}`;
-    const headers = Object.assign(
-      {
-        apikey: e.SUPABASE_ANON_KEY,
-        'Content-Type': 'application/json',
-      },
-      opts.headers || {}
-    );
-    const t = accessToken();
-    if (t) headers.Authorization = `Bearer ${t}`;
-    const res = await fetch(url, { ...opts, headers });
-    const text = await res.text();
-    let json;
-    try { json = text ? JSON.parse(text) : null; } catch { json = { _raw: text };
-    }
-    return { res, json, text };
-  };
-
-  const login = async (usernameOrEmail, password) => {
-    if (!enabled()) return { ok: false, error: 'Cloud auth is not configured.' };
-    const e = env();
-    const email = getEmailFromUserInput(usernameOrEmail);
-    const body = { email, password: String(password || '') };
-    const tokenUrl = `${e.SUPABASE_URL}/auth/v1/token?grant_type=password`;
-    const res = await fetch(tokenUrl, {
-      method: 'POST',
-      headers: {
-        apikey: e.SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${e.SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-    const text = await res.text();
-    let json;
-    try { json = text ? JSON.parse(text) : null; } catch { json = { _raw: text };
-    }
-    if (!res.ok) {
-      return { ok: false, error: json?.error_description || json?.msg || 'Login failed.' };
-    }
-    saveSession(json);
-
-    // Ensure profile exists (bootstrap first user)
-    await fetch('/api/users/ensure_profile', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${json.access_token}` },
-    });
-
-    return { ok: true, session: json };
-  };
-
-  const logout = async () => {
-    clearSession();
-    return { ok: true };
-  };
-
-  const getProfile = async () => {
-    if (!enabled()) return null;
-    const s = loadSession();
-    const userId = s?.user?.id;
-    if (!userId) return null;
-    const { res, json } = await supabaseFetch(`/rest/v1/mums_profiles?user_id=eq.${encodeURIComponent(userId)}&select=*`);
-    if (!res.ok) return null;
-    return Array.isArray(json) ? json[0] : null;
-  };
-
-  return {
+  window.CloudAuth = {
+    // Canonical
     enabled,
-    getEmailFromUserInput,
-    loadSession,
-    accessToken,
     login,
     logout,
-    getProfile,
-  };
-})();
+    accessToken,
+    loadSession: readSession,
+    getUser,
+    refreshSession,
 
-window.CloudAuth = CloudAuth;
+    // Compatibility
+    isEnabled: enabled,
+    signIn,
+    signOut
+  };
+
+  // If a session is already present (page reload / new tab), ensure refresh scheduling
+  // so long-lived realtime sessions do not silently expire.
+  try {
+    const s = readSession();
+    if (s && s.access_token) {
+      emitToken();
+      scheduleRefresh(s);
+    }
+  } catch (_) {}
+})();
