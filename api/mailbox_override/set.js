@@ -1,7 +1,7 @@
 const { getUserFromJwt, getProfileForUserId, serviceUpsert } = require('../_supabase');
 
 // POST /api/mailbox_override/set
-// Body: { scope: 'global'|'superadmin', enabled, freeze, override_iso }
+// Body: { scope: 'global'|'superadmin', enabled, freeze, override_iso } (freeze stored as is_frozen in DB)
 // Only SUPER_ADMIN can set overrides.
 module.exports = async (req, res) => {
   try {
@@ -32,7 +32,7 @@ module.exports = async (req, res) => {
     const payload = {
       scope,
       enabled,
-      freeze,
+      is_frozen: freeze,
       override_iso: enabled ? override_iso : null,
       updated_by: u.id,
       updated_at: new Date().toISOString()

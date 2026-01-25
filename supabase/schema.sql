@@ -29,7 +29,7 @@ for each row execute function public.set_updated_at();
 create table if not exists public.mums_mailbox_override (
   scope text not null check (scope in ('global','superadmin')),
   enabled boolean not null default false,
-  freeze boolean not null default true,
+  is_frozen boolean not null default true,
   override_iso text not null default '',
   updated_by uuid,
   updated_at timestamptz default now(),
@@ -41,7 +41,7 @@ create trigger trg_mailbox_override_updated_at
 before update on public.mums_mailbox_override
 for each row execute function public.set_updated_at();
 
-insert into public.mums_mailbox_override (scope, enabled, freeze, override_iso)
+insert into public.mums_mailbox_override (scope, enabled, is_frozen, override_iso)
 values ('global', false, true, ''), ('superadmin', false, true, '')
 on conflict (scope) do nothing;
 

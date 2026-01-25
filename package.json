@@ -1,0 +1,8 @@
+{
+  "name": "mums-realtime-green-mandatory",
+  "private": true,
+  "description": "MUMS static webapp + Vercel Serverless API routes (Supabase-backed)",
+  "engines": {
+    "node": "18.x"
+  }
+}

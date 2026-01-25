@@ -1,43 +1,51 @@
-const { getUserFromJwt, serviceSelect } = require('../_supabase');
+const { getUserFromJwt, getProfileForUserId, serviceSelect } = require('../_supabase');
+
+function sendJson(res, statusCode, body) {
+  res.statusCode = statusCode;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(body));
+}
 
 // GET /api/users/list
-// Role-aware listing (server-side):
+// Role-aware listing:
 // - SUPER_ADMIN: sees all users
-// - TEAM_LEAD: sees only users in their team_id
-// - MEMBER: sees only themselves
+// - TEAM_LEAD : sees only users in their team_id
+// - MEMBER    : sees only themselves
 module.exports = async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
-    const auth = req.headers.authorization || '';
-    const jwt = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7) : '';
-    const user = await getUserFromJwt(jwt);
-    if (!user) return res.status(401).json({ ok: false, error: 'unauthorized' });
 
-    // Identify current user's profile/role via service role (bypasses RLS)
-    const meRows = await serviceSelect(
-      'mums_profiles',
-      `select=user_id,role,team_id&user_id=eq.${user.id}&limit=1`
-    );
-    const me = Array.isArray(meRows) ? meRows[0] : null;
-    if (!me) return res.status(403).json({ ok: false, error: 'profile_not_found' });
-
-    const myRole = (me.role || 'MEMBER').toUpperCase();
-    let filter = '';
-    if (myRole === 'TEAM_LEAD') {
-      const team = me.team_id || '';
-      filter = team ? `&team_id=eq.${encodeURIComponent(team)}` : '&team_id=is.null';
-    } else if (myRole !== 'SUPER_ADMIN') {
-      filter = `&user_id=eq.${user.id}`;
+    if (req.method && req.method !== 'GET') {
+      return sendJson(res, 405, { ok: false, error: 'method_not_allowed' });
     }
 
-    const select = 'id,user_id,username,name,role,team_id,duty,is_active,created_at,updated_at';
-    const rows = await serviceSelect(
-      'mums_profiles',
-      `select=${select}${filter}&order=name.asc`
-    );
+    const auth = String(req.headers.authorization || '');
+    const jwt = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7) : '';
+    const user = await getUserFromJwt(jwt);
+    if (!user) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
-    return res.status(200).json({ ok: true, rows });
+    const me = await getProfileForUserId(user.id);
+    if (!me) return sendJson(res, 403, { ok: false, error: 'profile_not_found' });
+
+    const myRole = String(me.role || 'MEMBER').toUpperCase();
+    let filter = '';
+
+    if (myRole === 'TEAM_LEAD') {
+      const team = String(me.team_id || '').trim();
+      filter = team ? `&team_id=eq.${encodeURIComponent(team)}` : '&team_id=is.null';
+    } else if (myRole !== 'SUPER_ADMIN') {
+      filter = `&user_id=eq.${encodeURIComponent(user.id)}`;
+    }
+
+    const select = 'user_id,username,name,role,team_id,duty,created_at,updated_at';
+    const out = await serviceSelect('mums_profiles', `select=${select}${filter}&order=name.asc`);
+
+    if (!out.ok) {
+      return sendJson(res, out.status || 500, { ok: false, error: 'db_error', details: out.json || out.text });
+    }
+
+    return sendJson(res, 200, { ok: true, rows: Array.isArray(out.json) ? out.json : [] });
   } catch (e) {
-    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+    return sendJson(res, 500, { ok: false, error: 'server_error', message: e?.message || String(e) });
   }
 };

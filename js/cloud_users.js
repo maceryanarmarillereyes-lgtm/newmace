@@ -12,7 +12,10 @@ const CloudUsers = (() => {
     if (!res.ok) {
       return { ok: false, message: `Failed to load users (${res.status})` };
     }
-    return { ok: true, users: await res.json() };
+    const body = await res.json().catch(() => null);
+    // Accept either an array response (legacy) or { ok, rows }.
+    const users = Array.isArray(body) ? body : (body && Array.isArray(body.rows) ? body.rows : []);
+    return { ok: true, users };
   };
 
   const refreshIntoLocalStore = async () => {

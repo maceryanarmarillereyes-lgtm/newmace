@@ -252,37 +252,6 @@
     out.sort((x,y)=>Number(x.startAt||0)-Number(y.startAt||0));
     return out;
   }
-
-  // Normalize announcement records to avoid hidden items or runtime errors.
-  function sanitizeAnnouncements(list){
-    const out = [];
-    for(const raw of (Array.isArray(list) ? list : [])){
-      if(!raw || typeof raw !== 'object') continue;
-      const a = { ...raw };
-      a.id = String(a.id||'').trim() || ('ann-'+Math.random().toString(16).slice(2)+'-'+Date.now().toString(16));
-      a.title = String(a.title||'').trim() || 'Announcement';
-      a.short = String(a.short||'').trim();
-      a.full = String(a.full||'').trim();
-      // Full HTML is optional; keep only if string.
-      if(a.fullHtml && typeof a.fullHtml !== 'string') delete a.fullHtml;
-
-      // Start/end windows must be numeric ms. If missing, default to always-active window.
-      const now = Date.now();
-      const startAt = Number(a.startAt);
-      const endAt = Number(a.endAt);
-      a.startAt = Number.isFinite(startAt) ? startAt : (Number.isFinite(Number(a.createdAt)) ? Number(a.createdAt) : (now - 60*60*1000));
-      a.endAt = Number.isFinite(endAt) ? endAt : (a.startAt + 24*60*60*1000);
-      a.createdAt = Number.isFinite(Number(a.createdAt)) ? Number(a.createdAt) : a.startAt;
-
-      a.createdBy = a.createdBy ? String(a.createdBy) : '';
-      a.createdByName = a.createdByName ? String(a.createdByName) : '';
-
-      out.push(a);
-    }
-    // Sort stable by start
-    out.sort((x,y)=>Number(x.startAt||0)-Number(y.startAt||0));
-    return out;
-  }
   // Robust user loading:
   // - recover from backup if primary is empty/corrupt
   // - migrate from legacy keys if present

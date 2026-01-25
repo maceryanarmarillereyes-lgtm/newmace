@@ -8,6 +8,15 @@
     return id;
   }
 
+  function authHeader(){
+    try {
+      var jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+      return jwt ? { Authorization: 'Bearer ' + jwt } : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
   function toMs(iso){
     var t = Date.parse(iso);
     return isNaN(t) ? Date.now() : t;
@@ -33,7 +42,7 @@
   async function postJson(url, body){
     var r = await fetch(url, {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeader()),
       body: JSON.stringify(body)
     });
     return r;
@@ -52,35 +61,29 @@
     // Heartbeat: update server presence.
     async function heartbeat(){
       try {
-        if (!window.Auth || !window.Auth.getUser) return;
-        var u = Auth.getUser();
-        if (!u) return;
+        // Presence is meaningful only for authenticated sessions.
+        var jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+        if (!jwt) return;
+
         await postJson('/api/presence/heartbeat', {
           clientId: clientId,
-          user: {
-            id: u.id || u.userId || u.username || u.email || u.name,
-            name: u.displayName || u.name || u.username || 'User',
-            role: u.role || '',
-            teamId: u.teamId || u.team || ''
-          },
           route: location.hash || ''
         });
       } catch (e) {
-        // Silent failure; this is best-effort.
+        // Silent failure; best-effort.
       }
     }
 
     // List: pull roster and update Store online map.
     async function refreshRoster(){
       try {
-        var r = await fetch('/api/presence/list', { cache: 'no-store' });
+        var r = await fetch('/api/presence/list', { cache: 'no-store', headers: authHeader() });
         if (!r.ok) return;
         var data = await r.json();
         if (!data || !data.rows) return;
         if (window.Store && window.Store.write) {
           Store.write('mums_online_users', buildOnlineMap(data.rows));
         } else {
-          // Fallback
           localStorage.setItem('mums_online_users', JSON.stringify(buildOnlineMap(data.rows)));
         }
       } catch (e) {
@@ -95,7 +98,6 @@
     setInterval(refreshRoster, Math.max(1500, poll));
   }
 
-  // Run after app scripts create window.Auth and window.Store.
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', run);
   } else {

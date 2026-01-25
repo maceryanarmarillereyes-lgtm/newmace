@@ -1,3 +1,5 @@
+const { getUserFromJwt, getProfileForUserId, serviceUpsert } = require('../_supabase');
+
 function sendJson(res, statusCode, body) {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json');
@@ -18,67 +20,40 @@ function readBody(req) {
   });
 }
 
-function envFromProcess() {
-  return {
-    SUPABASE_URL: process.env.SUPABASE_URL || '',
-    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || ''
-  };
-}
-
-async function upsertPresence(env, record) {
-  const url = String(env.SUPABASE_URL || '').replace(/\/$/, '');
-  const anon = String(env.SUPABASE_ANON_KEY || '');
-  if (!url || !anon) throw new Error('Supabase env missing (SUPABASE_URL/SUPABASE_ANON_KEY)');
-
-  const endpoint = `${url}/rest/v1/mums_presence?on_conflict=client_id`;
-  const r = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': anon,
-      'Authorization': `Bearer ${anon}`,
-      'Prefer': 'resolution=merge-duplicates,return=minimal'
-    },
-    body: JSON.stringify([record])
-  });
-
-  if (!r.ok) {
-    const t = await r.text().catch(() => '');
-    throw new Error(`supabase_upsert_failed (${r.status}): ${t}`);
-  }
-}
-
+// POST /api/presence/heartbeat
+// Stores the current authenticated user's online marker.
 module.exports = async (req, res) => {
   try {
-    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method_not_allowed' });
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: 'method_not_allowed' });
+
+    const auth = String(req.headers.authorization || '');
+    const jwt = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7) : '';
+    const authed = await getUserFromJwt(jwt);
+    if (!authed) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
     const body = await readBody(req);
-
     const clientId = String(body.clientId || '').trim();
-    const user = body.user || {};
-    const userId = String(user.id || user.userId || '').trim();
-    const name = String(user.name || '').trim();
-    const role = String(user.role || '').trim();
-    const teamId = String(user.teamId || '').trim();
-    const route = String(body.route || '').trim();
+    if (!clientId) return sendJson(res, 400, { ok: false, error: 'missing_clientId' });
 
-    if (!clientId) return sendJson(res, 400, { error: 'missing_clientId' });
-    if (!userId) return sendJson(res, 400, { error: 'missing_user' });
+    const profile = await getProfileForUserId(authed.id);
+    const metaName = authed.user_metadata ? (authed.user_metadata.full_name || authed.user_metadata.name) : '';
 
     const record = {
       client_id: clientId,
-      user_id: userId,
-      name: name || 'User',
-      role: role || '',
-      team_id: teamId || '',
-      route: route || '',
+      user_id: String(authed.id),
+      name: String((profile && profile.name) || metaName || authed.email || 'User'),
+      role: String((profile && profile.role) || ''),
+      team_id: String((profile && profile.team_id) || ''),
+      route: String(body.route || '').trim(),
       last_seen: new Date().toISOString()
     };
 
-    await upsertPresence(envFromProcess(), record);
+    const up = await serviceUpsert('mums_presence', [record], 'client_id');
+    if (!up.ok) return sendJson(res, 500, { ok: false, error: 'supabase_upsert_failed', details: up.json || up.text });
 
-    sendJson(res, 200, { ok: true });
+    return sendJson(res, 200, { ok: true });
   } catch (err) {
-    sendJson(res, 500, { error: 'heartbeat_failed', message: String(err && err.message ? err.message : err) });
+    return sendJson(res, 500, { ok: false, error: 'heartbeat_failed', message: String(err && err.message ? err.message : err) });
   }
 };
