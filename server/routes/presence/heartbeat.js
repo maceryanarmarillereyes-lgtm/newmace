@@ -43,8 +43,9 @@ module.exports = async (req, res) => {
       const bootstrapEmail = String(process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase();
       const authedEmail = String(authed.email || '').trim().toLowerCase();
       if (bootstrapEmail && authedEmail && bootstrapEmail === authedEmail && profile && String(profile.role || '') !== 'SUPER_ADMIN') {
-        await serviceUpdate('mums_profiles', { role: 'SUPER_ADMIN' }, { user_id: `eq.${authed.id}` });
-        profile = Object.assign({}, profile, { role: 'SUPER_ADMIN' });
+        // Policy: SUPER_ADMIN has no team assignment.
+        await serviceUpdate('mums_profiles', { role: 'SUPER_ADMIN', team_id: null }, { user_id: `eq.${authed.id}` });
+        profile = Object.assign({}, profile, { role: 'SUPER_ADMIN', team_id: null });
       }
     } catch (_) {}
     const metaName = authed.user_metadata ? (authed.user_metadata.full_name || authed.user_metadata.name) : '';

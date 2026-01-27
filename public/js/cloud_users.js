@@ -65,6 +65,7 @@ const CloudUsers = (() => {
     const users = (out.users || []).map((p) => ({
       id: p.user_id || p.id,
       username: p.username || (p.email ? p.email.split('@')[0] : ''),
+      email: p.email || '',
       name: p.name || p.username || 'User',
       role: p.role || 'MEMBER',
       teamId: p.team_id || null,
@@ -74,9 +75,22 @@ const CloudUsers = (() => {
       password: null,
       _cloud: true
     }));
-    if (window.Store && Store.setUsers) {
-      Store.setUsers(users, { source: 'supabase' });
-    }
+    // Store API varies across builds. Prefer setUsers when available, otherwise
+    // fall back to importUsers/saveUsers so cloud profiles hydrate Auth.getUser().
+    try {
+      if (window.Store && Store.setUsers) {
+        Store.setUsers(users, { source: 'supabase' });
+      } else if (window.Store && Store.importUsers) {
+        Store.importUsers(users);
+      } else if (window.Store && Store.saveUsers) {
+        Store.saveUsers(users);
+      } else {
+        // Last resort (legacy): write to the canonical local key.
+        localStorage.setItem('ums_users', JSON.stringify(users));
+        localStorage.setItem('ums_users_backup', JSON.stringify(users));
+        localStorage.setItem('ums_users_rev', String(Date.now()));
+      }
+    } catch (_) {}
     return { ok: true, users };
   };
 

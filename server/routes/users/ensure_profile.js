@@ -51,8 +51,12 @@ module.exports = async (req, res) => {
       const userEmail = String(user.email || '').trim().toLowerCase();
       const wantSuper = bootstrapEmail && userEmail === bootstrapEmail;
       const patch = {};
-      if (wantSuper && String(prof.role || '').toUpperCase() !== 'SUPER_ADMIN') patch.role = 'SUPER_ADMIN';
-      // Do not force team_id for SUPER_ADMIN; keep NULL/EMPTY to match profile policy.
+      if (wantSuper && String(prof.role || '').toUpperCase() !== 'SUPER_ADMIN') {
+        // Policy: SUPER_ADMIN has no team assignment.
+        patch.role = 'SUPER_ADMIN';
+        patch.team_id = null;
+      }
+      // Do not force team_id for non-admin users.
       if (Object.keys(patch).length) {
         const up = await serviceUpdate('mums_profiles', `user_id=eq.${encodeURIComponent(user.id)}`, patch);
         if (up.ok && Array.isArray(up.json) && up.json[0]) {

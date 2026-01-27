@@ -37,7 +37,18 @@ module.exports = async (req, res) => {
     }
 
     const rows = Array.isArray(out.json) ? out.json : [];
-    return sendJson(res, 200, { ok: true, ttlSeconds: ttl, rows });
+    // Dedupe by user_id so multiple client_id rows for the same user don't cause
+    // flicker (the query is already ordered by last_seen DESC, so first wins).
+    const seen = new Set();
+    const deduped = [];
+    for (const r of rows) {
+      const key = String(r && (r.user_id || r.client_id) || '').trim();
+      if (!key) continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(r);
+    }
+    return sendJson(res, 200, { ok: true, ttlSeconds: ttl, rows: deduped });
   } catch (err) {
     return sendJson(res, 500, { ok: false, error: 'list_failed', message: String(err && err.message ? err.message : err) });
   }

@@ -111,17 +111,26 @@
   }
 
   function buildOnlineMap(rows){
+    // IMPORTANT:
+    // /api/presence/list is ordered by last_seen DESC. We must keep the *newest* row
+    // per user_id to avoid flicker when multiple client_id rows exist for the same user.
     var map = {};
     (rows || []).forEach(function(r){
-      var uid = r.user_id || r.userId || r.name || r.client_id;
+      var uid = r.user_id || r.userId || '';
+      if (!uid) uid = r.client_id || r.clientId || '';
       if (!uid) return;
+
+      var t = toMs(r.last_seen || r.lastSeen || new Date().toISOString());
+      if (map[uid] && Number(map[uid].lastSeen || 0) >= t) return;
+
       map[uid] = {
         userId: r.user_id || r.userId || uid,
+        clientId: r.client_id || r.clientId || '',
         name: r.name || 'User',
         role: r.role || '',
         teamId: r.team_id || r.teamId || '',
         route: r.route || '',
-        lastSeen: toMs(r.last_seen || r.lastSeen || new Date().toISOString())
+        lastSeen: t
       };
     });
     return map;
