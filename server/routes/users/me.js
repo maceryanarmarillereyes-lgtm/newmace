@@ -1,3 +1,5 @@
+const DEFAULT_BOOTSTRAP_EMAIL = 'supermace@mums.local';
+
 const { getUserFromJwt, getProfileForUserId, serviceInsert, serviceUpdate } = require('../../lib/supabase');
 
 function sendJson(res, statusCode, body) {
@@ -28,7 +30,7 @@ module.exports = async (req, res) => {
     let updated = false;
 
     // Bootstrap SUPER_ADMIN if configured.
-    const bootstrapEmail = String(process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase();
+    const bootstrapEmail = String(process.env.SUPERADMIN_EMAIL || DEFAULT_BOOTSTRAP_EMAIL).trim().toLowerCase();
     const isBootstrap = bootstrapEmail && email && bootstrapEmail === email.toLowerCase();
 
     if (!profile) {
@@ -45,11 +47,16 @@ module.exports = async (req, res) => {
       if (!out.ok) return sendJson(res, 500, { ok: false, error: 'profile_insert_failed', details: out.json || out.text });
       profile = out.json && out.json[0] ? out.json[0] : insert;
       created = true;
-    } else if (isBootstrap && String(profile.role || '') !== 'SUPER_ADMIN') {
-      const out = await serviceUpdate('mums_profiles', { role: 'SUPER_ADMIN', team_id: null }, { user_id: `eq.${authed.id}` });
-      if (out.ok) {
-        profile = Object.assign({}, profile, { role: 'SUPER_ADMIN', team_id: null });
-        updated = true;
+    } else if (isBootstrap) {
+      const curRole = String(profile.role || '').toUpperCase();
+      const needsRole = (curRole !== 'SUPER_ADMIN');
+      const needsTeamNull = (profile.team_id != null);
+      if (needsRole || needsTeamNull) {
+        const out = await serviceUpdate('mums_profiles', { role: 'SUPER_ADMIN', team_id: null }, { user_id: `eq.${authed.id}` });
+        if (out.ok) {
+          profile = Object.assign({}, profile, { role: 'SUPER_ADMIN', team_id: null });
+          updated = true;
+        }
       }
     }
 

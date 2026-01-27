@@ -51,6 +51,32 @@ module.exports = async (req, res) => {
       rows.push(r);
     }
 
+    // Override presence role/team/name using mums_profiles (authoritative source of truth).
+    // This prevents older clients (or multiple tabs) from causing role/shift flicker.
+    try {
+      const ids = rows.map((r) => String(r.user_id || '').trim()).filter(Boolean);
+      if (ids.length) {
+        const q = `select=user_id,name,role,team_id,avatar_url&user_id=in.(${ids.join(',')})`;
+        const profOut = await serviceSelect('mums_profiles', q);
+        if (profOut.ok && Array.isArray(profOut.json)) {
+          const profilesById = {};
+          for (const p of profOut.json) {
+            if (p && p.user_id) profilesById[String(p.user_id)] = p;
+          }
+          for (const r of rows) {
+            const p = profilesById[String(r.user_id || '')];
+            if (!p) continue;
+            const roleUpper = String(p.role || r.role || '').toUpperCase();
+            const isDevAccess = (roleUpper === 'SUPER_ADMIN' || roleUpper === 'SUPER_USER');
+            r.name = p.name || r.name;
+            r.role = p.role || r.role;
+            r.team_id = isDevAccess ? null : (p.team_id != null ? p.team_id : r.team_id);
+            r.avatar_url = p.avatar_url || r.avatar_url || '';
+          }
+        }
+      }
+    } catch (_) {}
+
     return sendJson(res, 200, { ok: true, ttlSeconds: ttl, rows });
   } catch (err) {
     return sendJson(res, 500, { ok: false, error: 'list_failed', message: String(err && err.message ? err.message : err) });

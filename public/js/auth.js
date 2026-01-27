@@ -76,6 +76,36 @@
             try {
               if (window.CloudUsers && CloudUsers.refreshIntoLocalStore) {
                 await CloudUsers.refreshIntoLocalStore();
+
+        // Also fetch /api/users/me to make the current user's role/team authoritative.
+        // This protects against stale local Store data and prevents Super Admin from showing as MEMBER.
+        try {
+          const me = (window.CloudUsers && typeof CloudUsers.me === 'function') ? await CloudUsers.me() : null;
+          if (me && me.ok && me.profile) {
+            const p = me.profile;
+            const uid = p.user_id || p.id || sbUser.id;
+            if (window.Store && typeof Store.getUsers === 'function' && typeof Store.saveUsers === 'function') {
+              const users = Array.isArray(Store.getUsers()) ? Store.getUsers() : [];
+              const next = users.slice();
+              const patch = {
+                id: uid,
+                username: p.username || (sbUser.email ? sbUser.email.split('@')[0] : ''),
+                name: p.name || p.username || (sbUser.email || 'User'),
+                role: p.role || 'MEMBER',
+                teamId: p.team_id || null,
+                duty: p.duty || '—',
+                photoDataUrl: p.avatar_url || '',
+                password: null,
+                _cloud: true
+              };
+              const at = next.findIndex((u) => String(u.id) === String(uid));
+              if (at >= 0) next[at] = Object.assign({}, next[at], patch);
+              else next.push(patch);
+              Store.saveUsers(next);
+            }
+          }
+        } catch (_) {}
+
               }
             } catch (e) {}
 

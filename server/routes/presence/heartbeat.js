@@ -1,4 +1,6 @@
-const { getUserFromJwt, getProfileForUserId, serviceUpsert, serviceUpdate } = require('../../lib/supabase');
+const DEFAULT_BOOTSTRAP_EMAIL = 'supermace@mums.local';
+
+const { getUserFromJwt, getProfileForUserId, serviceUpsert, serviceUpdate, serviceInsert } = require('../../lib/supabase');
 
 function sendJson(res, statusCode, body) {
   res.statusCode = statusCode;
@@ -37,14 +39,42 @@ module.exports = async (req, res) => {
     if (!clientId) return sendJson(res, 400, { ok: false, error: 'missing_clientId' });
 
     let profile = await getProfileForUserId(authed.id);
-    // Best-effort: bootstrap SUPER_ADMIN role if this user's email matches SUPERADMIN_EMAIL.
-    // This keeps monitoring + permissions stable even if an old profile row exists.
+    // If profile is missing, create it here so presence always reflects the authoritative profile state.
+    if (!profile) {
+      const email0 = String(authed.email || '').trim();
+      const uname0 = email0 ? email0.split('@')[0] : String(authed.id).slice(0, 8);
+      const metaName0 = authed.user_metadata ? (authed.user_metadata.full_name || authed.user_metadata.name) : '';
+      const defaultName0 = String(metaName0 || uname0 || 'User');
+
+      const bootstrapEmail0 = String(process.env.SUPERADMIN_EMAIL || DEFAULT_BOOTSTRAP_EMAIL).trim().toLowerCase();
+      const isBootstrap0 = bootstrapEmail0 && email0 && bootstrapEmail0 === email0.toLowerCase();
+      const insert = {
+        user_id: authed.id,
+        username: uname0,
+        name: defaultName0,
+        role: isBootstrap0 ? 'SUPER_ADMIN' : 'MEMBER',
+        team_id: isBootstrap0 ? null : 'morning',
+        duty: ''
+      };
+      const createdOut = await serviceInsert('mums_profiles', [insert]);
+      if (createdOut.ok) {
+        profile = createdOut.json && createdOut.json[0] ? createdOut.json[0] : insert;
+      }
+    }
+    // Best-effort: bootstrap SUPER_ADMIN role if this user's email matches SUPERADMIN_EMAIL (or default bootstrap email).
+    // This keeps monitoring + permissions stable even if an old profile row exists or env is misconfigured.
     try {
-      const bootstrapEmail = String(process.env.SUPERADMIN_EMAIL || '').trim().toLowerCase();
+      const bootstrapEmail = String(process.env.SUPERADMIN_EMAIL || DEFAULT_BOOTSTRAP_EMAIL).trim().toLowerCase();
       const authedEmail = String(authed.email || '').trim().toLowerCase();
-      if (bootstrapEmail && authedEmail && bootstrapEmail === authedEmail && profile && String(profile.role || '') !== 'SUPER_ADMIN') {
-        await serviceUpdate('mums_profiles', { role: 'SUPER_ADMIN' }, { user_id: `eq.${authed.id}` });
-        profile = Object.assign({}, profile, { role: 'SUPER_ADMIN' });
+      const wantSuper = bootstrapEmail && authedEmail && bootstrapEmail === authedEmail;
+      if (wantSuper && profile) {
+        const curRole = String(profile.role || '').toUpperCase();
+        const needsRole = (curRole !== 'SUPER_ADMIN');
+        const needsTeamNull = (profile.team_id != null);
+        if (needsRole || needsTeamNull) {
+          await serviceUpdate('mums_profiles', { role: 'SUPER_ADMIN', team_id: null }, { user_id: `eq.${authed.id}` });
+          profile = Object.assign({}, profile, { role: 'SUPER_ADMIN', team_id: null });
+        }
       }
     } catch (_) {}
     const metaName = authed.user_metadata ? (authed.user_metadata.full_name || authed.user_metadata.name) : '';
