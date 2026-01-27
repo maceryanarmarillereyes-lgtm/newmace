@@ -1,0 +1,72 @@
+// Single-function API router for Vercel Hobby plan.
+//
+// Vercel Hobby limits the number of Serverless Functions. This project previously
+// exceeded that limit by defining each endpoint as a separate /api/*.js file.
+//
+// This handler routes all /api/* traffic (via vercel.json rewrites) to the
+// corresponding implementation under /server/routes.
+
+function sendJson(res, statusCode, body) {
+  res.statusCode = statusCode;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(body));
+}
+
+function normalizePath(raw) {
+  if (!raw) return '';
+  if (Array.isArray(raw)) raw = raw.join('/');
+  raw = String(raw);
+  raw = raw.replace(/^\/+/, '').replace(/\/+$/, '');
+  return raw;
+}
+
+// Route table (string path => handler)
+const ROUTES = {
+  'env': require('../server/routes/env'),
+  'health': require('../server/routes/health'),
+  'debug/log': require('../server/routes/debug/log'),
+
+  'mailbox_override/get': require('../server/routes/mailbox_override/get'),
+  'mailbox_override/set': require('../server/routes/mailbox_override/set'),
+
+  'presence/heartbeat': require('../server/routes/presence/heartbeat'),
+  'presence/list': require('../server/routes/presence/list'),
+
+  'sync/pull': require('../server/routes/sync/pull'),
+  'sync/push': require('../server/routes/sync/push'),
+
+  'users/create': require('../server/routes/users/create'),
+  'users/ensure_profile': require('../server/routes/users/ensure_profile'),
+  'users/list': require('../server/routes/users/list'),
+  'users/me': require('../server/routes/users/me'),
+  'users/update_me': require('../server/routes/users/update_me'),
+  'users/upload_avatar': require('../server/routes/users/upload_avatar'),
+  'users/remove_avatar': require('../server/routes/users/remove_avatar')
+};
+
+module.exports = async (req, res) => {
+  try {
+    // Prefer rewrite-provided query param `path`.
+    let p = req.query && (req.query.path ?? req.query.p);
+
+    // Fallback: derive path from URL (in case rewrites are not applied in some dev setups).
+    if (!p) {
+      const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      // /api/<path>
+      const m = url.pathname.match(/^\/api\/(.*)$/);
+      p = m ? m[1] : '';
+    }
+
+    const routePath = normalizePath(p);
+    const handler = ROUTES[routePath];
+
+    if (!handler) {
+      res.setHeader('Cache-Control', 'no-store');
+      return sendJson(res, 404, { ok: false, error: 'not_found', path: routePath });
+    }
+
+    return await handler(req, res);
+  } catch (err) {
+    return sendJson(res, 500, { ok: false, error: 'router_failed', message: String(err && err.message ? err.message : err) });
+  }
+};
