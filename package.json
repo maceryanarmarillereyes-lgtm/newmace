@@ -3,7 +3,7 @@
   "private": true,
   "description": "MUMS static webapp + Vercel Serverless API routes (Supabase-backed)",
   "engines": {
-    "node": "24.x"
+    "node": "20.x"
   },
   "version": "1.0.0",
   "scripts": {
