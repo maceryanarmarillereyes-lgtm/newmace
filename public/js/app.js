@@ -3641,13 +3641,45 @@ async function boot(){
     }
 
 
-    // Mailbox time override (Super Admin only)
+    // Mailbox time override (Super Admin control; Global override is visible to all roles when active)
+    // ===== CODE UNTOUCHABLES =====
+    // If override scope is GLOBAL and enabled, non-Super Admin roles MUST be able to VIEW (read-only).
+    // Editing controls (adjust/save/reset) MUST remain SUPER_ADMIN-only.
+    // Exception: Only change if required by documented UX/security requirements.
+    // ==============================
     try{
       const card = document.getElementById('timeOverrideCard');
-      if(card) card.style.display = isSA ? '' : 'none';
-
       const openMailboxTimeBtn = document.getElementById('openMailboxTimeBtn');
       const modal = document.getElementById('mailboxTimeModal');
+
+      const isGlobalOverrideActive = () => {
+        try{
+          const o = (window.Store && Store.getMailboxTimeOverride) ? Store.getMailboxTimeOverride() : null;
+          return !!(o && o.enabled && o.ms && String(o.scope||'') === 'global');
+        }catch(_){ return false; }
+      };
+
+      const refreshOverrideCard = () => {
+        try{
+          const active = isGlobalOverrideActive();
+          const canView = isSA || active;
+          if(card) card.style.display = canView ? '' : 'none';
+          if(openMailboxTimeBtn) openMailboxTimeBtn.disabled = (!isSA && !active);
+        }catch(_){ }
+      };
+
+      refreshOverrideCard();
+      try{
+        if(!window.__mumsMailboxOverrideCardListener){
+          window.__mumsMailboxOverrideCardListener = true;
+          window.addEventListener('mums:store', (ev)=>{
+            try{
+              const k = ev && ev.detail && ev.detail.key;
+              if(k === 'mailbox_override_cloud' || k === 'mailbox_time_override_cloud' || k === '*') refreshOverrideCard();
+            }catch(_){ }
+          });
+        }
+      }catch(_){ }
 
       function fmtManilaLocal(ms){
         try{
@@ -3692,6 +3724,20 @@ async function boot(){
         const resetBtn = document.getElementById('mbTimeReset');
         const setNowBtn = document.getElementById('mbTimeSetNow');
 
+        const canEdit = !!isSA;
+        const readOnly = !canEdit;
+        // Read-only view for non-Super Admin when global override is active.
+        try{
+          if(readOnly){
+            [enabledEl, freezeEl, inputEl, scopeEl].forEach(el=>{ try{ if(el) el.disabled = true; }catch(_){ } });
+            try{ if(setNowBtn) setNowBtn.disabled = true; }catch(_){ }
+            try{ modal.querySelectorAll('[data-mbshift]').forEach(b=>{ try{ b.disabled = true; }catch(_){ } }); }catch(_){ }
+            try{ if(saveBtn) { saveBtn.disabled = true; saveBtn.style.display = 'none'; } }catch(_){ }
+            try{ if(resetBtn){ resetBtn.disabled = true; resetBtn.style.display = 'none'; } }catch(_){ }
+          }
+        }catch(_){ }
+
+
         // Draft state while modal is open
         let draft = Store.getMailboxTimeOverride ? Store.getMailboxTimeOverride() : { enabled:false, ms:0, freeze:true, setAt:0, scope:'sa_only' };
         draft = {
@@ -3724,8 +3770,14 @@ async function boot(){
 
           const on = !!draft.enabled;
           if(effEl){
-            if(!on) effEl.textContent = 'Override OFF — Mailbox uses system Manila time.';
-            else effEl.textContent = draft.freeze ? 'Override ON — Frozen clock (testing mode).' : 'Override ON — Running clock (testing mode).';
+            if(!on) {
+              effEl.textContent = 'Override OFF — Mailbox uses system Manila time.';
+            } else {
+              const scopeLbl = (String(draft.scope||'sa_only') === 'global') ? 'GLOBAL' : 'Super Admin-only';
+              const modeLbl = draft.freeze ? 'Frozen clock' : 'Running clock';
+              if(readOnly && scopeLbl === 'GLOBAL') effEl.textContent = `${scopeLbl} override active — ${modeLbl} (read-only view).`;
+              else effEl.textContent = `${scopeLbl} override active — ${modeLbl}.`;
+            }
           }
 
           const ms = effectiveMs();
@@ -3852,9 +3904,14 @@ async function boot(){
 
       }
 
-      if(isSA && openMailboxTimeBtn){
+      if(openMailboxTimeBtn){
         bindMailboxTimeModal();
         openMailboxTimeBtn.onclick = ()=>{
+          const active = isGlobalOverrideActive();
+          if(!isSA && !active){
+            try{ UI.toast && UI.toast('Global mailbox override is not active.', 'warn'); }catch(_){ }
+            return;
+          }
           UI.closeModal('settingsModal');
           try{ if(modal && typeof modal.__open === 'function') modal.__open(); }catch(_){ }
           UI.openModal('mailboxTimeModal');

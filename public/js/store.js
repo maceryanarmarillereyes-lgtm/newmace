@@ -1685,6 +1685,11 @@
 
       // If user set Global scope, propagate to cloud so other devices/browsers are affected.
       // This requires Supabase env and an authenticated session.
+      // ===== CODE UNTOUCHABLES =====
+      // For global scope, override_iso MUST be sent as an ISO string derived from the base ms timestamp.
+      // Do NOT revert to offset-based (Date.now()+ms) behavior.
+      // Exception: Only change if required by documented time override semantics.
+      // ==============================
       if (o.scope === 'global') {
         write(KEYS.mailbox_time_override_cloud, o, opts);
         if (window.CloudAuth && CloudAuth.isEnabled() && CloudAuth.accessToken()) {
@@ -1698,7 +1703,7 @@
               scope: 'global',
               enabled: !!o.enabled,
               freeze: !!o.freeze,
-              override_iso: new Date(Date.now() + o.ms).toISOString(),
+              override_iso: new Date(Number(o.ms)||Date.now()).toISOString(),
             })
           }).catch(() => {});
         }
@@ -1964,13 +1969,24 @@
   };
 
   // Cloud-global mailbox override sync (cross-device). Polls the Vercel API (which reads Supabase).
+  // ===== CODE UNTOUCHABLES =====
+  // - MUST poll /api/mailbox_override/get and accept { ok:true, override:{...} }.
+  // - MUST include Authorization bearer token so backend can enforce scope permissions.
+  // - MUST write returned override to KEYS.mailbox_time_override_cloud and dispatch mums:store.
+  // Exception: Only change if required by documented API contract changes.
+  // ==============================
   Store.startMailboxOverrideSync = function(){
     try{
       if(window.__mumsMailboxOverrideTimer) return;
       if(!window.CloudAuth || !CloudAuth.isEnabled || !CloudAuth.isEnabled()) return;
       const poll = async () => {
         try{
-          const res = await fetch('/api/mailbox_override/get?scope=global', { cache:'no-store' });
+          const token = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+          if(!token) return;
+          const res = await fetch('/api/mailbox_override/get?scope=global', {
+            cache:'no-store',
+            headers: { Authorization: `Bearer ${token}` }
+          });
           const json = await res.json();
           if(json && json.ok && json.override){
             write(KEYS.mailbox_time_override_cloud, json.override, { notify:false });

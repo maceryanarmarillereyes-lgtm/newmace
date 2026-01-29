@@ -288,7 +288,12 @@ function _mbxMemberSortKey(u){
         <div class="box mid">
           <div class="row" style="justify-content:center;gap:8px;align-items:center">
             <div class="small">Manila Time</div>
-            <span class="badge override" id="mbOverridePill" title="Mailbox time override is enabled (Super Admin testing)" style="display:none">OVERRIDE</span>
+            <span class="badge override" id="mbOverridePill" title="Mailbox time override is enabled" style="display:none">OVERRIDE</span>
+            <!-- ===== CODE UNTOUCHABLES =====
+                 Global override banner must be visible to all roles when scope is global.
+                 Editing remains Super Admin-only (enforced in backend).
+                 Exception: Only change if required by documented UX/security requirements.
+                 ============================== -->
           </div>
           <div class="timer" id="dutyTimer">--:--:--</div>
           <div class="small">Until shift ends</div>
@@ -800,12 +805,33 @@ function _mbxMemberSortKey(u){
       try{
         const me = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
         const isSA = (me.role === (window.Config&&Config.ROLES?Config.ROLES.SUPER_ADMIN:'SUPER_ADMIN'));
-        const ov = (isSA && window.Store && Store.getMailboxTimeOverride) ? Store.getMailboxTimeOverride() : null;
-        const on = !!(ov && ov.enabled && ov.ms);
+        const ov = (window.Store && Store.getMailboxTimeOverride) ? Store.getMailboxTimeOverride() : null;
+        const scope = ov ? String(ov.scope||'') : '';
+        const visible = !!(ov && ov.enabled && ov.ms && (scope === 'global' || isSA));
         const pill = UI.el('#mbOverridePill');
         const note = UI.el('#mbOverrideNote');
-        if(pill) pill.style.display = on ? 'inline-flex' : 'none';
-        if(note) note.style.display = on ? 'block' : 'none';
+
+        if(pill){
+          pill.textContent = (scope === 'global') ? 'GLOBAL OVERRIDE' : 'OVERRIDE';
+          pill.style.display = visible ? 'inline-flex' : 'none';
+        }
+        if(note){
+          if(visible && scope === 'global'){
+            // Compute effective mailbox time to display in banner.
+            let eff = Number(ov.ms)||0;
+            if(!ov.freeze){
+              const setAt = Number(ov.setAt)||Date.now();
+              eff = eff + Math.max(0, Date.now() - setAt);
+            }
+            const p = UI.manilaParts(new Date(eff || Date.now()));
+            const pad = (n)=>String(n).padStart(2,'0');
+            note.textContent = `Global Override Active — Effective Mailbox Time: ${pad(p.hh)}:${pad(p.mm)}:${pad(p.ss)}`;
+            note.style.display = 'block';
+          } else {
+            note.textContent = 'Countdown is in override mode';
+            note.style.display = visible ? 'block' : 'none';
+          }
+        }
       }catch(_){ }
 
       // shift transition detect + re-render on change

@@ -1,3 +1,11 @@
+// ===== CODE UNTOUCHABLES =====
+// Do NOT remove duplicate suppression logic.
+// Do NOT bypass cooldown handling.
+// These are permanent safeguards against Supabase 429 errors.
+// Exception: Only change if required by Supabase API updates
+// or documented behavior changes.
+// ==============================
+
 const {
   getUserFromJwt,
   getProfileForUserId,

@@ -1,3 +1,11 @@
+// ===== CODE UNTOUCHABLES =====
+// Save button must disable immediately (dataset.busy=1).
+// Cooldown UI must auto re-enable after retry window.
+// Do NOT strip these behaviors in future versions.
+// Exception: Only change if required by UX specification updates
+// or documented frontend behavior changes.
+// ==============================
+
 // Cloud user directory sync helpers.
 // Uses Vercel API routes (server-side Supabase service key) so no secrets are in the client.
 
