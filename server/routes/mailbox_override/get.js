@@ -33,11 +33,15 @@ module.exports = async (req, res) => {
     const u = await getUserFromJwt(jwt);
     if (!u) return sendJson(res, 401, { ok: false, error: 'unauthorized', message: 'Missing or invalid bearer token.' });
 
-    const profile = await getProfileForUserId(u.id);
-    if (!profile) return sendJson(res, 403, { ok: false, error: 'forbidden', message: 'Profile not found.' });
-
-    if (scope === 'superadmin' && profile.role !== 'SUPER_ADMIN') {
-      return sendJson(res, 403, { ok: false, error: 'forbidden', message: 'Super Admin only.' });
+    // Global scope must be readable by all authenticated users, even if a profile row is missing.
+    // Only the superadmin scope requires role enforcement.
+    let profile = null;
+    if (scope === 'superadmin') {
+      profile = await getProfileForUserId(u.id);
+      if (!profile) return sendJson(res, 403, { ok: false, error: 'forbidden', message: 'Profile not found.' });
+      if (profile.role !== 'SUPER_ADMIN') {
+        return sendJson(res, 403, { ok: false, error: 'forbidden', message: 'Super Admin only.' });
+      }
     }
 
     const out = await serviceSelect('mums_mailbox_override', `select=*&scope=eq.${encodeURIComponent(scope)}&limit=1`);

@@ -791,9 +791,47 @@ function _mbxMemberSortKey(u){
 
   // Timer loop (reuses duty timer + ensures active bucket highlight in-place)
   let _timer = null;
+
+// ===== CODE UNTOUCHABLES =====
+// Prevent recursive render/tick loops:
+// - Never call render() synchronously from inside tick().
+// - Always schedule render via scheduleRender() to avoid call stack overflow.
+// - If mailbox override is missing/invalid, fall back to system Manila time.
+// Exception: Only change if required by documented UI lifecycle refactors.
+// ==============================
+let _inTick = false;
+let _renderPending = false;
+let _lastActiveBucketId = '';
+
+function scheduleRender(reason){
+  if(_renderPending) return;
+  _renderPending = true;
+  setTimeout(()=>{
+    _renderPending = false;
+    try{ render(); }catch(e){ console.error('Mailbox scheduled render failed', reason, e); }
+  }, 0);
+}
+
+// Re-render when global override sync updates arrive.
+// Visible to all roles when override_scope === 'global'.
+if(!window.__mumsMailboxOverrideListener){
+  window.__mumsMailboxOverrideListener = true;
+  window.addEventListener('mums:store', (e)=>{
+    try{
+      const k = e && e.detail ? String(e.detail.key||'') : '';
+      if(k === 'mailbox_override_cloud' || k === 'mailbox_time_override'){
+        scheduleRender('override-sync');
+      }
+    }catch(_){ }
+  });
+}
+
   function startTimerLoop(){
     try{ if(_timer) clearInterval(_timer); }catch(_){}
     const tick = ()=>{
+      if(_inTick) return;
+      _inTick = true;
+      try{
       const d = getDuty();
       const el = UI.el('#dutyTimer');
       if(el) el.textContent = UI.formatDuration(d.secLeft);
@@ -807,7 +845,8 @@ function _mbxMemberSortKey(u){
         const isSA = (me.role === (window.Config&&Config.ROLES?Config.ROLES.SUPER_ADMIN:'SUPER_ADMIN'));
         const ov = (window.Store && Store.getMailboxTimeOverride) ? Store.getMailboxTimeOverride() : null;
         const scope = ov ? String(ov.scope||'') : '';
-        const visible = !!(ov && ov.enabled && ov.ms && (scope === 'global' || isSA));
+        const validMs = !!(ov && ov.enabled && Number.isFinite(Number(ov.ms)) && Number(ov.ms) > 0);
+        const visible = !!(validMs && (scope === 'global' || isSA));
         const pill = UI.el('#mbOverridePill');
         const note = UI.el('#mbOverrideNote');
 
@@ -818,7 +857,7 @@ function _mbxMemberSortKey(u){
         if(note){
           if(visible && scope === 'global'){
             // Compute effective mailbox time to display in banner.
-            let eff = Number(ov.ms)||0;
+            let eff = validMs ? Number(ov.ms) : 0;
             if(!ov.freeze){
               const setAt = Number(ov.setAt)||Date.now();
               eff = eff + Math.max(0, Date.now() - setAt);
@@ -856,13 +895,28 @@ function _mbxMemberSortKey(u){
         }
       }catch(_){ }
 
-      // If current shiftKey changed, rebuild
-      const curKey = (Store.getMailboxState ? Store.getMailboxState().currentKey : '');
-      if(curKey && root._lastShiftKey && curKey !== root._lastShiftKey){
-        render();
-      }
-      root._lastShiftKey = curKey || root._lastShiftKey;
-    };
+  // If current shiftKey changed, rebuild (scheduled to avoid recursive tick/render loops)
+  const curKey = (Store.getMailboxState ? Store.getMailboxState().currentKey : '');
+  if(curKey && root._lastShiftKey && curKey !== root._lastShiftKey){
+    scheduleRender('shift-change');
+  }
+  root._lastShiftKey = curKey || root._lastShiftKey;
+
+  // If active bucket changed (time advanced OR override state changed), re-render.
+  try{
+    const t = (Store.getMailboxTable && curKey) ? Store.getMailboxTable(curKey) : null;
+    const bid = t ? computeActiveBucketId(t) : '';
+    if(bid && bid !== _lastActiveBucketId){
+      _lastActiveBucketId = bid;
+      scheduleRender('active-bucket-change');
+    }
+  }catch(_){ }
+
+  // Safety: if global override is missing/invalid, UI.mailboxNowParts will fall back to Manila time.
+}finally{
+  _inTick = false;
+}
+};
     tick();
     _timer = setInterval(()=>{ try{ tick(); }catch(e){ console.error('Mailbox tick', e); } }, 1000);
   }

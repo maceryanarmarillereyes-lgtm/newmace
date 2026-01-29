@@ -77,3 +77,41 @@ Files:
 
 **Conditional Exceptions (mailbox override):**
 - Only change if required by **documented Supabase platform/API changes**, **documented security requirements**, or an **approved UX spec change** that explicitly supersedes these rules.
+
+---
+
+## 3) Mailbox override visibility & safety (Permanent)
+
+Files:
+- `server/routes/mailbox_override/get.js`
+- `server/routes/mailbox_override/set.js`
+- `public/js/store.js`
+- `public/js/pages/mailbox.js`
+- `public/js/app.js`
+- `public/js/ui.js`
+
+**Do NOT remove or weaken:**
+- **Global scope visibility**: when `scope === "global"` and override is enabled, the banner/UI must be visible to **all roles**.
+- **Permission enforcement**: only `SUPER_ADMIN` can change override state; all authenticated users may read global scope state.
+- **Audit logging**: every override change MUST insert a row into `public.mums_sync_log` with `user_id`, `scope`, `action`, `effective_time`, and `timestamp`.
+- **Anti-recursion guard** on mailbox page: never call `render()` synchronously from `tick()`; always schedule renders to prevent `RangeError: Maximum call stack size exceeded`.
+- **Fallback safety**: if override state is missing/invalid, UI must fall back to system Manila time.
+
+**Conditional exceptions:**
+- Only change if required by documented security updates, Supabase API behavior changes, or formal UX specification updates.
+
+---
+
+## 4) RLS: profiles_select_own (Permanent)
+
+Migration:
+- `supabase/migrations/20260130_01_rls_profiles_select_own.sql`
+
+**Do NOT remove:**
+- The `profiles_select_own` SELECT policy on `public.mums_profiles`
+- RLS enablement for `public.mums_profiles`
+
+This is required so authenticated users can read their own profile row under RLS.
+
+**Conditional exceptions:**
+- Only change if required by a documented security policy change (and update the backend to match).

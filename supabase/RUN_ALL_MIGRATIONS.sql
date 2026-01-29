@@ -13,6 +13,7 @@
 --   - 20260128_01_profiles_team_override.sql
 --   - 20260128_02_deduplicate_supermace.sql
 --   - 20260130_01_mums_sync_log.sql
+--   - 20260130_01_rls_profiles_select_own.sql
 
 
 --------------------------------------------------------------------------------
@@ -221,4 +222,20 @@ create index if not exists mums_sync_log_scope_idx
 --------------------------------------------------------------------------------
 -- END 20260130_01_mums_sync_log.sql
 
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+-- BEGIN 20260130_01_rls_profiles_select_own.sql
+--------------------------------------------------------------------------------
+
+DROP POLICY IF EXISTS profiles_select_own ON public.mums_profiles;
+CREATE POLICY profiles_select_own
+ON public.mums_profiles
+FOR SELECT
+USING (user_id = (select auth.uid()));
+ALTER TABLE public.mums_profiles ENABLE ROW LEVEL SECURITY;
+
+--------------------------------------------------------------------------------
+-- END 20260130_01_rls_profiles_select_own.sql
 --------------------------------------------------------------------------------
