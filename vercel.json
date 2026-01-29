@@ -7,9 +7,10 @@
     }
   ],
   "functions": {
-    "api/handler.js": {
+    "api/**/*.js": {
       "runtime": "nodejs20.x",
       "maxDuration": 10
     }
-  }
+  },
+  "version": 2
 }
