@@ -153,7 +153,7 @@ const CloudUsers = (() => {
       body: JSON.stringify(payload)
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, message: data.message || `Failed (${res.status})`, data };
+    if (!res.ok) return { ok: false, message: data.message || data.error || `Failed (${res.status})`, data };
     return { ok: true, data };
   };
   const ensureProfile = async (payload) => {

@@ -431,98 +431,113 @@ function openUserModal(actor, user){
     UI.el('#btnSaveUser').disabled=false;
   }
 
-  UI.el('#btnSaveUser').onclick = async ()=>{
-    const name = UI.el('#u_name').value.trim();
-    const username = UI.el('#u_username').value.trim();
-    const password = UI.el('#u_password').value;
-    const role = UI.el('#u_role').value;
-    const teamId = UI.el('#u_team').value;
-
+  const btnSaveUser = UI.el('#btnSaveUser');
+  btnSaveUser.onclick = async ()=>{
     const err = (msg)=>{ const el=UI.el('#u_err'); el.textContent=msg; el.style.display='block'; };
 
-    if(!name) return err('Name is required.');
-    if(!username) return err('Username is required.');
-    if(!/^[a-zA-Z0-9._-]{3,}$/.test(username)) return err('Username must be at least 3 characters and use letters/numbers/._-');
+    // Prevent double-submits / rapid retries that can create duplicate requests.
+    try {
+      if (btnSaveUser.dataset.busy === '1') return;
+      btnSaveUser.dataset.busy = '1';
+      btnSaveUser.disabled = true;
+    } catch (_) {}
 
-    // Role restrictions
-    if(!canCreateRole(actor, role) && (user?.role!==role)) return err('You do not have permission to set that role.');
-    if(actor.role===Config.ROLES.TEAM_LEAD && teamId!==actor.teamId) return err('Team Lead can only manage users in their team.');
+    try {
+      const name = UI.el('#u_name').value.trim();
+      const username = UI.el('#u_username').value.trim();
+      const password = UI.el('#u_password').value;
+      const role = UI.el('#u_role').value;
+      const teamId = UI.el('#u_team').value;
 
-    // Developer Access restriction
-    if(String(role||'').toUpperCase() !== String(Config.ROLES.SUPER_ADMIN) && String(teamId||'')===''){
-      return err('Developer Access is reserved for Super Admin. Choose Morning/Mid/Night shift.');
-    }
+      if(!name) return err('Name is required.');
+      if(!username) return err('Username is required.');
+      if(!/^[a-zA-Z0-9._-]{3,}$/.test(username)) return err('Username must be at least 3 characters and use letters/numbers/._-');
 
-    if(!isEdit && !password) return err('Password is required for new users.');
+      // Role restrictions
+      if(!canCreateRole(actor, role) && (user?.role!==role)) return err('You do not have permission to set that role.');
+      if(actor.role===Config.ROLES.TEAM_LEAD && teamId!==actor.teamId) return err('Team Lead can only manage users in their team.');
 
-    if(isCloud){
-      if(isEdit){
-        // Self edits use update_me (supports SUPER_ADMIN team override)
-        if(actor && user && actor.id===user.id && window.CloudUsers && typeof CloudUsers.updateMe === 'function'){
-          const patch = { name };
-          if(String(user.role||'').toUpperCase()===String(Config.ROLES.SUPER_ADMIN)){
-            if(String(teamId)===''){
-              patch.team_override = false;
-              patch.team_id = null;
-            } else {
-              patch.team_override = true;
-              patch.team_id = teamId;
-            }
-          }
-          const out = await CloudUsers.updateMe(patch);
-          if(!out.ok) return err(out.message || 'Update failed.');
-        } else if(window.CloudUsers && typeof CloudUsers.updateUser === 'function'){
-          const payload = { user_id: user.id, name };
-          if(actor && actor.role===Config.ROLES.SUPER_ADMIN){
-            payload.role = role;
-            if(String(user.role||'').toUpperCase()===String(Config.ROLES.SUPER_ADMIN)){
-              if(String(teamId)===''){
-                payload.team_override = false;
-                payload.team_id = null;
-              } else {
-                payload.team_override = true;
-                payload.team_id = teamId;
-              }
-            } else {
-              payload.team_id = teamId;
-            }
-          }
-          const out = await CloudUsers.updateUser(payload);
-          if(!out.ok) return err(out.message || 'Update failed.');
-        }
-      } else {
-        const out = await CloudUsers.create({ username, name, password, role, team_id: teamId });
-        if(!out.ok) return err(out.message || 'Create failed.');
+      // Developer Access restriction
+      if(String(role||'').toUpperCase() !== String(Config.ROLES.SUPER_ADMIN) && String(teamId||'')===''){
+        return err('Developer Access is reserved for Super Admin. Choose Morning/Mid/Night shift.');
       }
 
-      try { await CloudUsers.refreshIntoLocalStore(); } catch(_) {}
+      if(!isEdit && !password) return err('Password is required for new users.');
+
+      if(isCloud){
+        if(isEdit){
+          // Self edits use update_me (supports SUPER_ADMIN team override)
+          if(actor && user && actor.id===user.id && window.CloudUsers && typeof CloudUsers.updateMe === 'function'){
+            const patch = { name };
+            if(String(user.role||'').toUpperCase()===String(Config.ROLES.SUPER_ADMIN)){
+              if(String(teamId)===''){
+                patch.team_override = false;
+                patch.team_id = null;
+              } else {
+                patch.team_override = true;
+                patch.team_id = teamId;
+              }
+            }
+            const out = await CloudUsers.updateMe(patch);
+            if(!out.ok) return err(out.message || 'Update failed.');
+          } else if(window.CloudUsers && typeof CloudUsers.updateUser === 'function'){
+            const payload = { user_id: user.id, name };
+            if(actor && actor.role===Config.ROLES.SUPER_ADMIN){
+              payload.role = role;
+              if(String(user.role||'').toUpperCase()===String(Config.ROLES.SUPER_ADMIN)){
+                if(String(teamId)===''){
+                  payload.team_override = false;
+                  payload.team_id = null;
+                } else {
+                  payload.team_override = true;
+                  payload.team_id = teamId;
+                }
+              } else {
+                payload.team_id = teamId;
+              }
+            }
+            const out = await CloudUsers.updateUser(payload);
+            if(!out.ok) return err(out.message || 'Update failed.');
+          }
+        } else {
+          const out = await CloudUsers.create({ username, name, password, role, team_id: teamId });
+          if(!out.ok) return err(out.message || 'Create failed.');
+        }
+
+        try { await CloudUsers.refreshIntoLocalStore(); } catch(_) {}
+        UI.closeModal('userModal');
+        renderRows();
+        return;
+      }
+
+      // Local/offline persistence
+      const email = canonicalEmail(username);
+
+      if(isEdit){
+        const patch = { name, username, email: (user?.email || email), role, teamId };
+        if(password) patch.passwordHash = Auth.hash(password);
+        Store.updateUser(user.id, patch);
+      } else {
+        const newUser = {
+          id: crypto.randomUUID(),
+          name, username, email,
+          role, teamId,
+          schedule: null,
+          status: 'active',
+          passwordHash: Auth.hash(password),
+          createdAt: Date.now(),
+        };
+        Store.addUser(newUser);
+      }
+
       UI.closeModal('userModal');
-      renderRows();
-      return;
+      try { renderRows(); } catch (_) {}
+    } finally {
+      try {
+        btnSaveUser.dataset.busy = '0';
+        btnSaveUser.disabled = false;
+      } catch (_) {}
     }
-
-    // Local/offline persistence
-    const email = canonicalEmail(username);
-
-    if(isEdit){
-      const patch = { name, username, email: (user?.email || email), role, teamId };
-      if(password) patch.passwordHash = Auth.hash(password);
-      Store.updateUser(user.id, patch);
-    } else {
-      const newUser = {
-        id: crypto.randomUUID(),
-        name, username, email,
-        role, teamId,
-        schedule: null,
-        status: 'active',
-        passwordHash: Auth.hash(password),
-        createdAt: Date.now(),
-      };
-      Store.addUser(newUser);
-    }
-
-    UI.closeModal('userModal');
-    try { renderRows(); } catch (_) {}
   };
 
   UI.openModal('userModal');
