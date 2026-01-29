@@ -150,11 +150,37 @@ const CloudUsers = (() => {
     const res = await fetch('/api/users/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader() },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload || {})
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, message: data.message || data.error || `Failed (${res.status})`, data };
-    return { ok: true, data };
+
+    // Robust parsing: if an intermediary returns HTML or non-JSON, surface a useful message.
+    const raw = await res.text().catch(() => '');
+    let data = {};
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch (_) {
+      data = { message: (raw || '').slice(0, 400) };
+    }
+
+    const retryAfter = res.headers ? (res.headers.get('retry-after') || '') : '';
+    const out = {
+      ok: res.ok,
+      status: res.status,
+      retryAfter: String(retryAfter || '').trim(),
+      data
+    };
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: out.status,
+        retryAfter: out.retryAfter,
+        message: data.message || data.error || `Failed (${res.status})`,
+        data
+      };
+    }
+
+    return out;
   };
   const ensureProfile = async (payload) => {
     const res = await fetch('/api/users/ensure_profile', {

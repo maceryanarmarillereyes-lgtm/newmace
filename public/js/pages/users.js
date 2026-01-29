@@ -502,7 +502,21 @@ function openUserModal(actor, user){
         } else {
           const email = canonicalEmail(username);
           const out = await CloudUsers.create({ email, username, full_name: name, name, password, role, team_id: teamId, team: teamId });
-          if(!out.ok) return err(out.message || 'Create failed.');
+          if(!out.ok) {
+            let msg = out.message || 'Create failed.';
+
+            // If the upstream auth provider rate-limits, respect Retry-After.
+            if (out.status === 429) {
+              const raRaw = out.retryAfter || (out.data && (out.data.retry_after || out.data.retryAfter)) || '';
+              const ra = parseInt(String(raRaw || '').trim(), 10);
+              if (Number.isFinite(ra) && ra > 0) {
+                msg = `${msg} Please retry in ${ra}s.`;
+                try { btnSaveUser.dataset.cooldown_until = String(Date.now() + ra * 1000); } catch (_) {}
+              }
+            }
+
+            return err(msg);
+          }
         }
 
         try { await CloudUsers.refreshIntoLocalStore(); } catch(_) {}
@@ -536,7 +550,15 @@ function openUserModal(actor, user){
     } finally {
       try {
         btnSaveUser.dataset.busy = '0';
-        btnSaveUser.disabled = false;
+
+        // Keep the button disabled during any server-directed cooldown window.
+        const until = parseInt(String(btnSaveUser.dataset.cooldown_until || '0'), 10);
+        if (Number.isFinite(until) && until > Date.now()) {
+          btnSaveUser.disabled = true;
+        } else {
+          try { delete btnSaveUser.dataset.cooldown_until; } catch (_) {}
+          btnSaveUser.disabled = false;
+        }
       } catch (_) {}
     }
   };

@@ -387,16 +387,34 @@ module.exports = async (req, res) => {
         const rawMsg = safeMsgFromSupabase(createUser);
         const status = createUser.status || 500;
 
+        // Propagate upstream retry hints when available.
+        // Supabase Auth may include `retry-after` and/or rate limit headers.
+        let retryAfter = '';
+        try {
+          const ra = createUser && createUser.headers && typeof createUser.headers.get === 'function'
+            ? createUser.headers.get('retry-after')
+            : '';
+          retryAfter = String(ra || '').trim();
+        } catch (_) {
+          retryAfter = '';
+        }
+
         // Default message with a small amount of classification.
         let message = rawMsg || `Failed to create auth user (${status}).`;
         if (status === 429) {
           message = 'Rate limited by the authentication provider. Wait briefly and retry.';
+
+          // Provide a conservative default if upstream didn't provide one.
+          if (!retryAfter) retryAfter = '10';
+          try { res.setHeader('Retry-After', retryAfter); } catch (_) {}
         }
 
         return sendJson(res, status, {
           ok: false,
           error: 'auth_admin_create_failed',
           message,
+          retry_after: retryAfter || undefined,
+          upstream: 'supabase_auth_admin',
           details: createUser.json || createUser.text
         });
       }
