@@ -1,4 +1,4 @@
-# Deploy checklist (Node 24)
+# Deploy checklist (Node 20)
 
 ## Why you saw Node 18 build failures on Vercel
 Vercel builds whatever commit is on your production branch. If the build log still shows the same commit SHA, the repo wasn't updated.
@@ -10,9 +10,9 @@ Vercel builds whatever commit is on your production branch. If the build log sti
 4) In Vercel → Project → Settings → Environment Variables, set Supabase vars and **Redeploy**.
 
 ## Verify before pushing
-- `package.json` (root) contains `"engines": { "node": "24.x" }`
-- `realtime/package.json` contains `"engines": { "node": "24.x" }`
-- `vercel.json` uses `nodejs24.x`
+- `package.json` (root) contains `"engines": { "node": "20.x" }`
+- `realtime/package.json` contains `"engines": { "node": "20.x" }` (if applicable)
+- `vercel.json` uses `nodejs20.x`
 - No `.env` file committed (only `.env.example`)
 
 ## Verify on Vercel

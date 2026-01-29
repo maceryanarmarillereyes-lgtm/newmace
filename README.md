@@ -50,8 +50,11 @@ Object path convention (created by the server):
 4. Deploy.
 
 This repo includes:
-- `vercel.json` to pin API route runtime to **nodejs24.x**.
-- `package.json` with `engines.node=24.x`.
+- `vercel.json` to pin API route runtime to **nodejs20.x**.
+- `package.json` with `engines.node=20.x`.
+
+Rate limiting note:
+- Supabase Auth **Admin Users API** can return **HTTP 429**. The backend will propagate `Retry-After` when provided, or apply a fallback backoff window. The frontend disables the Save button during the cooldown to prevent repeated retries.
 
 ## Local development
 

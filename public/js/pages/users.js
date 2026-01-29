@@ -432,8 +432,53 @@ function openUserModal(actor, user){
   }
 
   const btnSaveUser = UI.el('#btnSaveUser');
+
+  // v4: Cooldown UI for auth rate limits (429). This prevents users from hammering the endpoint.
+  const baseSaveText = (btnSaveUser && btnSaveUser.textContent) ? String(btnSaveUser.textContent) : 'Save';
+  try { btnSaveUser.dataset.base_text = baseSaveText; } catch (_) {}
+  let saveCooldownTimer = null;
+  const startSaveCooldown = (seconds, message) => {
+    const s = Math.max(1, parseInt(String(seconds || '0'), 10) || 0);
+    if (!s) return;
+    const until = Date.now() + s * 1000;
+    try { btnSaveUser.dataset.cooldown_until = String(until); } catch (_) {}
+    try { btnSaveUser.disabled = true; } catch (_) {}
+
+    if (message) {
+      try {
+        const el = UI.el('#u_err');
+        el.textContent = message;
+        el.style.display = 'block';
+      } catch (_) {}
+    }
+
+    try { if (saveCooldownTimer) clearInterval(saveCooldownTimer); } catch (_) {}
+    saveCooldownTimer = setInterval(() => {
+      const rem = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+      if (rem <= 0) {
+        try { clearInterval(saveCooldownTimer); } catch (_) {}
+        saveCooldownTimer = null;
+        try { delete btnSaveUser.dataset.cooldown_until; } catch (_) {}
+        try { btnSaveUser.textContent = btnSaveUser.dataset.base_text || baseSaveText; } catch (_) {}
+        try { btnSaveUser.disabled = false; } catch (_) {}
+        return;
+      }
+      try { btnSaveUser.textContent = `Retry in ${rem}s`; } catch (_) {}
+      try { btnSaveUser.disabled = true; } catch (_) {}
+    }, 250);
+  };
+
   btnSaveUser.onclick = async ()=>{
     const err = (msg)=>{ const el=UI.el('#u_err'); el.textContent=msg; el.style.display='block'; };
+
+    // If a cooldown is active, short-circuit immediately with a clear message.
+    try {
+      const until = parseInt(String(btnSaveUser.dataset.cooldown_until || '0'), 10);
+      if (Number.isFinite(until) && until > Date.now()) {
+        const rem = Math.max(1, Math.ceil((until - Date.now()) / 1000));
+        return err(`Please wait ${rem}s before retrying.`);
+      }
+    } catch (_) {}
 
     // Prevent double-submits / rapid retries that can create duplicate requests.
     try {
@@ -509,10 +554,10 @@ function openUserModal(actor, user){
             if (out.status === 429) {
               const raRaw = out.retryAfter || (out.data && (out.data.retry_after || out.data.retryAfter)) || '';
               const ra = parseInt(String(raRaw || '').trim(), 10);
-              if (Number.isFinite(ra) && ra > 0) {
-                msg = `${msg} Please retry in ${ra}s.`;
-                try { btnSaveUser.dataset.cooldown_until = String(Date.now() + ra * 1000); } catch (_) {}
-              }
+              const wait = (Number.isFinite(ra) && ra > 0) ? ra : 10;
+              const msg2 = `${msg} Please retry in ${wait}s.`;
+              startSaveCooldown(wait, msg2);
+              return;
             }
 
             return err(msg);
@@ -554,10 +599,16 @@ function openUserModal(actor, user){
         // Keep the button disabled during any server-directed cooldown window.
         const until = parseInt(String(btnSaveUser.dataset.cooldown_until || '0'), 10);
         if (Number.isFinite(until) && until > Date.now()) {
+          const rem = Math.max(1, Math.ceil((until - Date.now()) / 1000));
           btnSaveUser.disabled = true;
+          // If a timer isn't running (e.g., older browsers), set a fallback label.
+          if (!String(btnSaveUser.textContent || '').startsWith('Retry in')) {
+            btnSaveUser.textContent = `Retry in ${rem}s`;
+          }
         } else {
           try { delete btnSaveUser.dataset.cooldown_until; } catch (_) {}
           btnSaveUser.disabled = false;
+          try { btnSaveUser.textContent = btnSaveUser.dataset.base_text || baseSaveText; } catch (_) {}
         }
       } catch (_) {}
     }

@@ -162,7 +162,9 @@ const CloudUsers = (() => {
       data = { message: (raw || '').slice(0, 400) };
     }
 
-    const retryAfter = res.headers ? (res.headers.get('retry-after') || '') : '';
+    const retryAfterHeader = res.headers ? (res.headers.get('retry-after') || '') : '';
+    const retryAfterBody = data && (data.retry_after || data.retryAfter) ? String(data.retry_after || data.retryAfter) : '';
+    const retryAfter = String(retryAfterHeader || retryAfterBody || '').trim();
     const out = {
       ok: res.ok,
       status: res.status,

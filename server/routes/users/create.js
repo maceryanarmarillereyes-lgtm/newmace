@@ -11,6 +11,90 @@ const {
 // NOTE: This is not a distributed lock; multiple serverless instances can still race.
 const CREATE_LOCKS = new Map(); // key -> { ts }
 
+// Best-effort in-memory cooldown/backoff for 429 mitigation.
+// NOTE: This is not distributed; each warm serverless instance has its own memory.
+const COOLDOWNS = globalThis.__MUMS_CREATE_COOLDOWNS || (globalThis.__MUMS_CREATE_COOLDOWNS = {
+  creators: new Map(), // creatorKey -> { cooldownUntilMs, lastAttemptMs, backoffCount, reason }
+  usernames: new Map() // username -> { cooldownUntilMs, backoffCount, reason }
+});
+
+const MIN_CREATOR_INTERVAL_MS = parseInt(process.env.CREATE_USER_CREATOR_COOLDOWN_MS || '5000', 10);
+const BASE_BACKOFF_SECONDS = parseInt(process.env.CREATE_USER_BASE_BACKOFF_SECONDS || '5', 10);
+const MAX_BACKOFF_SECONDS = parseInt(process.env.CREATE_USER_MAX_BACKOFF_SECONDS || '120', 10);
+
+function getState(map, key) {
+  const k = String(key || '').trim();
+  if (!k) return { cooldownUntilMs: 0, lastAttemptMs: 0, backoffCount: 0, reason: '' };
+  let st = map.get(k);
+  if (!st || typeof st !== 'object') {
+    st = { cooldownUntilMs: 0, lastAttemptMs: 0, backoffCount: 0, reason: '' };
+    map.set(k, st);
+  }
+  return st;
+}
+
+function remainingSeconds(untilMs) {
+  const u = parseInt(String(untilMs || '0'), 10);
+  if (!Number.isFinite(u) || u <= Date.now()) return 0;
+  return Math.max(1, Math.ceil((u - Date.now()) / 1000));
+}
+
+function parseRetryAfterSeconds(v) {
+  const raw = String(v || '').trim();
+  if (!raw) return 0;
+  // Retry-After can be delta-seconds or an HTTP date.
+  if (/^\d+$/.test(raw)) return Math.max(0, parseInt(raw, 10));
+  const t = Date.parse(raw);
+  if (Number.isFinite(t)) {
+    const s = Math.ceil((t - Date.now()) / 1000);
+    return s > 0 ? s : 0;
+  }
+  return 0;
+}
+
+function computeBackoffSeconds(nextCount) {
+  const c = Math.max(1, parseInt(String(nextCount || '1'), 10));
+  const exp = Math.min(5, c - 1); // cap exponent
+  const base = Math.max(1, BASE_BACKOFF_SECONDS);
+  const max = Math.max(base, MAX_BACKOFF_SECONDS);
+  // Add a small jitter (0-3s) to reduce thundering herd.
+  const jitter = Math.floor(Math.random() * 4);
+  return Math.min(max, base * Math.pow(2, exp) + jitter);
+}
+
+function decodeJwtSub(jwt) {
+  try {
+    const parts = String(jwt || '').split('.');
+    if (parts.length < 2) return '';
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
+    const json = Buffer.from(b64 + pad, 'base64').toString('utf8');
+    const obj = JSON.parse(json);
+    return String(obj && (obj.sub || obj.user_id || obj.uid) ? (obj.sub || obj.user_id || obj.uid) : '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+function getClientIp(req) {
+  const xf = String((req && req.headers && (req.headers['x-forwarded-for'] || req.headers['x-real-ip'])) || '').trim();
+  if (xf) return xf.split(',')[0].trim();
+  try {
+    return String((req && req.socket && req.socket.remoteAddress) || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+function pickCreatorKey(req, authedUser, jwt) {
+  const id = authedUser && authedUser.id ? String(authedUser.id).trim() : '';
+  if (id) return id;
+  const sub = decodeJwtSub(jwt);
+  if (sub) return sub;
+  const ip = getClientIp(req);
+  return ip || 'unknown_creator';
+}
+
 function cleanupLocks(ttlMs) {
   const now = Date.now();
   for (const [k, v] of CREATE_LOCKS.entries()) {
@@ -206,6 +290,45 @@ module.exports = async (req, res) => {
       return sendJson(res, 403, { ok: false, error: 'insufficient_permission' });
     }
 
+    // Local throttling / cooldown guard to avoid hammering Supabase Auth.
+    const creatorKey = pickCreatorKey(req, authedUser, jwt);
+    const creatorState = getState(COOLDOWNS.creators, creatorKey);
+    {
+      const rem = remainingSeconds(creatorState.cooldownUntilMs);
+      if (rem > 0) {
+        try { res.setHeader('Retry-After', String(rem)); } catch (_) {}
+        return sendJson(res, 429, {
+          ok: false,
+          error: 'cooldown_active',
+          message: `Please wait ${rem}s before retrying.`,
+          retry_after: rem,
+          retry_after_source: creatorState.reason || 'local',
+          upstream: 'local_guard',
+          upstream_status: 429
+        });
+      }
+
+      const now = Date.now();
+      if (creatorState.lastAttemptMs && now - creatorState.lastAttemptMs < MIN_CREATOR_INTERVAL_MS) {
+        const waitSec = Math.max(1, Math.ceil((MIN_CREATOR_INTERVAL_MS - (now - creatorState.lastAttemptMs)) / 1000));
+        creatorState.cooldownUntilMs = now + waitSec * 1000;
+        creatorState.reason = 'local_min_interval';
+        try { res.setHeader('Retry-After', String(waitSec)); } catch (_) {}
+        return sendJson(res, 429, {
+          ok: false,
+          error: 'cooldown_active',
+          message: `Please wait ${waitSec}s before retrying.`,
+          retry_after: waitSec,
+          retry_after_source: 'local_min_interval',
+          upstream: 'local_guard',
+          upstream_status: 429
+        });
+      }
+
+      // Record attempt time regardless of outcome (prevents rapid resubmits of invalid payloads).
+      creatorState.lastAttemptMs = now;
+    }
+
     let body = {};
     try {
       body = await readBody(req);
@@ -248,6 +371,24 @@ module.exports = async (req, res) => {
         error: 'invalid_email',
         message: 'Email must be a valid address (e.g., username@example.com).'
       });
+    }
+
+    // Username-scoped cooldown: if this username was recently rate-limited, block retries briefly.
+    const usernameState = getState(COOLDOWNS.usernames, username);
+    {
+      const rem = remainingSeconds(usernameState.cooldownUntilMs);
+      if (rem > 0) {
+        try { res.setHeader('Retry-After', String(rem)); } catch (_) {}
+        return sendJson(res, 429, {
+          ok: false,
+          error: 'cooldown_active',
+          message: `Please wait ${rem}s before retrying this user creation.`,
+          retry_after: rem,
+          retry_after_source: usernameState.reason || 'local',
+          upstream: 'local_guard',
+          upstream_status: 429
+        });
+      }
     }
 
     const name = full_name;
@@ -354,6 +495,23 @@ module.exports = async (req, res) => {
       return sendJson(res, 409, { ok: false, error: 'username_exists', message: 'Username already exists.' });
     }
 
+    // Preflight: prevent duplicate email in profiles (if column exists).
+    // This reduces unnecessary Auth Admin calls when the user already exists in the directory.
+    let existingEmail = null;
+    try {
+      const q = `select=user_id&email=eq.${encodeURIComponent(email)}&limit=1`;
+      existingEmail = await serviceSelect('mums_profiles', q);
+      if (existingEmail && !existingEmail.ok && isMissingColumn(existingEmail, 'email')) {
+        existingEmail = null; // ignore if schema doesn't yet have email
+      }
+    } catch (_) {
+      existingEmail = null;
+    }
+
+    if (existingEmail && existingEmail.ok && Array.isArray(existingEmail.json) && existingEmail.json[0]) {
+      return sendJson(res, 409, { ok: false, error: 'email_exists', message: 'Email already exists.' });
+    }
+
     // Best-effort lock to reduce accidental double-create via UI retries.
     const lockKey = `create:${username}`;
     if (!acquireLock(lockKey, 6000)) {
@@ -387,34 +545,57 @@ module.exports = async (req, res) => {
         const rawMsg = safeMsgFromSupabase(createUser);
         const status = createUser.status || 500;
 
-        // Propagate upstream retry hints when available.
-        // Supabase Auth may include `retry-after` and/or rate limit headers.
-        let retryAfter = '';
+        // Capture upstream retry hints when available.
+        let upstreamRetryAfterRaw = '';
         try {
-          const ra = createUser && createUser.headers && typeof createUser.headers.get === 'function'
-            ? createUser.headers.get('retry-after')
+          upstreamRetryAfterRaw = createUser && createUser.headers && typeof createUser.headers.get === 'function'
+            ? String(createUser.headers.get('retry-after') || '').trim()
             : '';
-          retryAfter = String(ra || '').trim();
         } catch (_) {
-          retryAfter = '';
+          upstreamRetryAfterRaw = '';
         }
+
+        let retryAfterSeconds = parseRetryAfterSeconds(upstreamRetryAfterRaw);
+        let retryAfterSource = retryAfterSeconds > 0 ? 'upstream' : '';
 
         // Default message with a small amount of classification.
         let message = rawMsg || `Failed to create auth user (${status}).`;
+
         if (status === 429) {
           message = 'Rate limited by the authentication provider. Wait briefly and retry.';
 
-          // Provide a conservative default if upstream didn't provide one.
-          if (!retryAfter) retryAfter = '10';
-          try { res.setHeader('Retry-After', retryAfter); } catch (_) {}
+          // If upstream didn't provide a window, use exponential backoff.
+          if (!retryAfterSeconds) {
+            const nextCreatorCount = (creatorState.backoffCount || 0) + 1;
+            const nextUserCount = (usernameState.backoffCount || 0) + 1;
+            retryAfterSeconds = computeBackoffSeconds(Math.max(nextCreatorCount, nextUserCount));
+            retryAfterSource = 'fallback';
+          }
+
+          // Apply cooldown for both the creator and the target username to suppress rapid retries.
+          try {
+            const until = Date.now() + retryAfterSeconds * 1000;
+            creatorState.cooldownUntilMs = Math.max(creatorState.cooldownUntilMs || 0, until);
+            creatorState.backoffCount = (creatorState.backoffCount || 0) + 1;
+            creatorState.reason = `upstream_429:${retryAfterSource}`;
+
+            usernameState.cooldownUntilMs = Math.max(usernameState.cooldownUntilMs || 0, until);
+            usernameState.backoffCount = (usernameState.backoffCount || 0) + 1;
+            usernameState.reason = `upstream_429:${retryAfterSource}`;
+          } catch (_) {}
+
+          try { res.setHeader('Retry-After', String(retryAfterSeconds)); } catch (_) {}
         }
 
         return sendJson(res, status, {
           ok: false,
           error: 'auth_admin_create_failed',
           message,
-          retry_after: retryAfter || undefined,
+          retry_after: retryAfterSeconds || undefined,
+          retry_after_source: retryAfterSource || undefined,
           upstream: 'supabase_auth_admin',
+          upstream_status: status,
+          upstream_retry_after: upstreamRetryAfterRaw || undefined,
           details: createUser.json || createUser.text
         });
       }
@@ -466,6 +647,18 @@ module.exports = async (req, res) => {
           details: up.json || up.text
         });
       }
+
+      // Successful create: reset backoff counters for the creator and username.
+      try {
+        creatorState.backoffCount = 0;
+        creatorState.reason = '';
+        // Keep lastAttemptMs for min-interval enforcement, but clear any active cooldown.
+        creatorState.cooldownUntilMs = 0;
+
+        usernameState.backoffCount = 0;
+        usernameState.reason = '';
+        usernameState.cooldownUntilMs = 0;
+      } catch (_) {}
 
       return sendJson(res, 200, {
         ok: true,
