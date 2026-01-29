@@ -500,7 +500,8 @@ function openUserModal(actor, user){
             if(!out.ok) return err(out.message || 'Update failed.');
           }
         } else {
-          const out = await CloudUsers.create({ username, name, password, role, team_id: teamId });
+          const email = canonicalEmail(username);
+          const out = await CloudUsers.create({ email, username, full_name: name, name, password, role, team_id: teamId, team: teamId });
           if(!out.ok) return err(out.message || 'Create failed.');
         }
 

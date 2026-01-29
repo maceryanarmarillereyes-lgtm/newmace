@@ -141,9 +141,26 @@ function normalizeUsername(raw) {
 
 function pickTeamId(body) {
   try {
-    const v = (body && (body.team_id != null ? body.team_id : body.teamId)) || '';
-    const s = String(v || '').trim();
-    return s ? s : null;
+    const raw =
+      (body &&
+        (body.team_id != null
+          ? body.team_id
+          : body.teamId != null
+            ? body.teamId
+            : body.team != null
+              ? body.team
+              : '')) ||
+      '';
+    const s = String(raw || '').trim();
+    if (!s) return null;
+
+    const t = s.toLowerCase();
+    // Accept labels as well as ids.
+    if (t.includes('morning')) return 'morning';
+    if (t === 'mid' || t.includes('mid')) return 'mid';
+    if (t.includes('night')) return 'night';
+
+    return t; // may be validated later
   } catch (_) {
     return null;
   }
@@ -196,23 +213,73 @@ module.exports = async (req, res) => {
       return sendJson(res, 400, { ok: false, error: 'invalid_json' });
     }
 
-    const username = normalizeUsername(body.username);
-    const name = String(body.name || '').trim();
+    const rawEmail = String(body.email || '').trim().toLowerCase();
+    const rawRole = body.role;
+
+    const username = normalizeUsername(body.username || rawEmail);
+    const full_name = String(body.full_name || body.fullName || body.name || '').trim();
     const password = String(body.password || '').trim();
-    const role = String(body.role || 'MEMBER').trim().toUpperCase();
+    const role = String(rawRole || '').trim().toUpperCase();
     const duty = String(body.duty || '').trim();
+
+    // Required fields validation
+    const missing = [];
+    if (!rawEmail) missing.push('email');
+    if (!username) missing.push('username');
+    if (!full_name) missing.push('full_name');
+    if (!password) missing.push('password');
+    if (!role) missing.push('role');
+
+    if (missing.length) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: 'missing_fields',
+        message: `Missing required fields: ${missing.join(', ')}`,
+        missing
+      });
+    }
+
+    // Basic email validation (client supplies email, but we also verify format).
+    const email = rawEmail;
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!emailOk) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: 'invalid_email',
+        message: 'Email must be a valid address (e.g., username@example.com).'
+      });
+    }
+
+    const name = full_name;
 
     // Team assignment (nullable). TEAM_LEAD users are forced to their own team.
     let finalTeamId = pickTeamId(body);
 
     const teamFieldPresent =
       Object.prototype.hasOwnProperty.call(body, 'team_id') ||
-      Object.prototype.hasOwnProperty.call(body, 'teamId');
+      Object.prototype.hasOwnProperty.call(body, 'teamId') ||
+      Object.prototype.hasOwnProperty.call(body, 'team');
 
     const allowedTeams = new Set(['morning', 'mid', 'night']);
 
-    // If the client omitted team entirely, default to morning.
-    if (!teamFieldPresent && !finalTeamId) finalTeamId = 'morning';
+    // Require explicit team selection for new users (matches frontend).
+    if (!teamFieldPresent) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: 'missing_fields',
+        message: 'Missing required fields: team_id',
+        missing: ['team_id']
+      });
+    }
+
+    // Developer Access (empty team) is reserved for Super Admin.
+    if (!finalTeamId || String(finalTeamId).trim() === '') {
+      return sendJson(res, 400, {
+        ok: false,
+        error: 'invalid_team',
+        message: 'Developer Access is reserved for Super Admin. Choose Morning/Mid/Night shift.'
+      });
+    }
 
     if (!username || !name || !password) {
       return sendJson(res, 400, {
@@ -223,7 +290,7 @@ module.exports = async (req, res) => {
     }
 
     if (!ALLOWED_ROLES.has(role)) {
-      return sendJson(res, 400, { ok: false, error: 'invalid_role' });
+      return sendJson(res, 400, { ok: false, error: 'invalid_role', message: 'Role is not allowed for this system.' });
     }
 
     // Endpoint policy: SUPER_ADMIN is reserved / bootstrap-only.
@@ -270,8 +337,6 @@ module.exports = async (req, res) => {
       });
     }
 
-    if (!finalTeamId) finalTeamId = 'morning';
-
     if (!allowedTeams.has(String(finalTeamId))) {
       return sendJson(res, 400, {
         ok: false,
@@ -299,8 +364,7 @@ module.exports = async (req, res) => {
       });
     }
 
-    const domain = String(process.env.USERNAME_EMAIL_DOMAIN || 'mums.local').trim() || 'mums.local';
-    const email = `${username}@${domain}`.toLowerCase();
+    // Email is provided by the client and validated above.
 
     let newUserId = '';
 
@@ -314,7 +378,8 @@ module.exports = async (req, res) => {
           email,
           password,
           email_confirm: true,
-          user_metadata: { username, name }
+          user_metadata: { username, name, full_name: name, role, team_id: finalTeamId, duty },
+          app_metadata: { role }
         }
       });
 
