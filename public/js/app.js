@@ -3622,15 +3622,49 @@ async function boot(){
       return (Config && Config.PERMS && Config.PERMS[norm]) ? norm : ((Config?.ROLES?.MEMBER) || 'MEMBER');
     }
 
+    // Defer Store user patches emitted during boot to avoid synchronous re-entrant
+    // render loops (mums:store dispatch is synchronous).
+    const __bootPatch = {};
+    let __bootPatchTimer = null;
+    function deferBootUserPatch(patch){
+      try{
+        Object.assign(__bootPatch, patch || {});
+        if(__bootPatchTimer) return;
+        __bootPatchTimer = setTimeout(function(){
+          __bootPatchTimer = null;
+          try{
+            const p = Object.assign({}, __bootPatch);
+            Object.keys(__bootPatch).forEach(k=>{ try{ delete __bootPatch[k]; }catch(_){} });
+            if(window.Store && Store.updateUser) Store.updateUser(user.id, p);
+          }catch(_){ }
+        }, 0);
+      }catch(_){ }
+    }
+
     const fixedRole = normalizeRole(user.role);
     if(fixedRole !== user.role){
       user.role = fixedRole;
-      try{ Store.updateUser(user.id, { role: fixedRole }); }catch(e){}
+      try{ deferBootUserPatch({ role: fixedRole }); }catch(e){}
     }
 
-    if(!user.teamId || !(Config?.TEAMS||[]).some(t=>t.id===user.teamId)){
-      user.teamId = (Config?.TEAMS?.[0]?.id) || 'morning';
-      try{ Store.updateUser(user.id, { teamId: user.teamId }); }catch(e){}
+    // Team normalization:
+    // - Super Admin / Super User default to Developer Access (teamId = '') unless teamOverride is enabled.
+    // - Non-super roles must map to a known team.
+    const isSuperRole = fixedRole === 'SUPER_ADMIN' || fixedRole === 'SUPER_USER';
+    const teamOverride = !!user.teamOverride;
+    const teams = (Config?.TEAMS||[]);
+    const isValidTeam = (tid)=> !!teams.find(t=>t.id===tid);
+
+    if(isSuperRole && !teamOverride){
+      if(String(user.teamId||'') !== ''){
+        user.teamId = '';
+        try{ deferBootUserPatch({ teamId: '' }); }catch(e){}
+      }
+    } else {
+      if(!user.teamId || !isValidTeam(user.teamId)){
+        user.teamId = (teams[0] && teams[0].id) ? teams[0].id : 'morning';
+        try{ deferBootUserPatch({ teamId: user.teamId }); }catch(e){}
+      }
     }
 
     // Apply role-based Settings visibility (hidden tiles)
@@ -3639,7 +3673,11 @@ async function boot(){
     // Mandatory Attendance enforcement:
     // - Blocks app access ONLY during the active shift window for the user's team (teamStart->teamEnd)
     // - Cannot be dismissed/cancelled; user must submit before proceeding.
+    // NOTE: Super roles in Developer Access (teamId='') have no shift window and must not be blocked.
     try{
+      if(isSuperRole && !teamOverride){
+        // Skip enforcement.
+      } else {
       const team = (Config && Config.teamById) ? Config.teamById(user.teamId) : null;
       const nowP = UI.manilaNow();
       const nowMin = UI.minutesOfDay(nowP);
@@ -3660,6 +3698,7 @@ async function boot(){
             UI.toast('Attendance saved.');
           }
         }
+      }
       }
     }catch(e){ console.error(e); }
 

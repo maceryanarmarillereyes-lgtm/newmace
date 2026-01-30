@@ -32,6 +32,51 @@
 
   let currentUser = null;
 
+  // Online roster cache (avoid repeated JSON.parse on hot paths).
+  // Used only to reconcile role/team display, not for authentication.
+  let __onlineRaw = '';
+  let __onlineMap = null;
+  function getOnlineMapCached(){
+    try{
+      const raw = localStorage.getItem('mums_online_users') || '';
+      if(!raw){ __onlineRaw = ''; __onlineMap = null; return null; }
+      if(raw === __onlineRaw && __onlineMap) return __onlineMap;
+      __onlineRaw = raw;
+      __onlineMap = JSON.parse(raw);
+      return __onlineMap;
+    }catch(_){
+      __onlineRaw = ''; __onlineMap = null;
+      return null;
+    }
+  }
+
+  // Deferred Store patches to prevent re-entrant render loops.
+  // dispatchEvent('mums:store') is synchronous; updating Store inside Auth.getUser()
+  // can cause immediate recursive calls (sidebar/route re-renders).
+  const __pendingUserPatches = new Map();
+  let __pendingPatchTimer = null;
+  function scheduleUserPatch(userId, patch){
+    try{
+      const id = String(userId || '').trim();
+      if(!id) return;
+      if(!(window.Store && typeof Store.updateUser === 'function')) return;
+      const prev = __pendingUserPatches.get(id) || {};
+      const next = Object.assign({}, prev, patch || {});
+      __pendingUserPatches.set(id, next);
+      if(__pendingPatchTimer) return;
+      __pendingPatchTimer = setTimeout(function(){
+        __pendingPatchTimer = null;
+        try{
+          const entries = Array.from(__pendingUserPatches.entries());
+          __pendingUserPatches.clear();
+          entries.forEach(function(pair){
+            try{ Store.updateUser(pair[0], pair[1]); }catch(_){ }
+          });
+        }catch(_){ __pendingUserPatches.clear(); }
+      }, 0);
+    }catch(_){ }
+  }
+
   function emitAuth(type){
     try { window.dispatchEvent(new CustomEvent('mums:auth', { detail: { type } })); } catch (_) {}
   }
@@ -71,9 +116,8 @@
         if(!id) return;
         if(!currentUser) return;
         try{
-          const raw = localStorage.getItem('mums_online_users') || '';
-          if(!raw) return;
-          const map = JSON.parse(raw);
+          const map = getOnlineMapCached();
+          if(!map) return;
           const r = map && map[id];
           if(!r) return;
 
@@ -85,7 +129,10 @@
           if(!same(currentUser.teamId, team)){ currentUser.teamId = (team === null || team === undefined) ? '' : String(team); changed = true; }
 
           if(changed){
-            try{ window.Store && Store.updateUser && Store.updateUser(id, { role: currentUser.role, teamId: currentUser.teamId }); }catch(_){}
+            // IMPORTANT: never update Store synchronously from inside Auth.getUser().
+            // Store updates dispatch synchronous events that can re-enter Auth.getUser()
+            // via sidebar/route render hooks, causing a tight loop and UI freeze.
+            scheduleUserPatch(id, { role: currentUser.role, teamId: currentUser.teamId });
           }
         }catch(_){}
       };
@@ -114,9 +161,53 @@
       opts = opts || {};
       const redirect = (opts.redirect !== false);
 
+      // Hard safety cap: session/profile hydration must never block the UI.
+      // If hydration does not complete quickly, fail fast with a clear message.
+      const maxMs = Number((opts && opts.maxMs) || 3000);
+      let timedOut = false;
+      let timeoutId = null;
+
+      const failHydration = async (message)=>{
+        const msg = message || 'Login failed due to session error. Please try again.';
+        try{ localStorage.setItem('mums_login_flash', msg); }catch(_){ }
+        try{ window.CloudAuth && CloudAuth.signOut && (await CloudAuth.signOut()); }catch(_){ }
+        try{ window.Store && Store.setSession && Store.setSession(null); }catch(_){ }
+        currentUser = null;
+        resolveHydrated(null);
+        if (redirect) {
+          try { window.location.href = './login.html'; } catch(_) { }
+        }
+      };
+
+      timeoutId = setTimeout(function(){
+        timedOut = true;
+        try{ failHydration('Login failed due to session error. Please try again.').catch(function(){}); }catch(_){ }
+      }, Math.max(500, maxMs));
+
+      const finish = (val)=>{
+        try{ if(timeoutId){ clearTimeout(timeoutId); timeoutId = null; } }catch(_){ }
+        return val;
+      };
+
+      const isValidUser = (usr)=>{
+        try{
+          if(!usr) return false;
+          const id = usr.id || usr.user_id || usr.userId;
+          const role = usr.role;
+          return !!(id && String(id).trim() && role && String(role).trim());
+        }catch(_){ return false; }
+      };
+
       // 1) Fast path
       let u = this.getUser();
-      if (u) { resolveHydrated(u); return u; }
+      if (u) {
+        if(!isValidUser(u)){
+          await failHydration('Login failed due to session error. Please try again.');
+          return finish(null);
+        }
+        resolveHydrated(u);
+        return finish(u);
+      }
 
       // 2) Supabase/CloudAuth restore path (prevents login redirect loops)
       try {
@@ -126,6 +217,7 @@
           // If we have a Supabase user but local Store profile cache isn't ready yet,
           // hydrate session and fetch profiles before deciding to redirect.
           if (sbUser && sbUser.id) {
+            if (timedOut) return finish(null);
             try {
               const sess = (window.Store && Store.getSession) ? Store.getSession() : null;
               if (!sess || String(sess.userId) !== String(sbUser.id) || sess.mode !== 'supabase') {
@@ -133,9 +225,18 @@
               }
             } catch (e) {}
 
+            if (timedOut) return finish(null);
+
             // Try again after session hydration
             u = this.getUser();
-            if (u) { resolveHydrated(u); return u; }
+            if (u) {
+              if(!isValidUser(u)){
+                await failHydration('Login failed due to session error. Please try again.');
+                return finish(null);
+              }
+              resolveHydrated(u);
+              return finish(u);
+            }
 
             // Session restore guard:
             // If the Supabase user still has a token but the directory profile is missing,
@@ -150,15 +251,19 @@
                   try { await CloudAuth.signOut(); } catch (_) {}
                   try { window.Store && Store.setSession && Store.setSession(null); } catch (_) {}
                   if (redirect) window.location.href = './login.html';
-                  return null;
+                  return finish(null);
                 }
               }
             } catch (_) {}
+
+            if (timedOut) return finish(null);
 
             // Ensure a mums_profiles row exists (and bootstrap SUPER_ADMIN if configured).
             try {
               window.CloudUsers && CloudUsers.ensureProfile && (await CloudUsers.ensureProfile());
             } catch (e) {}
+
+            if (timedOut) return finish(null);
 
             // Pull profile(s) into the local Store so getUser() can resolve role/username/name
             try {
@@ -197,12 +302,29 @@
               }
             } catch (e) {}
 
+            if (timedOut) return finish(null);
+
             u = this.getUser();
-            if (u) { resolveHydrated(u); return u; }
+            if (u) {
+              if(!isValidUser(u)){
+                await failHydration('Login failed due to session error. Please try again.');
+                return finish(null);
+              }
+              resolveHydrated(u);
+              return finish(u);
+            }
 
             try {
               const su = (window.Store && Store.getUserById) ? Store.getUserById(sbUser.id) : null;
-              if (su) { currentUser = su; resolveHydrated(su); return su; }
+              if (su) {
+                if(!isValidUser(su)){
+                  await failHydration('Login failed due to session error. Please try again.');
+                  return finish(null);
+                }
+                currentUser = su;
+                resolveHydrated(su);
+                return finish(su);
+              }
             } catch (_) {}
 
             // Last-resort minimal user (keeps app usable; role may be limited until profile exists)
@@ -217,14 +339,14 @@
             };
             currentUser = u;
             resolveHydrated(u);
-            return u;
+            return finish(u);
           }
         }
       } catch (e) {}
 
       // 3) No user → redirect (or return null)
       if (redirect) window.location.href = './login.html';
-      return null;
+      return finish(null);
     },
     async requireLogin() { return this.requireUser(); },
 

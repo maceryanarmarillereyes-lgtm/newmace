@@ -288,10 +288,13 @@
         }
         var data = await r.json();
         if (!data || !data.rows) return;
-        if (window.Store && window.Store.write) {
-          Store.write('mums_online_users', buildOnlineMap(data.rows));
+        var map = buildOnlineMap(data.rows);
+        if (window.Store && typeof Store.write === 'function') {
+          Store.write('mums_online_users', map);
         } else {
-          localStorage.setItem('mums_online_users', JSON.stringify(buildOnlineMap(data.rows)));
+          localStorage.setItem('mums_online_users', JSON.stringify(map));
+          // Keep same-tab UI in sync even if Store is not loaded (some builds load presence earlier).
+          try{ window.dispatchEvent(new CustomEvent('mums:store', { detail: { key: 'mums_online_users' } })); }catch(_){ }
         }
       } catch (e) {
         // ignore

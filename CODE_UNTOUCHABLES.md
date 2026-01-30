@@ -143,3 +143,6 @@ This is required so authenticated users can read their own profile row under RLS
 - User role and shift must update across all UI panels immediately after change. No stale sidebar data allowed.
 - Deleted users must be automatically logged out from all active sessions and redirected to login with: "This account has been removed from the system."
 
+## Login Flow Safety (Permanent)
+- Login flow must hydrate session safely and defer UI rendering until user context is complete. No blocking render loops or unresponsive states allowed.
+
