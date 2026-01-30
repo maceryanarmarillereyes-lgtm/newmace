@@ -63,6 +63,22 @@
     return jwt ? { Authorization: 'Bearer ' + jwt } : {};
   }
 
+function jwtSub(jwt){
+  try {
+    var token = String(jwt || '');
+    var parts = token.split('.');
+    if (parts.length !== 3) return '';
+    var payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (payload.length % 4) payload += '=';
+    var json = atob(payload);
+    var obj = JSON.parse(json);
+    return String(obj && (obj.sub || obj.user_id || obj.userId || '') || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+
   // Refresh token on 401 once, then retry the request.
   var __refreshPromise = null;
   var __lastRefreshAt = 0;
@@ -198,6 +214,9 @@
     // the backend will start returning { error: "account_removed" } for protected calls.
     // Enforce immediate logout to eliminate "ghost sessions".
     var __forcedLogout = false;
+    var __consecutive401 = 0;
+    var __lastOkAt = Date.now();
+    function noteOk(){ __consecutive401 = 0; __lastOkAt = Date.now(); }
     async function forceLogoutAccountRemoved(msg){
       if(__forcedLogout) return;
       __forcedLogout = true;
@@ -237,14 +256,22 @@
           } catch(_) {}
         }
 
-        // If we still get a 401 after refresh attempt, do not force sync UI offline.
-        if (hb && hb.status === 401) {
-          var now = Date.now();
-          if ((now - last401At) > THROTTLE_401_MS) {
-            last401At = now;
-            try { window.dispatchEvent(new CustomEvent('mums:debug', { detail: { source: 'presence_client', kind: 'http', status: 401, url: '/api/presence/heartbeat' } })); } catch(_) {}
-          }
-        }
+        if (hb && hb.ok) { try { noteOk(); } catch(_) {} }
+
+// If we still get a 401 after refresh attempt, treat as session invalid (e.g., deleted user, revoked session).
+// Use a short consecutive threshold to avoid false positives during cold loads.
+if (hb && hb.status === 401) {
+  __consecutive401++;
+  if (__consecutive401 >= 2 && (Date.now() - __lastOkAt) > 1500) {
+    await forceLogoutAccountRemoved('This account has been removed from the system.');
+    return;
+  }
+  var now = Date.now();
+  if ((now - last401At) > THROTTLE_401_MS) {
+    last401At = now;
+    try { window.dispatchEvent(new CustomEvent('mums:debug', { detail: { source: 'presence_client', kind: 'http', status: 401, url: '/api/presence/heartbeat' } })); } catch(_) {}
+  }
+}
       } catch (e) {
         // Silent failure; best-effort.
       } finally {
@@ -274,20 +301,45 @@
             } catch(_) {}
           }
 
-          // Surface 401s to the debug overlay only. Presence must not drive the sync banner.
-          if (r.status === 401) {
-            var now = Date.now();
-            if ((now - last401At) > THROTTLE_401_MS) {
-              last401At = now;
-              try {
-                window.dispatchEvent(new CustomEvent('mums:debug', { detail: { source: 'presence_client', kind: 'http', status: 401, url: '/api/presence/list' } }));
-              } catch(_) {}
-            }
-          }
+          
+// If we still get a 401 after refresh attempt, treat as session invalid (e.g., deleted user, revoked session).
+if (r.status === 401) {
+  __consecutive401++;
+  if (__consecutive401 >= 2 && (Date.now() - __lastOkAt) > 1500) {
+    await forceLogoutAccountRemoved('This account has been removed from the system.');
+    return;
+  }
+  var now = Date.now();
+  if ((now - last401At) > THROTTLE_401_MS) {
+    last401At = now;
+    try {
+      window.dispatchEvent(new CustomEvent('mums:debug', { detail: { source: 'presence_client', kind: 'http', status: 401, url: '/api/presence/list' } }));
+    } catch(_) {}
+  }
+}
           return;
         }
         var data = await r.json();
         if (!data || !data.rows) return;
+        try { noteOk(); } catch(_) {}
+
+// Detect server broadcast deletion marker (short-lived) and force logout immediately.
+try {
+  var myId = jwtSub(jwt);
+  if (myId && data && data.rows && data.rows.length) {
+    var markerKey = 'deleted_' + myId;
+    for (var i = 0; i < data.rows.length; i++) {
+      var rr = data.rows[i] || {};
+      var uid = String(rr.user_id || rr.userId || '').trim();
+      var cid = String(rr.client_id || rr.clientId || '').trim();
+      var route = String(rr.route || '').trim();
+      if ((uid === markerKey || cid === markerKey) && (route === '__user_deleted__' || route === 'user_deleted' || route === '__deleted__')) {
+        await forceLogoutAccountRemoved('This account has been removed from the system.');
+        return;
+      }
+    }
+  }
+} catch (_) {}
         var map = buildOnlineMap(data.rows);
         if (window.Store && typeof Store.write === 'function') {
           Store.write('mums_online_users', map);

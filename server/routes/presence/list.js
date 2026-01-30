@@ -1,5 +1,6 @@
-const { getUserFromJwt, serviceSelect } = require('../../lib/supabase');
+const DEFAULT_BOOTSTRAP_EMAIL = 'supermace@mums.local';
 
+const { getUserFromJwt, getProfileForUserId, serviceSelect } = require('../../lib/supabase');
 function sendJson(res, statusCode, body) {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json');
@@ -37,6 +38,21 @@ module.exports = async (req, res) => {
     const jwt = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7) : '';
     const authed = await getUserFromJwt(jwt);
     if (!authed) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+
+
+// If profile is missing, treat account as removed and deny access.
+// Exception: bootstrap SUPERADMIN_EMAIL may self-heal via heartbeat.
+try {
+  const profile = await getProfileForUserId(authed.id);
+  if (!profile) {
+    const email0 = String(authed.email || '').trim().toLowerCase();
+    const bootstrapEmail0 = String(process.env.SUPERADMIN_EMAIL || DEFAULT_BOOTSTRAP_EMAIL).trim().toLowerCase();
+    const isBootstrap0 = bootstrapEmail0 && email0 && (bootstrapEmail0 === email0);
+    if (!isBootstrap0) {
+      return sendJson(res, 403, { ok: false, error: 'account_removed', message: 'This account has been removed from the system.' });
+    }
+  }
+} catch (_) {}
 
     const env = envFromProcess();
     const ttl = Number.isFinite(env.PRESENCE_TTL_SECONDS) ? env.PRESENCE_TTL_SECONDS : 25;

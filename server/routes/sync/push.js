@@ -22,7 +22,8 @@ const WRITE_KEYS = new Set([
   'mums_mailbox_state',
   'ums_cases',
   'ums_activity_logs',
-  'mums_mailbox_time_override_cloud'
+  'mums_mailbox_time_override_cloud',
+  'mums_user_events'
 ]);
 
 const MEMBER_WRITE_KEYS = new Set([

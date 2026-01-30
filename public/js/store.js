@@ -119,6 +119,7 @@
   // (Auth.getUser() is called often for UI refresh intervals.)
   let _usersCache = null;
   let _usersRev = '';
+  let _userListRefreshAt = 0;
   function usersRev(){
     try{ return String(localStorage.getItem('ums_users_rev') || ''); }catch(_){ return ''; }
   }
@@ -2300,6 +2301,73 @@ Store.startMailboxOverrideSync = function(opts){
     return arr.includes(perm);
   };
 
+
+
+  // Cloud: refresh roster into local Store (used by realtime user_created events).
+  // This respects RBAC because each client re-fetches via its own /api/users/list.
+  let _refreshUserListInFlight = null;
+  let _refreshUserListAt = 0;
+  Store.refreshUserList = async function(opts){
+    const now = Date.now();
+    if(_refreshUserListInFlight) return _refreshUserListInFlight;
+    if(now - _refreshUserListAt < 800) return { ok:true, skipped:true };
+    _refreshUserListAt = now;
+
+    _refreshUserListInFlight = (async ()=>{
+      try{
+        if(!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled())){
+          return { ok:false, error:'cloud_not_enabled' };
+        }
+        if(!(window.CloudUsers && typeof CloudUsers.refreshIntoLocalStore === 'function')){
+          return { ok:false, error:'cloud_users_unavailable' };
+        }
+        return await CloudUsers.refreshIntoLocalStore();
+      }catch(e){
+        return { ok:false, error:String(e && (e.message||e) || 'refresh_failed') };
+      }finally{
+        _refreshUserListInFlight = null;
+      }
+    })();
+
+    return _refreshUserListInFlight;
+  };
+
+  // Realtime bridge for User Management list updates
+  (function bindUserManagementRealtime(){
+    try{
+      if(window.__mumsUserMgmtRealtimeBound) return;
+      window.__mumsUserMgmtRealtimeBound = true;
+
+      function isUsersPageActive(){
+        const h = String(window.location.hash||'');
+        const p = String(window.location.pathname||'');
+        return /(^|#)users(\b|$)/i.test(h) || /\/users(\b|\/|$)/i.test(p);
+      }
+
+      window.addEventListener('mums:store', (e)=>{
+        try{
+          const key = e && e.detail && e.detail.key ? String(e.detail.key) : '';
+          if(!key) return;
+
+          // When a user_created event is synced (via mums_user_events), fan-out a stable key that UIs can listen to.
+          if(key === 'mums_user_events'){
+            const ev = read('mums_user_events', null);
+            if(ev && ev.type === 'user_created'){
+              try{ window.dispatchEvent(new CustomEvent('mums:store', { detail: { key: 'mums_user_list_updated', event: ev, source: 'mums_user_events' } })); }catch(_){ }
+            }
+            return;
+          }
+
+          if(key === 'mums_user_list_updated'){
+            if(!isUsersPageActive()) return;
+            // Refresh roster and let the Users page re-render without full reload.
+            Store.refreshUserList && Store.refreshUserList({ reason:'mums_user_list_updated' });
+            return;
+          }
+        }catch(_){ }
+      });
+    }catch(_){ }
+  })();
   // Internal: raw write helper used by optional realtime relay.
   // Do not use in normal feature code; prefer Store.save* APIs.
   Store.__rawWrite = function(key, value, opts){

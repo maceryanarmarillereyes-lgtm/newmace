@@ -3236,3 +3236,156 @@ body[data-mode="light"] .sp-photo{background:rgba(15,23,42,.04)}
 @media (max-width:720px){
   .sync-status{display:none}
 }
+
+/* =====================================================================
+   Classic Style Theme (Enterprise UI/UX)
+   - Timeless admin dashboard layout + hierarchy
+   - Applies only when Settings > THEME = Classic Style
+   ===================================================================== */
+
+body[data-theme="classic_style"]{
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Remove glossy/aurora effects; prefer clean, flat surfaces */
+body[data-theme="classic_style"] .card{
+  background: var(--panel);
+  border-color: var(--border);
+  box-shadow: var(--shadow2);
+  border-radius: 10px;
+}
+body[data-theme="classic_style"] .card.pad{ padding: 18px; }
+
+/* App grid spacing (tight, classic) */
+body[data-theme="classic_style"] .app{
+  gap: 12px;
+  padding: 12px;
+}
+
+/* Top bar: fixed/sticky classic header */
+body[data-theme="classic_style"] .topbar{
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow2);
+}
+
+body[data-theme="classic_style"] .topbrand{
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+body[data-theme="classic_style"] .brand-name{
+  text-shadow: none;
+  letter-spacing: .02em;
+}
+body[data-theme="classic_style"] .brand-mark{
+  box-shadow: none;
+}
+body[data-theme="classic_style"] .brand-sub{ color: var(--muted); }
+
+/* Manila clock pill (injected by app.js for Classic Style) */
+body[data-theme="classic_style"] #classicManilaClock{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(var(--accent-rgb), .08);
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+body[data-theme="classic_style"] .topbar-center{
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Global search: classic input sizing */
+body[data-theme="classic_style"] .top-global-search{
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 10px;
+}
+body[data-theme="classic_style"] #globalSearchInput{
+  font-size: 13px;
+  padding: 10px 10px;
+}
+
+/* Sidebar: fixed nav, classic emphasis */
+body[data-theme="classic_style"] aside.side{
+  padding: 14px !important;
+}
+body[data-theme="classic_style"] .nav .nav-item,
+body[data-theme="classic_style"] .nav .nav-group-head{
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+body[data-theme="classic_style"] .nav .nav-label{
+  font-size: 13px;
+  font-weight: 800;
+}
+body[data-theme="classic_style"] .nav .nav-item:hover,
+body[data-theme="classic_style"] .nav .nav-group-head:hover{
+  background: rgba(var(--accent-rgb), .06);
+  border-color: rgba(var(--accent-rgb), .18);
+}
+body[data-theme="classic_style"] .nav .nav-item.active{
+  background: rgba(var(--accent-rgb), .10);
+  border-color: rgba(var(--accent-rgb), .30);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* Right panel: scrollable + sticky header */
+body[data-theme="classic_style"] aside.right{
+  overflow: auto;
+}
+body[data-theme="classic_style"] .rtabs{
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+/* Tables: zebra striping + classic header */
+body[data-theme="classic_style"] table tr:nth-child(even) td{
+  background: rgba(15,23,42,.02);
+}
+body[data-theme="classic_style"] th{
+  background: rgba(15,23,42,.03);
+  color: var(--muted);
+}
+
+/* Footer bars: neutral + enterprise borders */
+body[data-theme="classic_style"] .online-users-bar,
+body[data-theme="classic_style"] .quicklinks-bar{
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+
+/* Responsive: tighten spacing on tablets/mobiles while preserving classic layout */
+@media(max-width: 980px){
+  body[data-theme="classic_style"] .topbar{ border-radius: 12px; }
+}
+
+/* Classic Style: dark mode fine-tuning (auto mode) */
+body[data-theme="classic_style"][data-mode="dark"] table tr:nth-child(even) td{
+  background: rgba(255,255,255,.035);
+}
+body[data-theme="classic_style"][data-mode="dark"] th{
+  background: rgba(255,255,255,.05);
+  color: var(--muted);
+}
+body[data-theme="classic_style"][data-mode="dark"] #classicManilaClock{
+  background: rgba(var(--accent-rgb), .14);
+}

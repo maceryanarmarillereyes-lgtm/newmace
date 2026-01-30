@@ -1,5 +1,4 @@
-const { getUserFromJwt, getProfileForUserId, serviceFetch, serviceSelect } = require('../../lib/supabase');
-
+const { getUserFromJwt, getProfileForUserId, serviceFetch, serviceSelect, serviceUpsert } = require('../../lib/supabase');
 function sendJson(res, statusCode, body) {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json');
@@ -128,6 +127,23 @@ module.exports = async (req, res) => {
         });
       }
     }
+
+    
+// 0) Broadcast a short-lived deletion marker via presence (best-effort).
+// Clients polling /api/presence/list can detect this and force logout quickly across tabs/devices.
+try {
+  const markerId = `deleted_${String(targetId)}`;
+  const marker = {
+    client_id: markerId,
+    user_id: markerId,
+    name: 'DELETED',
+    role: 'DELETED',
+    team_id: null,
+    route: '__user_deleted__',
+    last_seen: new Date().toISOString()
+  };
+  await serviceUpsert('mums_presence', [marker], 'client_id');
+} catch (_) {}
 
     // 1) Best-effort: revoke sessions/refresh tokens.
     let logoutOut = null;

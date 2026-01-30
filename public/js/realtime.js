@@ -32,7 +32,8 @@
     'mums_mailbox_state',
     'ums_cases',
     'ums_activity_logs',
-    'mums_mailbox_time_override_cloud'
+    'mums_mailbox_time_override_cloud',
+    'mums_user_events'
   ];
 
   const DEFAULT_RELAY_URL = 'ws://localhost:17601';
@@ -153,6 +154,7 @@
       try { if (window.Store && Store.addLog) Store.addLog({ action: 'SYNC_QUEUE_FLUSH_START', detail: 'keys=' + keys.length + ' trigger=' + String(trigger||'') }); } catch(_) {}
 
       let okCount = 0;
+      const flushedEvents = [];
 
       for (const k of keys) {
         const item = q[k];
@@ -181,6 +183,11 @@
           });
 
           if (out && out.ok) {
+            try{
+              if(String(item.key||'') === 'mums_user_events'){
+                flushedEvents.push({ key: item.key, value: item.value, ts: item.ts || Date.now() });
+              }
+            }catch(_){ }
             delete q[k];
             okCount++;
           } else {
@@ -198,6 +205,18 @@
       saveQueue(q);
 
       try { if (window.Store && Store.addLog) Store.addLog({ action: 'SYNC_QUEUE_FLUSH_DONE', detail: 'ok=' + okCount + ' remaining=' + Object.keys(q||{}).length }); } catch(_) {}
+
+      // Enhanced: dispatch queue flush details for listeners (User Management realtime).
+      try{
+        if(window.dispatchEvent){
+          window.dispatchEvent(new CustomEvent('SYNC_QUEUE_FLUSH_DONE', { detail: { ok:true, flushed: okCount, remaining: Object.keys(q||{}).length, events: flushedEvents } }));
+          // If the flush contained a user_created event, nudge the UI to refresh the roster.
+          const userCreated = (flushedEvents||[]).find(e=>e && e.value && e.value.type === 'user_created');
+          if(userCreated){
+            window.dispatchEvent(new CustomEvent('mums:store', { detail: { key: 'mums_user_list_updated', event: userCreated.value, source: 'SYNC_QUEUE_FLUSH_DONE' } }));
+          }
+        }
+      }catch(_){ }
 
       return { ok:true, flushed: okCount, remaining: Object.keys(q||{}).length };
     } finally {
@@ -220,8 +239,22 @@ function applyRemoteKey(key, value){
       try { if (window.Store && Store.addLog) Store.addLog({ action: 'SYNC_REMOTE_SKIPPED_QUEUED', detail: String(key||'') }); } catch(_){}
       return;
     }
-    if (!window.Store || typeof Store.__writeRaw !== 'function') return;
-    Store.__writeRaw(key, value, { fromRealtime: true });
+    if (!window.Store) return;
+    const rawWrite = (typeof Store.__rawWrite === 'function') ? Store.__rawWrite
+      : (typeof Store.__writeRaw === 'function') ? Store.__writeRaw
+      : null;
+    if (!rawWrite) return;
+    rawWrite(key, value, { fromRealtime: true });
+
+    // Special: user management realtime events
+    try{
+      if(String(key||'') === 'mums_user_events' && window.dispatchEvent){
+        const ev = (value && typeof value === 'object') ? value : null;
+        if(ev && ev.type === 'user_created'){
+          window.dispatchEvent(new CustomEvent('mums:store', { detail: { key: 'mums_user_list_updated', event: ev } }));
+        }
+      }
+    }catch(_){ }
   }
 
   // ----------------------

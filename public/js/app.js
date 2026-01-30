@@ -80,18 +80,35 @@
     const themes = (Config && Array.isArray(Config.THEMES)) ? Config.THEMES : [];
     const t = themes.find(x=>x.id===themeId) || themes[0];
     if(!t) return;
+
+    // Classic Style supports auto mode (follows OS preference) and an optional dark palette.
+    // Safe for other themes: only activates when t.mode === 'auto'.
+    let modePref = (t.mode ? String(t.mode) : (String(t.id||'').includes('light') ? 'light' : 'dark'));
+    let mode = modePref;
+    if(modePref === 'auto'){
+      try{
+        mode = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      }catch(_){ mode = 'light'; }
+    }
+
+    // Choose palette for the computed mode (if provided)
+    let tt = t;
+    if(modePref === 'auto' && mode === 'dark' && t.dark && typeof t.dark === 'object'){
+      try{ tt = Object.assign({}, t, t.dark); }catch(_){ tt = t; }
+    }
+
     const r = document.documentElement;
-    r.style.setProperty('--bg', t.bg);
-    r.style.setProperty('--panel', t.panel);
-    r.style.setProperty('--panel2', t.panel2);
-    r.style.setProperty('--text', t.text);
-    r.style.setProperty('--muted', t.muted);
-    r.style.setProperty('--border', t.border);
-    r.style.setProperty('--accent', t.accent);
+    r.style.setProperty('--bg', tt.bg);
+    r.style.setProperty('--panel', tt.panel);
+    r.style.setProperty('--panel2', tt.panel2);
+    r.style.setProperty('--text', tt.text);
+    r.style.setProperty('--muted', tt.muted);
+    r.style.setProperty('--border', tt.border);
+    r.style.setProperty('--accent', tt.accent);
 
     // Derived RGB vars for CSS rgba() usage (keeps themes consistent across light/dark)
     try{
-      const hex = String(t.accent||'').trim();
+      const hex = String(tt.accent||'').trim();
       const m = /^#?([0-9a-fA-F]{6})$/.exec(hex);
       if(m){
         const s = m[1];
@@ -104,38 +121,37 @@
       }
     }catch(_){ r.style.setProperty('--accent-rgb', '74,163,255'); }
 
-    r.style.setProperty('--bgRad1', t.bgRad1);
-    r.style.setProperty('--bgRad3', t.bgRad3);
+    r.style.setProperty('--bgRad1', tt.bgRad1);
+    r.style.setProperty('--bgRad3', tt.bgRad3);
 
     // Optional deeper theme controls
     try{
-      if(t.font) r.style.setProperty('--font', t.font); else r.style.removeProperty('--font');
-      if(t.radius) r.style.setProperty('--radius', t.radius); else r.style.removeProperty('--radius');
-      if(t.shadow) r.style.setProperty('--shadow', t.shadow); else r.style.removeProperty('--shadow');
+      if(tt.font) r.style.setProperty('--font', tt.font); else r.style.removeProperty('--font');
+      if(tt.radius) r.style.setProperty('--radius', tt.radius); else r.style.removeProperty('--radius');
+      if(tt.shadow) r.style.setProperty('--shadow', tt.shadow); else r.style.removeProperty('--shadow');
     }catch(_){ }
     try{
       document.body.dataset.theme = t.id;
-      // Expose theme mode for CSS (e.g., light theme needs different input/icon rendering)
-      const mode = (t.mode ? String(t.mode) : (String(t.id||'').includes('light') ? 'light' : 'dark'));
+      // Expose theme mode for CSS (computed; supports classic auto-mode)
       document.body.dataset.mode = mode;
       document.documentElement.dataset.mode = mode;
       
       // Fix16: semantic tokens + mode-specific control colors + accent contrast
       try{
-        r.style.setProperty("--surface-0", t.bg);
-        r.style.setProperty("--surface-1", t.panel);
-        r.style.setProperty("--surface-2", t.panel2);
-        r.style.setProperty("--text-0", t.text);
-        r.style.setProperty("--text-muted", t.muted);
-        r.style.setProperty("--border-0", t.border);
+        r.style.setProperty("--surface-0", tt.bg);
+        r.style.setProperty("--surface-1", tt.panel);
+        r.style.setProperty("--surface-2", tt.panel2);
+        r.style.setProperty("--text-0", tt.text);
+        r.style.setProperty("--text-muted", tt.muted);
+        r.style.setProperty("--border-0", tt.border);
         const isLight = mode === "light";
         r.style.setProperty("--control-bg", isLight ? "rgba(255,255,255,.92)" : "rgba(18,24,38,.92)");
-        r.style.setProperty("--control-border", isLight ? "rgba(15,23,42,.12)" : t.border);
-        r.style.setProperty("--control-text", t.text);
+        r.style.setProperty("--control-border", isLight ? "rgba(15,23,42,.12)" : tt.border);
+        r.style.setProperty("--control-text", tt.text);
         r.style.setProperty("--overlay-scrim", isLight ? "rgba(15,23,42,.40)" : "rgba(0,0,0,.55)");
         r.style.setProperty("--btn-glass-top", isLight ? "rgba(15,23,42,.04)" : "rgba(255,255,255,.08)");
         r.style.setProperty("--btn-glass-bot", isLight ? "rgba(15,23,42,.02)" : "rgba(255,255,255,.02)");
-        r.style.setProperty("--accent-contrast", chooseAccentText(t.accent));
+        r.style.setProperty("--accent-contrast", chooseAccentText(tt.accent));
       }catch(_){ }
 
       try{ window.dispatchEvent(new CustomEvent("mums:themeApplied", { detail: { id: t.id, mode } })); }catch(_){ }
@@ -3494,6 +3510,64 @@ function route(){
     }catch(e){ console.error(e); }
   }
 
+
+  // Classic Style: Manila time in topbar center (theme-specific, injected)
+  function setupClassicTopbarClock(){
+    let timer = null;
+    let fmt = null;
+
+    function ensureFormatter(){
+      if(fmt) return fmt;
+      try{
+        fmt = new Intl.DateTimeFormat('en-US', {
+          weekday:'short', year:'numeric', month:'short', day:'2-digit',
+          hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false,
+          timeZone:'Asia/Manila'
+        });
+      }catch(_){
+        fmt = null;
+      }
+      return fmt;
+    }
+
+    function tick(){
+      const el = document.getElementById('classicManilaClock');
+      if(!el) return;
+      try{
+        const f = ensureFormatter();
+        el.textContent = f ? f.format(new Date()) : new Date().toISOString().replace('T',' ').slice(0,19);
+      }catch(_){
+        el.textContent = new Date().toISOString().replace('T',' ').slice(0,19);
+      }
+    }
+
+    function apply(){
+      const isClassic = (document.body && document.body.dataset && document.body.dataset.theme==='classic_style');
+      const host = document.querySelector('.topbar-center');
+      let el = document.getElementById('classicManilaClock');
+
+      if(!isClassic){
+        if(el) el.style.display = 'none';
+        if(timer){ clearInterval(timer); timer=null; }
+        return;
+      }
+
+      if(!host) return;
+      if(!el){
+        el = document.createElement('div');
+        el.id = 'classicManilaClock';
+        el.className = 'classic-clock';
+        host.insertBefore(el, host.firstChild);
+      }
+      el.style.display = '';
+      tick();
+      if(!timer){ timer = setInterval(tick, 1000); }
+    }
+
+    window.addEventListener('mums:themeApplied', apply);
+    apply();
+  }
+
 async function boot(){
     // Prevent double-boot (inline boot + auto-boot safety).
     if(window.__mumsBooted) return;
@@ -3508,6 +3582,7 @@ async function boot(){
 
     // Apply saved theme ASAP (before heavy rendering)
     applyTheme(Store.getTheme());
+    try{ setupClassicTopbarClock(); }catch(_){ }
     // Enterprise UI preferences
     // Density (normal vs compact)
     try{

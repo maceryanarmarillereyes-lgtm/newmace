@@ -90,6 +90,40 @@
       { id:'aurora_nature',   name:'Aurora Nature',   mode:'dark', bg:'#05110b', panel:'#0a2216', panel2:'#071a11', text:'#effff5', muted:'#b6d6c2', border:'rgba(255,255,255,.10)', accent:'#22c55e', bgRad1:'#123b22', bgRad3:'#020a05', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
       { id:'aurora_luxury',   name:'Aurora Luxury',   mode:'dark', bg:'#121008', panel:'#1f1a0a', panel2:'#171407', text:'#fff8e7', muted:'#e4d4a8', border:'rgba(255,255,255,.10)', accent:'#fbbf24', bgRad1:'#2f250a', bgRad3:'#070503', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
 
+
+      // --- Classic enterprise preset (timeless admin dashboard) ---
+      {
+        id:'classic_style',
+        name:'Classic Style',
+        // Auto: follow OS preference for dark/light while keeping the same classic layout.
+        mode:'auto',
+        // Light palette
+        bg:'#f6f7f9',
+        panel:'#ffffff',
+        panel2:'#f5f7fb',
+        text:'#111827',
+        muted:'#6b7280',
+        border:'rgba(17,24,39,.12)',
+        accent:'#2563eb',
+        bgRad1:'#e8eefc',
+        bgRad3:'#fbfcfe',
+        font:"'Segoe UI', Inter, system-ui, -apple-system, Roboto, Arial, sans-serif",
+        radius:'10px',
+        shadow:'0 10px 22px rgba(17,24,39,.10)',
+        // Dark palette override (used when mode resolves to dark)
+        dark:{
+          bg:'#0b1220',
+          panel:'#0f1b2e',
+          panel2:'#0c1628',
+          text:'#e5e7eb',
+          muted:'#9ca3af',
+          border:'rgba(255,255,255,.10)',
+          accent:'#3b82f6',
+          bgRad1:'#14284a',
+          bgRad3:'#050914'
+        }
+      },
+
       // --- Original MUMS presets (kept for variety) ---
       { id:'ocean',     name:'Ocean Blue',   bg:'#071224', panel:'#0c1b33', panel2:'#0a162b', text:'#eaf2ff', muted:'#a8b6d6', border:'rgba(255,255,255,.08)', accent:'#4aa3ff', bgRad1:'#0c2a52', bgRad3:'#050c18' },
       { id:'emerald',   name:'Emerald',      bg:'#061a14', panel:'#0a2a22', panel2:'#072018', text:'#eafff6', muted:'#a9d6c6', border:'rgba(255,255,255,.08)', accent:'#34d399', bgRad1:'#0a3a2c', bgRad3:'#03110d' },

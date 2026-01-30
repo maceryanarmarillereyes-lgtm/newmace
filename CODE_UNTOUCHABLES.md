@@ -146,4 +146,15 @@ This is required so authenticated users can read their own profile row under RLS
 
 ## Login Flow Safety (Permanent)
 - Login flow must hydrate session safely and defer UI rendering until user context is complete. No blocking render loops or unresponsive states allowed.
+- First-time login must succeed without false session errors. Hydration must retry once before showing failure. Flash messages must only appear on confirmed failure.
 
+
+
+## Deleted User Real-Time Logout (Permanent)
+- When a user is deleted, all active sessions must be terminated immediately. No continued access allowed. Presence polling must detect deletion and trigger forced logout.
+
+## User Management Real-Time Sync (Permanent)
+- User Management must reflect new users in real time across all open sessions and roles. No manual refresh required. Sync queue must dispatch user_created events and trigger partial re-render with scroll preservation.
+
+## Classic Style Theme (Permanent)
+- Classic Style theme must maintain enterprise-grade layout, fixed sidebar, top bar, and responsive card-based content. Theme must be selectable via Settings and persist across sessions.

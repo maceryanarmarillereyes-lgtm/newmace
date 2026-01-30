@@ -194,6 +194,47 @@ function canCreateRole(actor, targetRole) {
     renderRows();
   }
 
+  // Realtime user list updates: keep this page in sync across devices without reload.
+  // Security: we use a minimal event payload and each client refreshes via its own RBAC-filtered API.
+  let _pendingUsersScrollTop = null;
+  let _lastUsersToastAt = 0;
+  const mumsUserMgmtStoreListener = async (e)=>{
+    try{
+      const k = e && e.detail && e.detail.key ? String(e.detail.key) : '';
+      if(!k) return;
+      if(!root || !document.body.contains(root)) return;
+
+      // A user_created event has been received (via mums_user_events fan-out).
+      if(k === 'mums_user_list_updated'){
+        const scroller = root.closest('.main') || document.scrollingElement || document.documentElement;
+        if(_pendingUsersScrollTop === null) _pendingUsersScrollTop = scroller ? (scroller.scrollTop||0) : 0;
+
+        // Cloud mode: refresh roster (RBAC-safe). The subsequent ums_users write will trigger the re-render.
+        if(isCloudMode && window.Store && typeof Store.refreshUserList === 'function'){
+          try{ await Store.refreshUserList({ reason:'mums_user_list_updated' }); }catch(_){ }
+        }
+
+        // Optional toast (throttled to avoid spam during batch operations).
+        const now = Date.now();
+        if(now - _lastUsersToastAt > 1200){
+          _lastUsersToastAt = now;
+          try{ UI.toast && UI.toast('User list updated'); }catch(_){ }
+        }
+        return;
+      }
+
+      // Roster changed locally (after refresh). Re-render while preserving scroll.
+      if(k === 'ums_users'){
+        const scroller = root.closest('.main') || document.scrollingElement || document.documentElement;
+        const prevTop = (_pendingUsersScrollTop !== null) ? _pendingUsersScrollTop : (scroller ? (scroller.scrollTop||0) : 0);
+        _pendingUsersScrollTop = null;
+        renderRows();
+        try{ if(scroller) scroller.scrollTop = prevTop; }catch(_){ }
+      }
+    }catch(_){ }
+  };
+  try{ if(isCloudMode) window.addEventListener('mums:store', mumsUserMgmtStoreListener); }catch(_){ }
+
 // UI permission hardening: only SUPER_ADMIN and TEAM_LEAD can create/import/export users.
 const createAllowed = !!actor && ['SUPER_ADMIN', 'TEAM_LEAD'].includes((actor.role || '').toUpperCase());
 if (!createAllowed) {
@@ -351,6 +392,7 @@ if (!createAllowed) {
   // ensure cleanup runs on route change
   root._cleanup = ()=>{
     try{ root.removeEventListener('click', onClick); }catch(_){}
+    try{ if(isCloudMode) window.removeEventListener('mums:store', mumsUserMgmtStoreListener); }catch(_){}
   };
 // modal close
   root.querySelectorAll('[data-close="userModal"]').forEach(b=>b.onclick=()=>UI.closeModal('userModal'));
@@ -530,6 +572,8 @@ function openUserModal(actor, user){
 
       if(!isEdit && !password) return err('Password is required for new users.');
 
+      let createdEvent = null;
+
       if(isCloud){
         if(isEdit){
           // Self edits use update_me (supports SUPER_ADMIN team override)
@@ -583,9 +627,29 @@ function openUserModal(actor, user){
 
             return err(msg);
           }
+
+          // Prepare a realtime user_created event (minimal payload) so other sessions can refresh their user list.
+          // RBAC-safe: other clients re-fetch via their own /api/users/list filtering.
+          try{
+            const data = (out && out.data) ? out.data : null;
+            const prof = (data && data.profile) ? data.profile : null;
+            const uid = String((data && data.user && (data.user.id || data.user.user_id)) || (prof && (prof.user_id || prof.id)) || '').trim();
+            const teamRaw = (prof && (prof.team_id !== undefined)) ? prof.team_id : teamId;
+            const teamNorm = (teamRaw === null || teamRaw === undefined) ? '' : String(teamRaw);
+            createdEvent = { type: 'user_created', ts: Date.now(), userId: uid, teamId: teamNorm };
+          }catch(_){ createdEvent = { type:'user_created', ts: Date.now(), userId:'', teamId: String(teamId||'') }; }
         }
 
         try { await CloudUsers.refreshIntoLocalStore(); } catch(_) {}
+
+        // Broadcast to other devices via realtime/sync queue.
+        try{
+          if(createdEvent && window.Store){
+            const rawWrite = (typeof Store.__rawWrite === 'function') ? Store.__rawWrite : (typeof Store.__writeRaw === 'function') ? Store.__writeRaw : null;
+            if(rawWrite) rawWrite('mums_user_events', createdEvent);
+          }
+        }catch(_){ }
+
         UI.closeModal('userModal');
         renderRows();
         return;

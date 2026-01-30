@@ -161,32 +161,21 @@
       opts = opts || {};
       const redirect = (opts.redirect !== false);
 
-      // Hard safety cap: session/profile hydration must never block the UI.
-      // If hydration does not complete quickly, fail fast with a clear message.
-      const maxMs = Number((opts && opts.maxMs) || 3000);
-      let timedOut = false;
-      let timeoutId = null;
+      // Base hydration cap (attempt #1). Attempt #2 can extend for first-time logins.
+      const baseMaxMs = Number((opts && opts.maxMs) || 3000);
+      const retryDelayMs = Number((opts && opts.retryDelayMs) || 300);
 
-      const failHydration = async (message)=>{
-        const msg = message || 'Login failed due to session error. Please try again.';
-        try{ localStorage.setItem('mums_login_flash', msg); }catch(_){ }
-        try{ window.CloudAuth && CloudAuth.signOut && (await CloudAuth.signOut()); }catch(_){ }
-        try{ window.Store && Store.setSession && Store.setSession(null); }catch(_){ }
-        currentUser = null;
-        resolveHydrated(null);
-        if (redirect) {
-          try { window.location.href = './login.html'; } catch(_) { }
-        }
+      const log = function(){
+        try{ console.log.apply(console, ['[MUMS][hydrate]'].concat([].slice.call(arguments))); }catch(_){}
+      };
+      const warn = function(){
+        try{ console.warn.apply(console, ['[MUMS][hydrate]'].concat([].slice.call(arguments))); }catch(_){}
       };
 
-      timeoutId = setTimeout(function(){
-        timedOut = true;
-        try{ failHydration('Login failed due to session error. Please try again.').catch(function(){}); }catch(_){ }
-      }, Math.max(500, maxMs));
+      const sleep = (ms)=> new Promise((resolve)=> setTimeout(resolve, ms));
 
-      const finish = (val)=>{
-        try{ if(timeoutId){ clearTimeout(timeoutId); timeoutId = null; } }catch(_){ }
-        return val;
+      const clearFlash = ()=>{
+        try{ localStorage.removeItem('mums_login_flash'); }catch(_){}
       };
 
       const isValidUser = (usr)=>{
@@ -198,155 +187,209 @@
         }catch(_){ return false; }
       };
 
-      // 1) Fast path
-      let u = this.getUser();
-      if (u) {
-        if(!isValidUser(u)){
-          await failHydration('Login failed due to session error. Please try again.');
-          return finish(null);
+      const hardFail = async (message)=>{
+        const msg = message || 'Login failed due to session error. Please try again.';
+        try{ localStorage.setItem('mums_login_flash', msg); }catch(_){ }
+        try{ window.CloudAuth && CloudAuth.signOut && (await CloudAuth.signOut()); }catch(_){ }
+        try{ window.Store && Store.setSession && Store.setSession(null); }catch(_){ }
+        currentUser = null;
+        resolveHydrated(null);
+        if (redirect) {
+          try { window.location.href = './login.html'; } catch(_) { }
         }
-        resolveHydrated(u);
-        return finish(u);
-      }
+      };
 
-      // 2) Supabase/CloudAuth restore path (prevents login redirect loops)
-      try {
-        if (window.CloudAuth && CloudAuth.enabled && CloudAuth.enabled()) {
-          const sbUser = CloudAuth.getUser ? CloudAuth.getUser() : null;
+      // Attempt hydration with a bounded deadline. Returns a valid user or null (no redirects/flash here).
+      const attemptHydrate = async (maxMs, attemptNo)=>{
+        const deadline = Date.now() + Math.max(500, Number(maxMs) || 0);
+        const timeLeft = ()=> Math.max(0, deadline - Date.now());
 
-          // If we have a Supabase user but local Store profile cache isn't ready yet,
-          // hydrate session and fetch profiles before deciding to redirect.
-          if (sbUser && sbUser.id) {
-            if (timedOut) return finish(null);
-            try {
-              const sess = (window.Store && Store.getSession) ? Store.getSession() : null;
-              if (!sess || String(sess.userId) !== String(sbUser.id) || sess.mode !== 'supabase') {
-                Store.setSession && Store.setSession({ userId: sbUser.id, mode: 'supabase', ts: Date.now() });
-              }
-            } catch (e) {}
+        log('attempt', attemptNo, 'start (maxMs=', Math.max(500, Number(maxMs) || 0), ')');
 
-            if (timedOut) return finish(null);
-
-            // Try again after session hydration
-            u = this.getUser();
-            if (u) {
-              if(!isValidUser(u)){
-                await failHydration('Login failed due to session error. Please try again.');
-                return finish(null);
-              }
-              resolveHydrated(u);
-              return finish(u);
-            }
-
-            // Session restore guard:
-            // If the Supabase user still has a token but the directory profile is missing,
-            // treat the account as removed and force logout.
-            try {
-              const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
-              if (jwt) {
-                const r = await fetch('/api/users/me', { headers: { Authorization: `Bearer ${jwt}` } });
-                const data = await r.json().catch(() => ({}));
-                const err = String((data && (data.error || data.code)) || '').trim();
-                if (r.status === 403 && err === 'account_removed') {
-                  try { await CloudAuth.signOut(); } catch (_) {}
-                  try { window.Store && Store.setSession && Store.setSession(null); } catch (_) {}
-                  if (redirect) window.location.href = './login.html';
-                  return finish(null);
-                }
-              }
-            } catch (_) {}
-
-            if (timedOut) return finish(null);
-
-            // Ensure a mums_profiles row exists (and bootstrap SUPER_ADMIN if configured).
-            try {
-              window.CloudUsers && CloudUsers.ensureProfile && (await CloudUsers.ensureProfile());
-            } catch (e) {}
-
-            if (timedOut) return finish(null);
-
-            // Pull profile(s) into the local Store so getUser() can resolve role/username/name
-            try {
-              if (window.CloudUsers && CloudUsers.refreshIntoLocalStore) {
-                await CloudUsers.refreshIntoLocalStore();
-
-        // Also fetch /api/users/me to make the current user's role/team authoritative.
-        // This protects against stale local Store data and prevents Super Admin from showing as MEMBER.
-        try {
-          const me = (window.CloudUsers && typeof CloudUsers.me === 'function') ? await CloudUsers.me() : null;
-          if (me && me.ok && me.profile) {
-            const p = me.profile;
-            const uid = p.user_id || p.id || sbUser.id;
-            if (window.Store && typeof Store.getUsers === 'function' && typeof Store.saveUsers === 'function') {
-              const users = Array.isArray(Store.getUsers()) ? Store.getUsers() : [];
-              const next = users.slice();
-              const patch = {
-                id: uid,
-                username: p.username || (sbUser.email ? sbUser.email.split('@')[0] : ''),
-                name: p.name || p.username || (sbUser.email || 'User'),
-                role: p.role || 'MEMBER',
-                teamId: p.team_id || null,
-                duty: p.duty || '—',
-                photoDataUrl: p.avatar_url || '',
-                password: null,
-                _cloud: true
-              };
-              const at = next.findIndex((u) => String(u.id) === String(uid));
-              if (at >= 0) next[at] = Object.assign({}, next[at], patch);
-              else next.push(patch);
-              Store.saveUsers(next);
-            }
-          }
-        } catch (_) {}
-
-              }
-            } catch (e) {}
-
-            if (timedOut) return finish(null);
-
-            u = this.getUser();
-            if (u) {
-              if(!isValidUser(u)){
-                await failHydration('Login failed due to session error. Please try again.');
-                return finish(null);
-              }
-              resolveHydrated(u);
-              return finish(u);
-            }
-
-            try {
-              const su = (window.Store && Store.getUserById) ? Store.getUserById(sbUser.id) : null;
-              if (su) {
-                if(!isValidUser(su)){
-                  await failHydration('Login failed due to session error. Please try again.');
-                  return finish(null);
-                }
-                currentUser = su;
-                resolveHydrated(su);
-                return finish(su);
-              }
-            } catch (_) {}
-
-            // Last-resort minimal user (keeps app usable; role may be limited until profile exists)
-            u = {
-              id: sbUser.id,
-              username: (sbUser.email || '').split('@')[0] || 'user',
-              email: sbUser.email || '',
-              name: sbUser.email || 'User',
-              role: 'MEMBER',
-              teamId: null,
-              duty: ''
-            };
-            currentUser = u;
-            resolveHydrated(u);
-            return finish(u);
-          }
+        // Fast path: if getUser() returns a fully-hydrated profile, accept it.
+        // IMPORTANT: if getUser() returns an incomplete Supabase user object (no role/team),
+        // do NOT fail. Continue hydration instead (this is the first-time login bug).
+        let u = null;
+        try{ u = this.getUser(); }catch(_){ u = null; }
+        if (u && !isValidUser(u)) {
+          warn('attempt', attemptNo, 'getUser returned incomplete user; continuing hydration');
+          u = null;
         }
-      } catch (e) {}
+        if (u) {
+          clearFlash();
+          resolveHydrated(u);
+          log('attempt', attemptNo, 'fast path success');
+          return u;
+        }
 
-      // 3) No user → redirect (or return null)
-      if (redirect) window.location.href = './login.html';
-      return finish(null);
+        const withTimeout = async (promise)=>{
+          const ms = timeLeft();
+          if (ms <= 0) return { __timeout: true };
+          return await Promise.race([
+            promise,
+            new Promise((resolve)=> setTimeout(()=> resolve({ __timeout: true }), ms))
+          ]);
+        };
+
+        const work = async ()=>{
+          // CloudAuth restore path (Supabase)
+          try{
+            if (window.CloudAuth && CloudAuth.enabled && CloudAuth.enabled()) {
+              const sbUser = CloudAuth.getUser ? CloudAuth.getUser() : null;
+              if (sbUser && sbUser.id) {
+                if (timeLeft() <= 0) return null;
+
+                // Ensure Store session points at this Supabase user
+                try {
+                  const sess = (window.Store && Store.getSession) ? Store.getSession() : null;
+                  if (!sess || String(sess.userId) !== String(sbUser.id) || sess.mode !== 'supabase') {
+                    Store.setSession && Store.setSession({ userId: sbUser.id, mode: 'supabase', ts: Date.now() });
+                  }
+                } catch (_) {}
+
+                if (timeLeft() <= 0) return null;
+
+                // Try resolving from Store again
+                try{ u = this.getUser(); }catch(_){ u = null; }
+                if (u && isValidUser(u)) return u;
+
+                // Deleted-account guard
+                try {
+                  const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+                  if (jwt) {
+                    const r = await fetch('/api/users/me', { headers: { Authorization: `Bearer ${jwt}` } });
+                    const data = await r.json().catch(() => ({}));
+                    const err = String((data && (data.error || data.code)) || '').trim();
+                    if (r.status === 403 && err === 'account_removed') {
+                      try { await CloudAuth.signOut(); } catch (_) {}
+                      try { window.Store && Store.setSession && Store.setSession(null); } catch (_) {}
+                      currentUser = null;
+                      resolveHydrated(null);
+                      if (redirect) window.location.href = './login.html';
+                      return null;
+                    }
+                  }
+                } catch (_) {}
+
+                if (timeLeft() <= 0) return null;
+
+                // Ensure profile exists (first-time login creates the row here)
+                let ensured = null;
+                try {
+                  ensured = (window.CloudUsers && CloudUsers.ensureProfile) ? await CloudUsers.ensureProfile() : null;
+                  if (ensured && ensured.created) log('attempt', attemptNo, 'ensureProfile created new profile');
+                } catch (e) {
+                  warn('attempt', attemptNo, 'ensureProfile error', e && e.message ? e.message : e);
+                }
+
+                if (timeLeft() <= 0) return null;
+
+                // Hydrate directory into Store
+                try {
+                  if (window.CloudUsers && CloudUsers.refreshIntoLocalStore) {
+                    await CloudUsers.refreshIntoLocalStore();
+                  }
+                } catch (e) {
+                  warn('attempt', attemptNo, 'refreshIntoLocalStore error', e && e.message ? e.message : e);
+                }
+
+                if (timeLeft() <= 0) return null;
+
+                // Also hydrate /api/users/me into Store so role/team is authoritative
+                try {
+                  const me = (window.CloudUsers && typeof CloudUsers.me === 'function') ? await CloudUsers.me() : null;
+                  if (me && me.ok && me.profile) {
+                    const p = me.profile;
+                    const uid = p.user_id || p.id || sbUser.id;
+                    if (window.Store && typeof Store.getUsers === 'function' && typeof Store.saveUsers === 'function') {
+                      const users = Array.isArray(Store.getUsers()) ? Store.getUsers() : [];
+                      const next = users.slice();
+                      const patch = {
+                        id: uid,
+                        username: p.username || (sbUser.email ? sbUser.email.split('@')[0] : ''),
+                        name: p.name || p.username || (sbUser.email || 'User'),
+                        role: p.role || 'MEMBER',
+                        teamId: p.team_id || null,
+                        duty: p.duty || '—',
+                        photoDataUrl: p.avatar_url || '',
+                        password: null,
+                        _cloud: true
+                      };
+                      const at = next.findIndex((x) => String(x.id) === String(uid));
+                      if (at >= 0) next[at] = Object.assign({}, next[at], patch);
+                      else next.push(patch);
+                      Store.saveUsers(next);
+                    }
+                  }
+                } catch (e) {
+                  warn('attempt', attemptNo, 'CloudUsers.me hydrate error', e && e.message ? e.message : e);
+                }
+
+                if (timeLeft() <= 0) return null;
+
+                // Resolve again
+                try{ u = this.getUser(); }catch(_){ u = null; }
+                if (u && isValidUser(u)) return u;
+
+                try {
+                  const su = (window.Store && Store.getUserById) ? Store.getUserById(sbUser.id) : null;
+                  if (su && isValidUser(su)) { currentUser = su; return su; }
+                } catch (_) {}
+
+                // Last resort: minimal user (keeps UX unblocked; role may be updated after directory sync)
+                const minimal = {
+                  id: sbUser.id,
+                  username: (sbUser.email || '').split('@')[0] || 'user',
+                  email: sbUser.email || '',
+                  name: sbUser.email || 'User',
+                  role: 'MEMBER',
+                  teamId: null,
+                  duty: ''
+                };
+                currentUser = minimal;
+                return minimal;
+              }
+            }
+          }catch(e){
+            warn('attempt', attemptNo, 'CloudAuth restore error', e && e.message ? e.message : e);
+          }
+          return null;
+        };
+
+        const res = await withTimeout(work());
+        if (res && res.__timeout) {
+          warn('attempt', attemptNo, 'timed out');
+          return null;
+        }
+
+        if (res && !isValidUser(res)) {
+          warn('attempt', attemptNo, 'hydration returned invalid user');
+          return null;
+        }
+
+        if (res) {
+          clearFlash();
+          resolveHydrated(res);
+          log('attempt', attemptNo, 'success');
+          return res;
+        }
+
+        log('attempt', attemptNo, 'no user');
+        return null;
+      };
+
+      // Attempt #1: base cap
+      let out = await attemptHydrate(baseMaxMs, 1);
+      if (out) return out;
+
+      // Retry once silently (first-time logins can be slower due to profile creation).
+      await sleep(Math.max(0, retryDelayMs));
+      out = await attemptHydrate(Math.max(baseMaxMs, 4000), 2);
+      if (out) return out;
+
+      // Confirmed failure (both attempts failed)
+      await hardFail('Login failed due to session error. Please try again.');
+      return null;
     },
     async requireLogin() { return this.requireUser(); },
 
@@ -396,10 +439,16 @@
 
         // Do not block the login flow on a full directory fetch.
         // Index boot will refresh the directory cache in the background.
-        currentUser = out.user;
+
+        // Clear stale flash messages after a successful login.
+        try{ localStorage.removeItem('mums_login_flash'); }catch(_){ }
+
+        // IMPORTANT: do not set currentUser to the raw Supabase user object.
+        // The raw object has no role/team; Auth.requireUser will hydrate the full profile.
+        currentUser = null;
 
         emitAuth('login');
-        return { ok: true, user: currentUser };
+        return { ok: true, user: out.user };
       }
 
       // Local fallback
