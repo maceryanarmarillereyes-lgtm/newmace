@@ -176,7 +176,15 @@
       if(!res.ok) return showErr(res.message || 'Login failed.');
       try{ _persistSavedDetails(); }catch(e){}
       // Use replace() to avoid a slow back navigation and slightly reduce perceived latency.
-      window.location.replace("./index.html#dashboard");
+      try{
+        if(String(window.location.protocol||'') === 'file:'){
+          window.location.replace("./index.html#dashboard");
+        }else{
+          window.location.replace("./dashboard");
+        }
+      }catch(_){
+        window.location.replace("./index.html#dashboard");
+      }
     }
 
     $("loginBtn").onclick = doLogin;

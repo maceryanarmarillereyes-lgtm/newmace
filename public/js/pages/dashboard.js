@@ -1,17 +1,21 @@
-
 (window.Pages=window.Pages||{}, window.Pages.dashboard = function(root){
-  const u = Auth.getUser();
-  const team = Config.teamById(u.teamId);
+  try{
+    if(window.UI && typeof UI.renderDashboard === 'function'){
+      UI.renderDashboard(root);
+      return;
+    }
+  }catch(e){ try{ console.error(e); }catch(_){} }
+
+  // Fallback (should not normally execute)
+  const u = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
+  const team = (window.Config && Config.teamById && u.teamId) ? Config.teamById(u.teamId) : null;
   root.innerHTML = `
-    <h2 style="margin:0 0 10px">Welcome, ${UI.esc(u.name||u.username)}</h2>
-    <div class="chips" style="margin-bottom:12px">
-      <span class="chip">Role: ${UI.esc(u.role)}</span>
-      <span class="chip">Team: ${UI.esc(team.label)}</span>
-      <span class="chip">Timezone: ${UI.esc(Config.TZ)}</span>
-    </div>
-    <div class="card pad" style="background:rgba(255,255,255,.02)">
-      <div class="small">Tip: Go to <b>User Management</b> to create accounts. Assign each user a schedule to show icons in Mailbox.</div>
+    <h2 style="margin:0 0 10px">Dashboard</h2>
+    <div class="card pad">
+      <div class="small muted">Fallback dashboard renderer used. UI.renderDashboard() was not available.</div>
+      <div style="margin-top:8px">User: <b>${UI.esc(u.fullName||u.name||u.username||'User')}</b></div>
+      <div class="small muted" style="margin-top:2px">Role: ${UI.esc(u.role||'')}</div>
+      <div class="small muted">Team: ${UI.esc(team ? (team.label||team.id) : (u.teamId||''))}</div>
     </div>
   `;
-}
-);
+});

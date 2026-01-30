@@ -1602,6 +1602,253 @@ setCursorMode(mode){
     }, true);
   };
 
+
+
+  // Dashboard renderer
+  // - Clean URL route: /dashboard
+  // - Must render for all roles without redirect
+  UI.renderDashboard = function(root){
+    try{
+      const Config = window.Config || {};
+      const Store = window.Store || {};
+      const Auth = window.Auth || {};
+      const me = (Auth.getUser ? (Auth.getUser()||{}) : {});
+
+      const role = String(me.role||'');
+      const SA = (Config.ROLES && Config.ROLES.SUPER_ADMIN) ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
+      const TL = (Config.ROLES && Config.ROLES.TEAM_LEAD) ? Config.ROLES.TEAM_LEAD : 'TEAM_LEAD';
+      const isSA = role === SA;
+      const isTL = role === TL;
+
+      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : UI.manilaNow());
+      const tz = (Config && Config.TZ) || 'Asia/Manila';
+      const nowDate = UI.manilaNowDate ? UI.manilaNowDate() : new Date();
+
+      const fmtNow = ()=>{
+        try{
+          return new Date().toLocaleString('en-CA', {
+              timeZone: tz,
+              weekday:'short', year:'numeric', month:'short', day:'2-digit',
+              hour:'2-digit', minute:'2-digit', second:'2-digit',
+              hour12:false
+            });
+        }catch(_){
+          return String(nowParts.iso||'');
+        }
+      };
+
+      // Team / shift context
+      const team = (Config.teamById && me.teamId) ? Config.teamById(me.teamId) : null;
+      const teamLabel = (Config.teamLabel && me.teamId) ? Config.teamLabel(me.teamId) : (team ? team.label : (me.teamId||'—'));
+      const shiftStart = team ? (team.teamStart||'—') : '—';
+      const shiftEnd = team ? (team.teamEnd||'—') : '—';
+
+      // Duty window (uses Manila parts; respects override when enabled)
+      const duty = UI.getDutyWindow ? UI.getDutyWindow(nowParts) : null;
+      const dutyCur = duty && duty.current ? duty.current : null;
+      const dutyNext = duty && duty.next ? duty.next : null;
+      const dutyCountdown = ()=>{
+        try{ return UI.formatDuration ? UI.formatDuration(Math.max(0, Math.floor((duty && duty.secLeft) ? duty.secLeft : 0))) : String((duty && duty.secLeft) || 0); }
+        catch(_){ return ''; }
+      };
+
+      // My schedule today
+      let activeBlock = null;
+      let nextBlock = null;
+
+      // In-browser JS; implement block parsing carefully
+      try{
+        const iso = nowParts.isoDate;
+        const dayIdx = (UI.weekdayFromISO ? UI.weekdayFromISO(iso) : nowDate.getDay());
+        const blocks = (Store.getUserDayBlocks && me.id!=null) ? (Store.getUserDayBlocks(me.id, dayIdx)||[]) : [];
+        const nowMin = UI.minutesOfDay ? UI.minutesOfDay(nowParts) : (nowDate.getHours()*60 + nowDate.getMinutes());
+
+        const toMin = (hm)=>{
+          try{ return UI.parseHM ? UI.parseHM(hm) : (Number(String(hm||'0:0').split(':')[0])*60 + Number(String(hm||'0:0').split(':')[1])); }
+          catch(_){ return 0; }
+        };
+        const inBlock = (b)=>{
+          const s = toMin(b.start);
+          const e = toMin(b.end);
+          if(e > s) return nowMin >= s && nowMin < e;
+          // wrap midnight
+          return (nowMin >= s) || (nowMin < e);
+        };
+        const sorted = (blocks||[]).slice().sort((a,b)=>toMin(a.start)-toMin(b.start));
+        activeBlock = sorted.find(inBlock) || null;
+
+        // next: smallest start after now (in clock terms), else first
+        const after = sorted.filter(b=>toMin(b.start) > nowMin);
+        nextBlock = (after.length ? after[0] : (sorted[0] || null));
+        if(activeBlock && nextBlock && activeBlock === nextBlock){
+          // If currently inside first block, pick the next distinct one.
+          const idx = sorted.indexOf(activeBlock);
+          nextBlock = (idx>=0 && sorted[idx+1]) ? sorted[idx+1] : (sorted[0] || null);
+        }
+      }catch(_){ }
+
+      // Cases summary
+      const allCases = (Store.getCases ? (Store.getCases()||[]) : []);
+      const myCases = allCases.filter(c=>c && c.assigneeId === me.id);
+      const isClosed = (s)=>/closed|resolved|done|complete/i.test(String(s||''));
+      const myOpen = myCases.filter(c=>!isClosed(c.status));
+      const totalOpen = allCases.filter(c=>!isClosed(c.status));
+
+      const fmtCaseTs = (ms)=>{
+        try{
+          const d = new Date(Number(ms||0));
+          if(!Number.isFinite(d.getTime())) return '';
+          return d.toLocaleString('en-CA', { timeZone: tz, month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false });
+        }catch(_){ return ''; }
+      };
+
+      const recentMine = myCases
+        .slice()
+        .sort((a,b)=>Number(b.createdAt||b.ts||0)-Number(a.createdAt||a.ts||0))
+        .slice(0,5);
+
+      // Mailbox override indicator (informational)
+      let overrideHtml = '';
+      try{
+        const info = UI.mailboxTimeInfo ? UI.mailboxTimeInfo() : null;
+        if(info && info.overrideEnabled){
+          const scope = String(info.scope||'sa_only');
+          overrideHtml = `<div class="small" style="margin-top:6px">${UI.overrideLabel({ enabled:true, scope: scope==='global'?'global':'sa_only' })} <span class="muted">Mailbox time override is active (${UI.esc(scope)}).</span></div>`;
+        }
+      }catch(_){ }
+
+      root.innerHTML = `
+        <div class="row" style="justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap">
+          <div>
+            <h2 style="margin:0">Dashboard</h2>
+            <div class="small muted">Welcome, <b>${UI.esc(me.fullName||me.name||me.username||'User')}</b> • ${UI.esc(role||'')}${teamLabel ? ` • ${UI.esc(teamLabel)}` : ''}</div>
+          </div>
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <a class="btn" href="/mailbox">Open Mailbox</a>
+            <a class="btn" href="/my_case">My Cases</a>
+            <a class="btn" href="/my_schedule">My Schedule</a>
+          </div>
+        </div>
+
+        <div class="row" style="gap:12px;flex-wrap:wrap;margin-top:10px">
+          <div class="card pad" style="flex:1;min-width:260px">
+            <div class="small muted">Manila time</div>
+            <div id="dashNow" style="font-size:22px;font-weight:900;letter-spacing:0.3px">${UI.esc(fmtNow())}</div>
+            ${overrideHtml}
+          </div>
+
+          <div class="card pad" style="flex:1;min-width:260px">
+            <div class="small muted">Shift</div>
+            <div style="font-weight:900;font-size:18px">${UI.esc(teamLabel||'—')}</div>
+            <div class="small muted">${UI.esc(shiftStart)} → ${UI.esc(shiftEnd)}</div>
+
+            <div style="margin-top:8px" class="small muted">Duty window</div>
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap">
+              <div>
+                <div style="font-weight:900">${UI.esc(dutyCur ? (dutyCur.label||dutyCur.id||'—') : '—')}</div>
+                <div class="small muted">Next: ${UI.esc(dutyNext ? (dutyNext.label||dutyNext.id||'—') : '—')}</div>
+              </div>
+              <div style="text-align:right">
+                <div class="small muted">Ends in</div>
+                <div id="dashDutyLeft" style="font-weight:900">${UI.esc(dutyCountdown())}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card pad" style="flex:1;min-width:260px">
+            <div class="small muted">My schedule (today)</div>
+            <div style="font-weight:900;font-size:18px">
+              ${activeBlock ? `${UI.esc(activeBlock.label||'On shift')} • ${UI.esc(activeBlock.start||'')}–${UI.esc(activeBlock.end||'')}` : '<span class="muted">No active block</span>'}
+            </div>
+            <div class="small muted" style="margin-top:2px">
+              ${nextBlock ? `Next: ${UI.esc(nextBlock.label||'Block')} • ${UI.esc(nextBlock.start||'')}–${UI.esc(nextBlock.end||'')}` : 'Next: —'}
+            </div>
+          </div>
+        </div>
+
+        <div class="row" style="gap:12px;flex-wrap:wrap;margin-top:12px">
+          <div class="card pad" style="flex:2;min-width:320px">
+            <div class="row" style="justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+              <div>
+                <div style="font-weight:900">Case summary</div>
+                <div class="small muted">Local synced cases on this device</div>
+              </div>
+              <div class="small muted">
+                ${isSA ? `All open: <b>${totalOpen.length}</b> • Total: <b>${allCases.length}</b>` : `My open: <b>${myOpen.length}</b> • My total: <b>${myCases.length}</b>`}
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:10px">
+              <table class="table">
+                <thead><tr><th>Case</th><th>Status</th><th>Created</th></tr></thead>
+                <tbody>
+                  ${recentMine.map(c=>`
+                    <tr>
+                      <td>${UI.esc(c.title||c.id||'')}</td>
+                      <td>${UI.esc(c.status||'')}</td>
+                      <td class="small muted">${UI.esc(fmtCaseTs(c.createdAt||c.ts||0))}</td>
+                    </tr>
+                  `).join('') || `<tr><td colspan="3" class="muted">No cases assigned to you on this device.</td></tr>`}
+                </tbody>
+              </table>
+            </div>
+
+            ${isTL ? `<div class="small muted" style="margin-top:8px">Team Lead view: manage routing and assignments via Mailbox and Members.</div>` : ''}
+            ${isSA ? `<div class="small muted" style="margin-top:8px">Super Admin view: use User Management, Team Config, and Master Schedule for global changes.</div>` : ''}
+          </div>
+
+          <div class="card pad" style="flex:1;min-width:260px">
+            <div style="font-weight:900">Quick checks</div>
+            <div class="small muted" style="margin-top:6px">Navigation should not redirect Dashboard to Mailbox.</div>
+            <div class="small" style="margin-top:10px;line-height:1.7">
+              <div>Dashboard route: <code>/dashboard</code></div>
+              <div>Mailbox route: <code>/mailbox</code></div>
+            </div>
+            <div class="small muted" style="margin-top:10px">If you see unexpected redirects, clear storage and reload.</div>
+          </div>
+        </div>
+      `;
+
+      // Live updates: clock + duty countdown (lightweight)
+      try{
+        if(root._dashTimer) clearInterval(root._dashTimer);
+      }catch(_){ }
+
+      root._dashTimer = setInterval(()=>{
+        try{
+          const elNow = document.getElementById('dashNow');
+          if(elNow) elNow.textContent = fmtNow();
+        }catch(_){ }
+        try{
+          const parts = (UI.mailboxNowParts ? UI.mailboxNowParts() : UI.manilaNow());
+          const duty2 = UI.getDutyWindow ? UI.getDutyWindow(parts) : null;
+          const left = duty2 && duty2.secLeft ? duty2.secLeft : 0;
+          const elLeft = document.getElementById('dashDutyLeft');
+          if(elLeft){
+            elLeft.textContent = UI.formatDuration ? UI.formatDuration(Math.max(0, Math.floor(left))) : String(left);
+          }
+        }catch(_){ }
+      }, 1000);
+
+      // Integrate with route cleanup
+      try{
+        if(root && typeof root === 'object'){
+          const prev = root._cleanup;
+          root._cleanup = ()=>{
+            try{ if(prev) prev(); }catch(_){ }
+            try{ if(root._dashTimer) clearInterval(root._dashTimer); }catch(_){ }
+            try{ root._dashTimer = null; }catch(_){ }
+          };
+        }
+      }catch(_){ }
+
+    }catch(err){
+      try{ console.error(err); }catch(_){ }
+      try{
+        root.innerHTML = `<h2 style="margin:0 0 10px">Dashboard</h2><div class="card pad">Failed to load dashboard. Please reload.</div>`;
+      }catch(_){ }
+    }
+  };
   window.UI = UI;
 
     // Realtime Sync Status badge

@@ -1322,7 +1322,7 @@ function updateClocksPreviewTimes(){
       const hasKids = Array.isArray(n.children) && n.children.length;
 
       if(!hasKids){
-        return `<a class="nav-item" href="#${n.id}" data-page="${n.id}" data-label="${UI.esc(n.label)}" ${pad} title="${UI.esc(n.label)}">
+        return `<a class="nav-item" href="/${n.id}" data-page="${n.id}" data-label="${UI.esc(n.label)}" ${pad} title="${UI.esc(n.label)}">
           <span class="nav-ico" data-ico="${iconFor(n.id)}" aria-hidden="true"></span>
           <span class="nav-label">${UI.esc(n.label)}</span>
         </a>`;
@@ -2739,15 +2739,73 @@ function updateClocksPreviewTimes(){
     }, 3000);
   }
 
-  function route(){
+  
+  // ----------------------
+  // Path + hash routing helpers
+  // - Supports clean URLs like /dashboard while preserving legacy hash routing.
+  // - Hash takes precedence when present (supports file:// mode and deep-links).
+  // ----------------------
+  function _routePageIdFromHref(href){
+    try{
+      const h = String(href||'').trim();
+      if(!h) return '';
+      if(h[0] === '#') return h.slice(1).split('?')[0].split('#')[0].split('/')[0];
+      if(h[0] === '/') return h.slice(1).split('?')[0].split('#')[0].split('/')[0];
+      return '';
+    }catch(_){ return ''; }
+  }
+
+  function resolveRoutePageId(){
+    try{
+      const pages = window.Pages || {};
+      const h = String(window.location.hash||'').replace(/^#/, '').trim();
+      if(h && pages[h]) return h;
+
+      const proto = String(window.location.protocol||'');
+      if(proto !== 'file:'){
+        const p = String(window.location.pathname||'/');
+        const seg = (p.split('/').filter(Boolean)[0] || '').trim();
+        if(seg && !seg.includes('.') && pages[seg]) return seg;
+      }
+
+      if(pages['dashboard']) return 'dashboard';
+      const keys = Object.keys(pages);
+      return keys.length ? keys[0] : 'dashboard';
+    }catch(_){
+      return 'dashboard';
+    }
+  }
+
+  function navigateToPageId(pageId, opts){
+    const pages = window.Pages || {};
+    let id = String(pageId||'').trim();
+    if(!id || !pages[id]) id = pages['dashboard'] ? 'dashboard' : (Object.keys(pages)[0] || 'dashboard');
+
+    const proto = String(window.location.protocol||'');
+    if(proto === 'file:'){
+      window.location.hash = '#' + id;
+      return;
+    }
+
+    try{
+      const url = '/' + id;
+      if(opts && opts.replace) history.replaceState({},'', url);
+      else history.pushState({},'', url);
+      // pushState/replaceState does not trigger navigation handlers
+      try{ route(); }catch(_){ }
+    }catch(_){
+      // Fallback to hash routing
+      window.location.hash = '#' + id;
+    }
+  }
+function route(){
     try{
       const user = Auth.getUser();
       if(!user) return;
       renderUserCard(user);
       renderSideLogs(user);
 
-      const hash = (window.location.hash || '#dashboard').replace('#','');
-      const pageId = (window.Pages && window.Pages[hash]) ? hash : 'dashboard';
+      const pageId = resolveRoutePageId();
       try{
         const m = (Config && Config.menu) ? Config.menu.find(x=>x.id===pageId) : null;
         window._currentPageLabel = m ? (m.label||pageId) : pageId;
@@ -4016,7 +4074,30 @@ async function boot(){
 
     // Ensure routing runs even if optional widgets fail.
     window.addEventListener('hashchange', route);
-    if(!window.location.hash) window.location.hash = '#dashboard';
+    window.addEventListener('popstate', route);
+
+    // Initial route normalization:
+    // - file:// mode: enforce hash routing
+    // - web mode: allow clean URL routes like /dashboard (fallback to dashboard if unknown)
+    try{
+      const proto = String(window.location.protocol||'');
+      const pages = window.Pages || {};
+      const hasHash = !!(window.location.hash && window.location.hash.length > 1);
+      const seg = String(window.location.pathname||'/').split('/').filter(Boolean)[0] || '';
+      const hasPathPage = !!(proto !== 'file:' && seg && !seg.includes('.') && pages[seg]);
+
+      if(proto === 'file:'){
+        if(!hasHash) window.location.hash = '#dashboard';
+      }else{
+        if(!hasHash && !hasPathPage){
+          const p = String(window.location.pathname||'/');
+          if(p === '/' || p.endsWith('.html')){
+            try{ history.replaceState({},'', '/dashboard'); }catch(_){ }
+          }
+        }
+      }
+    }catch(_){ }
+
     try{ route(); }catch(e){ showFatalError(e); return; }
 
     // Start reminders engine (floating notifications + beep)
@@ -4089,21 +4170,35 @@ async function boot(){
     });
 
     // Robust nav click delegation (prevents "menu not clickable" issues caused by
-    // unexpected overlays / replaced DOM nodes). Hash routing remains the source of truth.
+    // unexpected overlays / replaced DOM nodes).
+    // Supports clean URLs (/dashboard) while preserving hash routing (file:// and legacy links).
     try{
       if(!window.__mumsNavDelegated){
         window.__mumsNavDelegated = true;
         document.addEventListener('click', (e)=>{
-          const a = e.target && e.target.closest ? e.target.closest('a.nav-item[href^="#"]') : null;
+          const a = e.target && e.target.closest ? e.target.closest('a.nav-item') : null;
           if(!a) return;
-          const href = a.getAttribute('href');
-          if(!href || href.length < 2) return;
+          const href = String(a.getAttribute('href')||'');
+          if(!(href.startsWith('/') || href.startsWith('#'))) return;
+
+          // Respect modified clicks (open in new tab, etc.)
+          if(e.defaultPrevented) return;
+          if(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          if(typeof e.button === 'number' && e.button !== 0) return;
+
+          const pageId = _routePageIdFromHref(href);
+          if(!pageId) return;
+
           e.preventDefault();
-          window.location.hash = href;
+          if(href.startsWith('#') || String(window.location.protocol||'') === 'file:'){
+            window.location.hash = '#' + pageId;
+          }else{
+            navigateToPageId(pageId);
+          }
         });
       }
     }catch(_){ }
-    window.addEventListener('mums:store', (e)=>{
+window.addEventListener('mums:store', (e)=>{
       const key = e && e.detail && e.detail.key;
       if(key === 'mums_quicklinks' || key === 'mums_worldclocks'){
         try{ renderQuickLinksBar(); }catch(_){ }
@@ -4161,8 +4256,7 @@ async function boot(){
           localStorage.setItem('mums_guide_enabled', toggle.checked ? '1' : '0');
           try{ route(); }catch(e){
             // fallback: rerender current guide
-            const hash = (window.location.hash||'#dashboard').replace('#','');
-            const pageId = (window.Pages && window.Pages[hash]) ? hash : 'dashboard';
+            const pageId = resolveRoutePageId();
             renderSummaryGuide(pageId, window._currentPageLabel);
           }
         };
@@ -4173,8 +4267,7 @@ async function boot(){
         b.onclick = ()=>{
           const k = b.dataset.gtab || 'guide';
           localStorage.setItem('mums_guide_tab', k);
-          const hash = (window.location.hash||'#dashboard').replace('#','');
-          const pageId = (window.Pages && window.Pages[hash]) ? hash : 'dashboard';
+          const pageId = resolveRoutePageId();
           renderSummaryGuide(pageId, window._currentPageLabel);
         };
       });
@@ -4186,8 +4279,7 @@ async function boot(){
         search.oninput = ()=>{
           if(t) clearTimeout(t);
           t=setTimeout(()=>{
-            const hash = (window.location.hash||'#dashboard').replace('#','');
-            const pageId = (window.Pages && window.Pages[hash]) ? hash : 'dashboard';
+            const pageId = resolveRoutePageId();
             renderSummaryGuide(pageId, window._currentPageLabel);
           }, 120);
         };
@@ -4199,8 +4291,7 @@ async function boot(){
       function submitAsk(){
         const text = (ask && ask.value) ? String(ask.value).trim() : '';
         if(!text) return;
-        const hash = (window.location.hash||'#dashboard').replace('#','');
-        const pageId = (window.Pages && window.Pages[hash]) ? hash : 'dashboard';
+        const pageId = resolveRoutePageId();
 
         // Offline AI-like answer (no internet): search across all guides,
         // but strongly prioritize the current page.
@@ -4232,8 +4323,7 @@ async function boot(){
       const fullBtn = UI.el('#guideOpenFullManual');
       if(fullBtn){
         fullBtn.onclick = ()=>{
-          const hash = (window.location.hash||'#dashboard').replace('#','');
-          const pageId = (window.Pages && window.Pages[hash]) ? hash : 'dashboard';
+          const pageId = resolveRoutePageId();
           try{
             openFullManualForPage(pageId, window._currentPageLabel);
           }catch(err){
@@ -4251,8 +4341,7 @@ async function boot(){
           const btn = e.target && e.target.closest ? e.target.closest('#guideOpenFullManual') : null;
           if(!btn) return;
           try{
-            const hash = (window.location.hash||'#dashboard').replace('#','');
-            const pageId = (window.Pages && window.Pages[hash]) ? hash : 'dashboard';
+            const pageId = resolveRoutePageId();
             try{
               openFullManualForPage(pageId, window._currentPageLabel);
             }catch(err){

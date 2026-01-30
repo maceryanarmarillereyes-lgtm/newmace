@@ -120,3 +120,7 @@ This is required so authenticated users can read their own profile row under RLS
 
 **Conditional exceptions:**
 - Only change if required by a documented security policy change (and update the backend to match).
+
+
+## Dashboard Routing (Permanent)
+- Dashboard menu must always route to /dashboard and load the correct view for all roles. No redirect to /mailbox is allowed.

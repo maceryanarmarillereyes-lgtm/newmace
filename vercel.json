@@ -4,6 +4,10 @@
     {
       "source": "/api/:path*",
       "destination": "/api/handler?path=:path*"
+    },
+    {
+      "source": "/:path((?!api(?:$|/))(?!.*\\..*).*)",
+      "destination": "/index.html"
     }
   ],
   "functions": {
