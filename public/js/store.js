@@ -1968,39 +1968,142 @@
     }catch(e){ }
   };
 
-  // Cloud-global mailbox override sync (cross-device). Polls the Vercel API (which reads Supabase).
-  // ===== CODE UNTOUCHABLES =====
-  // - MUST poll /api/mailbox_override/get and accept { ok:true, override:{...} }.
-  // - MUST include Authorization bearer token so backend can enforce scope permissions.
-  // - MUST write returned override to KEYS.mailbox_time_override_cloud and dispatch mums:store.
-  // Exception: Only change if required by documented API contract changes.
-  // ==============================
-  Store.startMailboxOverrideSync = function(){
-    try{
-      if(window.__mumsMailboxOverrideTimer) return;
-      if(!window.CloudAuth || !CloudAuth.isEnabled || !CloudAuth.isEnabled()) return;
-      const poll = async () => {
-        try{
-          const token = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
-          if(!token) return;
-          const res = await fetch('/api/mailbox_override/get?scope=global', {
-            cache:'no-store',
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const json = await res.json();
-          if(json && json.ok && json.override){
-            write(KEYS.mailbox_time_override_cloud, json.override, { notify:false });
-            // Tell UI to re-render countdown immediately
-            try{ window.dispatchEvent(new CustomEvent('mums:store', { detail:{ key:'mailbox_override_cloud', source:'cloud' } })); }catch(_){ }
-          }
-        }catch(_){ }
-      };
-      poll();
-      window.__mumsMailboxOverrideTimer = setInterval(poll, 5000);
-    }catch(_){ }
-  };
+// Cloud-global mailbox override sync (cross-device). Polls the Vercel API (which reads Supabase).
+// ===== CODE UNTOUCHABLES =====
+// - MUST poll /api/mailbox_override/get?scope=global and accept { ok:true, override:{...} }.
+// - MUST include Authorization bearer token so backend can enforce scope permissions.
+// - MUST write returned override to KEYS.mailbox_time_override_cloud AND dispatch mums:store with key 'mailbox_override_cloud'.
+// - MUST persist override in localStorage (cloud key) so other tabs reflect changes.
+// - MUST gracefully handle malformed payloads by falling back to system Manila time (client-side).
+// Exception: Only change if required by documented API contract changes.
+// ==============================
+Store.startMailboxOverrideSync = function(opts){
+  try{
+    // Singleton state
+    if(!window.__mumsMailboxOverrideSync){
+      window.__mumsMailboxOverrideSync = { timer:null, inflight:false, lastOkAt:0, lastErrAt:0, poll:null };
+    }
+    const S = window.__mumsMailboxOverrideSync;
 
-  
+    // Cross-tab sync: when override state changes in another tab, refresh UI and re-poll immediately.
+    // ===== CODE UNTOUCHABLES =====
+    // Storage events are the only reliable cross-tab signal. Do NOT remove this listener.
+    // Exception: Only change if required by documented platform behavior changes.
+    // ==============================
+    try{
+      if(!window.__mumsMailboxOverrideStorageListener){
+        window.__mumsMailboxOverrideStorageListener = true;
+        window.addEventListener('storage', (e)=>{
+          try{
+            if(!e || e.storageArea !== localStorage) return;
+            const k = String(e.key||'');
+            if(k === KEYS.mailbox_time_override_cloud || k === KEYS.mailbox_time_override){
+              try{ window.dispatchEvent(new CustomEvent('mums:store', { detail:{ key:'mailbox_override_cloud', source:'storage' } })); }catch(_){ }
+              try{ if(window.Store && Store.startMailboxOverrideSync) Store.startMailboxOverrideSync({ force:true }); }catch(_){ }
+            }
+          }catch(_){ }
+        });
+      }
+    }catch(_){ }
+
+    if(!window.CloudAuth || !CloudAuth.isEnabled || !CloudAuth.isEnabled()) return;
+
+    const getToken = ()=>{
+      try{
+        const t = (CloudAuth.accessToken && CloudAuth.accessToken()) ? String(CloudAuth.accessToken()||'').trim() : '';
+        if(t) return t;
+      }catch(_){ }
+      try{
+        const sess = CloudAuth.loadSession ? CloudAuth.loadSession() : null;
+        const t2 = sess && (sess.access_token || (sess.session && sess.session.access_token)) ? String(sess.access_token || (sess.session && sess.session.access_token) || '').trim() : '';
+        return t2 || '';
+      }catch(_){ return ''; }
+    };
+
+    const normalize = (o)=>{
+      const def = { enabled:false, ms:0, freeze:true, setAt:0, scope:'global' };
+      if(!o || typeof o !== 'object') return def;
+      const out = Object.assign({}, def, o);
+      out.scope = (String(out.scope||'global').toLowerCase() === 'superadmin') ? 'superadmin' : 'global';
+      out.enabled = !!out.enabled;
+      out.freeze = (out.freeze !== false);
+      out.ms = Number(out.ms);
+      out.setAt = Number(out.setAt)||0;
+      if(!Number.isFinite(out.ms) || out.ms <= 0){
+        out.enabled = false;
+        out.ms = 0;
+        out.setAt = 0;
+      }
+      // Running mode needs a sane anchor.
+      if(out.enabled && out.freeze === false){
+        if(!Number.isFinite(out.setAt) || out.setAt <= 0) out.setAt = Date.now();
+      }else{
+        out.setAt = 0;
+      }
+      return out;
+    };
+
+    const poll = async (reason)=>{
+      if(S.inflight) return;
+      S.inflight = true;
+      try{
+        const token = getToken();
+        if(!token) return;
+
+        const res = await fetch('/api/mailbox_override/get?scope=global', {
+          method:'GET',
+          cache:'no-store',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        // Parse safely (may not be JSON in edge/WAF failures)
+        const raw = await res.text();
+        let json = null;
+        try{ json = raw ? JSON.parse(raw) : null; }catch(_){ json = null; }
+
+        if(res.ok && json && json.ok && json.override){
+          const norm = normalize(json.override);
+
+          // Persist across tabs
+          write(KEYS.mailbox_time_override_cloud, norm);
+
+          // Dispatch a stable key for UI listeners (avoid tying UI to storage key names)
+          try{ window.dispatchEvent(new CustomEvent('mums:store', { detail:{ key:'mailbox_override_cloud', source:'cloud', reason:String(reason||'') } })); }catch(_){ }
+
+          S.lastOkAt = Date.now();
+        } else {
+          // On auth failures, do not spam; mark error timestamp.
+          S.lastErrAt = Date.now();
+          // If server indicates override disabled explicitly, still persist to clear stale UI.
+          if(json && json.ok && json.override){
+            const norm = normalize(json.override);
+            write(KEYS.mailbox_time_override_cloud, norm);
+            try{ window.dispatchEvent(new CustomEvent('mums:store', { detail:{ key:'mailbox_override_cloud', source:'cloud', reason:'clear' } })); }catch(_){ }
+          }
+        }
+      }catch(_){
+        S.lastErrAt = Date.now();
+      }finally{
+        S.inflight = false;
+      }
+    };
+
+    S.poll = poll;
+
+    // Start timer once
+    if(!S.timer){
+      poll('start');
+      S.timer = setInterval(()=>{ poll('interval'); }, 5000);
+    }
+
+    // Force an immediate poll when requested
+    if(opts && opts.force){
+      poll('force');
+    }
+  }catch(_){ }
+};
+
+
   // Data tools (offline)
   Store.exportAllData = function(){
     const out = { version: 1, exportedAt: new Date().toISOString(), items: {} };

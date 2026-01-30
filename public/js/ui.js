@@ -505,13 +505,32 @@
         const superAdmin = window.Config && Config.ROLES ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
         const isSA = !!(u && u.role === superAdmin);
         const o = (window.Store && Store.getMailboxTimeOverride) ? Store.getMailboxTimeOverride() : null;
-        if(!o || !o.enabled || !o.ms) return UI.manilaNow();
+
+        // Strong validation: if override is missing/malformed, fall back to system Manila time.
+        // ===== CODE UNTOUCHABLES =====
+        // Do NOT allow invalid override timestamps (NaN/0/ancient/future) to affect mailbox clock.
+        // Exception: Only change if required by documented override semantics.
+        // ==============================
+        if(!o || !o.enabled) return UI.manilaNow();
         const scope = (String(o.scope||'sa_only') === 'global') ? 'global' : 'sa_only';
         if(scope === 'sa_only' && !isSA) return UI.manilaNow();
-        const base = Number(o.ms)||0;
+
+        const base = Number(o.ms);
+        const MIN_VALID_MS = Date.UTC(2020,0,1);
+        const MAX_VALID_MS = Date.now() + (366 * 24 * 60 * 60 * 1000);
+        if(!Number.isFinite(base) || base <= 0) return UI.manilaNow();
+        if(base < MIN_VALID_MS || base > MAX_VALID_MS) return UI.manilaNow();
+
         const freeze = (o.freeze !== false);
-        const setAt = Number(o.setAt)||0;
+        let setAt = Number(o.setAt)||0;
+        if(!freeze){
+          if(!Number.isFinite(setAt) || setAt <= 0 || setAt > (Date.now() + 60*1000)) setAt = Date.now();
+        }else{
+          setAt = 0;
+        }
+
         const ms = freeze ? base : (base + Math.max(0, Date.now() - setAt));
+        if(!Number.isFinite(ms) || ms <= 0) return UI.manilaNow();
         return UI.manilaParts(new Date(ms));
       }catch(_){
         return UI.manilaNow();
@@ -537,14 +556,30 @@
         const superAdmin = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
         info.isSuperAdmin = !!(u && u.role === superAdmin);
         const o = (window.Store && Store.getMailboxTimeOverride) ? Store.getMailboxTimeOverride() : null;
-        if(!o || !o.enabled || !o.ms) return info;
+
+        // Strong validation: if override is missing/malformed, treat as no override.
+        // ===== CODE UNTOUCHABLES =====
+        // Keep mailbox override reads safe: invalid timestamps must NOT crash the mailbox page.
+        // Exception: Only change if required by documented override semantics.
+        // ==============================
+        if(!o || !o.enabled) return info;
+        const base = Number(o.ms);
+        const MIN_VALID_MS = Date.UTC(2020,0,1);
+        const MAX_VALID_MS = Date.now() + (366 * 24 * 60 * 60 * 1000);
+        if(!Number.isFinite(base) || base <= 0) return info;
+        if(base < MIN_VALID_MS || base > MAX_VALID_MS) return info;
         info.scope = (String(o.scope||'sa_only') === 'global') ? 'global' : 'sa_only';
         info.isApplicable = (info.scope === 'global') ? true : info.isSuperAdmin;
         if(!info.isApplicable) return info;
         info.overrideEnabled = true;
         info.freeze = (o.freeze !== false);
-        info.baseMs = Number(o.ms)||0;
-        const setAt = Number(o.setAt)||0;
+        info.baseMs = base;
+        let setAt = Number(o.setAt)||0;
+        if(info.freeze === false){
+          if(!Number.isFinite(setAt) || setAt <= 0 || setAt > (Date.now() + 60*1000)) setAt = Date.now();
+        }else{
+          setAt = 0;
+        }
         info.effectiveMs = info.freeze ? info.baseMs : (info.baseMs + Math.max(0, Date.now()-setAt));
         info.effectiveParts = UI.manilaParts(new Date(info.effectiveMs));
       }catch(_){ }

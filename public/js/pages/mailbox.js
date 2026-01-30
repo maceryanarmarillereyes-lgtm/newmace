@@ -806,10 +806,22 @@ let _lastActiveBucketId = '';
 function scheduleRender(reason){
   if(_renderPending) return;
   _renderPending = true;
-  setTimeout(()=>{
+
+  // Use requestAnimationFrame to avoid synchronous render recursion and to coalesce rapid updates.
+  // ===== CODE UNTOUCHABLES =====
+  // Do NOT replace this with setTimeout(0) without also preserving the _renderPending guard.
+  // Exception: Only change if required by documented UI scheduling changes.
+  // ==============================
+  const run = ()=>{
     _renderPending = false;
     try{ render(); }catch(e){ console.error('Mailbox scheduled render failed', reason, e); }
-  }, 0);
+  };
+
+  try{
+    requestAnimationFrame(run);
+  }catch(_){
+    setTimeout(run, 0);
+  }
 }
 
 // Re-render when global override sync updates arrive.
@@ -819,8 +831,28 @@ if(!window.__mumsMailboxOverrideListener){
   window.addEventListener('mums:store', (e)=>{
     try{
       const k = e && e.detail ? String(e.detail.key||'') : '';
-      if(k === 'mailbox_override_cloud' || k === 'mailbox_time_override'){
+      if(
+        k === 'mailbox_override_cloud' ||
+        k === 'mailbox_time_override' ||
+        k === 'mums_mailbox_time_override_cloud' ||
+        k === 'mums_mailbox_time_override'
+      ){
         scheduleRender('override-sync');
+      }
+    }catch(_){ }
+  });
+}
+
+// Cross-tab sync: if another tab changes override storage, refresh immediately.
+if(!window.__mumsMailboxOverrideStorageListener){
+  window.__mumsMailboxOverrideStorageListener = true;
+  window.addEventListener('storage', (e)=>{
+    try{
+      if(!e || e.storageArea !== localStorage) return;
+      const k = String(e.key||'');
+      if(k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override'){
+        try{ if(window.Store && Store.startMailboxOverrideSync) Store.startMailboxOverrideSync({ force:true }); }catch(_){ }
+        scheduleRender('override-storage');
       }
     }catch(_){ }
   });

@@ -75,6 +75,9 @@ Files:
 - **Audit rule:** Every successful override change must attempt to write an audit record to `public.mums_sync_log` (who changed it, scope, timestamp, action, effective_time).
 - **API contract:** `/api/mailbox_override/get` returns `{ ok:true, override:{...} }` and `/api/mailbox_override/set` returns `{ ok:true, override_row, audit }`.
 
+- **Cross-tab rule:** Global override state must be persisted to `localStorage` (cloud key) and other tabs must react via `storage` events (refresh sync + re-render).
+- **Render scheduling rule:** Mailbox page must coalesce renders with `requestAnimationFrame` and guard against recursive tick/render loops.
+
 **Conditional Exceptions (mailbox override):**
 - Only change if required by **documented Supabase platform/API changes**, **documented security requirements**, or an **approved UX spec change** that explicitly supersedes these rules.
 
