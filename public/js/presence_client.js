@@ -194,6 +194,19 @@
     var hbInFlight = false;
     var listInFlight = false;
 
+    // If the currently logged-in user is deleted from the directory/auth system,
+    // the backend will start returning { error: "account_removed" } for protected calls.
+    // Enforce immediate logout to eliminate "ghost sessions".
+    var __forcedLogout = false;
+    async function forceLogoutAccountRemoved(msg){
+      if(__forcedLogout) return;
+      __forcedLogout = true;
+      try{ localStorage.setItem('mums_login_flash', msg || 'This account has been removed from the system.'); }catch(_){}
+      try{ window.CloudAuth && CloudAuth.signOut && (await CloudAuth.signOut()); }catch(_){}
+      try{ window.Store && Store.setSession && Store.setSession(null); }catch(_){}
+      try{ window.location.href = './login.html'; }catch(_){}
+    }
+
     // Heartbeat: update server presence.
     async function heartbeat(){
       if (hbInFlight) return;
@@ -211,6 +224,18 @@
           teamId: (me && me.teamId) ? me.teamId : '',
           role: (me && me.role) ? me.role : ''
         });
+
+        // Deleted users must be forcibly logged out from active sessions.
+        if (hb && hb.status === 403) {
+          try {
+            var data403 = await hb.json().catch(function(){ return {}; });
+            var err403 = String((data403 && (data403.error || data403.code)) || '').trim();
+            if (err403 === 'account_removed') {
+              await forceLogoutAccountRemoved((data403 && data403.message) || 'This account has been removed from the system.');
+              return;
+            }
+          } catch(_) {}
+        }
 
         // If we still get a 401 after refresh attempt, do not force sync UI offline.
         if (hb && hb.status === 401) {
@@ -237,6 +262,18 @@
 
         var r = await fetchWithAuthRetry('/api/presence/list', { cache: 'no-store' });
         if (!r.ok) {
+          // Deleted users must be forcibly logged out from active sessions.
+          if (r.status === 403) {
+            try {
+              var data403 = await r.json().catch(function(){ return {}; });
+              var err403 = String((data403 && (data403.error || data403.code)) || '').trim();
+              if (err403 === 'account_removed') {
+                await forceLogoutAccountRemoved((data403 && data403.message) || 'This account has been removed from the system.');
+                return;
+              }
+            } catch(_) {}
+          }
+
           // Surface 401s to the debug overlay only. Presence must not drive the sync banner.
           if (r.status === 401) {
             var now = Date.now();

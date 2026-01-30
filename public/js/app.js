@@ -1502,7 +1502,18 @@ function updateClocksPreviewTimes(){
 
     // Sidebar profile: compact by default to maximize vertical space for the menu list.
     // (Users can still edit profile via Settings.)
-    const shiftLabel = (team && team.label) ? String(team.label).toUpperCase() : '';
+    let shiftLabel = (team && team.label) ? String(team.label).toUpperCase() : '';
+    // Developer Access label parity (matches Online Users Bar + backend normalization):
+    // SUPER roles default to Developer Access when teamOverride is false and teamId is empty.
+    try{
+      const r = String(user.role||'').toUpperCase();
+      const isSuper = (window.Config && Config.ROLES) ? (r === String(Config.ROLES.SUPER_ADMIN) || r === String(Config.ROLES.SUPER_USER)) : (r === 'SUPER_ADMIN' || r === 'SUPER_USER');
+      const override = !!(user.teamOverride ?? user.team_override ?? false);
+      const tid = (user.teamId === null || user.teamId === undefined) ? '' : String(user.teamId);
+      if(isSuper && !override && !tid){
+        shiftLabel = 'DEVELOPER ACCESS';
+      }
+    }catch(_){}
     const roleLabel = String(user.role||'').replaceAll('_',' ');
     el.innerHTML = `
       <div class="sp-compact sp-compact-v2" role="group" aria-label="User profile">

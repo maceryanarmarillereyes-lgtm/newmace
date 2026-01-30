@@ -125,6 +125,15 @@
     const showErr = (msg)=>{ const e=$("err"); e.textContent=msg; e.style.display="block"; };
     const hideErr = ()=>{ const e=$("err"); e.style.display="none"; e.textContent=""; };
 
+    // One-time flash error (used when a deleted account is forcibly logged out).
+    try{
+      const flash = localStorage.getItem('mums_login_flash');
+      if(flash){
+        localStorage.removeItem('mums_login_flash');
+        showErr(String(flash));
+      }
+    }catch(_){}
+
     // Save details (username/email, optional password)
     const SAVE_KEY = 'mums_login_saved_v1';
     function _getSaved(){

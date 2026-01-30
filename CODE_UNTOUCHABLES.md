@@ -138,3 +138,8 @@ This is required so authenticated users can read their own profile row under RLS
 
 ## Mobile Layout Visibility & Overlays (Permanent)
 - Mobile layout must prioritize visibility of main content. Overlay bars (User Online + Quick Links) must be hidden by default but accessible via toggles (#toggleUserOnlineBar, #toggleQuickLinksBar). All features must remain available and future-proofed.
+
+## Role Sync + Deleted User Auto Logout (Permanent)
+- User role and shift must update across all UI panels immediately after change. No stale sidebar data allowed.
+- Deleted users must be automatically logged out from all active sessions and redirected to login with: "This account has been removed from the system."
+

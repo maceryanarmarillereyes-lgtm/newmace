@@ -38,18 +38,69 @@
 
   const Auth = {
     getUser() {
-      // If currentUser is a minimal Supabase auth user, prefer the enriched Store user record.
+      // Keep user context fresh:
+      // - Sidebar role/shift must update immediately after any role/team change.
+      // - Prefer the latest Store record, and optionally reconcile from the online roster cache.
+      const norm = (v)=> (v === null || v === undefined) ? '' : String(v);
+      const same = (a,b)=> norm(a) === norm(b);
+
+      const reconcileFromStore = (uid)=>{
+        const id = String(uid || '').trim();
+        if(!id) return null;
+        if(!(window.Store && Store.getUserById)) return null;
+        const su = Store.getUserById(id);
+        if(!su) return null;
+
+        const missing = (!currentUser) || (currentUser.role == null) || (currentUser.username == null) || (currentUser.name == null) || (currentUser.teamId == null);
+        const changed = (!currentUser)
+          || !same(currentUser.role, su.role)
+          || !same(currentUser.teamId, su.teamId)
+          || !same(currentUser.teamOverride, su.teamOverride)
+          || !same(currentUser.name, su.name)
+          || !same(currentUser.username, su.username);
+
+        if(missing || changed){
+          currentUser = Object.assign({}, (currentUser || {}), su);
+          return currentUser;
+        }
+        return currentUser || su;
+      };
+
+      const reconcileFromOnline = (uid)=>{
+        const id = String(uid || '').trim();
+        if(!id) return;
+        if(!currentUser) return;
+        try{
+          const raw = localStorage.getItem('mums_online_users') || '';
+          if(!raw) return;
+          const map = JSON.parse(raw);
+          const r = map && map[id];
+          if(!r) return;
+
+          let changed = false;
+          const role = r.role || r.role_id || r.roleId || '';
+          const team = (r.teamId !== undefined) ? r.teamId : ((r.team_id !== undefined) ? r.team_id : '');
+
+          if(role && !same(currentUser.role, role)){ currentUser.role = String(role); changed = true; }
+          if(!same(currentUser.teamId, team)){ currentUser.teamId = (team === null || team === undefined) ? '' : String(team); changed = true; }
+
+          if(changed){
+            try{ window.Store && Store.updateUser && Store.updateUser(id, { role: currentUser.role, teamId: currentUser.teamId }); }catch(_){}
+          }
+        }catch(_){}
+      };
+
       if (currentUser) {
         try {
           const cid = currentUser.id || currentUser.user_id;
-          if (cid && window.Store && Store.getUserById) {
-            const su = Store.getUserById(cid);
-            const missing = (currentUser.role == null) || (currentUser.username == null) || (currentUser.name == null) || (currentUser.teamId == null);
-            if (su && missing) { currentUser = su; return su; }
+          if (cid) {
+            reconcileFromStore(cid);
+            reconcileFromOnline(cid);
           }
         } catch (_) {}
         return currentUser;
       }
+
       try {
         const sess = window.Store && Store.getSession ? Store.getSession() : null;
         if (sess && sess.userId) {
