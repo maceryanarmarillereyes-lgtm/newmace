@@ -250,13 +250,31 @@ function _mbxMemberSortKey(u){
         colTotals[b.id] += v;
         rt += v;
       }
+
       rowTotals[m.id] = rt;
       shiftTotal += rt;
     }
     return { colTotals, rowTotals, shiftTotal };
   }
 
+	  // Route stability guard: the Mailbox page must never overwrite other views.
+	  // This prevents background sync listeners (override sync, storage, etc.) from re-rendering
+	  // the Mailbox UI when the active route is not /mailbox.
+	  function isMailboxRouteActive(){
+	    try{
+	      if(typeof window._currentPageId === 'string') return window._currentPageId === 'mailbox';
+	    }catch(_){ }
+	    try{
+	      const p = String(location.pathname||'').replace(/^\/+/, '').split('/')[0];
+	      const h = String(location.hash||'').replace(/^#\/?/, '').split('/')[0];
+	      return p === 'mailbox' || h === 'mailbox';
+	    }catch(_){
+	      return false;
+	    }
+	  }
+
   function render(){
+	  if(!isMailboxRouteActive()) return;
     const { shiftKey, table, state } = ensureShiftTables();
     const prevKey = state.previousKey || '';
     const prevTable = prevKey ? (Store.getMailboxTable ? Store.getMailboxTable(prevKey) : null) : null;
@@ -829,6 +847,7 @@ let _renderPending = false;
 let _lastActiveBucketId = '';
 
 function scheduleRender(reason){
+	  if(!isMailboxRouteActive()) return;
   if(_renderPending) return;
   _renderPending = true;
 
@@ -851,37 +870,35 @@ function scheduleRender(reason){
 
 // Re-render when global override sync updates arrive.
 // Visible to all roles when override_scope === 'global'.
-if(!window.__mumsMailboxOverrideListener){
-  window.__mumsMailboxOverrideListener = true;
-  window.addEventListener('mums:store', (e)=>{
-    try{
-      const k = e && e.detail ? String(e.detail.key||'') : '';
-      if(
-        k === 'mailbox_override_cloud' ||
-        k === 'mailbox_time_override' ||
-        k === 'mums_mailbox_time_override_cloud' ||
-        k === 'mums_mailbox_time_override'
-      ){
-        scheduleRender('override-sync');
-      }
-    }catch(_){ }
-  });
-}
+// IMPORTANT: listeners must be removed when leaving the Mailbox view so they cannot
+// overwrite other pages (e.g., Dashboard) during background sync.
+const onMailboxStoreEvent = (e)=>{
+  try{
+    const k = e && e.detail ? String(e.detail.key||'') : '';
+    if(
+      k === 'mailbox_override_cloud' ||
+      k === 'mailbox_time_override' ||
+      k === 'mums_mailbox_time_override_cloud' ||
+      k === 'mums_mailbox_time_override'
+    ){
+      scheduleRender('override-sync');
+    }
+  }catch(_){ }
+};
+try{ window.addEventListener('mums:store', onMailboxStoreEvent); }catch(_){ }
 
 // Cross-tab sync: if another tab changes override storage, refresh immediately.
-if(!window.__mumsMailboxOverrideStorageListener){
-  window.__mumsMailboxOverrideStorageListener = true;
-  window.addEventListener('storage', (e)=>{
-    try{
-      if(!e || e.storageArea !== localStorage) return;
-      const k = String(e.key||'');
-      if(k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override'){
-        try{ if(window.Store && Store.startMailboxOverrideSync) Store.startMailboxOverrideSync({ force:true }); }catch(_){ }
-        scheduleRender('override-storage');
-      }
-    }catch(_){ }
-  });
-}
+const onMailboxStorageEvent = (e)=>{
+  try{
+    if(!e || e.storageArea !== localStorage) return;
+    const k = String(e.key||'');
+    if(k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override'){
+      try{ if(window.Store && Store.startMailboxOverrideSync) Store.startMailboxOverrideSync({ force:true }); }catch(_){ }
+      scheduleRender('override-storage');
+    }
+  }catch(_){ }
+};
+try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
 
   function startTimerLoop(){
     try{ if(_timer) clearInterval(_timer); }catch(_){}
@@ -1118,6 +1135,8 @@ if(!window.__mumsMailboxOverrideStorageListener){
   render();
 
   root._cleanup = ()=>{
-    try{ if(_timer) clearInterval(_timer); }catch(_){ }
+	  try{ if(_timer) clearInterval(_timer); }catch(_){ }
+	  try{ window.removeEventListener('mums:store', onMailboxStoreEvent); }catch(_){ }
+	  try{ window.removeEventListener('storage', onMailboxStorageEvent); }catch(_){ }
   };
 });

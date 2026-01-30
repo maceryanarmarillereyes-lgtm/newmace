@@ -124,3 +124,4 @@ This is required so authenticated users can read their own profile row under RLS
 
 ## Dashboard Routing (Permanent)
 - Dashboard menu must always route to /dashboard and load the correct view for all roles. No redirect to /mailbox is allowed.
+- Dashboard route must remain stable after load. No auto-redirect to Mailbox is allowed. Sidebar must always reflect the correct active view.

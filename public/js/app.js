@@ -2806,6 +2806,9 @@ function route(){
       renderSideLogs(user);
 
       const pageId = resolveRoutePageId();
+	      // Track active page id globally so background sync/listeners in other modules
+	      // cannot overwrite the current view.
+	      try{ window._currentPageId = pageId; }catch(_){ }
       try{
         const m = (Config && Config.menu) ? Config.menu.find(x=>x.id===pageId) : null;
         window._currentPageLabel = m ? (m.label||pageId) : pageId;
