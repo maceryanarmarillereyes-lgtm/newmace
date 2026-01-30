@@ -910,6 +910,9 @@ function renderWorldClocksBar(){
   function renderOnlineUsersBar(){
     const host = document.getElementById('onlineUsersBar');
     if(!host) return;
+
+    const isMobile = !!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches) || (window.innerWidth <= 768);
+
     let list = [];
     try{ list = (window.Store && Store.getOnlineUsers) ? Store.getOnlineUsers() : []; }catch(_){ list=[]; }
     const buckets = { morning:[], mid:[], night:[], dev:[] };
@@ -918,8 +921,8 @@ function renderWorldClocksBar(){
       (buckets[b]||buckets.mid).push(u);
     });
 
-    function sec(title, arr){
-      const items = (arr||[]).slice(0, 18).map(u=>{
+    function pills(arr){
+      return (arr||[]).slice(0, 18).map(u=>{
         const mode = String(u.mode||'').toUpperCase();
         const red = mode === 'WFH';
         const photo = u.photo ? String(u.photo) : '';
@@ -930,6 +933,24 @@ function renderWorldClocksBar(){
           </div>
         `;
       }).join('');
+    }
+
+    function sec(title, arr){
+      const items = pills(arr);
+      if(isMobile){
+        return `
+          <details class="onlinebar-acc" ${arr.length ? 'open' : ''}>
+            <summary>
+              <span class="onlinebar-title">${UI.esc(title)}</span>
+              <span class="onlinebar-count">${arr.length}</span>
+            </summary>
+            <div class="onlinebar-badges">
+              <div class="onlinebar-list">${items || '<span class="small" style="opacity:.7">—</span>'}</div>
+            </div>
+          </details>
+        `;
+      }
+
       return `
         <div class="onlinebar-sec">
           <div class="onlinebar-head">
@@ -941,7 +962,17 @@ function renderWorldClocksBar(){
       `;
     }
 
+    const head = isMobile ? `
+      <div class="mob-sheet-head">
+        <div class="mob-sheet-title">User Online</div>
+        <div class="mob-sheet-actions">
+          <button class="mob-sheet-close" type="button" aria-label="Close" data-close-onlinebar="1">✕</button>
+        </div>
+      </div>
+    ` : '';
+
     host.innerHTML = `
+      ${head}
       <div class="onlinebar-inner">
         ${sec('Morning Shift', buckets.morning)}
         ${sec('Mid Shift', buckets.mid)}
@@ -949,6 +980,20 @@ function renderWorldClocksBar(){
         ${sec('Developer Access', buckets.dev)}
       </div>
     `;
+
+    // Mobile close delegation (safe across re-renders)
+    if(isMobile && !host.__mobCloseBound){
+      host.__mobCloseBound = true;
+      host.addEventListener('click', (e)=>{
+        const btn = e.target && e.target.closest ? e.target.closest('[data-close-onlinebar]') : null;
+        if(!btn) return;
+        document.body.classList.remove('mobile-online-open');
+        try{
+          const t = document.getElementById('toggleUserOnlineBar');
+          if(t) t.setAttribute('aria-expanded','false');
+        }catch(_){}
+      });
+    }
   }
 
   // Force-refresh helper: some browsers can defer layout updates while closing modals.
@@ -3468,6 +3513,8 @@ async function boot(){
     try{ applySidebarState(); }catch(e){}
     try{ bindSidebarToggle(); }catch(e){}
     try{ bindMobilePanelToggle(); }catch(e){}
+    try{ bindMobileBottomSheets(); }catch(e){}
+    try{ bindMobileFabStack(); }catch(e){}
     try{ applyRightbarState(); }catch(e){}
     try{ bindRightbarToggle(); }catch(e){}
     try{ applyDensity(); }catch(e){}
@@ -4443,7 +4490,13 @@ window.addEventListener('mums:store', (e)=>{
   function closeMobileDrawers(){
     try{ document.body.classList.remove('mobile-nav-open'); }catch(_){}
     try{ document.body.classList.remove('mobile-panel-open'); }catch(_){}
+    try{ document.body.classList.remove('mobile-online-open'); }catch(_){}
+    try{ document.body.classList.remove('mobile-quicklinks-open'); }catch(_){}
     try{ document.body.classList.remove('sidebar-tempopen'); }catch(_){}
+    try{
+      const a = document.getElementById('toggleUserOnlineBar'); if(a) a.setAttribute('aria-expanded','false');
+      const b = document.getElementById('toggleQuickLinksBar'); if(b) b.setAttribute('aria-expanded','false');
+    }catch(_){}
   }
 
   function ensureMobileDrawerOverlay(){
@@ -4485,6 +4538,8 @@ window.addEventListener('mums:store', (e)=>{
       // Toggle right panel drawer; keep nav closed.
       document.body.classList.toggle('mobile-panel-open');
       document.body.classList.remove('mobile-nav-open');
+      document.body.classList.remove('mobile-online-open');
+      document.body.classList.remove('mobile-quicklinks-open');
     });
 
     // Escape closes drawers
@@ -4507,6 +4562,132 @@ window.addEventListener('mums:store', (e)=>{
     }
   }
 
+
+  function bindMobileBottomSheets(){
+    const actions = document.querySelector('.topbar-actions');
+    if(!actions) return;
+
+    // Ensure overlay exists and closes drawers/sheets.
+    try{ ensureMobileDrawerOverlay(); }catch(_){}
+
+    // Create/ensure toggle buttons (mobile only; CSS hides on desktop)
+    let qBtn = document.getElementById('toggleQuickLinksBar');
+    if(!qBtn){
+      qBtn = document.createElement('button');
+      qBtn.id = 'toggleQuickLinksBar';
+      qBtn.type = 'button';
+      qBtn.className = 'btn ghost iconbtn';
+      qBtn.title = 'Quick Links';
+      qBtn.setAttribute('aria-label','Toggle Quick Links');
+      qBtn.setAttribute('aria-controls','quickLinksBar');
+      qBtn.setAttribute('aria-expanded','false');
+      qBtn.innerHTML = '<span class="ico" data-ico="link" aria-hidden="true"></span>';
+      const panelBtn = document.getElementById('mobilePanelToggle');
+      const logout = document.getElementById('logoutBtn');
+      if(panelBtn && panelBtn.parentNode === actions) actions.insertBefore(qBtn, panelBtn);
+      else if(logout && logout.parentNode === actions) actions.insertBefore(qBtn, logout);
+      else actions.appendChild(qBtn);
+    }
+
+    let oBtn = document.getElementById('toggleUserOnlineBar');
+    if(!oBtn){
+      oBtn = document.createElement('button');
+      oBtn.id = 'toggleUserOnlineBar';
+      oBtn.type = 'button';
+      oBtn.className = 'btn ghost iconbtn';
+      oBtn.title = 'User Online';
+      oBtn.setAttribute('aria-label','Toggle User Online');
+      oBtn.setAttribute('aria-controls','onlineUsersBar');
+      oBtn.setAttribute('aria-expanded','false');
+      oBtn.innerHTML = '<span class="ico" data-ico="users" aria-hidden="true"></span>';
+      const panelBtn = document.getElementById('mobilePanelToggle');
+      const logout = document.getElementById('logoutBtn');
+      if(panelBtn && panelBtn.parentNode === actions) actions.insertBefore(oBtn, panelBtn);
+      else if(logout && logout.parentNode === actions) actions.insertBefore(oBtn, logout);
+      else actions.appendChild(oBtn);
+    }
+
+    // Ensure Quick Links sheet header exists (desktop-hidden; mobile-visible)
+    const qBar = document.getElementById('quickLinksBar');
+    if(qBar && !qBar.querySelector('.mob-sheet-head')){
+      const head = document.createElement('div');
+      head.className = 'mob-sheet-head';
+      head.innerHTML = '<div class="mob-sheet-title">Quick Links</div><div class="mob-sheet-actions"><button class="mob-sheet-close" type="button" aria-label="Close" data-close-quicklinks="1">✕</button></div>';
+      qBar.insertBefore(head, qBar.firstChild);
+      head.addEventListener('click', (e)=>{
+        const btn = e.target && e.target.closest ? e.target.closest('[data-close-quicklinks]') : null;
+        if(!btn) return;
+        document.body.classList.remove('mobile-quicklinks-open');
+        try{ qBtn.setAttribute('aria-expanded','false'); }catch(_){}
+      });
+    }
+
+    const toggleQuick = (e)=>{
+      if(!_isMobileViewport()) return;
+      try{ e.preventDefault(); e.stopPropagation(); }catch(_){}
+      const open = document.body.classList.contains('mobile-quicklinks-open');
+      closeMobileDrawers();
+      if(!open){
+        document.body.classList.add('mobile-quicklinks-open');
+        try{ qBtn.setAttribute('aria-expanded','true'); }catch(_){}
+      }
+    };
+
+    const toggleOnline = (e)=>{
+      if(!_isMobileViewport()) return;
+      try{ e.preventDefault(); e.stopPropagation(); }catch(_){}
+      const open = document.body.classList.contains('mobile-online-open');
+      closeMobileDrawers();
+      if(!open){
+        document.body.classList.add('mobile-online-open');
+        try{ oBtn.setAttribute('aria-expanded','true'); }catch(_){}
+      }
+    };
+
+    if(!qBtn.__bound){ qBtn.__bound = true; qBtn.addEventListener('click', toggleQuick); }
+    if(!oBtn.__bound){ oBtn.__bound = true; oBtn.addEventListener('click', toggleOnline); }
+
+    // When navigating, close sheets to avoid sidebar/content mismatch.
+    if(!window.__mumsMobileNavCloseSheetsBound){
+      window.__mumsMobileNavCloseSheetsBound = true;
+      document.addEventListener('click', (e)=>{
+        const a = e.target && e.target.closest ? e.target.closest('a.nav-item') : null;
+        if(!a) return;
+        try{ closeMobileDrawers(); }catch(_){}
+      }, true);
+    }
+  }
+
+  function bindMobileFabStack(){
+    // DOM exists on desktop too, but CSS keeps it hidden.
+    if(document.querySelector('.mobile-fab-stack')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'mobile-fab-stack';
+    wrap.setAttribute('aria-hidden','true');
+    wrap.innerHTML = `
+      <button class="fab" type="button" aria-label="Menu" data-fab="nav"><span class="ico" data-ico="menu" aria-hidden="true"></span></button>
+      <button class="fab" type="button" aria-label="Quick Links" data-fab="quick"><span class="ico" data-ico="link" aria-hidden="true"></span></button>
+      <button class="fab" type="button" aria-label="User Online" data-fab="online"><span class="ico" data-ico="users" aria-hidden="true"></span></button>
+      <button class="fab" type="button" aria-label="Panel" data-fab="panel"><span class="ico" data-ico="notes" aria-hidden="true"></span></button>
+    `;
+    document.body.appendChild(wrap);
+
+    const click = (sel)=>{
+      const el = document.querySelector(sel);
+      if(el && typeof el.click==='function') el.click();
+    };
+
+    wrap.addEventListener('click', (e)=>{
+      if(!_isMobileViewport()) return;
+      const btn = e.target && e.target.closest ? e.target.closest('button.fab') : null;
+      if(!btn) return;
+      const which = btn.getAttribute('data-fab');
+      if(which==='nav') click('#sidebarToggle');
+      if(which==='panel') click('#mobilePanelToggle');
+      if(which==='quick') click('#toggleQuickLinksBar');
+      if(which==='online') click('#toggleUserOnlineBar');
+    });
+  }
 
   function bindSidebarToggle(){
     const btn = document.getElementById('sidebarToggle');
@@ -4535,6 +4716,12 @@ window.addEventListener('mums:store', (e)=>{
     const toggleMobileNav = ()=>{
       document.body.classList.toggle('mobile-nav-open');
       document.body.classList.remove('mobile-panel-open');
+      document.body.classList.remove('mobile-online-open');
+      document.body.classList.remove('mobile-quicklinks-open');
+      try{
+        const a = document.getElementById('toggleUserOnlineBar'); if(a) a.setAttribute('aria-expanded','false');
+        const b = document.getElementById('toggleQuickLinksBar'); if(b) b.setAttribute('aria-expanded','false');
+      }catch(_){ }
     };
 
     const handleSingle = ()=>{

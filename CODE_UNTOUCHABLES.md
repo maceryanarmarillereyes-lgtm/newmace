@@ -135,3 +135,6 @@ This is required so authenticated users can read their own profile row under RLS
 ## Mobile Layout Parity (Permanent)
 - Mobile users must have a dedicated layout that exposes all features and menus. Future changes to the main webapp must remain visible and accessible on mobile.
 
+
+## Mobile Layout Visibility & Overlays (Permanent)
+- Mobile layout must prioritize visibility of main content. Overlay bars (User Online + Quick Links) must be hidden by default but accessible via toggles (#toggleUserOnlineBar, #toggleQuickLinksBar). All features must remain available and future-proofed.

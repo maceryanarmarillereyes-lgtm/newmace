@@ -2204,6 +2204,16 @@ body[data-mode="light"] .nav a:hover{
 .ico[data-ico="gear"]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Cpath%20d=%22M12%2015.5a3.5%203.5%200%201%200%200-7%203.5%203.5%200%200%200%200%207z%22/%3E%3Cpath%20d=%22M19.4%2015a7.9%207.9%200%200%200%20.1-1l2-1.5-2-3.5-2.4%201a8.4%208.4%200%200%200-1.7-1l-.4-2.6h-4l-.4%202.6a8.4%208.4%200%200%200-1.7%201l-2.4-1-2%203.5%202%201.5a7.9%207.9%200%200%200%20.1%201%207.9%207.9%200%200%200-.1%201l-2%201.5%202%203.5%202.4-1a8.4%208.4%200%200%200%201.7%201l.4%202.6h4l.4-2.6a8.4%208.4%200%200%200%201.7-1l2.4%201%202-3.5-2-1.5a7.9%207.9%200%200%200-.1-1z%22%20fill=%22none%22%20stroke=%22currentColor%22%20stroke-width=%222%22/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Cpath%20d=%22M12%2015.5a3.5%203.5%200%201%200%200-7%203.5%203.5%200%200%200%200%207z%22/%3E%3Cpath%20d=%22M19.4%2015a7.9%207.9%200%200%200%20.1-1l2-1.5-2-3.5-2.4%201a8.4%208.4%200%200%200-1.7-1l-.4-2.6h-4l-.4%202.6a8.4%208.4%200%200%200-1.7%201l-2.4-1-2%203.5%202%201.5a7.9%207.9%200%200%200%20.1%201%207.9%207.9%200%200%200-.1%201l-2%201.5%202%203.5%202.4-1a8.4%208.4%200%200%200%201.7%201l.4%202.6h4l.4-2.6a8.4%208.4%200%200%200%201.7-1l2.4%201%202-3.5-2-1.5a7.9%207.9%200%200%200-.1-1z%22%20fill=%22none%22%20stroke=%22currentColor%22%20stroke-width=%222%22/%3E%3C/svg%3E")}
 .ico[data-ico="menu"]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Cpath%20d=%22M4%206h16v2H4V6zm0%205h16v2H4v-2zm0%205h16v2H4v-2z%22/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Cpath%20d=%22M4%206h16v2H4V6zm0%205h16v2H4v-2zm0%205h16v2H4v-2z%22/%3E%3C/svg%3E")}
 
+/* Mobile-only controls (hidden on desktop; shown by mobile media query) */
+#toggleUserOnlineBar, #toggleQuickLinksBar{display:none}
+.mob-sheet-head{display:none}
+.mobile-fab-stack{display:none}
+
+/* Additional topbar/FAB icons */
+.ico[data-ico="users"]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M16%2011a3%203%200%201%200-2.999-3A3%203%200%200%200%2016%2011zm-8%200a3%203%200%201%200-3-3a3%203%200%200%200%203%203zm0%202c-2.67%200-8%201.34-8%204v2h12v-2c0-2.66-5.33-4-8-4zm8%200c-.32%200-.68.02-1.06.06A4.8%204.8%200%200%201%2018%2017v2h6v-2c0-2.66-5.33-4-8-4z%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M16%2011a3%203%200%201%200-2.999-3A3%203%200%200%200%2016%2011zm-8%200a3%203%200%201%200-3-3a3%203%200%200%200%203%203zm0%202c-2.67%200-8%201.34-8%204v2h12v-2c0-2.66-5.33-4-8-4zm8%200c-.32%200-.68.02-1.06.06A4.8%204.8%200%200%201%2018%2017v2h6v-2c0-2.66-5.33-4-8-4z%22%2F%3E%3C%2Fsvg%3E")}
+.ico[data-ico="link"]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M10.59%2013.41a1%201%200%200%201%200-1.41l2.12-2.12a1%201%200%201%201%201.41%201.41l-2.12%202.12a1%201%200%200%201-1.41%200z%22%2F%3E%3Cpath%20d%3D%22M8%2012a4%204%200%200%201%204-4h2a1%201%200%201%201%200%202h-2a2%202%200%200%200%200%204h2a1%201%200%201%201%200%202h-2a4%204%200%200%201-4-4z%22%2F%3E%3Cpath%20d%3D%22M14%208a1%201%200%201%201%200-2h2a4%204%200%201%201%200%208h-2a1%201%200%201%201%200-2h2a2%202%200%200%200%200-4h-2z%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M10.59%2013.41a1%201%200%200%201%200-1.41l2.12-2.12a1%201%200%201%201%201.41%201.41l-2.12%202.12a1%201%200%200%201-1.41%200z%22%2F%3E%3Cpath%20d%3D%22M8%2012a4%204%200%200%201%204-4h2a1%201%200%201%201%200%202h-2a2%202%200%200%200%200%204h2a1%201%200%201%201%200%202h-2a4%204%200%200%201-4-4z%22%2F%3E%3Cpath%20d%3D%22M14%208a1%201%200%201%201%200-2h2a4%204%200%201%201%200%208h-2a1%201%200%201%201%200-2h2a2%202%200%200%200%200-4h-2z%22%2F%3E%3C%2Fsvg%3E")}
+
+
 body.app-cursor-on, body.app-cursor-on *{cursor:none !important}
 
 
@@ -2961,109 +2971,245 @@ body[data-mode="light"] .sp-photo{background:rgba(15,23,42,.04)}
    -------------------------------------------------------------------------- */
 @media (max-width: 768px){
   /* =========================================================
-     EXCLUSIVE MOBILE LAYOUT (≤768px)
-     - Off-canvas navigation drawer (hamburger)
-     - Off-canvas right panel (Guide/Summary) for full feature parity
-     - No layout shatter: maintain structure via dedicated mobile shell
+     MOBILE LAYOUT (Rebuild v2 — ≤768px)
+     Goals:
+     - Enterprise-grade single-column content with drawers
+     - Main content always visible (no fixed overlay bars blocking)
+     - Bottom utility bars hidden by default; accessible via toggles / FABs
      ========================================================= */
 
   /* Keep touch targets readable on mobile (disable global downscaling). */
   html{ --app-scale: 1 !important; }
+  body{ font-size: 13px; line-height: 1.35; }
 
   /* Single-column shell */
   .app{
     grid-template-columns: 1fr !important;
     grid-template-rows: auto 1fr !important;
-    gap: 10px !important;
-    padding: 10px !important;
-    padding-bottom: calc(var(--mums-dock-h) + var(--mums-onlinebar-h) + 18px) !important;
+    height: 100vh;
+    min-height: 100vh;
+    padding-bottom: calc(88px + env(safe-area-inset-bottom));
   }
 
-  /* Topbar: hamburger + compact branding + essential actions */
+  /* Topbar: clean + compact */
   .topbar{
-    grid-template-columns: auto 1fr auto !important;
-    gap: 10px !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px;
+    padding: 12px 12px 10px;
   }
-  .topbrand{display:flex !important; min-width:0 !important;}
-  .brand-sub, .brand-build{display:none !important;}
-  .brand-name{font-size:14px !important;}
-  .topbar-actions{gap:8px !important;}
+  .topbar-center{ display:none !important; }
 
-  /* Prevent action overflow; keep logout + mobile panel toggle */
-  .top-global-search{display:none !important;}
-  #releaseNotesBtn, #dictionaryBtn, #settingsBtn, #realtimeSyncStatus{display:none !important;}
-  #mobilePanelToggle{display:inline-flex !important;}
+  /* Reduce action clutter on mobile; keep essential controls */
+  .top-global-search{ display:none !important; }
+  #realtimeSyncStatus{ display:none !important; }
+  #releaseNotesBtn, #dictionaryBtn{ display:none !important; }
+  #settingsBtn{ display:inline-grid !important; }
+  #mobilePanelToggle{ display:inline-grid !important; }
 
-  /* Off-canvas drawers (use the same DOM as desktop to ensure parity). */
+  /* Ensure mobile-only toggles are visible */
+  #toggleUserOnlineBar, #toggleQuickLinksBar{ display:inline-grid !important; }
+
+  /* Cards + controls density */
+  .card.pad{ padding: 14px !important; border-radius: 16px !important; }
+  .btn{ padding: 9px 10px; border-radius: 12px; font-size: 13px; }
+  .btn.iconbtn{ width: 36px; height: 36px; }
+  #logoutBtn{ padding: 9px 12px; }
+  .input, .select, .textarea, select{ padding: 9px 10px; border-radius: 12px; font-size: 13px; }
+
+  /* Hide desktop sidebar/right panel; use drawers */
   aside.side, aside.right{
     position: fixed !important;
-    top: 10px !important;
-    bottom: calc(var(--mums-dock-h) + var(--mums-onlinebar-h) + 20px) !important;
-    z-index: 9990 !important;
-    overflow: auto !important;
+    top: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    height: auto !important;
+    max-height: none !important;
+    width: 86vw !important;
+    max-width: 380px;
+    z-index: 5000;
+    transform: translateX(-110%);
+    transition: transform .18s ease;
   }
-
-  aside.side{
-    left: 10px !important;
-    width: min(340px, calc(100vw - 20px)) !important;
-    transform: translateX(-110%) !important;
-    transition: transform .18s ease !important;
-  }
-  body.mobile-nav-open aside.side{ transform: translateX(0) !important; }
-
   aside.right{
-    right: 10px !important;
-    width: min(380px, calc(100vw - 20px)) !important;
-    transform: translateX(110%) !important;
-    transition: transform .18s ease !important;
-  }
-  body.mobile-panel-open aside.right{ transform: translateX(0) !important; }
-
-  /* Ensure sidebar is fully expanded in the drawer even if desktop rail mode was enabled. */
-  body.sidebar-collapsed aside.side{ width: min(340px, calc(100vw - 20px)) !important; padding: 14px !important; }
-  body.sidebar-collapsed .side .usercard,
-  body.sidebar-collapsed .side .small,
-  body.sidebar-collapsed .side .side-logs{ display:block !important; }
-  body.sidebar-collapsed .nav .nav-label{ display:inline !important; }
-  body.sidebar-collapsed .nav .nav-item,
-  body.sidebar-collapsed .nav .nav-group-head{ justify-content:flex-start !important; padding:12px 12px !important; }
-
-  /* Nav: touch-friendly sizing */
-  .nav .nav-item, .nav .nav-group-head{
-    padding: 12px 12px !important;
-    border-radius: 14px !important;
-  }
-  .nav .nav-label{ font-size: 14px !important; }
-
-  /* Main content gets full width */
-  main.main{
-    grid-column: 1 / -1 !important;
-    grid-row: 2 !important;
-    min-width: 0 !important;
+    left: auto;
+    right: 12px;
+    transform: translateX(110%);
   }
 
-  /* Drawer overlay */
-  body.mobile-nav-open, body.mobile-panel-open{ overflow: hidden; }
+  body.mobile-nav-open aside.side{ transform: translateX(0); }
+  body.mobile-panel-open aside.right{ transform: translateX(0); }
+
+  /* Mobile drawer overlay (also used by bottom sheets) */
   .mobile-drawer-overlay{
     position: fixed;
     inset: 0;
-    background: rgba(10,12,16,.55);
-    backdrop-filter: blur(2px);
+    background: rgba(0,0,0,.46);
     opacity: 0;
     pointer-events: none;
     transition: opacity .18s ease;
-    z-index: 9980;
+    z-index: 4500;
   }
   body.mobile-nav-open .mobile-drawer-overlay,
-  body.mobile-panel-open .mobile-drawer-overlay{
+  body.mobile-panel-open .mobile-drawer-overlay,
+  body.mobile-online-open .mobile-drawer-overlay,
+  body.mobile-quicklinks-open .mobile-drawer-overlay{
     opacity: 1;
     pointer-events: auto;
   }
 
-  /* Tables: contained horizontal scroll (prevents overlap) */
-  .table-wrap{overflow:auto; border-radius:14px}
+  /* Main content: full width */
+  .main.card.pad{ border-radius: 18px !important; }
+  .main{ padding: 12px !important; }
+
+  /* ==========================================
+     Bottom sheets (Quick Links + Online Users)
+     Hidden by default; slide in on toggle.
+     ========================================== */
+  .online-users-bar,
+  .quicklinks-bar{
+    left: 10px !important;
+    right: 10px !important;
+    bottom: calc(10px + env(safe-area-inset-bottom)) !important;
+    border-radius: 18px;
+    border: 1px solid color-mix(in srgb, var(--border-0) 75%, transparent);
+    background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+    box-shadow: 0 22px 60px rgba(0,0,0,.40);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    transform: translateY(130%);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform .18s ease, opacity .18s ease;
+    overflow: hidden;
+    z-index: 5200;
+  }
+  body.mobile-online-open .online-users-bar,
+  body.mobile-quicklinks-open .quicklinks-bar{
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Sheet headers (injected/templated) */
+  .mob-sheet-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border-0) 70%, transparent);
+  }
+  .mob-sheet-title{
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .mob-sheet-actions{ display:flex; align-items:center; gap: 8px; }
+  .mob-sheet-close{
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--border-0) 70%, transparent);
+    background: transparent;
+    color: var(--text);
+    display:grid;
+    place-items:center;
+    cursor:pointer;
+  }
+
+  /* Online Users sheet */
+  .online-users-bar{ max-height: 64vh; }
+  .online-users-bar .onlinebar-inner{ padding: 10px 12px 12px; overflow:auto; -webkit-overflow-scrolling:touch; }
+  .online-users-bar .onlinebar-col{ border:0; background:transparent; padding: 0; }
+  .online-users-bar details.onlinebar-acc{
+    border: 1px solid color-mix(in srgb, var(--border-0) 70%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface-0) 60%, transparent);
+    overflow:hidden;
+    margin: 10px 0 0;
+  }
+  .online-users-bar details.onlinebar-acc:first-child{ margin-top: 0; }
+  .online-users-bar details.onlinebar-acc > summary{
+    list-style:none;
+    cursor:pointer;
+    padding: 10px 12px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    font-weight: 900;
+  }
+  .online-users-bar details.onlinebar-acc > summary::-webkit-details-marker{ display:none; }
+  .online-users-bar details.onlinebar-acc .onlinebar-badges{ padding: 0 12px 12px; }
+
+  /* Quick Links sheet */
+  .quicklinks-bar{
+    height: auto !important;
+    max-height: 64vh;
+    padding: 0;
+  }
+  .quicklinks-bar .clocks-wrap{
+    position: static !important;
+    left: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    width: 100%;
+    max-width: 100%;
+    padding: 10px 12px 0;
+    overflow:auto;
+    -webkit-overflow-scrolling: touch;
+    justify-content:flex-start;
+  }
+  .quicklinks-bar .wclock{ min-width: 116px; padding: 6px 8px; border-radius: 14px; }
+  .quicklinks-bar .wclock .wc-h{ font-size: 18px; }
+  .quicklinks-bar .wclock .wc-m{ font-size: 16px; }
+  .quicklinks-bar .wclock .wc-sec{ font-size: 11px; }
+
+  .quicklinks-bar .quicklinks-inner{
+    position: static !important;
+    left: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    padding: 12px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0,1fr));
+    gap: 10px;
+    justify-items: center;
+  }
+  .quicklinks-bar .qitem{ width: 100%; max-width: none; }
+  .quicklinks-bar .qlabel{ max-width: 100%; }
+  .quicklinks-bar .qcircle{ width: 40px; height: 40px; }
+
+  /* Floating action buttons (quick access) */
+  .mobile-fab-stack{
+    position: fixed;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    display:flex;
+    flex-direction:column;
+    gap: 10px;
+    z-index: 5300;
+  }
+  .mobile-fab-stack .fab{
+    width: 46px;
+    height: 46px;
+    border-radius: 16px;
+    border: 1px solid color-mix(in srgb, var(--border-0) 70%, transparent);
+    background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+    color: var(--text);
+    box-shadow: 0 18px 50px rgba(0,0,0,.35);
+    display:grid;
+    place-items:center;
+  }
+  .mobile-fab-stack .fab .ico{ width: 20px; height: 20px; }
+
+  /* Make all tables horizontally scrollable */
+  .table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .table thead,.table tbody,.table tr{display:table;width:100%;table-layout:fixed}
   table{min-width:680px}
 }
+
 
 /* Realtime Sync Status badge */
 .sync-status{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.72);box-shadow:var(--shadow2);font-size:12px;color:var(--muted);line-height:1}
