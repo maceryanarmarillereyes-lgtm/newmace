@@ -4034,7 +4034,8 @@ async function boot(){
           saveBtn.onclick = ()=>{
             try{ if(errEl) errEl.textContent=''; }catch(_){ }
             if(!draft.enabled){
-              Store.saveMailboxTimeOverride({ enabled:false, ms:0, freeze:true, setAt:0, scope:'sa_only' });
+              if(Store.disableMailboxTimeOverride) Store.disableMailboxTimeOverride({ propagateGlobal:true });
+              else Store.saveMailboxTimeOverride({ enabled:false, ms:0, freeze:true, setAt:0, scope:'sa_only' });
               render();
               return;
             }
@@ -4051,7 +4052,8 @@ async function boot(){
 
         if(resetBtn){
           resetBtn.onclick = ()=>{
-            Store.saveMailboxTimeOverride({ enabled:false, ms:0, freeze:true, setAt:0, scope:'sa_only' });
+            if(Store.disableMailboxTimeOverride) Store.disableMailboxTimeOverride({ propagateGlobal:true });
+            else Store.saveMailboxTimeOverride({ enabled:false, ms:0, freeze:true, setAt:0, scope:'sa_only' });
             draft = Store.getMailboxTimeOverride();
             if(!draft.ms) draft.ms = Date.now();
             render();

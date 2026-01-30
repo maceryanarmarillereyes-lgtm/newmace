@@ -72,6 +72,7 @@ Files:
 **Do NOT remove or weaken:**
 
 - **Global Override Label:** When mailbox override is active and `scope === 'global'`, **all users** (Member, Team Lead, Super Admin) must see a visible label on the Mailbox screen: **GLOBAL OVERRIDE ACTIVE**. The label must only display when the override is **synced via `startMailboxOverrideSync()`** and must disappear when the override is reset/disabled.
+- **Override reset rule:** When Mailbox Override is disabled, system must revert to normal Manila time logic immediately. No stale override flags or cached override values allowed.
 - **Visibility rule:** If override `scope === 'global'` and enabled, the mailbox override indicator/banner and the override modal **must be viewable by all authenticated roles** (read-only for non-Super Admin).
 - **Permission rule:** Only **SUPER_ADMIN** can modify overrides (backend enforced).
 - **Audit rule:** Every successful override change must attempt to write an audit record to `public.mums_sync_log` (who changed it, scope, timestamp, action, effective_time).

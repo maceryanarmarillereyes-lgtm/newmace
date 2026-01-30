@@ -1708,7 +1708,70 @@
           }).catch(() => {});
         }
       }
+
       return o;
+    },
+
+    // Disable / reset mailbox time override (device + cloud) safely.
+    // - Clears local and cloud override keys to prevent stale override values from persisting.
+    // - Best-effort propagates a global reset to the backend when CloudAuth is available.
+    // - Dispatches mums:store events so Mailbox UI re-renders immediately.
+    disableMailboxTimeOverride(opts){
+      try{
+        const curLocal = (function(){
+          try{ const raw = localStorage.getItem(KEYS.mailbox_time_override); return raw ? JSON.parse(raw) : null; }catch(_){ return null; }
+        })();
+        const curCloud = (function(){
+          try{ const raw = localStorage.getItem(KEYS.mailbox_time_override_cloud); return raw ? JSON.parse(raw) : null; }catch(_){ return null; }
+        })();
+
+        const shouldPropagateGlobal = !!(
+          (opts && opts.propagateGlobal) ||
+          (curCloud && curCloud.enabled && String(curCloud.scope||'') === 'global') ||
+          (curLocal && curLocal.enabled && String(curLocal.scope||'') === 'global')
+        );
+
+        // Clear local + cloud storage keys to eliminate stale overrides.
+        try{ localStorage.removeItem(KEYS.mailbox_time_override); }catch(_){ }
+        try{ localStorage.removeItem(KEYS.mailbox_time_override_cloud); }catch(_){ }
+
+        // Notify same-tab UI listeners.
+        try{ window.dispatchEvent(new CustomEvent('mums:store', { detail:{ key:'mailbox_time_override', source:'local', reason:'disable' } })); }catch(_){ }
+        try{ window.dispatchEvent(new CustomEvent('mums:store', { detail:{ key:'mailbox_override_cloud', source:'local', reason:'disable' } })); }catch(_){ }
+
+        // Best-effort backend propagation (global scope reset) so other devices do not re-sync stale override.
+        if(shouldPropagateGlobal && window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled()){
+          let token = '';
+          try{ token = (CloudAuth.accessToken && CloudAuth.accessToken()) ? String(CloudAuth.accessToken()||'').trim() : ''; }catch(_){ token=''; }
+          if(!token){
+            try{
+              const sess = CloudAuth.loadSession ? CloudAuth.loadSession() : null;
+              token = sess && (sess.access_token || (sess.session && sess.session.access_token)) ? String(sess.access_token || (sess.session && sess.session.access_token) || '').trim() : '';
+            }catch(_){ token=''; }
+          }
+          if(token){
+            fetch('/api/mailbox_override/set', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                scope: 'global',
+                enabled: false,
+                freeze: true
+              })
+            }).catch(() => {});
+          }
+        }
+
+        // Force a sync poll so cloud key stays consistent after reset.
+        try{ if(window.Store && Store.startMailboxOverrideSync) Store.startMailboxOverrideSync({ force:true }); }catch(_){ }
+
+        return true;
+      }catch(_){
+        return false;
+      }
     },
 
     // Mailbox Counter tables (per shift)
@@ -1790,6 +1853,7 @@
       localStorage.removeItem(KEYS.team_reminders);
       localStorage.removeItem(KEYS.reminder_settings);
       localStorage.removeItem(KEYS.mailbox_time_override);
+      localStorage.removeItem(KEYS.mailbox_time_override_cloud);
       Store.ensureSeed();
     }
   };
