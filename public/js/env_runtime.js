@@ -2,6 +2,52 @@
   const DBG = (window.MUMS_DEBUG || {log(){},warn(){},error(){}});
   DBG.log('info','env_runtime.start');
 
+  // Global proportional scaling (layout-stability)
+  // Goal: when viewport shrinks, keep the desktop grid intact and scale the whole UI
+  // (similar to browser zoom) rather than reflowing the layout.
+  (function initGlobalAppScale(){
+    try {
+      var root = document.documentElement;
+      if (!root) return;
+
+      // Desktop layout was designed around a 3-column shell.
+      // We scale down once the viewport drops below this width to prevent grid reflow.
+      var DESIGN_W = 1300; // px
+      var MIN_SCALE = 0.70;
+      var MAX_SCALE = 1.00;
+
+      function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+
+      function applyScale(){
+        var vw = Math.max(root.clientWidth || 0, window.innerWidth || 0);
+        var scale = (vw < DESIGN_W) ? (vw / DESIGN_W) : 1;
+        scale = clamp(scale, MIN_SCALE, MAX_SCALE);
+
+        // Avoid noisy CSS diffs by keeping a consistent precision.
+        var s = String(scale.toFixed(3));
+        root.style.setProperty('--app-scale', s);
+        root.setAttribute('data-app-scale', s);
+      }
+
+      var rafPending = false;
+      function schedule(){
+        if (rafPending) return;
+        rafPending = true;
+        (window.requestAnimationFrame || setTimeout)(function(){
+          rafPending = false;
+          applyScale();
+        }, 16);
+      }
+
+      window.addEventListener('resize', schedule, { passive: true });
+      window.addEventListener('orientationchange', schedule, { passive: true });
+      // Apply immediately (works for both login and app shells).
+      applyScale();
+    } catch(e) {
+      // Never block env loading
+    }
+  })();
+
   function safeParseInt(v, d){
     var n = parseInt(v, 10);
     return isNaN(n) ? d : n;

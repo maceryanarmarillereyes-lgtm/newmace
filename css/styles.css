@@ -238,6 +238,47 @@ body[data-mode="light"] .sp-photo-sm{background:rgba(15,23,42,.04)}
 .theme-grid{display:grid;grid-template-columns:repeat(5, 1fr);gap:12px}
 @media(max-width:900px){.theme-grid{grid-template-columns:repeat(2,1fr)}}
 .theme-tile{border:1px solid var(--border);border-radius:16px;padding:12px;background:rgba(255,255,255,.03);cursor:pointer;display:flex;flex-direction:column;gap:10px}
+
+/* =========================================================
+   GLOBAL PROPORTIONAL LAYOUT SCALING (v4.2 layout-scale)
+   Keep the app shell stable when the viewport shrinks by scaling
+   the entire UI (like browser zoom) instead of reflowing columns.
+   Scale factor is controlled by CSS variable --app-scale (set in
+   public/js/env_runtime.js so it applies to login + app shells).
+   ========================================================= */
+
+html{
+  --app-scale: 1;
+  overflow-x: hidden;
+}
+
+body{
+  transform: scale(var(--app-scale));
+  transform-origin: top left;
+  width: calc(100% / var(--app-scale));
+  min-height: calc(100vh / var(--app-scale));
+  overflow-x: hidden;
+}
+
+/* Disable narrow-screen grid reflow that causes "layout shatter".
+   We keep the desktop 3-column layout and rely on scaling to fit. */
+@media(max-width:1100px){
+  .app{
+    grid-template-columns:260px 1fr 320px !important;
+    grid-template-rows:auto 1fr !important;
+  }
+  .side{grid-column:1 !important;grid-row:2 !important;}
+  .main{grid-column:2 !important;grid-row:2 !important;}
+  .right{grid-column:3 !important;grid-row:2 !important;}
+
+  .topbar{grid-template-columns:260px 1fr auto !important;}
+  .topbrand{display:flex !important;}
+  .topbar-center{justify-content:center !important;}
+
+  /* Keep quick links structure intact; allow overflow rather than wrap */
+  .quicklinks-bar{overflow-x:auto; padding-bottom:10px !important;}
+  .quicklinks-inner{flex-wrap:nowrap !important;row-gap:0 !important;}
+}
 .theme-tile:hover{border-color:rgba(255,255,255,.18)}
 .theme-swatch{height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:linear-gradient(90deg, var(--sw1), var(--sw2))}
 .theme-tile .tname{font-weight:800}
