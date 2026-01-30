@@ -3,6 +3,24 @@
     el(sel, root){ return (root||document).querySelector(sel); },
     els(sel, root){ return Array.from((root||document).querySelectorAll(sel)); },
     esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); },
+
+    // ===== CODE UNTOUCHABLES =====
+// Global Override Label helper:
+// When mailbox override is active AND scope is global AND override is synced,
+// the Mailbox UI must show a visible label for ALL roles.
+// Exception: Only change if required by documented UX specification updates.
+// ==============================
+overrideLabel(override){
+  try{
+    const o = override;
+    if(!o || typeof o !== 'object') return '';
+    if(!o.enabled) return '';
+    if(String(o.scope||'') !== 'global') return '';
+    return `<span class="override-label" role="status" aria-live="polite">GLOBAL OVERRIDE ACTIVE</span>`;
+  }catch(_){
+    return '';
+  }
+},
     // Profile helpers
     initials(name){
       const parts = String(name||'').trim().split(/\s+/).filter(Boolean);

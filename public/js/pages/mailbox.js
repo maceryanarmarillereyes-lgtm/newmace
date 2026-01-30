@@ -266,7 +266,31 @@ function _mbxMemberSortKey(u){
 
     const duty = getDuty();
 
-    root.innerHTML = `
+    
+// ===== CODE UNTOUCHABLES =====
+// Global Override Label must be visible to ALL roles when:
+// - scope === 'global'
+// - enabled === true
+// - override is synced via startMailboxOverrideSync() (cloud localStorage key exists)
+// Exception: Only change if required by documented UX specification updates.
+// ==============================
+const globalOverrideLabelHtml = (function(){
+  try{
+    const raw = localStorage.getItem('mums_mailbox_time_override_cloud');
+    if(!raw) return '';
+    const o = JSON.parse(raw);
+    if(!o || typeof o !== 'object') return '';
+    if(!o.enabled) return '';
+    if(String(o.scope||'') !== 'global') return '';
+    const ms = Number(o.ms)||0;
+    if(!Number.isFinite(ms) || ms <= 0) return '';
+    return (window.UI && UI.overrideLabel) ? UI.overrideLabel(o) : '';
+  }catch(_){
+    return '';
+  }
+})();
+
+root.innerHTML = `
       <div class="mbx-head">
         <div>
           <h2 style="margin:0">Mailbox</h2>
@@ -288,6 +312,7 @@ function _mbxMemberSortKey(u){
         <div class="box mid">
           <div class="row" style="justify-content:center;gap:8px;align-items:center">
             <div class="small">Manila Time</div>
+            ${globalOverrideLabelHtml}
             <span class="badge override" id="mbOverridePill" title="Mailbox time override is enabled" style="display:none">OVERRIDE</span>
             <!-- ===== CODE UNTOUCHABLES =====
                  Global override banner must be visible to all roles when scope is global.
