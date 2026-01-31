@@ -2446,7 +2446,7 @@ window.Pages.members = function(root){
         fromId: me.id,
         fromName: me.name||me.username,
         title: 'Schedule Updated',
-        body: `Your schedule has been updated for ${team.label} (week of ${weekStartISO}). Please acknowledge once reviewed.`,
+        body: `You have been scheduled for ${team.label} on ${isoToday} from ${(team.dutyStart || (UI.shiftMeta ? UI.shiftMeta(team).start : ''))} to ${(team.dutyEnd || (UI.shiftMeta ? UI.shiftMeta(team).end : ''))}. Please acknowledge.`,
         recipients: members.map(m=>m.id),
         acks: {}
       };

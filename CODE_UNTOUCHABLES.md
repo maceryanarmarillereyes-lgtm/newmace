@@ -158,3 +158,14 @@ This is required so authenticated users can read their own profile row under RLS
 
 ## Classic Style Theme (Permanent)
 - Classic Style theme must maintain enterprise-grade layout, fixed sidebar, top bar, and responsive card-based content. Theme must be selectable via Settings and persist across sessions.
+
+## JWT Expiry Recovery on Resume (Permanent)
+- App must detect expired/invalid JWT tokens on resume (sleep/wake, tab restore) and recover gracefully.
+- On boot/resume: silently refresh session if a refresh_token is available; otherwise clear session and redirect to login.
+- Must show flash message: "Session expired. Please log in again."
+- Must not spam console or hammer Supabase endpoints with repeated 401/403 POSTs.
+- Dashboard and Mailbox must fail gracefully (no crashes, no broken UI state).
+
+
+## Mailbox Manager Duty + Schedule Notifications (Permanent)
+- “Mailbox Manager must retain full assignment capability during duty hours. Notification logic must include schedule context. Time Table must reflect current Mailbox Manager.”

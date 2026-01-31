@@ -190,6 +190,144 @@
   }
 
   
+
+// ----------------------
+// JWT expiry hardening
+// ----------------------
+function _b64UrlDecodeToJson(b64url){
+  try{
+    let b64 = String(b64url || '').replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const json = atob(b64);
+    return JSON.parse(json);
+  }catch(_){
+    return null;
+  }
+}
+
+function decodeJwtPayload(token){
+  try{
+    const t = String(token || '');
+    const parts = t.split('.');
+    if (parts.length !== 3) return null;
+    return _b64UrlDecodeToJson(parts[1]);
+  }catch(_){
+    return null;
+  }
+}
+
+function jwtExpSeconds(token){
+  try{
+    const p = decodeJwtPayload(token);
+    if(!p) return null;
+    const exp = p.exp;
+    // exp must be a finite number in seconds since epoch.
+    if (typeof exp !== 'number') return null;
+    if (!isFinite(exp) || exp <= 0) return null;
+    // Guard against accidental ms timestamps (should be ~1e9..2e9 currently).
+    if (exp > 10_000_000_000) return null;
+    return exp;
+  }catch(_){
+    return null;
+  }
+}
+
+function isJwtExpired(token, leewaySec){
+  const t = String(token || '');
+  if(!t) return true;
+  const exp = jwtExpSeconds(t);
+  if(!exp) return true; // invalid token shape/claims
+  const now = Math.floor(Date.now()/1000);
+  const leeway = Math.max(0, Number(leewaySec || 0));
+  return now >= (exp - leeway);
+}
+
+// Ensure the stored session is usable. If access_token is expired/invalid,
+// attempt a silent refresh using refresh_token (if available).
+async function ensureFreshSession(opts){
+  opts = opts || {};
+  const leewaySec = (opts.leewaySec !== undefined) ? Number(opts.leewaySec) : 30;
+  const tryRefresh = (opts.tryRefresh !== false);
+  const clearOnFail = (opts.clearOnFail !== false);
+
+  const s = readSession();
+  if(!s || !s.access_token) return { ok:true, status:'no_session' };
+
+  const token = String(s.access_token || '');
+  if(!token) return { ok:false, status:'missing_token' };
+
+  // Exp / claim sanity
+  const exp = jwtExpSeconds(token);
+  if(!exp){
+    if (tryRefresh) {
+      const rr = await refreshSession();
+      if (rr && rr.ok) return { ok:true, status:'refreshed', refreshed:true };
+    }
+    if (clearOnFail) { clearRefreshTimer(); clearSession(); }
+    return { ok:false, status:'invalid_token' };
+  }
+
+  if(isJwtExpired(token, leewaySec)){
+    if (tryRefresh) {
+      const rr = await refreshSession();
+      if (rr && rr.ok) return { ok:true, status:'refreshed', refreshed:true };
+    }
+    if (clearOnFail) { clearRefreshTimer(); clearSession(); }
+    return { ok:false, status:'expired' };
+  }
+
+  return { ok:true, status:'valid' };
+}
+
+// Resume guards: browsers pause timers during sleep. When the tab wakes up,
+// refresh an about-to-expire token immediately; otherwise force a clean relogin.
+let __resumeCheckAt = 0;
+let __resumePromise = null;
+const RESUME_THROTTLE_MS = 4000;
+
+async function __runResumeCheck(trigger){
+  try{
+    const now = Date.now();
+    if ((now - __resumeCheckAt) < RESUME_THROTTLE_MS) return;
+    __resumeCheckAt = now;
+
+    if (__resumePromise) return await __resumePromise;
+
+    __resumePromise = (async function(){
+      try{
+        const res = await ensureFreshSession({ tryRefresh:true, clearOnFail:false, leewaySec: 60 });
+        if (res && res.ok) return res;
+
+        // Hard stop: clear session to prevent 401/403 spam and notify the app.
+        try { clearRefreshTimer(); clearSession(); } catch(_) {}
+        try {
+          window.dispatchEvent(new CustomEvent('mums:auth_invalid', { detail: { reason: (res && res.status) ? res.status : 'invalid', trigger: trigger || 'resume' } }));
+        } catch (_) {}
+        return res || { ok:false, status:'invalid' };
+      } finally {
+        __resumePromise = null;
+      }
+    })();
+
+    return await __resumePromise;
+  }catch(_){
+    return { ok:false, status:'resume_exception' };
+  }
+}
+
+function installResumeGuards(){
+  try{
+    document.addEventListener('visibilitychange', function(){
+      try{ if (!document.hidden) __runResumeCheck('visibility'); }catch(_){}
+    });
+  }catch(_){}
+  try{ window.addEventListener('focus', function(){ __runResumeCheck('focus'); }); }catch(_){}
+  try{ window.addEventListener('pageshow', function(){ __runResumeCheck('pageshow'); }); }catch(_){}
+  try{ window.addEventListener('online', function(){ __runResumeCheck('online'); }); }catch(_){}
+}
+
+installResumeGuards();
+
 async function login(usernameOrEmail, password){
   const e = env();
   const domain = String(e.USERNAME_EMAIL_DOMAIN || 'mums.local');
@@ -259,9 +397,17 @@ async function login(usernameOrEmail, password){
   }
 
   function accessToken(){
-    const s = readSession();
-    return (s && s.access_token) ? String(s.access_token) : '';
+  const s = readSession();
+  const t = (s && s.access_token) ? String(s.access_token) : '';
+  if (!t) return '';
+  // Never expose expired/invalid JWTs to callers (prevents 401/403 spam + InvalidJWTToken crashes).
+  try{
+    if (isJwtExpired(t, 10)) return '';
+  }catch(_){
+    return '';
   }
+  return t;
+}
 
   function getUser(){
     const s = readSession();
@@ -302,6 +448,7 @@ async function login(usernameOrEmail, password){
     loadSession: readSession,
     getUser,
     refreshSession,
+    ensureFreshSession,
 
     // Compatibility
     isEnabled: enabled,
@@ -309,13 +456,29 @@ async function login(usernameOrEmail, password){
     signOut
   };
 
-  // If a session is already present (page reload / new tab), ensure refresh scheduling
-  // so long-lived realtime sessions do not silently expire.
-  try {
-    const s = readSession();
-    if (s && s.access_token) {
-      emitToken();
-      scheduleRefresh(s);
-    }
-  } catch (_) {}
+  // If a session is already present (page reload / new tab), validate/refresh it
+// immediately so realtime/polling does not resume with a stale/invalid JWT.
+try {
+  const s = readSession();
+  if (s && s.access_token) {
+    ensureFreshSession({ tryRefresh:true, clearOnFail:false, leewaySec: 60 })
+      .then(function(res){
+        try {
+          const t = accessToken();
+          if (t) emitToken();
+          const ss = readSession();
+          if (ss && ss.access_token) scheduleRefresh(ss);
+        } catch (_) {}
+        // If refresh is impossible, stop spam and let the app redirect cleanly.
+        try {
+          if (res && !res.ok && (res.status === 'expired' || res.status === 'invalid_token')) {
+            clearRefreshTimer();
+            clearSession();
+            window.dispatchEvent(new CustomEvent('mums:auth_invalid', { detail: { reason: res.status, trigger: 'boot' } }));
+          }
+        } catch (_) {}
+      })
+      .catch(function(){});
+  }
+} catch (_) {}
 })();

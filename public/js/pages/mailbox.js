@@ -1,13 +1,103 @@
 
-function eligibleForMailboxManager(user){
+function _mbxIsoDow(isoDate){
+  try{ return new Date(String(isoDate||'') + 'T00:00:00+08:00').getDay(); }catch(_){ return (new Date()).getDay(); }
+}
+function _mbxToSegments(startMin, endMin){
+  if(!Number.isFinite(startMin) || !Number.isFinite(endMin)) return [];
+  if(endMin > startMin) return [[startMin, endMin]];
+  return [[startMin, 24*60],[0, endMin]];
+}
+function _mbxSegmentsOverlap(aSegs, bSegs){
+  for(const a of (aSegs||[])){
+    for(const b of (bSegs||[])){
+      if(a[0] < b[1] && b[0] < a[1]) return true;
+    }
+  }
+  return false;
+}
+function _mbxBlockHit(nowMin, s, e){
+  const wraps = e <= s;
+  return (!wraps && nowMin >= s && nowMin < e) || (wraps && (nowMin >= s || nowMin < e));
+}
+function _mbxInDutyWindow(nowMin, team){
+  if(!team) return false;
+  const s = _mbxParseHM(team.dutyStart||'00:00');
+  const e = _mbxParseHM(team.dutyEnd||'00:00');
+  return _mbxBlockHit(nowMin, s, e);
+}
+
+function eligibleForMailboxManager(user, opts){
   if(!user) return false;
+  opts = opts || {};
   const r = String(user.role||'');
   const admin = (window.Config && Config.ROLES) ? Config.ROLES.ADMIN : 'ADMIN';
   const superAdmin = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
   const superUser = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_USER : 'SUPER_USER';
-  // Primary: mailbox_manager schedule; fallback: admins for support/testing.
-  return user.schedule === 'mailbox_manager' || r===superAdmin || r===superUser || r===admin;
+
+  // Admins always permitted (support/testing).
+  if(r===superAdmin || r===superUser || r===admin) return true;
+
+  // Enforce team scope when provided (Morning/Mid/Night duty teams).
+  if(opts.teamId && String(user.teamId||'') !== String(opts.teamId||'')) return false;
+
+  const UI = window.UI;
+  const Store = window.Store;
+  const nowParts = opts.nowParts || (UI && UI.mailboxNowParts ? UI.mailboxNowParts() : (UI ? UI.manilaNow() : null));
+  if(!UI || !Store || !nowParts) return false;
+
+  const nowMin = _mbxMinutesOfDayFromParts(nowParts);
+
+  // If we know the current duty team window, only grant capability during duty hours.
+  if(opts.dutyTeam && !_mbxInDutyWindow(nowMin, opts.dutyTeam)) return false;
+
+  const roleSet = new Set(['mailbox_manager','mailbox_call']);
+  const dow = _mbxIsoDow(nowParts.isoDate);
+  const dows = [dow];
+
+  // For cross-midnight duty windows, include previous day blocks (wrap blocks that span midnight).
+  try{
+    if(opts.dutyTeam){
+      const s = _mbxParseHM(opts.dutyTeam.dutyStart||'00:00');
+      const e = _mbxParseHM(opts.dutyTeam.dutyEnd||'00:00');
+      const wraps = e <= s;
+      if(wraps && nowMin < e){
+        dows.push((dow+6)%7);
+      }
+    }else{
+      dows.push((dow+6)%7);
+    }
+  }catch(_){}
+
+  for(const di of dows){
+    const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, di) || []) : [];
+    for(const b of blocks){
+      const rr = String(b?.role||'');
+      if(!roleSet.has(rr)) continue;
+      const s = (UI.parseHM ? UI.parseHM(b.start) : _mbxParseHM(b.start));
+      const e = (UI.parseHM ? UI.parseHM(b.end) : _mbxParseHM(b.end));
+      if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+      if(_mbxBlockHit(nowMin, s, e)) return true;
+    }
+  }
+
+  // Legacy fields (rare): allow only inside duty window when possible.
+  try{
+    const legacy = String(user.schedule||'').toLowerCase();
+    if(legacy==='mailbox_manager' || legacy==='mailbox_call'){
+      if(opts.dutyTeam) return _mbxInDutyWindow(nowMin, opts.dutyTeam);
+      return true;
+    }
+  }catch(_){}
+  try{
+    const t = String(user.task||user.taskId||user.taskRole||user.primaryTask||'').toLowerCase();
+    if(t==='mailbox_manager' || t==='mailbox manager'){
+      if(opts.dutyTeam) return _mbxInDutyWindow(nowMin, opts.dutyTeam);
+      return true;
+    }
+  }catch(_){}
+  return false;
 }
+
 
 function _mbxMinutesOfDayFromParts(p){
   return (Number(p.hh)||0) * 60 + (Number(p.mm)||0);
@@ -106,11 +196,98 @@ function _mbxMemberSortKey(u){
 
 (window.Pages=window.Pages||{}, window.Pages.mailbox = function(root){
   const me = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
-  const isManager = eligibleForMailboxManager(me);
+  let isManager = false;
 
   function getDuty(){
     return UI.getDutyWindow(UI.mailboxNowParts ? UI.mailboxNowParts() : null);
   }
+
+  // Mailbox Manager visibility + permissions are driven by scheduled task blocks.
+  // These helpers resolve who is assigned as Mailbox Manager for the current duty window/bucket.
+  function _mbxFindOnDutyMailboxManagerName(teamId, dutyTeam, nowParts, table, activeBucketId){
+    try{
+      const all = (Store.getUsers ? Store.getUsers() : []) || [];
+      const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
+      const nowMin = _mbxMinutesOfDayFromParts(nowParts||{hh:0,mm:0});
+      const dow = _mbxIsoDow(nowParts && nowParts.isoDate);
+      const dows = [dow];
+      try{
+        const s = _mbxParseHM(dutyTeam?.dutyStart || '00:00');
+        const e = _mbxParseHM(dutyTeam?.dutyEnd || '00:00');
+        const wraps = e <= s;
+        if(wraps && nowMin < e) dows.push((dow+6)%7);
+      }catch(_){}
+      const roleOrder = ['mailbox_manager','mailbox_call'];
+      for(const role of roleOrder){
+        for(const u of candidates){
+          for(const di of dows){
+            const bl = Store.getUserDayBlocks ? (Store.getUserDayBlocks(u.id, di) || []) : [];
+            for(const b of bl){
+              if(String(b?.role||'') !== role) continue;
+              const s = (UI.parseHM ? UI.parseHM(b.start) : _mbxParseHM(b.start));
+              const e = (UI.parseHM ? UI.parseHM(b.end) : _mbxParseHM(b.end));
+              if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+              if(_mbxBlockHit(nowMin, s, e)) return String(u.name||u.username||'—');
+            }
+          }
+        }
+      }
+    }catch(_){}
+
+    // Fallback: last known bucket manager for the active bucket (from assignments)
+    try{
+      const bm = table?.meta?.bucketManagers?.[activeBucketId];
+      if(bm && bm.name) return String(bm.name);
+    }catch(_){}
+    return '—';
+  }
+
+  function _mbxFindScheduledManagerForBucket(table, bucket){
+    try{
+      if(!table || !bucket) return '—';
+      const teamId = String(table?.meta?.teamId||'');
+      if(!teamId) return '—';
+      const shiftKey = String(table?.meta?.shiftKey||'');
+      const datePart = (shiftKey.split('|')[1] || '').split('T')[0];
+      const shiftStartISO = datePart || (UI.mailboxNowParts ? UI.mailboxNowParts().isoDate : (UI.manilaNow ? UI.manilaNow().isoDate : ''));
+      const startDow = _mbxIsoDow(shiftStartISO);
+      const nextDow = (startDow + 1) % 7;
+      const dows = [startDow, nextDow];
+
+      const bucketSegs = _mbxToSegments(Number(bucket.startMin)||0, Number(bucket.endMin)||0);
+      const all = (Store.getUsers ? Store.getUsers() : []) || [];
+      const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
+
+      const roleOrder = ['mailbox_manager','mailbox_call'];
+      for(const role of roleOrder){
+        for(const u of candidates){
+          for(const di of dows){
+            const bl = Store.getUserDayBlocks ? (Store.getUserDayBlocks(u.id, di) || []) : [];
+            for(const b of bl){
+              if(String(b?.role||'') !== role) continue;
+              const s = (UI.parseHM ? UI.parseHM(b.start) : _mbxParseHM(b.start));
+              const e = (UI.parseHM ? UI.parseHM(b.end) : _mbxParseHM(b.end));
+              if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+              const blockSegs = _mbxToSegments(s, e);
+              if(_mbxSegmentsOverlap(bucketSegs, blockSegs)) return String(u.name||u.username||'—');
+            }
+          }
+        }
+      }
+    }catch(_){}
+    return '—';
+  }
+
+  function canAssignNow(){
+    try{
+      const duty = getDuty();
+      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+      return eligibleForMailboxManager(me, { teamId: duty?.current?.id, dutyTeam: duty?.current, nowParts });
+    }catch(_){
+      return false;
+    }
+  }
+
 
   function ensureShiftTables(){
     const d = getDuty();
@@ -283,6 +460,10 @@ function _mbxMemberSortKey(u){
     const totals = computeTotals(table);
 
     const duty = getDuty();
+    const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+    isManager = eligibleForMailboxManager(me, { teamId: duty.current.id, dutyTeam: duty.current, nowParts });
+    const mbxMgrName = _mbxFindOnDutyMailboxManagerName(duty.current.id, duty.current, nowParts, table, activeBucketId);
+
 
     
 // ===== CODE UNTOUCHABLES =====
@@ -358,6 +539,7 @@ root.innerHTML = `
             <div class="small muted">MAILBOX COUNTER • Shift key: <span class="mono">${UI.esc(shiftKey)}</span></div>
           </div>
           <div class="mbx-tools">
+            <span class="badge" id="mbxMgrBadge" title="Mailbox Manager">${UI.esc(mbxMgrName)}</span>
             <div class="small muted">Active mailbox time:</div>
             <span class="badge">${UI.esc((_mbxBucketLabel((table.buckets||[]).find(b=>b.id===activeBucketId)||table.buckets?.[0]||{startMin:0,endMin:0})))}</span>
           </div>
@@ -485,8 +667,8 @@ root.innerHTML = `
         if(!row) return;
         const uid = row.dataset.assignMember;
         if(!uid) return;
-        if(!isManager){
-          UI.toast('You do not have permission to assign cases.', 'warn');
+        if(!canAssignNow()){
+          UI.toast('You do not have permission to assign cases right now.', 'warn');
           return;
         }
         openAssignModal(uid);
@@ -500,31 +682,37 @@ root.innerHTML = `
   function renderTable(table, activeBucketId, totals, interactive){
     const buckets = table.buckets || [];
     const members = table.members || [];
-
     // Mailbox Manager (per time bucket) shown above the time range.
-    function getBucketManagerName(bucketId){
-      // 1) Persisted explicit map
+    function _mbxHeaderFontPx(name){
+      const n = String(name||'').trim();
+      const len = n.length;
+      if(len <= 12) return 10;
+      if(len <= 16) return 9;
+      if(len <= 22) return 8;
+      return 7;
+    }
+    function getBucketManagerName(bucket){
+      // 1) Scheduled mailbox manager for this bucket (authoritative)
+      try{
+        const scheduled = _mbxFindScheduledManagerForBucket(table, bucket);
+        if(scheduled && scheduled !== '—') return String(scheduled);
+      }catch(_){ }
+
+      // 2) Persisted explicit map (from assignment actors)
       try{
         const bm = table && table.meta && table.meta.bucketManagers;
-        if(bm && bm[bucketId] && bm[bucketId].name) return String(bm[bucketId].name);
+        if(bm && bm[bucket.id] && bm[bucket.id].name) return String(bm[bucket.id].name);
       }catch(_){ }
 
-      // 2) Most recent assignment actor within bucket
+      // 3) Most recent assignment actor within bucket
       try{
-        const a = (table.assignments||[]).find(x=>x.bucketId===bucketId && (x.actorName||''));
+        const a = (table.assignments||[]).find(x=>x.bucketId===bucket.id && (x.actorName||''));
         if(a && a.actorName) return String(a.actorName);
-      }catch(_){ }
-
-      // 3) Team mailbox_manager schedule (if configured)
-      try{
-        const all = (Store.getUsers ? Store.getUsers() : []) || [];
-        const teamId = table && table.meta ? table.meta.teamId : '';
-        const mm = all.find(u => (u.teamId||'')===teamId && String(u.schedule||'').toLowerCase()==='mailbox_manager');
-        if(mm) return String(mm.name||mm.username||'');
       }catch(_){ }
 
       return '—';
     }
+
 
     const rows = members.map(m=>{
       const cells = buckets.map(b=>{
@@ -564,10 +752,11 @@ root.innerHTML = `
             <th style="min-width:260px">Member</th>
             ${buckets.map(b=>{
               const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
-              const mgr = getBucketManagerName(b.id);
+              const mgr = getBucketManagerName(b);
               // Show only the assigned user's name (no label). If none yet, keep blank.
               const mgrLabel = mgr ? UI.esc(mgr) : '';
-              return `<th class="${cls} mbx-time-th"><div class="mbx-th"><div class="mbx-th-top">${mgrLabel}</div><div class="mbx-th-time">${UI.esc(_mbxBucketLabel(b))}</div></div></th>`;
+              const fs = _mbxHeaderFontPx(mgr);
+              return `<th class="${cls} mbx-time-th"><div class="mbx-th"><div class="mbx-th-top" style="font-size:${fs}px" title="${mgr ? UI.esc(mgr) : 'Mailbox Manager'}">${mgrLabel}</div><div class="mbx-th-time">${UI.esc(_mbxBucketLabel(b))}</div></div></th>`;
             }).join('')}
             <th style="width:110px" class="mbx-time-th">Total</th>
           </tr>
@@ -622,6 +811,18 @@ root.innerHTML = `
       el.textContent = msg;
       el.style.display='block';
     };
+
+    // Permission hardening: re-check Mailbox Manager duty permission at the moment of assignment.
+    try{
+      const duty = getDuty();
+      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+      const actorNow = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
+      if(!eligibleForMailboxManager(actorNow, { teamId: duty?.current?.id, dutyTeam: duty?.current, nowParts })){
+        UI.closeModal('mbxAssignModal');
+        UI.toast('Mailbox Manager permission is not active for this duty window.', 'warn');
+        return;
+      }
+    }catch(_){ }
 
     if(!caseNo) return err('Case # is required.');
     // Prevent duplicates (within current + previous shift tables)

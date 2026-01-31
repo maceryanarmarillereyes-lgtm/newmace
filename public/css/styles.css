@@ -2856,7 +2856,7 @@ body.modal-open .quicklinks-bar{pointer-events:none;opacity:.22;filter:saturate(
   color: color-mix(in srgb, var(--text-0) 88%, transparent);
 }
 .mbx-th{ display:flex; flex-direction:column; align-items:center; gap:2px; }
-.mbx-th-top{ font-size:10px; font-weight:800; opacity:0.68; line-height:1.1; }
+.mbx-th-top{ font-size:10px; font-weight:800; opacity:0.68; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .mbx-th-time{ font-weight:850; }
 .mbx-num{
   font-variant-numeric: tabular-nums;

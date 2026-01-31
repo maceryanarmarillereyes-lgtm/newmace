@@ -44,7 +44,13 @@
         // Debounce concurrent refreshes.
         if (!__jwtPromise) {
           __jwtPromise = (async function(){
-            try { await CloudAuth.loadSession(); } catch(_) {}
+            try {
+              if (typeof CloudAuth.ensureFreshSession === 'function') {
+                await CloudAuth.ensureFreshSession({ tryRefresh:true, clearOnFail:false, leewaySec: 60 });
+              } else {
+                await CloudAuth.loadSession();
+              }
+            } catch(_) {}
             return (typeof CloudAuth.accessToken === 'function') ? CloudAuth.accessToken() : '';
           })();
           // Reset the promise after completion so future calls can refresh again.
@@ -110,7 +116,7 @@ function jwtSub(jwt){
     options.headers = Object.assign({}, (options.headers || {}), await authHeader());
 
     var r = await fetch(url, options);
-    if (r.status !== 401) return r;
+    if (r.status !== 401 && r.status !== 403) return r;
 
     // Attempt refresh once and retry.
     var refreshed = await refreshAuthIfPossible();
@@ -165,7 +171,13 @@ function jwtSub(jwt){
       if (window.CloudAuth && typeof CloudAuth.loadSession === 'function') {
         var deadline = Date.now() + 8000;
         while (Date.now() < deadline) {
-          try { await CloudAuth.loadSession(); } catch(_) {}
+          try {
+            if (typeof CloudAuth.ensureFreshSession === 'function') {
+              await CloudAuth.ensureFreshSession({ tryRefresh:true, clearOnFail:false, leewaySec: 60 });
+            } else {
+              await CloudAuth.loadSession();
+            }
+          } catch(_) {}
           var t = (typeof CloudAuth.accessToken === 'function') ? CloudAuth.accessToken() : '';
           if (t) return true;
           await new Promise(function(resolve){ setTimeout(resolve, 250); });

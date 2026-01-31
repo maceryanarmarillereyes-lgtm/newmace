@@ -199,6 +199,22 @@
         }
       };
 
+
+// JWT validity preflight (boot/resume):
+// If the stored access token is expired/invalid, attempt a silent refresh.
+// If refresh is not possible, force a clean relogin to prevent 401/403 spam.
+try {
+  if (window.CloudAuth && CloudAuth.enabled && CloudAuth.enabled() && typeof CloudAuth.ensureFreshSession === 'function') {
+    const g = await CloudAuth.ensureFreshSession({ tryRefresh:true, clearOnFail:false, leewaySec: 60 });
+    if (g && !g.ok && (g.status === 'expired' || g.status === 'invalid_token' || g.status === 'missing_token')) {
+      await hardFail('Session expired. Please log in again.');
+      return null;
+    }
+  }
+} catch (_) {
+  await hardFail('Session expired. Please log in again.');
+  return null;
+}
       // Attempt hydration with a bounded deadline. Returns a valid user or null (no redirects/flash here).
       const attemptHydrate = async (maxMs, attemptNo)=>{
         const deadline = Date.now() + Math.max(500, Number(maxMs) || 0);
@@ -237,6 +253,10 @@
             if (window.CloudAuth && CloudAuth.enabled && CloudAuth.enabled()) {
               const sbUser = CloudAuth.getUser ? CloudAuth.getUser() : null;
               if (sbUser && sbUser.id) {
+
+                // Guard: do not proceed with protected calls if the JWT is missing/expired.
+                const __jwt0 = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+                if (!__jwt0) return null;
                 if (timeLeft() <= 0) return null;
 
                 // Ensure Store session points at this Supabase user
@@ -493,6 +513,41 @@
       window.location.href = './login.html';
     }
   };
+
+
+// Global: if CloudAuth detects an invalid/expired JWT during resume, force a clean relogin.
+async function __forceRelogin(message){
+  const msg = message || 'Session expired. Please log in again.';
+  try{ localStorage.setItem('mums_login_flash', msg); }catch(_){}
+  try{ window.CloudAuth && CloudAuth.signOut && (await CloudAuth.signOut()); }catch(_){}
+  try{ window.Store && Store.setSession && Store.setSession(null); }catch(_){}
+  currentUser = null;
+  try{ resolveHydrated(null); }catch(_){}
+  try {
+    // Avoid redirect loops on login page; just reload to pick up the flash message.
+    const p = String(location.pathname || '');
+    if (p.toLowerCase().includes('login')) {
+      window.location.reload();
+    } else {
+      window.location.href = './login.html';
+    }
+  } catch(_) {}
+}
+
+try {
+  if (!window.__MUMS_AUTH_INVALID_BOUND) {
+    window.__MUMS_AUTH_INVALID_BOUND = true;
+    window.addEventListener('mums:auth_invalid', function(e){
+      try {
+        const reason = e && e.detail && e.detail.reason ? String(e.detail.reason) : '';
+        // Always surface the required UX message.
+        __forceRelogin('Session expired. Please log in again.');
+      } catch (_) {
+        __forceRelogin('Session expired. Please log in again.');
+      }
+    });
+  }
+} catch (_) {}
 
   window.Auth = Auth;
 })();
