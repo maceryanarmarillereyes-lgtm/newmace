@@ -33,9 +33,10 @@ function eligibleForMailboxManager(user, opts){
   const admin = (window.Config && Config.ROLES) ? Config.ROLES.ADMIN : 'ADMIN';
   const superAdmin = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
   const superUser = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_USER : 'SUPER_USER';
+  const teamLead = (window.Config && Config.ROLES) ? Config.ROLES.TEAM_LEAD : 'TEAM_LEAD';
 
   // Admins always permitted (support/testing).
-  if(r===superAdmin || r===superUser || r===admin) return true;
+  if(r===superAdmin || r===superUser || r===admin || r===teamLead) return true;
 
   // Enforce team scope when provided (Morning/Mid/Night duty teams).
   if(opts.teamId && String(user.teamId||'') !== String(opts.teamId||'')) return false;
@@ -278,8 +279,20 @@ function _mbxMemberSortKey(u){
     return '—';
   }
 
-  function canAssignNow(){
+  function isPrivilegedRole(u){
     try{
+      const r = String(u?.role||'');
+      const R = (window.Config && Config.ROLES) ? Config.ROLES : {};
+      return r === (R.SUPER_ADMIN||'SUPER_ADMIN') ||
+             r === (R.SUPER_USER||'SUPER_USER') ||
+             r === (R.ADMIN||'ADMIN') ||
+             r === (R.TEAM_LEAD||'TEAM_LEAD');
+    }catch(_){ return false; }
+  }
+
+    function canAssignNow(){
+    try{
+      if(isPrivilegedRole(me)) return true;
       const duty = getDuty();
       const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
       return eligibleForMailboxManager(me, { teamId: duty?.current?.id, dutyTeam: duty?.current, nowParts });
@@ -287,6 +300,7 @@ function _mbxMemberSortKey(u){
       return false;
     }
   }
+
 
 
   function ensureShiftTables(){
@@ -532,6 +546,8 @@ root.innerHTML = `
 
       ${renderMyAssignmentsPanel(table)}
 
+      ${renderMailboxAnalyticsPanel(table, prevTable, totals, activeBucketId)}
+
       <div class="mbx-card" style="margin-top:12px">
         <div class="mbx-card-head">
           <div class="mbx-title">
@@ -580,45 +596,6 @@ root.innerHTML = `
           ${renderCaseMonitoring(table)}
         </div>
       </div>
-
-      <div class="modal" id="mbxAssignModal">
-        <div class="panel" style="max-width:560px">
-          <div class="head">
-            <div>
-              <div class="announce-title">Assign Case</div>
-              <div class="small muted">Assign a case to a member and record it against the active mailbox time bucket.</div>
-            </div>
-            <button class="btn ghost" type="button" data-close="mbxAssignModal">✕</button>
-          </div>
-          <div class="body" style="display:grid;gap:10px">
-            <div class="grid2">
-              <div>
-                <label class="small">Assigned To</label>
-                <input class="input" id="mbxAssignedTo" disabled />
-              </div>
-              <div>
-                <label class="small">Mailbox Time</label>
-                <input class="input" id="mbxBucketLbl" disabled />
-              </div>
-            </div>
-            <div class="grid2">
-              <div>
-                <label class="small">Case #</label>
-                <input class="input" id="mbxCaseNo" placeholder="e.g., INC123456" />
-              </div>
-              <div>
-                <label class="small">Short Description</label>
-                <input class="input" id="mbxDesc" placeholder="Short description (optional)" />
-              </div>
-            </div>
-            <div class="err" id="mbxAssignErr" style="display:none"></div>
-            <div class="row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
-              <button class="btn" type="button" data-close="mbxAssignModal">Cancel</button>
-              <button class="btn primary" type="button" id="mbxSendAssign">Send</button>
-            </div>
-          </div>
-        </div>
-      </div>
     `;
 
     // toggle prev
@@ -634,8 +611,9 @@ root.innerHTML = `
       };
     }
 
-    // binds
-    root.querySelectorAll('[data-close="mbxAssignModal"]').forEach(b=>b.onclick=()=>UI.closeModal('mbxAssignModal'));
+
+    // Ensure Assign Case modal is mounted outside the mailbox root so it survives re-renders.
+    ensureAssignModalMounted();
 
     // export
     UI.el('#mbxExportCsv').onclick = ()=>exportCSV(table);
@@ -775,7 +753,98 @@ root.innerHTML = `
 
   // Assignment modal
   let _assignUserId = null;
+  let _assignSending = false;
+
+  function _mbxAuthHeader(){
+    const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+    return jwt ? { Authorization: `Bearer ${jwt}` } : {};
+  }
+  function _mbxClientId(){
+    try{ return localStorage.getItem('mums_client_id') || ''; }catch(_){ return ''; }
+  }
+
+  function ensureAssignModalMounted(){
+    try{
+      if(document.getElementById('mbxAssignModal')) return;
+      const host = document.createElement('div');
+      host.className = 'modal';
+      host.id = 'mbxAssignModal';
+      host.innerHTML = `
+        <div class="panel" style="max-width:560px">
+          <div class="head">
+            <div>
+              <div class="announce-title">Assign Case</div>
+              <div class="small muted">Assign a case to a member and record it against the active mailbox time bucket.</div>
+            </div>
+            <button class="btn ghost" type="button" data-close="mbxAssignModal">✕</button>
+          </div>
+          <div class="body" style="display:grid;gap:10px">
+            <div class="grid2">
+              <div>
+                <label class="small">Assigned To</label>
+                <input class="input" id="mbxAssignedTo" disabled />
+              </div>
+              <div>
+                <label class="small">Mailbox Time</label>
+                <input class="input" id="mbxBucketLbl" disabled />
+              </div>
+            </div>
+            <div class="grid2">
+              <div>
+                <label class="small">Case #</label>
+                <input class="input" id="mbxCaseNo" placeholder="e.g., INC123456" />
+              </div>
+              <div>
+                <label class="small">Short Description</label>
+                <input class="input" id="mbxDesc" placeholder="Short description (optional)" />
+              </div>
+            </div>
+            <div class="err" id="mbxAssignErr" style="display:none"></div>
+            <div class="row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
+              <button class="btn" type="button" data-close="mbxAssignModal">Cancel</button>
+              <button class="btn primary" type="button" id="mbxSendAssign">
+                <span class="mbx-spinner" id="mbxAssignSpin" style="display:none" aria-hidden="true"></span>
+                <span id="mbxAssignSendLbl">Send</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(host);
+
+      host.querySelectorAll('[data-close="mbxAssignModal"]').forEach(b=>{
+        b.onclick = ()=>{ if(!_assignSending) UI.closeModal('mbxAssignModal'); };
+      });
+      host.addEventListener('click', (e)=>{
+        try{ if(e && e.target === host && !_assignSending) UI.closeModal('mbxAssignModal'); }catch(_){ }
+      });
+    }catch(e){ console.error('Failed to mount Assign Case modal', e); }
+  }
+
+  function setAssignSubmitting(on){
+    _assignSending = !!on;
+    try{
+      const btn = UI.el('#mbxSendAssign');
+      const spin = UI.el('#mbxAssignSpin');
+      const lbl = UI.el('#mbxAssignSendLbl');
+      if(btn) btn.disabled = !!on;
+      if(spin) spin.style.display = on ? 'inline-block' : 'none';
+      if(lbl) lbl.textContent = on ? 'Sending…' : 'Send';
+    }catch(_){ }
+  }
+
+  async function mbxPost(path, body){
+    const res = await fetch(path, {
+      method:'POST',
+      headers: { 'Content-Type':'application/json', ..._mbxAuthHeader() },
+      body: JSON.stringify(body || {}),
+      cache:'no-store'
+    });
+    const data = await res.json().catch(()=>({}));
+    return { res, data };
+  }
   function openAssignModal(userId){
+    ensureAssignModalMounted();
     const { table } = ensureShiftTables();
     const u = (table.members||[]).find(x=>x.id===userId) || (Store.getUsers?Store.getUsers().find(x=>x.id===userId):null);
     if(!u) return;
@@ -796,12 +865,13 @@ root.innerHTML = `
     setTimeout(()=>{ try{ UI.el('#mbxCaseNo').focus(); }catch(_){ } }, 60);
   }
 
-  function sendAssignment(){
+  
+  async function sendAssignment(){
     const { shiftKey, table } = ensureShiftTables();
     const uid = _assignUserId;
     if(!uid) return;
-    const activeId = computeActiveBucketId(table);
-    const bucket = (table.buckets||[]).find(b=>b.id===activeId) || table.buckets?.[0];
+    if(_assignSending) return;
+
     const caseNo = String(UI.el('#mbxCaseNo').value||'').trim();
     const desc = String(UI.el('#mbxDesc').value||'').trim();
 
@@ -812,103 +882,71 @@ root.innerHTML = `
       el.style.display='block';
     };
 
-    // Permission hardening: re-check Mailbox Manager duty permission at the moment of assignment.
+    // Frontend validation
+    if(!caseNo) return err('Case # is required.');
+
+    // Permission UX (server enforces final RBAC)
     try{
-      const duty = getDuty();
-      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
       const actorNow = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
-      if(!eligibleForMailboxManager(actorNow, { teamId: duty?.current?.id, dutyTeam: duty?.current, nowParts })){
-        UI.closeModal('mbxAssignModal');
-        UI.toast('Mailbox Manager permission is not active for this duty window.', 'warn');
+      if(!isPrivilegedRole(actorNow)){
+        const duty = getDuty();
+        const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+        if(!eligibleForMailboxManager(actorNow, { teamId: duty?.current?.id, dutyTeam: duty?.current, nowParts })){
+          UI.toast('Mailbox Manager permission is not active for this duty window.', 'warn');
+          return;
+        }
+      }
+    }catch(_){}
+
+    // Duplicate guard (best effort)
+    try{
+      const state = Store.getMailboxState ? Store.getMailboxState() : {};
+      const curKey = state.currentKey || shiftKey;
+      const prevKey = state.previousKey || '';
+      const tablesToCheck = [curKey, prevKey].filter(Boolean)
+        .map(k=>Store.getMailboxTable ? Store.getMailboxTable(k) : null)
+        .filter(Boolean);
+      const dup = tablesToCheck.some(t => (t.assignments||[]).some(a => String(a.caseNo||'').toLowerCase() === caseNo.toLowerCase()));
+      if(dup) return err('Duplicate Case # detected. Please verify and use a unique case number.');
+    }catch(_){}
+
+    setAssignSubmitting(true);
+    try{
+      const { res, data } = await mbxPost('/api/mailbox/assign', {
+        shiftKey,
+        assigneeId: uid,
+        caseNo,
+        desc,
+        clientId: _mbxClientId() || undefined
+      });
+
+      if(res.status === 401){
+        setAssignSubmitting(false);
+        UI.toast('Session expired. Please log in again.', 'warn');
+        try{ window.Auth && Auth.forceLogout && Auth.forceLogout('Session expired. Please log in again.'); }catch(_){}
         return;
       }
-    }catch(_){ }
 
-    if(!caseNo) return err('Case # is required.');
-    // Prevent duplicates (within current + previous shift tables)
-    const state = Store.getMailboxState ? Store.getMailboxState() : {};
-    const curKey = state.currentKey || shiftKey;
-    const prevKey = state.previousKey || '';
-    const tablesToCheck = [curKey, prevKey].filter(Boolean).map(k=>Store.getMailboxTable ? Store.getMailboxTable(k) : null).filter(Boolean);
-    const dup = tablesToCheck.some(t => (t.assignments||[]).some(a => String(a.caseNo||'').toLowerCase() === caseNo.toLowerCase()));
-    if(dup) return err('Duplicate Case # detected. Please verify and use a unique case number.');
+      if(!res.ok || !data || !data.ok){
+        const msg = (data && (data.message || data.error)) ? String(data.message||data.error) : `Failed (${res.status})`;
+        setAssignSubmitting(false);
+        return err(msg);
+      }
 
-    // Update count
-    if(!table.counts) table.counts = {};
-    if(!table.counts[uid]) table.counts[uid] = {};
-    table.counts[uid][bucket.id] = (Number(table.counts[uid][bucket.id])||0) + 1;
+      try{
+        if(data.table) Store.saveMailboxTable && Store.saveMailboxTable(shiftKey, data.table, { fromRealtime:true });
+      }catch(_){}
 
-    // Save assignment
-    const actor = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
-
-    // Track mailbox manager handling this time bucket for header display.
-    try{
-      if(!table.meta) table.meta = {};
-      if(!table.meta.bucketManagers) table.meta.bucketManagers = {};
-      table.meta.bucketManagers[bucket.id] = {
-        id: actor.id || '',
-        name: actor.name || actor.username || '',
-        at: Date.now()
-      };
-    }catch(_){ }
-
-    const assignment = {
-      id: 'mbx_' + Math.random().toString(16).slice(2) + '_' + Date.now(),
-      caseNo,
-      desc,
-      assigneeId: uid,
-      bucketId: bucket.id,
-      assignedAt: Date.now(),
-      actorId: actor.id || '',
-      actorName: actor.name || actor.username || '',
-      confirmedAt: 0,
-      confirmedById: ''
-    };
-    table.assignments = Array.isArray(table.assignments) ? table.assignments : [];
-    table.assignments.unshift(assignment);
-
-    Store.saveMailboxTable && Store.saveMailboxTable(shiftKey, table);
-
-    // Audit log
-    try{
-      Store.addLog && Store.addLog({
-        ts: assignment.assignedAt,
-        teamId: table.meta.teamId,
-        actorId: actor.id || '',
-        actorName: actor.name||actor.username||'',
-        action:'MAILBOX_CASE_ASSIGN',
-        targetId: caseNo,
-        targetName: caseNo,
-        msg:`Mailbox case assigned to ${(Store.getUsers?Store.getUsers().find(x=>x.id===uid)?.name: '') || ''}`.trim(),
-        detail:`${caseNo} • ${desc} • bucket ${_mbxBucketLabel(bucket)}`
-      });
-    }catch(_){}
-
-    // Realtime notification to member
-    try{
-      const assignee = (Store.getUsers?Store.getUsers().find(x=>x.id===uid):null) || {};
-      const notif = {
-        id: 'notif_mbx_' + Math.random().toString(16).slice(2) + '_' + Date.now(),
-        ts: assignment.assignedAt,
-        type: 'MAILBOX_ASSIGN',
-        teamId: table.meta.teamId,
-        fromId: actor.id || '',
-        fromName: actor.name||actor.username||'Mailbox Manager',
-        title: `Mailbox case assigned: ${caseNo}`,
-        body: `${desc ? (desc + '\n\n') : ''}Mailbox time: ${_mbxBucketLabel(bucket)}\nShift: ${table.meta.teamLabel}\nAssigned to: ${assignee.name||assignee.username||''}`,
-        recipients: [uid],
-        acks: {}
-      };
-      Store.addNotif && Store.addNotif(notif);
-      // ping schedule notif listeners
-      try{ localStorage.setItem('ums_schedule_notifs', String(Date.now())); }catch(_){}
-      try{ ('BroadcastChannel' in window) && new BroadcastChannel('ums_schedule_updates').postMessage({ type:'notify', notifId:notif.id }); }catch(_){}
-    }catch(_){}
-
-    UI.closeModal('mbxAssignModal');
-    UI.toast('Case assigned.');
-    render(); // re-render table with updated totals
+      setAssignSubmitting(false);
+      UI.closeModal('mbxAssignModal');
+      UI.toast('Case assigned.');
+      scheduleRender('assign-success');
+    }catch(e){
+      setAssignSubmitting(false);
+      return err(String(e?.message||e));
+    }
   }
+
 
   // Exports
   function exportCSV(table){
@@ -1080,9 +1118,15 @@ const onMailboxStoreEvent = (e)=>{
       k === 'mailbox_override_cloud' ||
       k === 'mailbox_time_override' ||
       k === 'mums_mailbox_time_override_cloud' ||
-      k === 'mums_mailbox_time_override'
+      k === 'mums_mailbox_time_override' ||
+      k === 'mums_mailbox_tables' ||
+      k === 'mums_mailbox_state' ||
+      k === 'ums_weekly_schedules' ||
+      k === 'ums_users' ||
+      k === 'mums_team_config' ||
+      k === 'ums_activity_logs'
     ){
-      scheduleRender('override-sync');
+      scheduleRender('mailbox-sync');
     }
   }catch(_){ }
 };
@@ -1093,9 +1137,19 @@ const onMailboxStorageEvent = (e)=>{
   try{
     if(!e || e.storageArea !== localStorage) return;
     const k = String(e.key||'');
-    if(k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override'){
-      try{ if(window.Store && Store.startMailboxOverrideSync) Store.startMailboxOverrideSync({ force:true }); }catch(_){ }
-      scheduleRender('override-storage');
+    if(
+      k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override' ||
+      k === 'mums_mailbox_tables' || k === 'mums_mailbox_state' ||
+      k === 'ums_weekly_schedules' || k === 'ums_users' ||
+      k === 'mums_team_config' || k === 'ums_activity_logs'
+    ){
+      // Override keys still use the explicit override sync helper for cloud reconciliation.
+      try{
+        if(k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override'){
+          if(window.Store && Store.startMailboxOverrideSync) Store.startMailboxOverrideSync({ force:true });
+        }
+      }catch(_){ }
+      scheduleRender('storage-sync');
     }
   }catch(_){ }
 };
@@ -1207,15 +1261,15 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
       .slice(0, 50);
   }
 
-  function confirmAssignment(shiftKey, assignmentId){
+  
+  async function confirmAssignment(shiftKey, assignmentId){
     const me = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
     const uid = String(me.id||'');
     if(!uid) return;
 
+    // UI guard: only confirm own assignment from the "My Assigned Cases" panel.
     const table = (Store.getMailboxTable ? Store.getMailboxTable(shiftKey) : null);
-    if(!table || !Array.isArray(table.assignments)) return;
-
-    const a = table.assignments.find(x=>x && x.id===assignmentId);
+    const a = table && Array.isArray(table.assignments) ? table.assignments.find(x=>x && x.id===assignmentId) : null;
     if(!a) return;
     if(String(a.assigneeId||'') !== uid){
       UI.toast('You can only confirm your own assigned cases.', 'warn');
@@ -1223,29 +1277,36 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
     }
     if(a.confirmedAt) return;
 
-    a.confirmedAt = Date.now();
-    a.confirmedById = uid;
-
-    Store.saveMailboxTable && Store.saveMailboxTable(shiftKey, table);
-
-    // Audit log
     try{
-      Store.addLog && Store.addLog({
-        ts: a.confirmedAt,
-        teamId: table.meta.teamId,
-        actorId: uid,
-        actorName: me.name||me.username||'',
-        action:'MAILBOX_CASE_CONFIRM',
-        targetId: a.caseNo,
-        targetName: a.caseNo,
-        msg:`Mailbox case confirmed by ${(me.name||me.username||'')}`.trim(),
-        detail:`${a.caseNo} • confirmed`
+      const { res, data } = await mbxPost('/api/mailbox/confirm', {
+        shiftKey,
+        assignmentId,
+        clientId: _mbxClientId() || undefined
       });
-    }catch(_){}
 
-    UI.toast('Case confirmed.');
-    render();
+      if(res.status === 401){
+        UI.toast('Session expired. Please log in again.', 'warn');
+        try{ window.Auth && Auth.forceLogout && Auth.forceLogout('Session expired. Please log in again.'); }catch(_){}
+        return;
+      }
+
+      if(!res.ok || !data || !data.ok){
+        const msg = (data && (data.message || data.error)) ? String(data.message||data.error) : `Failed (${res.status})`;
+        UI.toast(msg, 'warn');
+        return;
+      }
+
+      try{
+        if(data.table) Store.saveMailboxTable && Store.saveMailboxTable(shiftKey, data.table, { fromRealtime:true });
+      }catch(_){}
+
+      UI.toast('Case confirmed.');
+      scheduleRender('confirm-success');
+    }catch(e){
+      UI.toast('Confirm failed: ' + String(e?.message||e), 'warn');
+    }
   }
+
 
   function renderMyAssignmentsPanel(table){
     try{
@@ -1277,6 +1338,123 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
         </div>
       `;
     }catch(_){ return ''; }
+  }
+
+
+  // --- Mailbox Analytics Summary Panel (Enterprise) ---
+  function _mbxFmtDur(ms){
+    ms = Number(ms)||0;
+    if(!Number.isFinite(ms) || ms <= 0) return '—';
+    const s = Math.round(ms/1000);
+    const h = Math.floor(s/3600);
+    const m = Math.floor((s%3600)/60);
+    const ss = s%60;
+    if(h>0) return `${h}h ${m}m`;
+    if(m>0) return `${m}m ${ss}s`;
+    return `${ss}s`;
+  }
+
+  function renderMailboxAnalyticsPanel(table, prevTable, totals, activeBucketId){
+    try{
+      const esc = UI.esc;
+      const users = (Store.getUsers ? Store.getUsers() : []) || [];
+      const byId = Object.fromEntries(users.map(u=>[String(u.id), u]));
+      const shiftTotal = Number(totals?.shiftTotal)||0;
+
+      // Counts per role (assignee role)
+      const roleCounts = {};
+      const assigneeCounts = {};
+      for(const a of (table.assignments||[])){
+        if(!a) continue;
+        const aid = String(a.assigneeId||'');
+        if(!aid) continue;
+        assigneeCounts[aid] = (assigneeCounts[aid]||0) + 1;
+        const r = String(byId[aid]?.role || 'MEMBER');
+        roleCounts[r] = (roleCounts[r]||0) + 1;
+      }
+
+      const roleRows = Object.entries(roleCounts)
+        .sort((a,b)=>b[1]-a[1])
+        .slice(0, 8)
+        .map(([r,c])=>`<div class="mbx-ana-row"><div class="small">${esc(r)}</div><div class="badge">${c}</div></div>`)
+        .join('') || `<div class="small muted">No assignments yet.</div>`;
+
+      // Time block totals (current shift buckets)
+      const bucketRows = (table.buckets||[]).map(b=>{
+        const c = Number(totals?.colTotals?.[b.id])||0;
+        const isActive = String(b.id) === String(activeBucketId||'');
+        return `<div class="mbx-ana-row">
+          <div class="small ${isActive?'':'muted'}">${esc(_mbxBucketLabel(b))}${isActive?' <span class="badge sm">Active</span>':''}</div>
+          <div class="badge">${c}</div>
+        </div>`;
+      }).join('') || `<div class="small muted">No buckets.</div>`;
+
+      // Avg response time (confirmed only)
+      let rtSum = 0, rtN = 0;
+      for(const a of (table.assignments||[])){
+        if(!a || !a.confirmedAt || !a.assignedAt) continue;
+        const dt = Number(a.confirmedAt) - Number(a.assignedAt);
+        if(dt>0 && dt < 7*24*60*60*1000){ rtSum += dt; rtN += 1; }
+      }
+      const avgRT = rtN ? _mbxFmtDur(rtSum/rtN) : '—';
+
+      // Distribution (top assignees)
+      const top = Object.entries(assigneeCounts).sort((a,b)=>b[1]-a[1]).slice(0, 8);
+      const distRows = top.map(([id,c])=>{
+        const name = byId[id]?.name || byId[id]?.username || id.slice(0,6);
+        const pct = shiftTotal ? Math.round((c/shiftTotal)*100) : 0;
+        const w = Math.max(2, Math.min(100, pct));
+        return `<div style="padding:6px 0">
+          <div class="row" style="justify-content:space-between;gap:10px">
+            <div class="small">${esc(name)}</div>
+            <div class="small muted">${c} (${pct}%)</div>
+          </div>
+          <div class="mbx-ana-bar"><span style="width:${w}%"></span></div>
+        </div>`;
+      }).join('') || `<div class="small muted">No distribution yet.</div>`;
+
+      // Shift totals (current + previous when available)
+      const prevTotal = prevTable ? (computeTotals(prevTable).shiftTotal||0) : 0;
+      const shiftRows = `
+        <div class="mbx-ana-row"><div class="small">Current shift</div><div class="badge">${shiftTotal}</div></div>
+        <div class="mbx-ana-row"><div class="small muted">Previous shift</div><div class="badge">${prevTable ? prevTotal : '—'}</div></div>
+        <div class="mbx-ana-row"><div class="small muted">Avg response time</div><div class="badge">${esc(avgRT)}</div></div>
+      `;
+
+      return `
+        <div class="mbx-card" style="margin-top:12px">
+          <div class="mbx-card-head">
+            <div class="mbx-title">
+              <div class="mbx-shift-title">Mailbox Analytics</div>
+              <div class="small muted">Live summary for the current shift table (auto-updates via realtime sync).</div>
+            </div>
+            <div class="mbx-tools"><span class="badge">${shiftTotal} cases</span></div>
+          </div>
+          <div class="mbx-analytics">
+            <div class="mbx-analytics-grid">
+              <div class="mbx-ana-box">
+                <div class="small muted" style="margin-bottom:6px">Shift</div>
+                ${shiftRows}
+              </div>
+              <div class="mbx-ana-box">
+                <div class="small muted" style="margin-bottom:6px">Cases per role</div>
+                ${roleRows}
+              </div>
+              <div class="mbx-ana-box">
+                <div class="small muted" style="margin-bottom:6px">Cases per time block</div>
+                ${bucketRows}
+              </div>
+            </div>
+            <div class="mbx-ana-box">
+              <div class="small muted" style="margin-bottom:6px">Assignment distribution (top)</div>
+              ${distRows}
+            </div>
+          </div>
+        </div>
+      `;
+    }catch(e){
+      return '';
+    }
   }
 
   function buildCaseMonitoringMatrix(table){

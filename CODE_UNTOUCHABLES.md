@@ -169,3 +169,11 @@ This is required so authenticated users can read their own profile row under RLS
 
 ## Mailbox Manager Duty + Schedule Notifications (Permanent)
 - “Mailbox Manager must retain full assignment capability during duty hours. Notification logic must include schedule context. Time Table must reflect current Mailbox Manager.”
+
+## Mailbox Real-Time Consistency + Assign Modal Persistence (Permanent)
+- “Mailbox data must be real-time and consistent across all users. Assignment logic must respect role + duty block. Assign Case form must remain open until explicitly submitted or canceled.”
+- Mailbox data must be real-time and consistent across all users (duty assignments, time blocks, and Mailbox Manager visibility must match for everyone).
+- Assignment logic must respect role + duty block:
+  - TEAM_LEAD / SUPER_ADMIN / ADMIN roles can assign regardless of shift.
+  - MEMBER can assign only when on-duty as Mailbox Manager during their active duty window.
+- Assign Case form must remain open until explicitly submitted (Send) or canceled. No auto-close on re-render. Must show a loading spinner and prevent double sends.

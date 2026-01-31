@@ -191,6 +191,15 @@
             delete q[k];
             okCount++;
           } else {
+            const st = out ? out.status : 0;
+            // Permanent failure hardening:
+            // - 403 indicates the current role is not allowed to push this key.
+            //   Keeping it in the queue causes repeated 403 spam on resume.
+            if(st === 403){
+              try{ if (window.Store && Store.addLog) Store.addLog({ action: 'SYNC_QUEUE_DROP_FORBIDDEN', detail: String(item.key||k) + ' status=403' }); }catch(_){}
+              delete q[k];
+              continue;
+            }
             item.tries = Number(item.tries||0) + 1;
             item.lastError = 'http_' + String(out ? out.status : 'unknown');
             q[k] = item;

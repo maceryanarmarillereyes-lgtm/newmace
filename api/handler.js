@@ -29,6 +29,9 @@ const ROUTES = {
   'mailbox_override/get': require('../server/routes/mailbox_override/get'),
   'mailbox_override/set': require('../server/routes/mailbox_override/set'),
 
+  'mailbox/assign': require('../server/routes/mailbox/assign'),
+  'mailbox/confirm': require('../server/routes/mailbox/confirm'),
+
   'presence/heartbeat': require('../server/routes/presence/heartbeat'),
   'presence/list': require('../server/routes/presence/list'),
 
