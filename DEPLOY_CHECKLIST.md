@@ -27,3 +27,25 @@ Run these in order (SQL editor or Supabase CLI):
 After applying migrations:
 - Confirm `mums_profiles.team_override` exists
 - Confirm SUPER roles have `team_id = NULL` when `team_override = false`
+
+## Enterprise UI/UX Verification (13126-04)
+- Cache-busting:
+  - Confirm `?v=20260131-13126-04` is applied to all `public/*.html` assets that reference CSS/JS.
+- Dashboard (/#/dashboard):
+  - Renders for SUPER_ADMIN / TEAM_LEAD / MEMBER without redirect or blank state.
+  - KPI cards show: Active cases, My active cases, Pending acknowledgements, Mailbox shift load.
+  - Notification Center:
+    - Filters (Unread/Schedule/Mailbox/System/All) work.
+    - Acknowledge button updates `ums_schedule_notifs` and removes from Unread.
+    - Search works without crashing.
+  - Activity Heatmap renders with 7-day view and tooltips.
+  - Mailbox Analytics panel renders current shift stats (assigned/confirmed/open + avg response), bucket rows, role distribution.
+  - Quick Actions and Sidebar toggle behave correctly on desktop and mobile.
+- My Schedule (/#/my_schedule):
+  - Enterprise grid layout is responsive (desktop/tablet/mobile), no horizontal overflow.
+  - Shift blocks are color-coded (Morning/Mid/Night), include role badges, timezone conversion, and countdown timer.
+  - Hover tooltips and per-block audit trail render.
+  - Drag-to-reschedule is permission-gated, produces an audit entry, and does not break schedule integrity.
+  - WCAG checks: keyboard focus visible, sufficient contrast, readable typography.
+- Real-time consistency (multi-session):
+  - Open two sessions and confirm schedule notifications, mailbox tables, and audit logs remain consistent across users.

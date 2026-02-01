@@ -1,0 +1,274 @@
+/* MUMS Enterprise UX Kit (Dashboard + My Schedule)
+   - CSS Grid + Flex hybrid
+   - Responsive + accessibility-focused
+   - Additive/rollback-safe: does not remove existing styles
+*/
+
+:root{
+  --ux-radius: 18px;
+  --ux-radius-sm: 12px;
+  --ux-shadow: 0 14px 40px rgba(0,0,0,.20);
+  --ux-shadow-soft: 0 10px 26px rgba(0,0,0,.14);
+
+  /* Shift colors (use as borders/accents; backgrounds use low opacity) */
+  --shift-morning: #14b8a6; /* teal */
+  --shift-mid:     #3b82f6; /* blue */
+  --shift-night:   #a78bfa; /* violet */
+
+  --ux-focus: 0 0 0 3px rgba(99,102,241,.45);
+}
+
+/* Base helpers */
+.ux-h1{ font-size: 24px; font-weight: 950; letter-spacing:.2px; margin:0; }
+.ux-sub{ margin-top:6px; }
+.ux-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.ux-row.between{ justify-content:space-between; }
+.ux-muted{ opacity:.82; }
+.ux-chip{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:6px 10px; border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.04);
+  font-weight: 800;
+}
+.ux-chip .dot{ width:8px; height:8px; border-radius:999px; background: var(--accent); }
+
+.ux-card{
+  border: 1px solid var(--border);
+  border-radius: var(--ux-radius);
+  background: var(--panel);
+  box-shadow: var(--ux-shadow-soft);
+}
+.ux-card.pad{ padding: 14px; }
+
+.ux-grid{
+  display:grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ux-col-12{ grid-column: span 12; }
+.ux-col-8{ grid-column: span 8; }
+.ux-col-6{ grid-column: span 6; }
+.ux-col-4{ grid-column: span 4; }
+.ux-col-3{ grid-column: span 3; }
+
+@media (max-width: 1100px){
+  .ux-col-8{ grid-column: span 12; }
+  .ux-col-6{ grid-column: span 12; }
+  .ux-col-4{ grid-column: span 6; }
+  .ux-col-3{ grid-column: span 6; }
+}
+@media (max-width: 720px){
+  .ux-grid{ gap: 10px; }
+  .ux-col-4{ grid-column: span 12; }
+  .ux-col-3{ grid-column: span 12; }
+}
+
+/* Accessible focus rings */
+.ux-focusable:focus{ outline: none; box-shadow: var(--ux-focus); }
+button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; box-shadow: var(--ux-focus); }
+
+/* MY SCHEDULE (enterprise layout) */
+.mysx{
+  display:flex; flex-direction:column; gap:12px;
+}
+.mysx-header{
+  display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;
+}
+.mysx-title{
+  display:flex; flex-direction:column; gap:6px;
+}
+.mysx-kpis{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.mysx-kpi{
+  border-radius: var(--ux-radius);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: var(--ux-shadow-soft);
+  padding: 14px;
+}
+.mysx-kpi .big{ font-size: 18px; font-weight: 950; letter-spacing:.2px; margin-top:6px; }
+
+.mysx-sections{
+  display:grid;
+  grid-template-columns: 1.1fr .9fr;
+  gap: 12px;
+}
+@media (max-width: 1100px){
+  .mysx-sections{ grid-template-columns: 1fr; }
+}
+
+.mysx-section-title{ font-weight: 950; letter-spacing:.2px; }
+
+/* Calendar */
+.mysx-cal{
+  border-radius: var(--ux-radius);
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.03));
+  overflow:hidden;
+}
+.mysx-cal-head{
+  display:flex; justify-content:space-between; align-items:center;
+  padding: 12px 12px;
+  border-bottom: 1px solid var(--border);
+  gap: 10px; flex-wrap:wrap;
+}
+.mysx-cal-tabs{ display:flex; gap:8px; flex-wrap:wrap; }
+.mysx-daytab{
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: 900;
+  cursor:pointer;
+}
+.mysx-daytab.active{ background: rgba(99,102,241,.18); border-color: rgba(99,102,241,.45); }
+.mysx-cal-body{ display:grid; grid-template-columns: 60px 1fr; }
+.mysx-ruler{ border-right: 1px solid var(--border); padding:10px 6px; }
+.mysx-ruler .tick{ height: 42px; display:flex; align-items:flex-start; justify-content:flex-end; padding-right:6px; font-size:11px; opacity:.75; }
+
+.mysx-cal-grid{
+  position:relative;
+  padding:10px 12px;
+  min-height: 24*42px; /* fallback, overridden by JS inline style */
+}
+.mysx-cal-grid::before{
+  content:'';
+  position:absolute; inset:10px 12px;
+  background-image: linear-gradient(to bottom, rgba(255,255,255,.06) 1px, transparent 1px);
+  background-size: 100% 42px;
+  pointer-events:none;
+}
+
+.mysx-block{
+  position:absolute;
+  left: 12px; right: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06);
+  box-shadow: 0 10px 18px rgba(0,0,0,.18);
+  padding: 10px;
+  cursor: default;
+}
+.mysx-block.draggable{ cursor: grab; }
+.mysx-block.draggable:active{ cursor: grabbing; }
+.mysx-block .top{ display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.mysx-block .name{ font-weight: 950; letter-spacing:.2px; }
+.mysx-block .meta{ font-size:12px; opacity:.78; margin-top:4px; }
+
+.mysx-badges{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+.mysx-badge{
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:4px 8px;
+  font-size:12px;
+  font-weight:900;
+  background: rgba(255,255,255,.04);
+}
+.mysx-badge.morning{ border-color: rgba(20,184,166,.45); background: rgba(20,184,166,.10); }
+.mysx-badge.mid{ border-color: rgba(59,130,246,.45); background: rgba(59,130,246,.10); }
+.mysx-badge.night{ border-color: rgba(167,139,250,.45); background: rgba(167,139,250,.10); }
+
+/* Tooltip */
+.mysx-tip{
+  position:fixed;
+  z-index: 9999;
+  max-width: 360px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: var(--ux-shadow);
+  padding: 12px;
+  display:none;
+}
+.mysx-tip .t{ font-weight:950; }
+.mysx-tip .s{ opacity:.8; margin-top:6px; font-size:12px; }
+
+/* Collapsible sections (mobile-first) */
+.mysx-collapser{
+  display:none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,.04);
+  font-weight: 900;
+}
+@media (max-width: 720px){
+  .mysx-collapser{ display:inline-flex; }
+  .mysx-collapsible{ display:none; }
+  .mysx-collapsible.open{ display:block; }
+}
+
+/* DASHBOARD (enterprise) */
+.dashx{ display:flex; flex-direction:column; gap:12px; }
+.dashx-head{ display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; }
+
+.dashx-cards{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+.dashx-card{ padding:14px; }
+.dashx-card .k{ font-size:12px; opacity:.78; }
+.dashx-card .v{ font-size:22px; font-weight:950; letter-spacing:.2px; margin-top:6px; }
+.dashx-card .s{ font-size:12px; opacity:.78; margin-top:6px; }
+
+.dashx-layout{
+  display:grid;
+  grid-template-columns: 1.2fr .8fr;
+  gap: 12px;
+}
+@media (max-width: 1100px){
+  .dashx-layout{ grid-template-columns: 1fr; }
+}
+
+.dashx-panel{ padding:14px; }
+.dashx-title{ font-weight:950; letter-spacing:.2px; }
+
+/* Heatmap */
+.dashx-heatmap{
+  display:grid;
+  grid-template-columns: 48px repeat(7, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+.dashx-heatmap .hday{ font-size:11px; opacity:.75; text-align:center; }
+.dashx-heatmap .hhr{ font-size:11px; opacity:.65; text-align:right; padding-right:6px; }
+.dashx-heatmap .cell{
+  height: 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,.06);
+  background: rgba(255,255,255,.04);
+}
+
+/* Notification center */
+.dashx-notif-tools{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.dashx-filter{
+  border:1px solid var(--border);
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: 900;
+  cursor:pointer;
+}
+.dashx-filter.active{ background: rgba(99,102,241,.18); border-color: rgba(99,102,241,.45); }
+
+.dashx-notifs{ margin-top:10px; display:flex; flex-direction:column; gap:10px; }
+.dashx-notif{
+  border:1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(255,255,255,.03);
+}
+.dashx-notif.unread{ border-color: rgba(99,102,241,.55); background: rgba(99,102,241,.10); }
+.dashx-notif .top{ display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.dashx-notif .t{ font-weight:950; }
+.dashx-notif .m{ font-size:12px; opacity:.78; margin-top:6px; white-space:pre-wrap; }
+
+/* Quick actions strip */
+.dashx-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+

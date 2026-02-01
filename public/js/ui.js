@@ -1614,239 +1614,605 @@ setCursorMode(mode){
       const Auth = window.Auth || {};
       const me = (Auth.getUser ? (Auth.getUser()||{}) : {});
 
-      const role = String(me.role||'');
-      const SA = (Config.ROLES && Config.ROLES.SUPER_ADMIN) ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
-      const TL = (Config.ROLES && Config.ROLES.TEAM_LEAD) ? Config.ROLES.TEAM_LEAD : 'TEAM_LEAD';
-      const isSA = role === SA;
-      const isTL = role === TL;
+      // Rollback-safe: clear prior dashboard listeners/timers.
+      try{ if(root && root._dashCleanup) root._dashCleanup(); }catch(_){ }
 
-      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : UI.manilaNow());
+      const state = root._dashState || { filter: 'unread', q: '', sync: { mode:'offline', detail:'', lastOkAt:0 } };
+      state.sync = state.sync || { mode:'offline', detail:'', lastOkAt:0 };
+      root._dashState = state;
+
       const tz = (Config && Config.TZ) || 'Asia/Manila';
-      const nowDate = UI.manilaNowDate ? UI.manilaNowDate() : new Date();
+      const esc = (s)=> (window.UI && UI.esc) ? UI.esc(s) : String(s||'');
+      const pad2 = (n)=>String(n).padStart(2,'0');
 
-      const fmtNow = ()=>{
+      const role = String(me.role||'');
+      const ROLES = (Config.ROLES || {});
+      const SA = ROLES.SUPER_ADMIN || 'SUPER_ADMIN';
+      const SU = ROLES.SUPER_USER || 'SUPER_USER';
+      const AD = ROLES.ADMIN || 'ADMIN';
+      const TL = ROLES.TEAM_LEAD || 'TEAM_LEAD';
+      const isAdmin = role===SA || role===SU || role===AD;
+      const isLead = role===TL;
+
+      const _parseHM = (hm)=>{
+        try{ if(UI && typeof UI.parseHM==='function') return UI.parseHM(hm); }catch(_){ }
+        try{
+          const s = String(hm||'0:0').split(':');
+          const h = Math.max(0, Math.min(23, parseInt(s[0]||'0',10)||0));
+          const m = Math.max(0, Math.min(59, parseInt(s[1]||'0',10)||0));
+          return h*60+m;
+        }catch(_){ return 0; }
+      };
+
+      const inBucket = (nowMin, b)=>{
+        const s = _parseHM(b.start);
+        const e = _parseHM(b.end);
+        const wrap = e <= s;
+        if(!wrap) return nowMin >= s && nowMin < e;
+        return (nowMin >= s) || (nowMin < e);
+      };
+
+      function manilaDateFromTs(ts){
+        try{ return new Date(new Date(Number(ts||0)).toLocaleString('en-US', { timeZone: tz })); }catch(_){ return new Date(Number(ts||0)); }
+      }
+      function isoFromManilaDate(d){
+        try{ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }catch(_){ return ''; }
+      }
+
+      const nowText = ()=>{
         try{
           return new Date().toLocaleString('en-CA', {
-              timeZone: tz,
-              weekday:'short', year:'numeric', month:'short', day:'2-digit',
-              hour:'2-digit', minute:'2-digit', second:'2-digit',
-              hour12:false
-            });
-        }catch(_){
-          return String(nowParts.iso||'');
-        }
-      };
-
-      // Team / shift context
-      const team = (Config.teamById && me.teamId) ? Config.teamById(me.teamId) : null;
-      const teamLabel = (Config.teamLabel && me.teamId) ? Config.teamLabel(me.teamId) : (team ? team.label : (me.teamId||'—'));
-      const shiftStart = team ? (team.teamStart||'—') : '—';
-      const shiftEnd = team ? (team.teamEnd||'—') : '—';
-
-      // Duty window (uses Manila parts; respects override when enabled)
-      const duty = UI.getDutyWindow ? UI.getDutyWindow(nowParts) : null;
-      const dutyCur = duty && duty.current ? duty.current : null;
-      const dutyNext = duty && duty.next ? duty.next : null;
-      const dutyCountdown = ()=>{
-        try{ return UI.formatDuration ? UI.formatDuration(Math.max(0, Math.floor((duty && duty.secLeft) ? duty.secLeft : 0))) : String((duty && duty.secLeft) || 0); }
-        catch(_){ return ''; }
-      };
-
-      // My schedule today
-      let activeBlock = null;
-      let nextBlock = null;
-
-      // In-browser JS; implement block parsing carefully
-      try{
-        const iso = nowParts.isoDate;
-        const dayIdx = (UI.weekdayFromISO ? UI.weekdayFromISO(iso) : nowDate.getDay());
-        const blocks = (Store.getUserDayBlocks && me.id!=null) ? (Store.getUserDayBlocks(me.id, dayIdx)||[]) : [];
-        const nowMin = UI.minutesOfDay ? UI.minutesOfDay(nowParts) : (nowDate.getHours()*60 + nowDate.getMinutes());
-
-        const toMin = (hm)=>{
-          try{ return UI.parseHM ? UI.parseHM(hm) : (Number(String(hm||'0:0').split(':')[0])*60 + Number(String(hm||'0:0').split(':')[1])); }
-          catch(_){ return 0; }
-        };
-        const inBlock = (b)=>{
-          const s = toMin(b.start);
-          const e = toMin(b.end);
-          if(e > s) return nowMin >= s && nowMin < e;
-          // wrap midnight
-          return (nowMin >= s) || (nowMin < e);
-        };
-        const sorted = (blocks||[]).slice().sort((a,b)=>toMin(a.start)-toMin(b.start));
-        activeBlock = sorted.find(inBlock) || null;
-
-        // next: smallest start after now (in clock terms), else first
-        const after = sorted.filter(b=>toMin(b.start) > nowMin);
-        nextBlock = (after.length ? after[0] : (sorted[0] || null));
-        if(activeBlock && nextBlock && activeBlock === nextBlock){
-          // If currently inside first block, pick the next distinct one.
-          const idx = sorted.indexOf(activeBlock);
-          nextBlock = (idx>=0 && sorted[idx+1]) ? sorted[idx+1] : (sorted[0] || null);
-        }
-      }catch(_){ }
-
-      // Cases summary
-      const allCases = (Store.getCases ? (Store.getCases()||[]) : []);
-      const myCases = allCases.filter(c=>c && c.assigneeId === me.id);
-      const isClosed = (s)=>/closed|resolved|done|complete/i.test(String(s||''));
-      const myOpen = myCases.filter(c=>!isClosed(c.status));
-      const totalOpen = allCases.filter(c=>!isClosed(c.status));
-
-      const fmtCaseTs = (ms)=>{
-        try{
-          const d = new Date(Number(ms||0));
-          if(!Number.isFinite(d.getTime())) return '';
-          return d.toLocaleString('en-CA', { timeZone: tz, month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false });
+            timeZone: tz,
+            weekday:'short', year:'numeric', month:'short', day:'2-digit',
+            hour:'2-digit', minute:'2-digit', second:'2-digit',
+            hour12:false
+          });
         }catch(_){ return ''; }
       };
 
-      const recentMine = myCases
-        .slice()
-        .sort((a,b)=>Number(b.createdAt||b.ts||0)-Number(a.createdAt||a.ts||0))
-        .slice(0,5);
+      function buildModel(){
+        const parts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null)) || {};
+        const duty = (UI.getDutyWindow ? UI.getDutyWindow(parts) : null);
+        const dutyCur = duty && duty.current ? duty.current : null;
+        const dutyNext = duty && duty.next ? duty.next : null;
+        const secLeft = duty && Number.isFinite(Number(duty.secLeft)) ? Number(duty.secLeft) : 0;
 
-      // Mailbox override indicator (informational)
-      let overrideHtml = '';
-      try{
-        const info = UI.mailboxTimeInfo ? UI.mailboxTimeInfo() : null;
-        if(info && info.overrideEnabled){
-          const scope = String(info.scope||'sa_only');
-          overrideHtml = `<div class="small" style="margin-top:6px">${UI.overrideLabel({ enabled:true, scope: scope==='global'?'global':'sa_only' })} <span class="muted">Mailbox time override is active (${UI.esc(scope)}).</span></div>`;
-        }
-      }catch(_){ }
+        const teamLabel = (Config.teamLabel && me.teamId!=null) ? Config.teamLabel(me.teamId) : (me.teamId||'—');
+        const dutyLabel = dutyCur ? (dutyCur.label||dutyCur.id||'—') : '—';
+        const nextLabel = dutyNext ? (dutyNext.label||dutyNext.id||'—') : '—';
 
-      root.innerHTML = `
-        <div class="row" style="justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap">
-          <div>
-            <h2 style="margin:0">Dashboard</h2>
-            <div class="small muted">Welcome, <b>${UI.esc(me.fullName||me.name||me.username||'User')}</b> • ${UI.esc(role||'')}${teamLabel ? ` • ${UI.esc(teamLabel)}` : ''}</div>
-          </div>
-          <div class="row" style="gap:8px;flex-wrap:wrap">
-            <a class="btn" href="/mailbox">Open Mailbox</a>
-            <a class="btn" href="/my_case">My Cases</a>
-            <a class="btn" href="/my_schedule">My Schedule</a>
-          </div>
-        </div>
+        const allCases = (Store.getCases ? (Store.getCases()||[]) : []);
+        const isOpen = (c)=>{
+          const st = String((c && (c.status||c.state)) || '').toLowerCase();
+          return !st || (st!=='closed' && st!=='done' && st!=='resolved');
+        };
+        const openCases = allCases.filter(c=>c && isOpen(c));
+        const myOpen = openCases.filter(c=>c && String(c.assigneeId||'')===String(me.id||''));
 
-        <div class="row" style="gap:12px;flex-wrap:wrap;margin-top:10px">
-          <div class="card pad" style="flex:1;min-width:260px">
-            <div class="small muted">Manila time</div>
-            <div id="dashNow" style="font-size:22px;font-weight:900;letter-spacing:0.3px">${UI.esc(fmtNow())}</div>
-            ${overrideHtml}
-          </div>
+        const notifsAll = (Store.getNotifs ? (Store.getNotifs()||[]) : []);
+        const notifsTeam = me.teamId ? notifsAll.filter(n=>n && n.teamId===me.teamId) : notifsAll;
+        const myNotifs = notifsTeam.filter(n=>n && Array.isArray(n.recipients) && me.id && n.recipients.includes(me.id));
+        const myUnread = myNotifs.filter(n=>!(n.acks && n.acks[me.id]));
 
-          <div class="card pad" style="flex:1;min-width:260px">
-            <div class="small muted">Shift</div>
-            <div style="font-weight:900;font-size:18px">${UI.esc(teamLabel||'—')}</div>
-            <div class="small muted">${UI.esc(shiftStart)} → ${UI.esc(shiftEnd)}</div>
+        // Mailbox analytics (current duty shift)
+        const shiftKey = dutyCur ? String(dutyCur.id||'') : '';
+        const table = (shiftKey && Store.getMailboxTable) ? Store.getMailboxTable(shiftKey) : null;
+        const nowMin = (UI.minutesOfDay ? UI.minutesOfDay(parts) : (Number(parts.hh||0)*60 + Number(parts.mm||0)));
 
-            <div style="margin-top:8px" class="small muted">Duty window</div>
-            <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap">
-              <div>
-                <div style="font-weight:900">${UI.esc(dutyCur ? (dutyCur.label||dutyCur.id||'—') : '—')}</div>
-                <div class="small muted">Next: ${UI.esc(dutyNext ? (dutyNext.label||dutyNext.id||'—') : '—')}</div>
-              </div>
-              <div style="text-align:right">
-                <div class="small muted">Ends in</div>
-                <div id="dashDutyLeft" style="font-weight:900">${UI.esc(dutyCountdown())}</div>
-              </div>
-            </div>
-          </div>
+        let activeBucketId = '';
+        let bucketLabel = '';
+        let bucketManager = '';
+        let mbx = {
+          shiftKey,
+          hasTable: !!table,
+          totalAssigned: 0,
+          totalConfirmed: 0,
+          totalOpen: 0,
+          bucketAssigned: 0,
+          bucketOpen: 0,
+          avgRespMin: 0,
+          byBucket: [],
+          byRole: [],
+          topAssignees: []
+        };
 
-          <div class="card pad" style="flex:1;min-width:260px">
-            <div class="small muted">My schedule (today)</div>
-            <div style="font-weight:900;font-size:18px">
-              ${activeBlock ? `${UI.esc(activeBlock.label||'On shift')} • ${UI.esc(activeBlock.start||'')}–${UI.esc(activeBlock.end||'')}` : '<span class="muted">No active block</span>'}
-            </div>
-            <div class="small muted" style="margin-top:2px">
-              ${nextBlock ? `Next: ${UI.esc(nextBlock.label||'Block')} • ${UI.esc(nextBlock.start||'')}–${UI.esc(nextBlock.end||'')}` : 'Next: —'}
-            </div>
-          </div>
-        </div>
+        if(table && typeof table==='object'){
+          const buckets = Array.isArray(table.buckets) ? table.buckets : [];
+          const assigns = Array.isArray(table.assignments) ? table.assignments : [];
 
-        <div class="row" style="gap:12px;flex-wrap:wrap;margin-top:12px">
-          <div class="card pad" style="flex:2;min-width:320px">
-            <div class="row" style="justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
-              <div>
-                <div style="font-weight:900">Case summary</div>
-                <div class="small muted">Local synced cases on this device</div>
-              </div>
-              <div class="small muted">
-                ${isSA ? `All open: <b>${totalOpen.length}</b> • Total: <b>${allCases.length}</b>` : `My open: <b>${myOpen.length}</b> • My total: <b>${myCases.length}</b>`}
-              </div>
-            </div>
+          const bActive = buckets.find(b=>b && inBucket(nowMin, b)) || buckets[0] || null;
+          activeBucketId = bActive ? String(bActive.id||'') : '';
+          bucketLabel = bActive ? `${String(bActive.start||'')}–${String(bActive.end||'')}` : '';
 
-            <div class="card" style="margin-top:10px">
-              <table class="table">
-                <thead><tr><th>Case</th><th>Status</th><th>Created</th></tr></thead>
-                <tbody>
-                  ${recentMine.map(c=>`
-                    <tr>
-                      <td>${UI.esc(c.title||c.id||'')}</td>
-                      <td>${UI.esc(c.status||'')}</td>
-                      <td class="small muted">${UI.esc(fmtCaseTs(c.createdAt||c.ts||0))}</td>
-                    </tr>
-                  `).join('') || `<tr><td colspan="3" class="muted">No cases assigned to you on this device.</td></tr>`}
-                </tbody>
-              </table>
-            </div>
+          try{
+            const bm = table.meta && table.meta.bucketManagers ? table.meta.bucketManagers[activeBucketId] : null;
+            bucketManager = bm && bm.name ? String(bm.name) : '';
+          }catch(_){ bucketManager=''; }
 
-            ${isTL ? `<div class="small muted" style="margin-top:8px">Team Lead view: manage routing and assignments via Mailbox and Members.</div>` : ''}
-            ${isSA ? `<div class="small muted" style="margin-top:8px">Super Admin view: use User Management, Team Config, and Master Schedule for global changes.</div>` : ''}
-          </div>
+          const confirmed = assigns.filter(a=>a && Number(a.confirmedAt||0) > 0);
+          const open = assigns.filter(a=>a && !(Number(a.confirmedAt||0) > 0));
+          const inB = (a)=> String(a.bucketId||'') === activeBucketId;
 
-          <div class="card pad" style="flex:1;min-width:260px">
-            <div style="font-weight:900">Quick checks</div>
-            <div class="small muted" style="margin-top:6px">Navigation should not redirect Dashboard to Mailbox.</div>
-            <div class="small" style="margin-top:10px;line-height:1.7">
-              <div>Dashboard route: <code>/dashboard</code></div>
-              <div>Mailbox route: <code>/mailbox</code></div>
-            </div>
-            <div class="small muted" style="margin-top:10px">If you see unexpected redirects, clear storage and reload.</div>
-          </div>
-        </div>
-      `;
+          const confirmedDur = confirmed
+            .map(a=> (Number(a.confirmedAt||0) - Number(a.assignedAt||0)))
+            .filter(ms=>Number.isFinite(ms) && ms>0);
+          const avgRespMs = confirmedDur.length ? (confirmedDur.reduce((x,y)=>x+y,0) / confirmedDur.length) : 0;
 
-      // Live updates: clock + duty countdown (lightweight)
-      try{
-        if(root._dashTimer) clearInterval(root._dashTimer);
-      }catch(_){ }
+          mbx.totalAssigned = assigns.length;
+          mbx.totalConfirmed = confirmed.length;
+          mbx.totalOpen = open.length;
+          mbx.bucketAssigned = assigns.filter(a=>a && inB(a)).length;
+          mbx.bucketOpen = open.filter(a=>a && inB(a)).length;
+          mbx.avgRespMin = avgRespMs ? Math.round(avgRespMs/60000) : 0;
 
-      root._dashTimer = setInterval(()=>{
-        try{
-          const elNow = document.getElementById('dashNow');
-          if(elNow) elNow.textContent = fmtNow();
-        }catch(_){ }
-        try{
-          const parts = (UI.mailboxNowParts ? UI.mailboxNowParts() : UI.manilaNow());
-          const duty2 = UI.getDutyWindow ? UI.getDutyWindow(parts) : null;
-          const left = duty2 && duty2.secLeft ? duty2.secLeft : 0;
-          const elLeft = document.getElementById('dashDutyLeft');
-          if(elLeft){
-            elLeft.textContent = UI.formatDuration ? UI.formatDuration(Math.max(0, Math.floor(left))) : String(left);
+          // By bucket
+          const byB = {};
+          for(const a of assigns){
+            if(!a) continue;
+            const bid = String(a.bucketId||'');
+            byB[bid] = byB[bid] || { bucketId: bid, assigned:0, open:0, confirmed:0 };
+            byB[bid].assigned++;
+            if(Number(a.confirmedAt||0)>0) byB[bid].confirmed++; else byB[bid].open++;
           }
-        }catch(_){ }
-      }, 1000);
+          mbx.byBucket = buckets.map(b=>{
+            const bid = String(b && b.id || '');
+            const row = byB[bid] || { bucketId: bid, assigned:0, open:0, confirmed:0 };
+            return {
+              bucketId: bid,
+              label: b ? `${String(b.start||'')}–${String(b.end||'')}` : bid,
+              assigned: row.assigned,
+              open: row.open,
+              confirmed: row.confirmed,
+              isActive: bid === activeBucketId
+            };
+          });
 
-      // Integrate with route cleanup
-      try{
-        if(root && typeof root === 'object'){
-          const prev = root._cleanup;
-          root._cleanup = ()=>{
-            try{ if(prev) prev(); }catch(_){ }
-            try{ if(root._dashTimer) clearInterval(root._dashTimer); }catch(_){ }
-            try{ root._dashTimer = null; }catch(_){ }
+          // By role (assignee role)
+          const users = (Store.getUsers ? (Store.getUsers()||[]) : []);
+          const roleById = {};
+          for(const u of users){
+            if(!u) continue;
+            roleById[String(u.id||'')] = String(u.role||'MEMBER');
+          }
+          const byRole = {};
+          for(const a of assigns){
+            if(!a) continue;
+            const rid = roleById[String(a.assigneeId||'')] || 'MEMBER';
+            byRole[rid] = (byRole[rid]||0) + 1;
+          }
+          mbx.byRole = Object.keys(byRole)
+            .sort((a,b)=>byRole[b]-byRole[a])
+            .map(r=>({ role:r, count: byRole[r] }));
+
+          // Top assignees
+          const byA = {};
+          for(const a of assigns){
+            if(!a) continue;
+            const uid = String(a.assigneeId||'');
+            byA[uid] = (byA[uid]||0) + 1;
+          }
+          const nameById = {};
+          for(const u of users){ if(u) nameById[String(u.id||'')] = String(u.name||u.username||''); }
+          mbx.topAssignees = Object.keys(byA)
+            .sort((a,b)=>byA[b]-byA[a])
+            .slice(0, 6)
+            .map(uid=>({ uid, name: nameById[uid] || uid, count: byA[uid] }));
+        }
+
+        // Activity heatmap (last 7 Manila days, 4-hour bins)
+        const logsAll = (Store.getLogs ? (Store.getLogs()||[]) : []);
+        const logs = me.teamId ? logsAll.filter(l=>l && (!l.teamId || String(l.teamId)===String(me.teamId))) : logsAll;
+
+        const nowM = manilaDateFromTs(Date.now());
+        const days = [];
+        for(let i=6;i>=0;i--){
+          const d = new Date(nowM.getTime());
+          d.setDate(d.getDate()-i);
+          const iso = isoFromManilaDate(d);
+          const wd = d.toLocaleDateString('en-US', { weekday:'short', timeZone: tz });
+          days.push({ iso, wd, label: `${wd} ${iso.slice(5)}` });
+        }
+        const dayIndex = {};
+        days.forEach((d, idx)=>{ dayIndex[d.iso] = idx; });
+
+        const bins = 6; // 24h / 4h
+        const mat = Array.from({length: bins}, ()=> Array.from({length:7}, ()=>0));
+        const recentCut = Date.now() - (7*24*60*60*1000);
+
+        for(const e of logs){
+          if(!e || !e.ts) continue;
+          const ts = Number(e.ts)||0;
+          if(ts < recentCut) continue;
+          const md = manilaDateFromTs(ts);
+          const iso = isoFromManilaDate(md);
+          const di = dayIndex[iso];
+          if(di==null) continue;
+          const hr = md.getHours();
+          const bi = Math.max(0, Math.min(bins-1, Math.floor(hr/4)));
+          mat[bi][di] += 1;
+        }
+
+        let maxV = 0;
+        for(const row of mat){ for(const v of row){ if(v>maxV) maxV=v; } }
+
+        return {
+          parts,
+          dutyCur, dutyNext,
+          dutyLabel, nextLabel,
+          secLeft,
+          teamLabel,
+          openCases: openCases.length,
+          myOpen: myOpen.length,
+          pendingAcks: myUnread.length,
+          notifs: myNotifs,
+          unreadNotifs: myUnread,
+          mbx,
+          activeBucketId,
+          bucketLabel,
+          bucketManager,
+          heat: { days, mat, maxV },
+          logs
+        };
+      }
+
+      function render(model){
+        const syncMode = String(state.sync.mode||'offline');
+        const syncLabel = (syncMode==='cloud') ? 'Realtime' : (syncMode==='poll') ? 'Polling' : (syncMode==='connecting') ? 'Connecting' : 'Offline';
+        const syncDot = (syncMode==='cloud') ? 'ok' : (syncMode==='poll' || syncMode==='connecting') ? 'warn' : 'bad';
+
+        const dutyCountdown = (UI && UI.formatDuration) ? UI.formatDuration(model.secLeft||0) : String(model.secLeft||0);
+
+        const card = (k,v,s)=>`<div class="ux-card dashx-card"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${s?`<div class="s">${esc(s)}</div>`:''}</div>`;
+
+        const heatRows = [];
+        // header row
+        heatRows.push(`<div></div>`);
+        for(const d of model.heat.days){ heatRows.push(`<div class="h">${esc(d.wd)}</div>`); }
+        const labels = ['00','04','08','12','16','20'];
+        for(let r=0;r<6;r++){
+          heatRows.push(`<div class="h" style="text-align:left;padding-left:4px">${labels[r]}</div>`);
+          for(let c=0;c<7;c++){
+            const v = model.heat.mat[r][c];
+            const maxV = model.heat.maxV || 1;
+            const level = v<=0 ? 0 : Math.min(4, Math.ceil((v/maxV)*4));
+            const alpha = 0.04 + (level*0.06); // 0.04..0.28
+            const dayIso = model.heat.days[c].iso;
+            const title = `${dayIso} ${labels[r]}–${labels[r]=== '20' ? '24' : pad2((parseInt(labels[r],10)+4)%24)} • ${v} events`;
+            heatRows.push(`<div class="cell" title="${esc(title)}" style="background: rgba(255,255,255,${alpha.toFixed(3)})"></div>`);
+          }
+        }
+
+        const bucketRows = (model.mbx.hasTable && model.mbx.byBucket.length) ? model.mbx.byBucket.map(b=>{
+          const dot = b.isActive ? '<span class="badge ok" style="margin-left:8px">Now</span>' : '';
+          return `<div class="small" style="display:flex;justify-content:space-between;gap:10px;margin-top:6px">
+            <div>${esc(b.label)}${dot}</div>
+            <div class="muted">${esc(b.open)} open • ${esc(b.assigned)} assigned</div>
+          </div>`;
+        }).join('') : `<div class="small muted" style="margin-top:8px">Mailbox table not loaded yet for this shift.</div>`;
+
+        const byRole = (model.mbx.byRole && model.mbx.byRole.length) ?
+          `<div class="small muted" style="margin-top:10px">By assignee role</div>
+           <div class="small" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+             ${model.mbx.byRole.slice(0,6).map(r=>`<span class="badge">${esc(r.role)}: ${esc(r.count)}</span>`).join('')}
+           </div>`
+          : '';
+
+        const topAsg = (model.mbx.topAssignees && model.mbx.topAssignees.length) ?
+          `<div class="small muted" style="margin-top:10px">Top assignees</div>
+           <div class="small" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+             ${model.mbx.topAssignees.map(a=>`<div style="display:flex;justify-content:space-between;gap:10px"><div>${esc(a.name)}</div><div class="muted">${esc(a.count)}</div></div>`).join('')}
+           </div>`
+          : '';
+
+        // Notification list (rendered later by bindNotifCenter)
+        root.innerHTML = `
+          <div class="dashx">
+            <div class="dashx-head">
+              <div>
+                <div class="ux-row" style="gap:12px">
+                  <h2 class="ux-h1" style="margin:0">Dashboard</h2>
+                  <span class="badge ${syncDot}" id="dashSyncBadge">${esc(syncLabel)}</span>
+                </div>
+                <div class="small muted ux-sub">
+                  <span id="dashNow">${esc(nowText())}</span> • Team: <b>${esc(model.teamLabel)}</b> • Duty: <b>${esc(model.dutyLabel)}</b> (next: ${esc(model.nextLabel)} in <span id="dashDutyLeft">${esc(dutyCountdown)}</span>)
+                </div>
+              </div>
+
+              <div class="dashx-actions">
+                <button class="btn" type="button" id="dashToggleSidebar">Toggle Sidebar</button>
+                <a class="btn" href="#/mailbox">Assign Case</a>
+                <a class="btn" href="#/${isAdmin||isLead ? 'master_schedule' : 'my_schedule'}">Schedule</a>
+                <a class="btn" href="#/logs">Export Logs</a>
+              </div>
+            </div>
+
+            <div class="dashx-cards">
+              ${card('Active cases', String(model.openCases), isAdmin ? 'All open cases in system' : 'Your team workload signal')}
+              ${card('My active cases', String(model.myOpen), 'Assigned to you')}
+              ${card('Pending acknowledgements', String(model.pendingAcks), 'Schedule blocks awaiting your acknowledge')}
+              ${card('Mailbox shift load', model.mbx.hasTable ? String(model.mbx.totalOpen) : '—', model.mbx.hasTable ? `Open assignments (${esc(model.mbx.shiftKey||'shift')})` : 'Mailbox not loaded')}
+            </div>
+
+            <div class="dashx-layout">
+              <div class="ux-card dashx-panel">
+                <div class="dashx-title">Team Activity Heatmap</div>
+                <div class="small muted" style="margin-top:6px">Last 7 days • 4-hour bins • Hover for counts</div>
+                <div class="dashx-heatmap" id="dashHeatmap">${heatRows.join('')}</div>
+
+                <div style="margin-top:14px" class="dashx-title">Notification Center</div>
+                <div class="dashx-notif-tools">
+                  <button class="dashx-filter ux-focusable" data-filter="unread" id="dashF_unread">Unread (${esc(model.unreadNotifs.length)})</button>
+                  <button class="dashx-filter ux-focusable" data-filter="schedule" id="dashF_schedule">Schedule (${esc(model.notifs.length)})</button>
+                  <button class="dashx-filter ux-focusable" data-filter="mailbox" id="dashF_mailbox">Mailbox</button>
+                  <button class="dashx-filter ux-focusable" data-filter="system" id="dashF_system">System</button>
+                  <button class="dashx-filter ux-focusable" data-filter="all" id="dashF_all">All</button>
+                  <input class="dashx-filter" style="flex:1;min-width:180px" id="dashNotifSearch" placeholder="Search…" value="${esc(state.q||'')}" />
+                </div>
+                <div class="dashx-notifs" id="dashNotifs"></div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div class="ux-card dashx-panel">
+                  <div class="dashx-title">Mailbox Analytics</div>
+                  <div class="small muted" style="margin-top:6px">
+                    Shift: <b>${esc(model.mbx.shiftKey||'—')}</b>
+                    ${model.bucketLabel ? ` • Bucket: <b>${esc(model.bucketLabel)}</b>` : ''}
+                    ${model.bucketManager ? ` • Manager: <b>${esc(model.bucketManager)}</b>` : ''}
+                  </div>
+
+                  ${model.mbx.hasTable ? `
+                    <div class="ux-row" style="margin-top:10px;gap:10px">
+                      <span class="badge">Assigned: ${esc(model.mbx.totalAssigned)}</span>
+                      <span class="badge ok">Confirmed: ${esc(model.mbx.totalConfirmed)}</span>
+                      <span class="badge warn">Open: ${esc(model.mbx.totalOpen)}</span>
+                      <span class="badge">Avg response: ${esc(model.mbx.avgRespMin ? (model.mbx.avgRespMin+' min') : '—')}</span>
+                    </div>
+                  ` : ''}
+
+                  <div style="margin-top:10px">${bucketRows}</div>
+                  ${byRole}
+                  ${topAsg}
+                </div>
+
+                <div class="ux-card dashx-panel">
+                  <div class="dashx-title">Quick Navigation</div>
+                  <div class="small muted" style="margin-top:6px">Role-aware shortcuts</div>
+                  <div class="dashx-actions" style="margin-top:10px">
+                    <a class="btn" href="#/my_schedule">My Schedule</a>
+                    <a class="btn" href="#/mailbox">Mailbox</a>
+                    <a class="btn" href="#/attendance">Attendance</a>
+                    <a class="btn" href="#/tasks">Tasks</a>
+                    ${(isAdmin||isLead) ? `<a class="btn" href="#/master_schedule">Master Schedule</a>` : ''}
+                    ${isAdmin ? `<a class="btn" href="#/members">User Management</a>` : ''}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Activate the current filter button
+        try{
+          const f = String(state.filter||'unread');
+          (root.querySelectorAll('.dashx-filter[data-filter]')||[]).forEach(b=>{
+            try{ b.classList.toggle('active', String(b.getAttribute('data-filter')||'')===f); }catch(_){ }
+          });
+        }catch(_){ }
+
+        bindNotifCenter(model);
+        bindQuickActions();
+      }
+
+      function classifyActivity(a){
+        const act = String(a && a.action || '').toUpperCase();
+        if(act.startsWith('MAILBOX_')) return 'mailbox';
+        if(act.includes('SCHEDULE') || act.includes('ACK')) return 'schedule';
+        if(act.includes('ERROR') || act.includes('EXCEPTION') || act==='APP_ERROR') return 'system';
+        return 'other';
+      }
+
+      function renderNotifs(model){
+        const f = String(state.filter||'unread');
+        const q = String(state.q||'').trim().toLowerCase();
+
+        const items = [];
+
+        // Schedule notifications
+        for(const n of (model.notifs||[])){
+          if(!n) continue;
+          const unread = !!(me.id && Array.isArray(n.recipients) && n.recipients.includes(me.id) && !(n.acks && n.acks[me.id]));
+          items.push({
+            type:'schedule',
+            id: n.id,
+            ts: Number(n.ts||0) || Date.now(),
+            title: n.title || 'Schedule Updated',
+            body: n.body || '',
+            from: n.fromName || 'Team Lead',
+            unread,
+            category:'schedule'
+          });
+        }
+
+        // Activity logs
+        const logs = (model.logs||[]).slice(0, 60);
+        for(const l of logs){
+          if(!l) continue;
+          items.push({
+            type:'activity',
+            id: String(l.ts||'') + '_' + String(l.action||''),
+            ts: Number(l.ts||0) || 0,
+            title: String(l.action||'Activity'),
+            body: [l.msg, l.detail].filter(Boolean).join('\\n'),
+            from: l.actorName || '',
+            unread:false,
+            category: classifyActivity(l)
+          });
+        }
+
+        items.sort((a,b)=> (b.ts||0) - (a.ts||0));
+
+        const filtered = items.filter(it=>{
+          if(f==='unread' && !it.unread) return false;
+          if(f==='schedule' && it.category!=='schedule') return false;
+          if(f==='mailbox' && it.category!=='mailbox') return false;
+          if(f==='system' && it.category!=='system') return false;
+          if(f!=='all' && f!=='unread' && f!=='schedule' && f!=='mailbox' && f!=='system') return true;
+          if(q){
+            const txt = (it.title+'\n'+it.body+'\n'+it.from).toLowerCase();
+            if(!txt.includes(q)) return false;
+          }
+          return true;
+        }).slice(0, 16);
+
+        const fmt = (ts)=>{
+          try{ return new Date(Number(ts||0)).toLocaleString('en-CA', { timeZone: tz, month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }); }catch(_){ return ''; }
+        };
+
+        if(!filtered.length){
+          return `<div class="small muted" style="padding:10px 2px">No items for this filter.</div>`;
+        }
+
+        return filtered.map(it=>{
+          const unreadCls = it.unread ? 'unread' : '';
+          const topRight = `<div class="small muted">${esc(fmt(it.ts))}</div>`;
+          const ackBtn = (it.type==='schedule' && it.unread) ? `<button class="btn" data-ack="${esc(it.id)}" type="button">Acknowledge</button>` : '';
+          const from = it.from ? `<div class="small muted">From: ${esc(it.from)}</div>` : '';
+          return `
+            <div class="dashx-notif ${unreadCls}">
+              <div class="top">
+                <div>
+                  <div class="t">${esc(it.title)}</div>
+                  ${from}
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  ${topRight}
+                  ${ackBtn}
+                </div>
+              </div>
+              <div class="m">${esc(it.body||'')}</div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function bindNotifCenter(model){
+        const box = root.querySelector('#dashNotifs');
+        if(!box) return;
+        box.innerHTML = renderNotifs(model);
+
+        // Filter buttons
+        (root.querySelectorAll('.dashx-filter[data-filter]')||[]).forEach(btn=>{
+          btn.onclick = ()=>{
+            state.filter = String(btn.getAttribute('data-filter')||'all');
+            const next = buildModel();
+            render(next);
+          };
+        });
+
+        // Search
+        const inp = root.querySelector('#dashNotifSearch');
+        if(inp){
+          inp.oninput = ()=>{
+            state.q = String(inp.value||'');
+            const next = buildModel();
+            // re-render only list (avoid full rerender jank)
+            const list = root.querySelector('#dashNotifs');
+            if(list) list.innerHTML = renderNotifs(next);
           };
         }
-      }catch(_){ }
+
+        // Acknowledge
+        (box.querySelectorAll('[data-ack]')||[]).forEach(b=>{
+          b.onclick = ()=>{
+            const id = String(b.getAttribute('data-ack')||'');
+            try{ Store.ackNotif && Store.ackNotif(id, me.id); }catch(_){ }
+            try{ UI.toast && UI.toast('Acknowledged.'); }catch(_){ }
+            const next = buildModel();
+            render(next);
+          };
+        });
+      }
+
+      function bindQuickActions(){
+        const btn = root.querySelector('#dashToggleSidebar');
+        if(btn){
+          btn.onclick = ()=>{ try{ const t = document.getElementById('sidebarToggle'); if(t) t.click(); }catch(_){ } };
+        }
+      }
+
+      function softUpdateHeader(){
+        try{
+          const now = root.querySelector('#dashNow');
+          if(now) now.textContent = nowText();
+
+          const parts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null)) || {};
+          const duty = (UI.getDutyWindow ? UI.getDutyWindow(parts) : null);
+          const left = duty && Number.isFinite(Number(duty.secLeft)) ? Number(duty.secLeft) : 0;
+          const el = root.querySelector('#dashDutyLeft');
+          if(el && UI && UI.formatDuration) el.textContent = UI.formatDuration(left);
+        }catch(_){ }
+      }
+
+      function updateSyncBadge(){
+        try{
+          const b = root.querySelector('#dashSyncBadge');
+          if(!b) return;
+          const mode = String(state.sync.mode||'offline');
+          const label = (mode==='cloud') ? 'Realtime' : (mode==='poll') ? 'Polling' : (mode==='connecting') ? 'Connecting' : 'Offline';
+          b.textContent = label;
+          b.classList.remove('ok','warn','bad');
+          b.classList.add(mode==='cloud' ? 'ok' : (mode==='poll' || mode==='connecting') ? 'warn' : 'bad');
+        }catch(_){ }
+      }
+
+      const model = buildModel();
+      render(model);
+
+      // Lightweight timer for clock + duty countdown
+      try{ if(root._dashTimer) clearInterval(root._dashTimer); }catch(_){ }
+      root._dashTimer = setInterval(()=>{
+        softUpdateHeader();
+      }, 1000);
+
+      // Store changes: re-render for relevant keys only.
+      const onStore = (ev)=>{
+        try{
+          const k = ev && ev.detail ? String(ev.detail.key||'') : '';
+          if(!k) return;
+          if(k==='ums_cases' || k==='ums_schedule_notifs' || k==='mums_mailbox_tables' || k==='mums_mailbox_state' || k==='ums_activity_logs'){
+            const next = buildModel();
+            render(next);
+          }
+        }catch(_){ }
+      };
+      window.addEventListener('mums:store', onStore);
+
+      // Sync status updates
+      const onSync = (ev)=>{
+        try{
+          const d = (ev && ev.detail) ? ev.detail : {};
+          state.sync = { mode: d.mode || 'offline', detail: d.detail || '', lastOkAt: d.lastOkAt || 0 };
+          updateSyncBadge();
+        }catch(_){ }
+      };
+      window.addEventListener('mums:syncstatus', onSync);
+
+      // Cleanup hook for router
+      const prevCleanup = root._cleanup;
+      root._dashCleanup = ()=>{
+        try{ if(root._dashTimer) clearInterval(root._dashTimer); }catch(_){ }
+        try{ root._dashTimer = null; }catch(_){ }
+        try{ window.removeEventListener('mums:store', onStore); }catch(_){ }
+        try{ window.removeEventListener('mums:syncstatus', onSync); }catch(_){ }
+      };
+      root._cleanup = ()=>{
+        try{ if(prevCleanup) prevCleanup(); }catch(_){ }
+        try{ if(root._dashCleanup) root._dashCleanup(); }catch(_){ }
+      };
 
     }catch(err){
       try{ console.error(err); }catch(_){ }
-      try{
-        root.innerHTML = `<h2 style="margin:0 0 10px">Dashboard</h2><div class="card pad">Failed to load dashboard. Please reload.</div>`;
-      }catch(_){ }
+      try{ root.innerHTML = `<h2 style="margin:0 0 10px">Dashboard</h2><div class="card pad">Failed to load dashboard. Please reload.</div>`; }catch(_){ }
     }
   };
   window.UI = UI;

@@ -177,3 +177,8 @@ This is required so authenticated users can read their own profile row under RLS
   - TEAM_LEAD / SUPER_ADMIN / ADMIN roles can assign regardless of shift.
   - MEMBER can assign only when on-duty as Mailbox Manager during their active duty window.
 - Assign Case form must remain open until explicitly submitted (Send) or canceled. No auto-close on re-render. Must show a loading spinner and prevent double sends.
+
+## Enterprise UI/UX: Schedule + Dashboard (Permanent)
+- “Schedule and Dashboard must reflect real-time data, role-aware visibility, and enterprise-grade UX. All layout changes must be responsive, accessible, and audit-tracked.”
+- My Schedule must remain mobile-first, include shift visualization, timezone conversion, countdowns, and per-block audit trail. Interactive rescheduling must be permission-gated and always generate an audit entry.
+- Dashboard must remain modular and card-based with realtime metrics, activity heatmap, mailbox analytics, and a notification center with unread counts and safe acknowledge actions.
