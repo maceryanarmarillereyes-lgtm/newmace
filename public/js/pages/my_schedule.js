@@ -162,20 +162,27 @@
 
     let countdownLabel = '—';
     try{
+      const nowMs = (UI.parseManilaDateTimeLocal ? UI.parseManilaDateTimeLocal(parts.iso || (parts.isoDate+'T'+pad2(parts.hh)+':'+pad2(parts.mm)+':'+pad2(parts.ss||0))) : 0) || Date.now();
+
+      const fmt = (sec)=> (UI.formatDuration ? UI.formatDuration(sec) : `${Math.round(sec/60)}m`);
+
       if(active){
-        // seconds left to end (approx; minute precision)
-        const endM = UI.parseHM(active.end);
-        const wrap = endM <= UI.parseHM(active.start);
-        let leftMin = 0;
-        if(!wrap) leftMin = Math.max(0, endM - nowMin);
-        else leftMin = (nowMin >= UI.parseHM(active.start)) ? Math.max(0, (24*60 - nowMin) + endM) : Math.max(0, endM - nowMin);
-        countdownLabel = `Ends in ${UI.formatDuration ? UI.formatDuration(leftMin*60) : (leftMin+'m')}`;
+        const sM = UI.parseHM(active.start);
+        const eM = UI.parseHM(active.end);
+        const wrap = eM <= sM;
+        let endDate = parts.isoDate;
+        if(wrap && nowMin >= sM) endDate = addDaysISO(parts.isoDate, 1);
+        // If we are in the post-midnight segment of a wrap block, endDate stays today.
+        const endMs = (UI.parseManilaDateTimeLocal ? UI.parseManilaDateTimeLocal(`${endDate}T${active.end}`) : 0) || nowMs;
+        const leftSec = Math.max(0, Math.floor((endMs - nowMs)/1000));
+        countdownLabel = `Ends in ${fmt(leftSec)}`;
       }else if(next){
         const startM = UI.parseHM(next.start);
-        let leftMin = 0;
-        if(startM >= nowMin) leftMin = startM - nowMin;
-        else leftMin = (24*60 - nowMin) + startM;
-        countdownLabel = `Starts in ${UI.formatDuration ? UI.formatDuration(leftMin*60) : (leftMin+'m')}`;
+        let startDate = parts.isoDate;
+        if(startM < nowMin) startDate = addDaysISO(parts.isoDate, 1);
+        const startMs = (UI.parseManilaDateTimeLocal ? UI.parseManilaDateTimeLocal(`${startDate}T${next.start}`) : 0) || nowMs;
+        const leftSec = Math.max(0, Math.floor((startMs - nowMs)/1000));
+        countdownLabel = `Starts in ${fmt(leftSec)}`;
       }
     }catch(_){ }
 
@@ -382,16 +389,20 @@
     `;
   }
 
-  function blockStyle(team, block){
-    try{
-      if(team && UI.shiftMeta && UI.offsetFromShiftStart){
-        const meta = UI.shiftMeta(team);
-        const a = UI.offsetFromShiftStart(team, block.start);
-        const b = UI.offsetFromShiftStart(team, block.end);
-        const top = (a / meta.length) * 100;
-        const height = Math.max(3.5, ((b - a) / meta.length) * 100);
-        return { top: clamp(top, 0, 97), height: clamp(height, 3.5, 100) };
-      }
+  function blockMetrics(b){
+    const start = UI.parseHM(b.start);
+    const end = UI.parseHM(b.end);
+    const wrap = end <= start;
+    const dur = wrap ? ((24*60 - start) + end) : (end - start);
+    const topPct = Math.round((start/(24*60))*10000)/100;
+    const hPct = Math.max(3.5, Math.round((dur/(24*60))*10000)/100);
+    return { start, end, wrap, dur, topPct, hPct };
+  }
+
+  function blockStyle(b){
+    const m = blockMetrics(b);
+    return `top:${m.topPct}%;height:${m.hPct}%;`;
+  }
       // fallback: full day
       const a = UI.parseHM(block.start);
       const b = UI.parseHM(block.end);

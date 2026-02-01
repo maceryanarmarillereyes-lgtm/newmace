@@ -30,7 +30,7 @@ After applying migrations:
 
 ## Enterprise UI/UX Verification (13126-04)
 - Cache-busting:
-  - Confirm `?v=20260131-13126-04` is applied to all `public/*.html` assets that reference CSS/JS.
+  - Confirm `?v=20260201-13126-05` is applied to all `public/*.html` assets that reference CSS/JS.
 - Dashboard (/#/dashboard):
   - Renders for SUPER_ADMIN / TEAM_LEAD / MEMBER without redirect or blank state.
   - KPI cards show: Active cases, My active cases, Pending acknowledgements, Mailbox shift load.
@@ -49,3 +49,32 @@ After applying migrations:
   - WCAG checks: keyboard focus visible, sufficient contrast, readable typography.
 - Real-time consistency (multi-session):
   - Open two sessions and confirm schedule notifications, mailbox tables, and audit logs remain consistent across users.
+
+## Enterprise UI/UX + Sync Verification (13126-05)
+- Cache-busting:
+  - Confirm `?v=20260201-13126-05` is applied to **all** `public/*.html` assets that reference CSS/JS.
+- My Schedule (/#/my_schedule):
+  - Layout:
+    - Grid alignment is clean (no stacked/overlapping text). No horizontal overflow on desktop/tablet/mobile.
+    - Shift header, timezone strip, and calendar grid are visually distinct and readable.
+  - Content:
+    - Shift blocks are color-coded (Morning/Mid/Night) and include role badges.
+    - Timezone conversion uses `UI.parseManilaDateTimeLocal()` and displays both Manila + local accurately.
+    - Countdown timer updates and remains accurate after sleep/wake.
+    - Hover tooltips show full block context (role, time, audit).
+  - Accessibility:
+    - ARIA labels present for interactive blocks.
+    - Focus rings visible via keyboard navigation; WCAG AA contrast maintained in dark/light themes.
+  - Mobile/tablet:
+    - Collapsible sections work; swipe navigation changes focus day without breaking layout.
+- Mailbox (/#/mailbox):
+  - Realtime sync:
+    - Open 2 sessions; confirm duty/time blocks, mailbox manager visibility, assignment counts match across users.
+    - Confirm Store.listen triggers on: `mums_mailbox_tables`, `mums_mailbox_state`, `ums_cases`, `ums_schedule_notifs`.
+  - Role-based assignment:
+    - MEMBER on-duty Mailbox Manager can assign cases **to MEMBERS only** during active duty block.
+    - TEAM_LEAD can assign cases for the same shift.
+    - SUPER_ADMIN can assign cases by default.
+    - Others are blocked (UI disabled) and backend rejects.
+  - Audit logging:
+    - Each assignment generates an audit entry in `ums_activity_logs` including: assigner, assignee, time block, shiftKey, role, timestamp.

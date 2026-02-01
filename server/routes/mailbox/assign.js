@@ -4,14 +4,17 @@ const { getUserFromJwt, getProfileForUserId, serviceSelect, serviceUpsert } = re
 // Body: { shiftKey, assigneeId, caseNo, desc? }
 //
 // Rules:
-// - SUPER_ADMIN / SUPER_USER / ADMIN / TEAM_LEAD may assign anytime (any shift/team).
+// - SUPER_ADMIN / SUPER_USER / ADMIN may assign anytime (any shift/team).
+// - TEAM_LEAD may assign during the active duty shift.
+// - MEMBER may assign ONLY when they are on-duty as Mailbox Manager during the active duty window.
 // - MEMBER may assign ONLY when they are on-duty as Mailbox Manager during the active duty window
 //   and only for their own duty team.
 // - Server re-checks active duty window + active mailbox bucket at commit time (prevents privilege drift).
 // - Writes are performed with service role (members cannot write mums_mailbox_tables via sync/push).
 // - Appends an enterprise audit log entry to `ums_activity_logs` (mums_documents).
 
-const ADMIN_ROLES = new Set(['SUPER_ADMIN','SUPER_USER','ADMIN','TEAM_LEAD']);
+const ADMIN_ANYTIME = new Set(['SUPER_ADMIN','SUPER_USER','ADMIN']);
+const TEAM_LEAD_ROLE = 'TEAM_LEAD';
 
 // Manila time helpers (no DST; UTC+08:00).
 function manilaNowParts(){
@@ -141,6 +144,10 @@ module.exports = async (req, res) => {
     const profile = await getProfileForUserId(actor.id);
     const role = safeString(profile && profile.role ? profile.role : 'MEMBER', 40);
 
+    const isAdminAnytime = ADMIN_ANYTIME.has(role);
+    const isTeamLead = (role === TEAM_LEAD_ROLE);
+
+
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const shiftKey = safeString(body.shiftKey, 120);
     const assigneeId = safeString(body.assigneeId, 80);
@@ -156,8 +163,22 @@ module.exports = async (req, res) => {
     const now = manilaNowParts();
     const dutyTeamId = currentDutyTeamId(now.nowMin);
 
+    // TEAM_LEAD + MEMBER must act only on the active duty shift (admins may override).
+    if(!isAdminAnytime){
+      if(String(shiftKey) !== String(dutyTeamId)){
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not on active shift)' }));
+      }
+      const teamIdGate = safeString(profile && (profile.team_id || profile.teamId) ? (profile.team_id || profile.teamId) : '', 40);
+      if(teamIdGate && teamIdGate !== dutyTeamId){
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not in duty team)' }));
+      }
+    }
+
+
     // Member gating
-    if(!ADMIN_ROLES.has(role)){
+    if(!isAdminAnytime && !isTeamLead){
       // Must be a member mailbox manager on duty and assigned to current duty team.
       const teamId = safeString(profile && (profile.team_id || profile.teamId) ? (profile.team_id || profile.teamId) : '', 40);
       if(!teamId || teamId !== dutyTeamId){
@@ -191,8 +212,8 @@ module.exports = async (req, res) => {
       return res.end(JSON.stringify({ ok:false, error:'Mailbox table not found', shiftKey }));
     }
 
-    // Member: enforce that assignment is within the active duty shift table.
-    if(!ADMIN_ROLES.has(role)){
+    // TEAM_LEAD + MEMBER: enforce that assignment is within the active duty shift table.
+    if(!isAdminAnytime){
       const tableTeam = safeString(table && table.meta && table.meta.teamId ? table.meta.teamId : '', 40);
       if(tableTeam && tableTeam !== dutyTeamId){
         res.statusCode = 403;
@@ -221,12 +242,32 @@ module.exports = async (req, res) => {
     const bucket = buckets.find(b=>String(b.id||'')===bucketId) || buckets[0] || {};
     const bucketLabel = safeString((bucket.start||'') + '-' + (bucket.end||''), 40);
 
-    // Build assignment
+    
+    // Resolve assignee display name/role for audit logs and UI resilience (best-effort).
+    let assigneeProfile = null;
+    try{ assigneeProfile = await getProfileForUserId(assigneeId); }catch(_){ assigneeProfile = null; }
+    const assigneeName = safeString(
+      (assigneeProfile && (assigneeProfile.name || assigneeProfile.username)) ? (assigneeProfile.name || assigneeProfile.username) : assigneeId,
+      120
+    );
+    const assigneeRole = safeString((assigneeProfile && assigneeProfile.role) ? assigneeProfile.role : 'MEMBER', 40);
+
+    // Mailbox Manager (MEMBER) can only assign to MEMBER accounts.
+    if(!isAdminAnytime && !isTeamLead){
+      if(assigneeRole !== 'MEMBER'){
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (Mailbox Manager can assign to members only)' }));
+      }
+    }
+
+// Build assignment
     const assignment = {
       id: makeAssignmentId(),
       caseNo,
       desc,
       assigneeId,
+      assigneeName,
+      assigneeRole,
       bucketId: bucketId || safeString(bucket.id, 40),
       assignedAt: Date.now(),
       actorId: actor.id,
@@ -313,15 +354,37 @@ module.exports = async (req, res) => {
         teamId: safeString(next?.meta?.teamId, 40),
         actorId: actor.id,
         actorName: assignment.actorName,
+        actorRole: role,
+
         action: 'MAILBOX_CASE_ASSIGN',
         targetId: caseNo,
         targetName: caseNo,
-        msg: `Mailbox case assigned to ${assigneeId}`.trim(),
-        detail: `${caseNo}${desc ? (' • '+desc) : ''} • bucket ${bucketLabel} • shiftKey ${shiftKey} • actorRole ${role}`,
+
+        // Primary human-readable message (kept short for UI lists)
+        msg: `Mailbox assigned: ${caseNo} → ${assigneeName}`.trim(),
+
+        // Detail string (used by Logs/Exports; include full RBAC + timeblock context)
+        detail: [
+          `Assigned by ${assignment.actorName} (${role})`,
+          `to ${assigneeName} (${assigneeRole})`,
+          (desc ? `note: ${desc}` : ''),
+          `timeblock ${bucketLabel}`,
+          `bucketId ${assignment.bucketId}`,
+          `shiftKey ${shiftKey}`
+        ].filter(Boolean).join(' • '),
+
+        // Structured context (safe to ignore by older clients)
         shiftKey,
         bucketId: assignment.bucketId,
-        assigneeId,
-        actorRole: role
+        timeblock: {
+          start: safeString(bucket.start, 10),
+          end: safeString(bucket.end, 10),
+          label: bucketLabel
+        },
+        assigner: { id: actor.id, name: assignment.actorName, role },
+        assignee: { id: assigneeId, name: assigneeName, role: assigneeRole },
+        caseNo,
+        desc
       };
       const nextLogs = pruneLogs([logEntry, ...prevLogs]);
       await upsertDoc('ums_activity_logs', nextLogs, actor, profile, clientId);

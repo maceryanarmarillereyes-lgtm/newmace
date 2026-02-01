@@ -1719,6 +1719,7 @@ setCursorMode(mode){
         if(table && typeof table==='object'){
           const buckets = Array.isArray(table.buckets) ? table.buckets : [];
           const assigns = Array.isArray(table.assignments) ? table.assignments : [];
+          const totalAssigned = assigns.length;
 
           const bActive = buckets.find(b=>b && inBucket(nowMin, b)) || buckets[0] || null;
           activeBucketId = bActive ? String(bActive.id||'') : '';
@@ -1782,7 +1783,7 @@ setCursorMode(mode){
           }
           mbx.byRole = Object.keys(byRole)
             .sort((a,b)=>byRole[b]-byRole[a])
-            .map(r=>({ role:r, count: byRole[r] }));
+            .map(r=>({ role:r, count: byRole[r], pct: totalAssigned ? Math.round((byRole[r]/totalAssigned)*100) : 0 }));
 
           // Top assignees
           const byA = {};
@@ -1796,7 +1797,7 @@ setCursorMode(mode){
           mbx.topAssignees = Object.keys(byA)
             .sort((a,b)=>byA[b]-byA[a])
             .slice(0, 6)
-            .map(uid=>({ uid, name: nameById[uid] || uid, count: byA[uid] }));
+            .map(uid=>({ uid, name: nameById[uid] || uid, count: byA[uid], pct: totalAssigned ? Math.round((byA[uid]/totalAssigned)*100) : 0 }));
         }
 
         // Activity heatmap (last 7 Manila days, 4-hour bins)
@@ -1891,16 +1892,34 @@ setCursorMode(mode){
         }).join('') : `<div class="small muted" style="margin-top:8px">Mailbox table not loaded yet for this shift.</div>`;
 
         const byRole = (model.mbx.byRole && model.mbx.byRole.length) ?
-          `<div class="small muted" style="margin-top:10px">By assignee role</div>
-           <div class="small" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
-             ${model.mbx.byRole.slice(0,6).map(r=>`<span class="badge">${esc(r.role)}: ${esc(r.count)}</span>`).join('')}
+          `<div class="small muted" style="margin-top:10px">Distribution by assignee role</div>
+           <div class="dashx-dist" style="margin-top:8px">
+             ${model.mbx.byRole.slice(0,6).map(r=>`
+               <div class="dashx-dist-row">
+                 <div class="dashx-dist-left">${esc(r.role)}</div>
+                 <div class="dashx-dist-mid">
+                   <div class="dashx-bar" role="img" aria-label="${esc(r.role)} ${esc(r.count)} (${esc(r.pct)}%)">
+                     <div class="fill" style="width:${Math.max(0, Math.min(100, Number(r.pct||0)))}%"></div>
+                   </div>
+                 </div>
+                 <div class="dashx-dist-right muted">${esc(r.count)} • ${esc(r.pct)}%</div>
+               </div>
+             `).join('')}
            </div>`
           : '';
 
         const topAsg = (model.mbx.topAssignees && model.mbx.topAssignees.length) ?
-          `<div class="small muted" style="margin-top:10px">Top assignees</div>
-           <div class="small" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
-             ${model.mbx.topAssignees.map(a=>`<div style="display:flex;justify-content:space-between;gap:10px"><div>${esc(a.name)}</div><div class="muted">${esc(a.count)}</div></div>`).join('')}
+          `<div class="small muted" style="margin-top:12px">Top assignees (distribution)</div>
+           <div class="dashx-top" style="margin-top:8px">
+             ${model.mbx.topAssignees.map(a=>`
+               <div class="dashx-top-row">
+                 <div class="dashx-top-name">${esc(a.name)}</div>
+                 <div class="dashx-top-meta muted">${esc(a.count)} • ${esc(a.pct)}%</div>
+                 <div class="dashx-bar" role="img" aria-label="${esc(a.name)} ${esc(a.count)} (${esc(a.pct)}%)">
+                   <div class="fill" style="width:${Math.max(0, Math.min(100, Number(a.pct||0)))}%"></div>
+                 </div>
+               </div>
+             `).join('')}
            </div>`
           : '';
 
@@ -2075,7 +2094,7 @@ setCursorMode(mode){
         return filtered.map(it=>{
           const unreadCls = it.unread ? 'unread' : '';
           const topRight = `<div class="small muted">${esc(fmt(it.ts))}</div>`;
-          const ackBtn = (it.type==='schedule' && it.unread) ? `<button class="btn" data-ack="${esc(it.id)}" type="button">Acknowledge</button>` : '';
+          const ackBtn = (it.type==='schedule' && it.unread) ? `<button class="btn dashx-ack" data-ack="${esc(it.id)}" type="button" aria-label="Acknowledge schedule notification"><span class="dashx-spin" aria-hidden="true"></span><span class="dashx-acklbl">Acknowledge</span></button>` : '';
           const from = it.from ? `<div class="small muted">From: ${esc(it.from)}</div>` : '';
           return `
             <div class="dashx-notif ${unreadCls}">
@@ -2121,14 +2140,50 @@ setCursorMode(mode){
           };
         }
 
-        // Acknowledge
+        // Acknowledge (safe: guard double clicks, show spinner, rollback-safe)
         (box.querySelectorAll('[data-ack]')||[]).forEach(b=>{
           b.onclick = ()=>{
             const id = String(b.getAttribute('data-ack')||'');
-            try{ Store.ackNotif && Store.ackNotif(id, me.id); }catch(_){ }
-            try{ UI.toast && UI.toast('Acknowledged.'); }catch(_){ }
-            const next = buildModel();
-            render(next);
+            if(!id) return;
+
+            try{
+              if(b.dataset.busy==='1') return;
+              b.dataset.busy='1';
+              b.disabled = true;
+              const spin = b.querySelector('.dashx-spin');
+              const lbl = b.querySelector('.dashx-acklbl');
+              if(spin) spin.classList.add('on');
+              if(lbl) lbl.textContent = 'Acknowledging…';
+            }catch(_){ }
+
+            try{
+              Store.ackNotif && Store.ackNotif(id, me.id);
+              UI.toast && UI.toast('Acknowledged.');
+            }catch(e){
+              try{ UI.toast && UI.toast('Failed to acknowledge. Try again.', 'warn'); }catch(_){ }
+              try{
+                b.dataset.busy='0';
+                b.disabled = false;
+                const spin = b.querySelector('.dashx-spin');
+                const lbl = b.querySelector('.dashx-acklbl');
+                if(spin) spin.classList.remove('on');
+                if(lbl) lbl.textContent = 'Acknowledge';
+              }catch(_){ }
+              return;
+            }
+
+            try{
+              const next = buildModel();
+              render(next);
+            }catch(_){
+              try{
+                const list = root.querySelector('#dashNotifs');
+                if(list){
+                  const next = buildModel();
+                  list.innerHTML = renderNotifs(next);
+                }
+              }catch(_){}
+            }
           };
         });
       }

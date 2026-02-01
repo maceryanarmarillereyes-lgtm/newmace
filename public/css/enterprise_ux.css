@@ -11,9 +11,9 @@
   --ux-shadow-soft: 0 10px 26px rgba(0,0,0,.14);
 
   /* Shift colors (use as borders/accents; backgrounds use low opacity) */
-  --shift-morning: #14b8a6; /* teal */
-  --shift-mid:     #3b82f6; /* blue */
-  --shift-night:   #a78bfa; /* violet */
+  --shift-morning: #e0f7fa; /* teal */
+  --shift-mid: #fff3e0; /* blue */
+  --shift-night: #ede7f6; /* violet */
 
   --ux-focus: 0 0 0 3px rgba(99,102,241,.45);
 }
@@ -272,3 +272,215 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 /* Quick actions strip */
 .dashx-actions{ display:flex; gap:8px; flex-wrap:wrap; }
 
+
+
+/* Schedule calendar: selector alignment with my_schedule.js */
+.mysx-cal-grid{
+  display:grid;
+  grid-template-columns: 64px 1fr;
+  gap:10px;
+  margin-top:12px;
+  align-items:stretch;
+}
+.mysx-ruler{
+  position:relative;
+  min-height: 560px;
+}
+.mysx-tick{
+  position:absolute;
+  left:0;
+  right:0;
+  transform: translateY(-50%);
+  font-size:11px;
+  color: rgba(255,255,255,0.65);
+}
+.mysx-days{
+  display:grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap:8px;
+}
+.mysx-day{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+}
+.mysx-day-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+  padding:6px 8px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background: rgba(255,255,255,0.04);
+  font-size:12px;
+}
+.mysx-day-body{
+  position:relative;
+  flex:1;
+  min-height: 560px;
+  margin-top:8px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background: rgba(0,0,0,0.18);
+  overflow:hidden;
+}
+.mysx-empty{
+  position:absolute;
+  top:10px;
+  left:10px;
+  right:10px;
+  font-size:12px;
+  color: rgba(255,255,255,0.60);
+}
+
+.mysx-tab{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-width:34px;
+  height:28px;
+  padding:0 10px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+  color: rgba(255,255,255,0.85);
+  cursor:pointer;
+}
+.mysx-tab.active{
+  background: rgba(80,160,255,0.14);
+  border-color: rgba(80,160,255,0.30);
+  color: #fff;
+}
+.mysx-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  font-size:11px;
+  color: rgba(255,255,255,0.90);
+}
+.mysx-block{
+  overflow:hidden;
+}
+.mysx-block-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.mysx-block-name{
+  font-weight:700;
+  font-size:12px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.mysx-block-time{
+  font-size:11px;
+  color: rgba(255,255,255,0.70);
+  white-space:nowrap;
+}
+.mysx-block-sub{
+  margin-top:6px;
+  font-size:11px;
+  color: rgba(255,255,255,0.75);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.mysx-block.tiny .mysx-block-sub{
+  display:none;
+}
+.mysx-block.tiny .mysx-block-time{
+  display:none;
+}
+.mysx-cal-foot{
+  margin-top:10px;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+}
+.mysx-tooltip{
+  position:fixed;
+  z-index: 9999;
+  max-width: 320px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,0.10);
+  background: rgba(10,16,26,0.95);
+  color:#fff;
+  font-size:12px;
+  line-height:1.25;
+  pointer-events:none;
+  opacity:0;
+  transition: opacity .12s ease;
+}
+
+@media (max-width: 920px){
+  .mysx-cal-grid{ grid-template-columns: 1fr; }
+  .mysx-ruler{ display:none; }
+  .mysx-days{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mysx-day-body{ min-height: 480px; }
+}
+@media (max-width: 560px){
+  .mysx-days{ grid-template-columns: 1fr; }
+  .mysx-day-body{ min-height: 440px; }
+}
+
+
+/* Dashboard: distribution bars + safe acknowledge */
+.dashx-bar{
+  height:8px;
+  border-radius:999px;
+  background: rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.10);
+  overflow:hidden;
+}
+.dashx-bar .fill{
+  height:100%;
+  background: rgba(80,160,255,0.55);
+  width:0%;
+}
+.dashx-dist-row{
+  display:grid;
+  grid-template-columns: 110px 1fr 92px;
+  gap:10px;
+  align-items:center;
+  margin-top:8px;
+}
+.dashx-top-row{
+  display:grid;
+  grid-template-columns: 1fr auto;
+  gap:10px;
+  align-items:center;
+  padding:8px 0;
+  border-bottom: 1px dashed rgba(255,255,255,0.10);
+}
+.dashx-top-row .dashx-bar{
+  grid-column: 1 / span 2;
+  margin-top:6px;
+}
+.dashx-spin{
+  display:inline-block;
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  border:2px solid rgba(255,255,255,0.25);
+  border-top-color: rgba(255,255,255,0.75);
+  margin-right:8px;
+  vertical-align:-3px;
+  opacity:0;
+}
+.dashx-spin.on{
+  opacity:1;
+  animation: dashxspin .8s linear infinite;
+}
+@keyframes dashxspin{
+  from{ transform: rotate(0deg); }
+  to{ transform: rotate(360deg); }
+}

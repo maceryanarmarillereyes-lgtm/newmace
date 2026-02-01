@@ -182,3 +182,9 @@ This is required so authenticated users can read their own profile row under RLS
 - “Schedule and Dashboard must reflect real-time data, role-aware visibility, and enterprise-grade UX. All layout changes must be responsive, accessible, and audit-tracked.”
 - My Schedule must remain mobile-first, include shift visualization, timezone conversion, countdowns, and per-block audit trail. Interactive rescheduling must be permission-gated and always generate an audit entry.
 - Dashboard must remain modular and card-based with realtime metrics, activity heatmap, mailbox analytics, and a notification center with unread counts and safe acknowledge actions.
+
+## Mailbox Assignment RBAC + Schedule Readability (Permanent)
+- “Mailbox Manager on duty must be able to assign cases to members. TEAM LEAD and SUPER ADMIN can assign by default. All mailbox data must sync in real time across users. My Schedule must be clean, readable, and enterprise‑grade.”
+- Mailbox assignment RBAC must always be enforced end-to-end (UI gate + backend re-check).
+- Mailbox store/state must remain consistent across all open sessions in real time.
+- My Schedule must remain readable across dark/light themes, with clear hierarchy (shift header → timezone strip → calendar grid) and accessible focus/ARIA.
