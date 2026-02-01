@@ -208,3 +208,8 @@ This is required so authenticated users can read their own profile row under RLS
 - Hour ruler and grid lines must stay pixel-perfect aligned with schedule blocks across resize and common zoom levels.
 - Date labels must use full format (e.g., "Sunday, February 1, 2026") consistently across Weekly/Daily/Team.
 - Team view must be scrollable and responsive with a sticky MEMBER column and sticky time header row.
+
+## Schedule Time Ruler Alignment + Lock Function Safety (Permanent)
+- “Time labels must align precisely with schedule grid lines. All lock-related functions must be defined and scoped correctly. Team Lead must be able to view/edit all dates regardless of lock state. Members page must not throw runtime errors.”
+- Time ruler (left column) must share the same header offset + row-height unit system as the schedule grid to prevent drift on resize/zoom.
+- Lock helpers (e.g., `dayLockedForGridDisplay`, `isDayLockedForEdit`) must always be defined before any render path and must respect Team Lead/Admin overrides.

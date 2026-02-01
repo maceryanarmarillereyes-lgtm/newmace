@@ -78,6 +78,19 @@ window.Pages.members = function(root){
     return isDayLocked(teamId, dayIndex);
   }
 
+  // Used by timeline/grid rendering to decide whether to show/disable a locked day.
+  // Must be safe to call from any render path (prevents ReferenceError regressions).
+  function dayLockedForGridDisplay(isoDate, teamId){
+    try{
+      const tid = String(teamId || selectedTeamId || '');
+      const wd = UI.weekdayFromISO(String(isoDate||'')); // 0..6 (Sun..Sat)
+      if(wd == null) return false;
+      return isDayLockedForEdit(tid, wd);
+    }catch(_){
+      return false;
+    }
+  }
+
   function dayHasAnyBlocks(teamId, dayIndex){
     const members = getMembersForView(teamId);
     return members.some(m => (Store.getUserDayBlocks(m.id, dayIndex) || []).length > 0);
@@ -1422,6 +1435,7 @@ window.Pages.members = function(root){
 
     table.innerHTML = members.map(m=>{
       const isoDate = isoForDay(selectedDay);
+      const dayLockedForGrid = dayLockedForGridDisplay(isoDate, team.id);
       const leave = Store.getLeave ? Store.getLeave(m.id, isoDate) : null;
       const rest = isRestDay(m.teamId, m.id, isoDate);
       const isInactive = !!leave || !!rest;
@@ -1494,7 +1508,7 @@ window.Pages.members = function(root){
               ${ticks.join('')}
               ${segs}
               ${isInactive ? `<div class="timeline-overlay">${UI.esc(inactiveText)}</div>`:''}
-              ${dayLockedForGridDisplay ? `<div class="locked-ind" aria-label="Locked"><div class="lk-ic">🔒</div><div class="lk-tx">LOCKED</div></div>`:''}
+              ${dayLockedForGrid ? `<div class="locked-ind" aria-label="Locked"><div class="lk-ic">🔒</div><div class="lk-tx">LOCKED</div></div>`:''}
             </div>
           </div>
           <div class="row" style="justify-content:flex-end;flex-direction:column;align-items:flex-end;gap:8px">

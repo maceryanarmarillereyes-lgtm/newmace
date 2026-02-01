@@ -428,7 +428,11 @@
       : `
             <div class="schx-grid" style="--shift-len:${shift.lenMin}">
               <div class="schedule-ruler schx-ruler" aria-hidden="true">
-                ${renderRuler(shift, hours)}
+                <!-- Spacer matches the day header + gap so tick labels align with grid lines -->
+                <div class="schx-ruler-spacer" aria-hidden="true"></div>
+                <div class="schx-ruler-body" aria-hidden="true">
+                  ${renderRuler(shift, hours)}
+                </div>
               </div>
 
               <div class="schx-cols ${mode === 'day' ? 'day' : 'week'}" id="schxCols" aria-label="${mode === 'day' ? 'Daily calendar' : 'Weekly calendar'}">

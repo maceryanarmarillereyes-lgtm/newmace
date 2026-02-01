@@ -187,3 +187,26 @@ After applying migrations:
 - JS syntax verification:
   - Run `node --check` against **all** `public/js/**/*.js` and confirm no syntax errors.
   - Navigate: Dashboard → My Schedule → Members → Mailbox. Confirm no console errors.
+
+
+## Verification (13126-10)
+- Cache-busting:
+  - Confirm `?v=20260201-13126-10` is applied to **all** `public/*.html` assets that reference CSS/JS.
+  - Confirm sidebar Build shows `20260201-13126-10` and no mixed-version assets are loaded.
+- My Schedule (/#/my_schedule):
+  - Time ruler alignment:
+    - Hour tick labels (06:00, 07:00, …) align **pixel-perfect** with the hour grid lines.
+    - Alignment holds during resize and at common zoom levels (90% / 100% / 110%).
+    - Day header spacing does not offset the ruler (ticks start exactly at the grid start).
+- Members (/#/members):
+  - No runtime errors:
+    - Page loads without `ReferenceError: dayLockedForGridDisplay` or any other JS exceptions.
+  - Lock behavior:
+    - Team Lead/Admin can view and edit schedules across all dates regardless of lock state.
+    - Non-priv roles (MEMBER) see locked-day indicators and cannot edit locked days.
+- JS syntax verification:
+  - Run `node --check` against modified files:
+    - `public/js/pages/my_schedule.js`
+    - `public/js/pages/members.js`
+    - `public/js/ui.js`
+  - Navigate: Dashboard → My Schedule → Members. Confirm no console errors.

@@ -609,6 +609,9 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   /* shared grid sizing for pixel-perfect ruler alignment */
   --schx-row-h: 56px;
   --schx-hours: 9;
+  /* fixed header sizing so the time ruler can align to the grid area */
+  --schx-head-h: 46px;
+  --schx-head-gap: 8px;
 }
 .schx-header{
   display:flex;
@@ -694,9 +697,20 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .schedule-ruler,
 .schx-ruler{
   position:relative;
+  display:flex;
+  flex-direction:column;
+}
+
+.schx-ruler-spacer{
+  height: calc(var(--schx-head-h) + var(--schx-head-gap));
+}
+
+.schx-ruler-body{
+  position:relative;
   height: calc(var(--schx-hours) * var(--schx-row-h));
   min-height: calc(var(--schx-hours) * var(--schx-row-h));
 }
+
 .schx-tick{
   position:absolute;
   left:0;
@@ -730,13 +744,16 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 }
 .schx-dayhead{
   display:flex;
-  align-items:flex-start;
+  align-items:center;
   justify-content:space-between;
   gap:10px;
   padding:8px 10px;
   border:1px solid var(--border);
   border-radius:14px;
   background: rgba(255,255,255,.03);
+  height: var(--schx-head-h);
+  min-height: var(--schx-head-h);
+  overflow:hidden;
 }
 .schx-dayname{ font-weight:950; letter-spacing:.2px; }
 .schx-daydate{
@@ -745,11 +762,14 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   line-height:1.2;
   text-align:right;
   max-width: 70%;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
 .schx-daybody{
   position:relative;
-  margin-top:8px;
+  margin-top: var(--schx-head-gap);
   height: calc(var(--schx-hours) * var(--schx-row-h));
   min-height: calc(var(--schx-hours) * var(--schx-row-h));
   border:1px solid var(--border);
