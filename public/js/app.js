@@ -4410,7 +4410,7 @@ window.addEventListener('mums:store', (e)=>{
       if(key === 'ums_activity_logs'){
         try{ window.Renderers && Renderers.renderSidebarLogs && Renderers.renderSidebarLogs(); }catch(_){ }
       }
-      if(key === 'ums_auto_schedule_settings' || key === 'ums_member_leaves' || key === 'ums_schedule_locks'){
+      if(key === 'ums_auto_schedule_settings' || key === 'ums_member_leaves' || key === 'ums_schedule_locks' || key === 'mums_schedule_lock_state'){
         try{ window.Renderers && Renderers.renderCoverageMeter && Renderers.renderCoverageMeter(); }catch(_){ }
       }
     });

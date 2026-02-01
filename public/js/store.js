@@ -10,10 +10,14 @@
     weekly: 'ums_weekly_schedules',
     auto: 'ums_auto_schedule_settings',
     logs: 'ums_activity_logs',
-    locks: 'ums_schedule_locks',
+    locks: 'mums_schedule_lock_state',
+    locks_legacy: 'ums_schedule_locks',
     master: 'ums_master_schedule',
     leaves: 'ums_member_leaves',
+    // Notifications (Schedule updates, mailbox assigns, etc.)
+    // v2 key is preferred, but we keep v1 for backward compatibility.
     notifs: 'ums_schedule_notifs',
+    notifs_v2: 'mums_schedule_notifs',
     my_reminders: 'mums_my_reminders',
     team_reminders: 'mums_team_reminders',
     reminder_settings: 'mums_reminder_settings',
@@ -1350,8 +1354,26 @@
     // Schedule locks (per team + weekStart ISO)
     // Stored as: { "<teamId>|<weekStartISO>": { lockedDays: {"1":true,...}, lockedAt, lockedBy } }
     getLocks(){
-      const obj = read(KEYS.locks, {});
-      return obj && typeof obj === 'object' ? obj : {};
+      // Primary lock store (cloud-synced)
+      let obj = read(KEYS.locks, {});
+      obj = (obj && typeof obj === 'object') ? obj : {};
+
+      // One-time migrate legacy key -> new key to avoid "re-lock" regressions
+      // when older builds still wrote to ums_schedule_locks.
+      try{
+        const hasAny = obj && Object.keys(obj).length > 0;
+        if(!hasAny && KEYS.locks_legacy){
+          const legacy = read(KEYS.locks_legacy, {});
+          const legacyOk = legacy && typeof legacy === 'object' && Object.keys(legacy).length > 0;
+          if(legacyOk){
+            obj = legacy;
+            write(KEYS.locks, obj);
+            try{ localStorage.removeItem(KEYS.locks_legacy); }catch(_){ }
+          }
+        }
+      }catch(_){ }
+
+      return obj;
     },
     saveLocks(obj){ write(KEYS.locks, obj || {}); },
     getLock(teamId, weekStartISO){
@@ -1421,10 +1443,35 @@
     // Schedule update notifications + acknowledgements (team broadcast)
     // Stored as: [ { id, ts, teamId, weekStartISO, fromId, fromName, title, body, recipients:[userId], acks:{[userId]:ts} } ]
     getNotifs(){
-      const list = read(KEYS.notifs, []);
+      // Prefer v2 key when present; fall back to legacy v1.
+      let list = null;
+      if(KEYS.notifs_v2){
+        const v2 = read(KEYS.notifs_v2, null);
+        if(Array.isArray(v2)) list = v2;
+      }
+      if(!Array.isArray(list)) list = read(KEYS.notifs, []);
+
+      // One-time migrate v1 -> v2 (best effort) to align with newer builds.
+      try{
+        if(KEYS.notifs_v2){
+          const v1 = read(KEYS.notifs, []);
+          const v2 = read(KEYS.notifs_v2, []);
+          const v2Ok = Array.isArray(v2) && v2.length;
+          const v1Ok = Array.isArray(v1) && v1.length;
+          if(!v2Ok && v1Ok){
+            write(KEYS.notifs_v2, v1);
+          }
+        }
+      }catch(_){ }
+
       return Array.isArray(list) ? list : [];
     },
-    saveNotifs(list){ write(KEYS.notifs, Array.isArray(list)?list:[]); },
+    saveNotifs(list){
+      const safe = Array.isArray(list) ? list : [];
+      write(KEYS.notifs, safe);
+      // Also write v2 for forward compatibility / spec alignment.
+      try{ if(KEYS.notifs_v2) write(KEYS.notifs_v2, safe); }catch(_){ }
+    },
     addNotif(notif){
       const list = Store.getNotifs();
       list.unshift(notif);

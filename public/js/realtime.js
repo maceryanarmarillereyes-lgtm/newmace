@@ -24,8 +24,10 @@
     'ums_weekly_schedules',
     'ums_master_schedule',
     'ums_schedule_locks',
+    'mums_schedule_lock_state',
     'ums_member_leaves',
     'ums_schedule_notifs',
+    'mums_schedule_notifs',
     'mums_team_config',
     'mums_attendance',
     'mums_mailbox_tables',
@@ -242,6 +244,10 @@
 
 
 function applyRemoteKey(key, value){
+    // Migrate legacy lock key to new cloud key
+    try{
+      if(String(key||'') === 'ums_schedule_locks') key = 'mums_schedule_lock_state';
+    }catch(_){ }
     if (!shouldSyncKey(key)) return;
     // Do not overwrite locally queued changes.
     if (isQueued && isQueued(key)) {

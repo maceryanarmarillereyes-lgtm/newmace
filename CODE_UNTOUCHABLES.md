@@ -188,3 +188,12 @@ This is required so authenticated users can read their own profile row under RLS
 - Mailbox assignment RBAC must always be enforced end-to-end (UI gate + backend re-check).
 - Mailbox store/state must remain consistent across all open sessions in real time.
 - My Schedule must remain readable across dark/light themes, with clear hierarchy (shift header → timezone strip → calendar grid) and accessible focus/ARIA.
+
+## Schedule Apply Changes + One-Time Notifications + Task Colors (Permanent)
+- “Team Lead must be able to apply schedule changes across all dates. Members must receive one-time, acknowledge-only notifications with task and date context. My Schedule must reflect TEAM TASK color codes and enterprise-grade layout.”
+- Team Lead can view and edit across all dates even if a week/day is locked.
+- Members receive schedule update notifications only when their schedule changed. Notifications must:
+  - Pop out once per change (no spam loops)
+  - Have no close (X) control — only **Acknowledge**
+  - Include task label + action (added/removed) + formatted date
+- My Schedule must always match TEAM TASK color codes (Mailbox Manager light blue, Back Office orange, Call Available green, Lunch cyan).

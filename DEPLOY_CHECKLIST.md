@@ -92,3 +92,42 @@ After applying migrations:
   - No missing container errors; no console errors on navigation.
 - JS syntax check:
   - Run `node --check public/js/app.js public/js/ui.js public/js/pages/my_schedule.js` and confirm no syntax errors.
+
+
+## Verification (13126-07)
+- Cache-busting:
+  - Confirm `?v=20260201-13126-07` is applied to **all** `public/*.html` assets that reference CSS/JS.
+  - Confirm sidebar Build shows `20260201-13126-07` and no mixed-version assets are loaded.
+- My Schedule (/#/my_schedule):
+  - Layout:
+    - Time blocks are properly aligned (no stacked/overlapping text). Hour grid remains readable.
+    - Blocks use task color codes (TEAM TASK catalog):
+      - Mailbox Manager → light blue
+      - Back Office → orange
+      - Call Available → green
+      - Lunch → cyan
+    - Hover tooltips show full context (task/role, time, audit).
+  - Accessibility:
+    - Keyboard focus rings visible; ARIA labels present; contrast meets WCAG AA.
+  - Mobile/tablet:
+    - Responsive layout holds; no horizontal overflow; interactions remain usable.
+- Members (Team Lead tooling):
+  - Lock/Unlock:
+    - Team Lead can access and edit all calendar dates even if locked.
+    - Unlocking days persists and does not revert on refresh or cross-session sync.
+    - Lock state syncs via `mums_schedule_lock_state`.
+  - Apply Changes:
+    - “Apply Changes” sends notifications only to affected members (those with actual schedule diffs).
+    - Team Lead receives confirmation toast: “The Schedule Changes have been applied and sent to members for visibility.”
+    - Action is logged in `ums_activity_logs` with actor, weekStart, affected dates, and recipient count.
+- Member Notifications:
+  - Popout behavior:
+    - Notification appears once per schedule change (no repeated re-open/spam).
+    - No close (X) button; only **Acknowledge**.
+    - Acknowledge marks read in schedule notifs and prevents re-show unless a new change is pushed.
+  - Message format:
+    - `Schedule Updated: [Task Label] added/removed on [Weekday, Month DD, YYYY].`
+    - Includes task/date context; details list is acceptable.
+- JS syntax verification:
+  - Run `node --check` against **all** `public/js/**/*.js` and confirm no syntax errors.
+  - Navigate: Dashboard → Members → My Schedule → Mailbox. Confirm no console errors.

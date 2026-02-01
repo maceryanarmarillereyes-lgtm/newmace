@@ -1440,13 +1440,12 @@ overrideLabel(override){
         m.className = 'modal';
         m.id = 'schedNotifModal';
         m.innerHTML = `
-          <div class="panel">
+          <div class="panel notification-popout">
             <div class="head">
               <div>
                 <div class="announce-title" id="schedNotifTitle">Schedule Updated</div>
                 <div class="small" id="schedNotifMeta">—</div>
               </div>
-              <button class="btn ghost" type="button" id="schedNotifClose">✕</button>
             </div>
             <div class="body" id="schedNotifBody" style="white-space:pre-wrap"></div>
             <div class="foot" style="display:flex;justify-content:flex-end;gap:10px">
@@ -1458,16 +1457,22 @@ overrideLabel(override){
       }
 
       const channel = ('BroadcastChannel' in window) ? new BroadcastChannel('ums_schedule_updates') : null;
-      let lastShownId = null;
+      // Prevent spam: show each notif once per tab session (unless page reloads).
+      const shownIds = new Set();
+      let openNotifId = null;
+      let lastBeepedId = null;
       const ping = ()=>{
         // Show the latest un-acked notif for this user
         const list = Store.getNotifs();
         const n = list.find(x=>x && Array.isArray(x.recipients) && x.recipients.includes(user.id) && !(x.acks && x.acks[user.id]));
         if(!n) return;
 
-        // Beep once per notif
-        if(n.id && n.id !== lastShownId){
-          lastShownId = n.id;
+        const modal = document.getElementById('schedNotifModal');
+        const isOpen = !!(modal && modal.classList.contains('open'));
+
+        // Beep once per notif per tab.
+        if(n.id && n.id !== lastBeepedId){
+          lastBeepedId = n.id;
           UI.playNotifSound(user.id);
         }
 
@@ -1477,26 +1482,35 @@ overrideLabel(override){
         }else{
           UI.el('#schedNotifMeta').textContent = `From: ${n.fromName||'Team Lead'} • Week of ${n.weekStartISO||'—'}`;
         }
-        UI.el('#schedNotifBody').textContent = n.body || 'Your schedule has been updated.';
-
-        const close = ()=>UI.closeModal('schedNotifModal');
-        UI.el('#schedNotifClose').onclick = close;
+        const perUser = (n.userMessages && n.userMessages[user.id]) ? n.userMessages[user.id] : '';
+        UI.el('#schedNotifBody').textContent = perUser || n.body || 'Your schedule has been updated.';
 
         UI.el('#schedNotifAck').onclick = ()=>{
           Store.ackNotif(n.id, user.id);
           // broadcast ack to other tabs
           try{ channel && channel.postMessage({ type:'ack', notifId:n.id, userId:user.id }); }catch(e){}
-          close();
+          openNotifId = null;
+          UI.closeModal('schedNotifModal');
         };
 
-        UI.openModal('schedNotifModal');
+        // Only open once per notif per tab session.
+        if(isOpen && openNotifId === n.id) return;
+        if(!isOpen){
+          if(shownIds.has(n.id)) return;
+          shownIds.add(n.id);
+          openNotifId = n.id;
+          UI.openModal('schedNotifModal');
+        } else {
+          // Modal is open but a newer notif arrived.
+          openNotifId = n.id;
+        }
       };
 
       // periodic poll (cheap) + cross-tab hints
       let timer = setInterval(ping, 1500);
       const onStorage = (ev)=>{
         if(!ev || !ev.key) return;
-        if(ev.key=== 'ums_schedule_notifs') ping();
+        if(ev.key=== 'ums_schedule_notifs' || ev.key=== 'mums_schedule_notifs') ping();
       };
       window.addEventListener('storage', onStorage);
 

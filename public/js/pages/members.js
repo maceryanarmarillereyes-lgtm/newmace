@@ -72,6 +72,12 @@ window.Pages.members = function(root){
     return !!(lock && lock.lockedDays && lock.lockedDays[String(dayIndex)]);
   }
 
+  function isDayLockedForEdit(teamId, dayIndex){
+    // Team Leads/Admins must be able to work across all dates; lock is primarily for MEMBER visibility.
+    if(isLead || isAdmin || isSuper) return false;
+    return isDayLocked(teamId, dayIndex);
+  }
+
   function dayHasAnyBlocks(teamId, dayIndex){
     const members = getMembersForView(teamId);
     return members.some(m => (Store.getUserDayBlocks(m.id, dayIndex) || []).length > 0);
@@ -247,7 +253,7 @@ window.Pages.members = function(root){
           <button class="iconbtn flat" id="viewAcks" type="button" title="Acknowledgements" aria-label="Acknowledgements">✅</button>
           <button class="iconbtn flat" id="viewTrend" type="button" title="Health trend (weekly)" aria-label="Health trend">📈</button>
         </div>
-        <button class="btn primary" id="sendSchedule" type="button" title="Notify members about updates and collect acknowledgements">Send</button>
+        <button class="btn primary" id="sendSchedule" type="button" title="Apply schedule changes and notify affected members">Apply Changes</button>
       </div>
       ` : ''}
 
@@ -481,7 +487,7 @@ window.Pages.members = function(root){
     const member = Store.getUsers().find(u=>u.id===selMemberId);
     if(!member || !canEditTarget(member)) return;
     const team = Config.teamById(member.teamId);
-    if(isDayLocked(member.teamId, selectedDay)) return;
+    if(isDayLockedForEdit(member.teamId, selectedDay)) return;
     const blocks = normalizeBlocks(team, Store.getUserDayBlocks(member.id, selectedDay));
     const idxs = Array.from(selIdx).filter(i=>blocks[i]).sort((a,b)=>a-b);
     if(!idxs.length) return;
@@ -523,7 +529,7 @@ window.Pages.members = function(root){
 
     for(const member of members){
       for(let d=0; d<=6; d++){
-        if(isDayLocked(member.teamId, d)) continue;
+        if(isDayLockedForEdit(member.teamId, d)) continue;
         Store.setUserDayBlocks(member.id, member.teamId, d, []);
       }
       const actor = Auth.getUser();
@@ -1115,7 +1121,7 @@ window.Pages.members = function(root){
   function canEditTarget(member){
     if(!member) return false;
     // Respect lock: Mon–Fri can be locked after approval
-    if(isDayLocked(selectedTeamId, selectedDay)) return false;
+    if(isDayLockedForEdit(selectedTeamId, selectedDay)) return false;
     if(isSuper || isAdmin) return Config.can(me, 'manage_members_scheduling') || Config.can(me, 'manage_users') || Config.can(me, 'manage_members');
     if(isLead) return (member.teamId === me.teamId) && Config.can(me, 'manage_members_scheduling');
     return false;
@@ -1389,7 +1395,6 @@ window.Pages.members = function(root){
 
     const weekStartMs = UI.manilaWeekStartMondayMs();
     const cases = Store.getCases();
-    const dayLockedForGrid = isDayLocked(team.id, selectedDay);
     function weeklyStats(u){
       const totals = { mailbox:0, back:0, call:0 };
       for(let d=0; d<7; d++){
@@ -1489,7 +1494,7 @@ window.Pages.members = function(root){
               ${ticks.join('')}
               ${segs}
               ${isInactive ? `<div class="timeline-overlay">${UI.esc(inactiveText)}</div>`:''}
-              ${dayLockedForGrid ? `<div class="locked-ind" aria-label="Locked"><div class="lk-ic">🔒</div><div class="lk-tx">LOCKED</div></div>`:''}
+              ${dayLockedForGridDisplay ? `<div class="locked-ind" aria-label="Locked"><div class="lk-ic">🔒</div><div class="lk-tx">LOCKED</div></div>`:''}
             </div>
           </div>
           <div class="row" style="justify-content:flex-end;flex-direction:column;align-items:flex-end;gap:8px">
@@ -2438,6 +2443,121 @@ window.Pages.members = function(root){
       }
 
       const team = Config.teamById(selectedTeamId);
+
+      // Build per-member diffs so we only notify affected members.
+      const prev = latestTeamNotif();
+      const prevSnapshots = (prev && prev.snapshots && typeof prev.snapshots === 'object') ? prev.snapshots : {};
+      const prevHashes = (prev && prev.snapshotHashes && typeof prev.snapshotHashes === 'object') ? prev.snapshotHashes : {};
+
+      const formatLongDate = (iso)=>{
+        try{
+          return new Date(String(iso||'')+'T00:00:00Z').toLocaleDateString('en-US', {
+            weekday:'long', month:'long', day:'2-digit', year:'numeric', timeZone: Config.TZ
+          });
+        }catch(_){ return String(iso||''); }
+      };
+
+      const snapForUser = (userId)=>{
+        const days = {};
+        for(let d=0; d<7; d++){
+          const bl = normalizeBlocks(team, Store.getUserDayBlocks(userId, d));
+          days[String(d)] = (bl||[]).map(b=>({ role:String(b.role||''), start:String(b.start||''), end:String(b.end||'') }));
+        }
+        return { days };
+      };
+
+      const diffSnap = (prevSnap, curSnap)=>{
+        const changes = [];
+        const p = (prevSnap && prevSnap.days) ? prevSnap : { days:{} };
+        const c = (curSnap && curSnap.days) ? curSnap : { days:{} };
+        for(let d=0; d<7; d++){
+          const key = String(d);
+          const pv = Array.isArray(p.days[key]) ? p.days[key] : [];
+          const cv = Array.isArray(c.days[key]) ? c.days[key] : [];
+          const toK = (b)=>`${String(b.role||'')}|${String(b.start||'')}-${String(b.end||'')}`;
+          const ps = new Set(pv.map(toK));
+          const cs = new Set(cv.map(toK));
+          const added = cv.filter(b=>!ps.has(toK(b)));
+          const removed = pv.filter(b=>!cs.has(toK(b)));
+          if(added.length || removed.length){
+            changes.push({
+              dayIndex: d,
+              iso: isoForDay(d),
+              added,
+              removed
+            });
+          }
+        }
+        return changes;
+      };
+
+      const buildMessage = (changes)=>{
+        if(!changes || !changes.length){
+          return 'Schedule Updated.';
+        }
+        const first = changes[0];
+        const dateLong = formatLongDate(first.iso);
+        let primary = null;
+        let action = '';
+        if(first.added && first.added.length){
+          primary = first.added[0];
+          action = 'added';
+        }else if(first.removed && first.removed.length){
+          primary = first.removed[0];
+          action = 'removed';
+        }
+        const label = primary ? blockLabel(primary.role) : 'Changes';
+        const tRange = primary ? ` (${primary.start}-${primary.end})` : '';
+        const extra = Math.max(0, changes.reduce((a,c)=>a+((c.added||[]).length+(c.removed||[]).length),0) - 1);
+        const extraTxt = extra ? ` (and ${extra} more change${extra===1?'':'s'})` : '';
+        const summary = `Schedule Updated: ${label} ${action || 'updated'} on ${dateLong}.${extraTxt}`;
+
+        const lines = [summary];
+        const details = [];
+        for(const ch of changes.slice(0, 4)){
+          const dLong = formatLongDate(ch.iso);
+          for(const a of (ch.added||[]).slice(0, 4)){
+            details.push(`• Added: ${blockLabel(a.role)} (${a.start}-${a.end}) — ${dLong}`);
+          }
+          for(const r of (ch.removed||[]).slice(0, 4)){
+            details.push(`• Removed: ${blockLabel(r.role)} (${r.start}-${r.end}) — ${dLong}`);
+          }
+        }
+        if(details.length){
+          lines.push('', 'Details:', ...details);
+        }
+        lines.push('', 'Please acknowledge.');
+        return lines.join('\n');
+      };
+
+      const recipients = [];
+      const userMessages = {};
+      const snapshotHashes = {};
+      const snapshots = {};
+      const affectedDates = new Set();
+
+      for(const m of members){
+        const curSnap = snapForUser(m.id);
+        const curHash = (Store._hash ? Store._hash(JSON.stringify(curSnap)) : String(Date.now()));
+        snapshotHashes[m.id] = curHash;
+        snapshots[m.id] = curSnap;
+
+        const prevHash = prevHashes[m.id];
+        if(prevHash && String(prevHash) === String(curHash)) continue; // unchanged
+
+        const changes = diffSnap(prevSnapshots[m.id], curSnap);
+        if(!changes.length && prevHash) continue; // same content but no diff (guard)
+
+        recipients.push(m.id);
+        userMessages[m.id] = buildMessage(changes);
+        for(const ch of changes){ affectedDates.add(ch.iso); }
+      }
+
+      if(!recipients.length){
+        UI.toast('No member schedule changes detected for this week. Nothing to send.', 'info');
+        return;
+      }
+
       const notif = {
         id: (crypto && crypto.randomUUID) ? crypto.randomUUID() : ('n-'+Date.now()+Math.random().toString(16).slice(2)),
         ts: Date.now(),
@@ -2446,14 +2566,33 @@ window.Pages.members = function(root){
         fromId: me.id,
         fromName: me.name||me.username,
         title: 'Schedule Updated',
-        body: `You have been scheduled for ${team.label} on ${isoToday} from ${(team.dutyStart || (UI.shiftMeta ? UI.shiftMeta(team).start : ''))} to ${(team.dutyEnd || (UI.shiftMeta ? UI.shiftMeta(team).end : ''))}. Please acknowledge.`,
-        recipients: members.map(m=>m.id),
-        acks: {}
+        body: `Schedule updates were applied for week of ${weekStartISO}. Please acknowledge.`,
+        recipients,
+        acks: {},
+        userMessages,
+        snapshotHashes,
+        snapshots
       };
+
       Store.addNotif(notif);
       try{ ('BroadcastChannel' in window) && new BroadcastChannel('ums_schedule_updates').postMessage({ type:'notify', notifId: notif.id }); }catch(e){}
-      Store.addLog({ ts: Date.now(), teamId: selectedTeamId, actorId: me.id, actorName: me.name||me.username, action: 'SCHEDULE_SEND', msg: `${me.name||me.username} sent schedule update notification`, detail: `WeekStart ${weekStartISO}` });
-      addAudit('SCHEDULE_SEND', null, null, `Sent schedule update notification (week of ${weekStartISO})`);
+
+      const datesTxt = Array.from(affectedDates).sort().join(', ');
+      Store.addLog({
+        ts: Date.now(),
+        teamId: selectedTeamId,
+        actorId: me.id,
+        actorName: me.name||me.username,
+        action: 'SCHEDULE_APPLY',
+        msg: 'Schedule changes applied and sent to members for visibility.',
+        detail: `WeekStart ${weekStartISO} • Recipients ${recipients.length} • AffectedDates ${datesTxt}`
+      });
+      addAudit('SCHEDULE_APPLY', null, null, `Applied changes and notified ${recipients.length} member(s). Affected: ${datesTxt || '—'}`);
+
+      // Popout/Toast for Team Lead confirmation.
+      UI.toast('The Schedule Changes have been applied and sent to members for visibility.', 'success');
+
+      // Open acknowledgements view for quick verification.
       renderAckModal(notif);
       UI.openModal('ackModal');
     };
@@ -2476,7 +2615,6 @@ window.Pages.members = function(root){
     const members = getMembersForView(selectedTeamId);
     const weekStartMs = UI.manilaWeekStartMondayMs();
     const cases = Store.getCases();
-    const dayLockedForGrid = isDayLocked(team.id, selectedDay);
     const rows = [["User","Team","MailboxHours","BackOfficeHours","CallOnqueHours","CasesAssignedThisWeek"]];
     for(const m of members){
       const totals = { mailbox:0, back:0, call:0 };

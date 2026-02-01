@@ -41,6 +41,17 @@
     return (cs && cs.icon) ? cs.icon : '';
   };
 
+  const taskColor = (id)=>{
+    try{
+      if(Store.getTeamTaskColor && me.teamId!=null){
+        const c = Store.getTeamTaskColor(me.teamId, id);
+        if(c) return c;
+      }
+    }catch(_){ }
+    const t = tasks.find(x=>x && String(x.id)===String(id));
+    return (t && t.color) ? t.color : '';
+  };
+
   const hm = (m)=>{
     const pad = (n)=>String(n).padStart(2,'0');
     const mm = Math.max(0, Math.min(23*60+59, Number(m)||0));
@@ -191,6 +202,7 @@
 
   function blockPill(b){
     const id = b.schedule || b.role || '';
+      const color = taskColor(id) || '';
     const label = taskLabel(id);
     const icon = taskIcon(id);
     return `<span class="mysx-pill">${UI.esc(icon)} ${UI.esc(label||'Block')}</span>`;
@@ -344,8 +356,9 @@
     const aria = `${d.dayLabel} column`;
 
     const blocksHtml = d.blocks.map((b, idx)=>{
-      const style = blockStyle(b);
+      const style = blockStyle(team || {id: me.teamId}, b);
       const id = b.schedule || b.role || '';
+      const color = taskColor(id) || '';
       const local = manilaHMtoLocal(d.iso, b.start, b.end);
       const audit = findAuditForBlock(d.dayIdx, b);
       const auditLine = audit ? `Assigned by ${audit.actorName||'—'} • ${formatTs(audit.ts)}` : '';
@@ -354,8 +367,8 @@
 
       return `
         <div
-          class="mysx-block shift-${shiftColor(me.teamId)} ${editable?'drag':''}"
-          style="top:${style.top}%;height:${style.height}%;"
+          class="mysx-block schedule-block shift-${shiftColor(me.teamId)} ${editable?'drag':''}"
+          style="--task-color:${UI.esc(color)};top:${style.top}%;height:${style.height}%;"
           role="button"
           tabindex="0"
           data-day="${d.dayIdx}"
@@ -368,7 +381,7 @@
           title="${UI.esc(tooltip)}"
         >
           <div class="mysx-block-top">
-            <div class="mysx-block-name">${UI.esc(taskIcon(id))} ${UI.esc(taskLabel(id)||'Block')}</div>
+            <div class="mysx-block-name"><span class="task-color" style="background:${UI.esc(color)}"></span><span class="task-label">${UI.esc(taskLabel(id)||'Block')}</span></div>
             <div class="mysx-block-time">${UI.esc(b.start)}–${UI.esc(b.end)}</div>
           </div>
           <div class="mysx-block-sub">${local ? `<span class="mysx-local">${UI.esc(local)} <span class="mysx-tz">${UI.esc(localTZ)}</span></span>` : `<span class="mysx-local muted">${UI.esc(tzManila)}</span>`}</div>
@@ -389,18 +402,31 @@
     `;
   }
 
-  function blockMetrics(b){
-    const start = UI.parseHM(b.start);
-    const end = UI.parseHM(b.end);
-    const wrap = end <= start;
-    const dur = wrap ? ((24*60 - start) + end) : (end - start);
-    const topPct = Math.round((start/(24*60))*10000)/100;
-    const hPct = Math.max(3.5, Math.round((dur/(24*60))*10000)/100);
-    return { start, end, wrap, dur, topPct, hPct };
+  function blockMetrics(teamObj, b){
+    const meta = (UI.shiftMeta && teamObj) ? UI.shiftMeta(teamObj) : { start:0, length:24*60, wraps:false };
+    // Use shift-relative offsets so blocks align with the rendered ruler (shift hours), not 24h clock.
+    let startOff = 0;
+    let endOff = 0;
+    try{
+      startOff = UI.offsetFromShiftStart ? UI.offsetFromShiftStart(teamObj, b.start) : UI.parseHM(b.start);
+      endOff = UI.offsetFromShiftStart ? UI.offsetFromShiftStart(teamObj, b.end) : UI.parseHM(b.end);
+    }catch(_){
+      startOff = UI.parseHM(b.start);
+      endOff = UI.parseHM(b.end);
+    }
+    startOff = clamp(startOff, 0, meta.length);
+    endOff = clamp(endOff, 0, meta.length);
+    let dur = endOff - startOff;
+    // Safety: never render negative/zero blocks; keep minimum visible height.
+    if(dur <= 0) dur = Math.min(15, meta.length);
+
+    const topPct = Math.round((startOff/(meta.length||1))*10000)/100;
+    const hPct = Math.max(3.5, Math.round((dur/(meta.length||1))*10000)/100);
+    return { startOff, endOff, dur, topPct, hPct, meta };
   }
 
-  function blockStyle(b){
-    const m = blockMetrics(b);
+  function blockStyle(teamObj, b){
+    const m = blockMetrics(teamObj, b);
     return { top: m.topPct, height: m.hPct };
   }
 
