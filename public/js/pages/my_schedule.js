@@ -379,7 +379,7 @@
     const hours = Math.max(1, Math.ceil(shift.lenMin / 60));
 
     host.innerHTML = `
-      <div class="schx" data-shift="${esc(sk)}" style="--schx-hours:${(shift.lenMin / 60)}">
+      <div class="schx" data-shift="${esc(sk)}" style="--schx-hours:${hours}">
         <div class="schx-header">
           <div>
             <div class="ux-h1">My Schedule</div>
@@ -430,7 +430,7 @@
               <div class="schedule-ruler schx-ruler" aria-hidden="true">
                 <!-- Spacer matches the day header + gap so tick labels align with grid lines -->
                 <div class="schx-ruler-spacer" aria-hidden="true"></div>
-                <div class="schx-ruler-body" aria-hidden="true">
+                <div class="schx-ruler-body schx-ruler-grid" aria-hidden="true">
                   ${renderRuler(shift, hours)}
                 </div>
               </div>
@@ -480,13 +480,19 @@
     `;
   }
 
+  // Ruler is rendered as fixed-height rows (shared unit system with the calendar grid)
+  // to avoid pixel drift on zoom/resizes and keep labels aligned with grid lines.
   function renderRuler(shift, hours) {
-    const ticks = [];
-    for (let i = 0; i <= hours; i++) {
+    const rows = [];
+    for (let i = 0; i < hours; i++) {
       const label = hm(shift.startMin + (i * 60));
-      ticks.push(`<div class="schx-tick" style="top:calc(${i} * var(--schx-row-h))"><span>${esc(label)}</span></div>`);
+      rows.push(`<div class="schx-ruler-row" aria-hidden="true"><span class="schx-tick-label">${esc(label)}</span></div>`);
     }
-    return ticks.join('');
+
+    // Add the end boundary label (e.g., 15:00) pinned to the bottom grid line.
+    const endLabel = hm(shift.startMin + (hours * 60));
+    rows.push(`<div class="schx-ruler-end" aria-hidden="true"><span class="schx-tick-label">${esc(endLabel)}</span></div>`);
+    return rows.join('');
   }
 
   function renderDay(day, shift, hours) {

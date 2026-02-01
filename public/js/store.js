@@ -8,6 +8,9 @@
     cases: 'ums_cases',
     rr: 'ums_rr',
     weekly: 'ums_weekly_schedules',
+    // Canonical schedule docs (enterprise)
+    schedule_blocks: 'mums_schedule_blocks',
+    schedule_snapshots: 'mums_schedule_snapshots',
     auto: 'ums_auto_schedule_settings',
     logs: 'ums_activity_logs',
     locks: 'mums_schedule_lock_state',
@@ -1007,21 +1010,71 @@
 
     // Weekly per-user schedules (Sun..Sat) with time blocks.
     // Stored as: { [userId]: { teamId: "morning", days: { "0": [..], ... "6": [..] } } }
+    // NOTE: `mums_schedule_blocks` is the canonical enterprise key.
+    // `ums_weekly_schedules` is retained for backward compatibility.
     getWeekly(){ return read(KEYS.weekly, {}); },
     saveWeekly(obj){ write(KEYS.weekly, obj); },
-    getUserDayBlocks(userId, dayIndex){
-      const all = Store.getWeekly();
-      const u = all[userId];
-      const days = (u && u.days) || {};
-      const list = days[String(dayIndex)] || [];
+
+    // Canonical schedule blocks (enterprise) — mirrors the weekly structure.
+    getScheduleBlocks(){ return read(KEYS.schedule_blocks, {}); },
+    saveScheduleBlocks(obj){ write(KEYS.schedule_blocks, obj); },
+
+    // Schedule snapshots (enterprise) — append-only, used for rollback/audit.
+    getScheduleSnapshots(){
+      const list = read(KEYS.schedule_snapshots, []);
       return Array.isArray(list) ? list : [];
     },
+    appendScheduleSnapshot(entry){
+      try{
+        const list = Store.getScheduleSnapshots();
+        const e = entry ? { ...entry } : {};
+        if (!e.id) e.id = 'snap_' + Math.random().toString(36).slice(2) + '_' + Date.now().toString(36);
+        if (!e.ts) e.ts = Date.now();
+        list.unshift(e);
+        // Keep last 200 to avoid uncontrolled growth.
+        while(list.length > 200) list.pop();
+        write(KEYS.schedule_snapshots, list);
+      } catch(_) {}
+    },
+
+    getUserDayBlocks(userId, dayIndex){
+      const uid = String(userId || '');
+      const di = String(dayIndex);
+      // Prefer canonical enterprise blocks; fall back to legacy weekly.
+      const allA = Store.getScheduleBlocks();
+      const uA = allA && allA[uid];
+      const daysA = (uA && uA.days) || null;
+      const listA = daysA ? (daysA[di] || []) : null;
+      if (Array.isArray(listA) && listA.length) return listA;
+
+      const allB = Store.getWeekly();
+      const uB = allB && allB[uid];
+      const daysB = (uB && uB.days) || {};
+      const listB = daysB[di] || [];
+      return Array.isArray(listB) ? listB : [];
+    },
     setUserDayBlocks(userId, teamId, dayIndex, blocks){
-      const all = Store.getWeekly();
-      if(!all[userId]) all[userId] = { teamId: teamId || null, days: {} };
-      all[userId].teamId = teamId || all[userId].teamId || null;
-      all[userId].days[String(dayIndex)] = blocks;
-      Store.saveWeekly(all);
+      const uid = String(userId || '');
+      const di = String(dayIndex);
+      const safeBlocks = Array.isArray(blocks) ? blocks : [];
+
+      // Update canonical blocks.
+      try{
+        const allA = Store.getScheduleBlocks();
+        if(!allA[uid]) allA[uid] = { teamId: teamId || null, days: {} };
+        allA[uid].teamId = teamId || allA[uid].teamId || null;
+        allA[uid].days[di] = safeBlocks;
+        Store.saveScheduleBlocks(allA);
+      }catch(_){ }
+
+      // Update legacy weekly (compat).
+      try{
+        const allB = Store.getWeekly();
+        if(!allB[uid]) allB[uid] = { teamId: teamId || null, days: {} };
+        allB[uid].teamId = teamId || allB[uid].teamId || null;
+        allB[uid].days[di] = safeBlocks;
+        Store.saveWeekly(allB);
+      }catch(_){ }
     },
 
     // Auto-schedule settings per team (shift)

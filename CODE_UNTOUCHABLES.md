@@ -213,3 +213,9 @@ This is required so authenticated users can read their own profile row under RLS
 - “Time labels must align precisely with schedule grid lines. All lock-related functions must be defined and scoped correctly. Team Lead must be able to view/edit all dates regardless of lock state. Members page must not throw runtime errors.”
 - Time ruler (left column) must share the same header offset + row-height unit system as the schedule grid to prevent drift on resize/zoom.
 - Lock helpers (e.g., `dayLockedForGridDisplay`, `isDayLockedForEdit`) must always be defined before any render path and must respect Team Lead/Admin overrides.
+
+## Task Sync + Time Alignment + Graphical Balancing Panel (Permanent)
+- “All task assignments must sync across Team Lead and Member views. Time labels must align with grid blocks. Team Lead must have access to a floating graphical panel to balance task hours across members.”
+- Canonical schedule store is `mums_schedule_blocks` (client mirror `Store.KEYS.schedule_blocks`), with `mums_schedule_snapshots` used for rollback/audit.
+- My Schedule ruler + grid must share a single unit system (`--schx-row-h`, `--schx-hours`) to prevent drift on resize/zoom.
+- Members graphical status panel must remain role-gated (Team Lead/Admin) and must not block scheduling workflows if disabled.

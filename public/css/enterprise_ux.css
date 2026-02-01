@@ -709,6 +709,47 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   position:relative;
   height: calc(var(--schx-hours) * var(--schx-row-h));
   min-height: calc(var(--schx-hours) * var(--schx-row-h));
+  overflow: visible;
+}
+
+/* ------------------------------------------------------------------
+   My Schedule — shared unit ruler grid (13126-11)
+   Ensures tick labels align pixel-perfect with schedule grid lines.
+   ------------------------------------------------------------------ */
+
+.schx-ruler-grid{
+  display:grid;
+  grid-auto-rows: var(--schx-row-h);
+  gap: 0;
+}
+
+.schx-ruler-row{
+  position:relative;
+  height: var(--schx-row-h);
+}
+
+.schx-ruler-end{
+  position:absolute;
+  left:0;
+  right:0;
+  top:100%;
+  transform: translateY(-50%);
+}
+
+.schx-tick-label{
+  position:absolute;
+  right:8px;
+  top:0;
+  transform: translateY(-50%);
+  display:inline-block;
+  padding:2px 6px;
+  border-radius:8px;
+  background: rgba(0,0,0,.22);
+  border:1px solid rgba(255,255,255,.08);
+  font-size:11px;
+  color: rgba(255,255,255,0.65);
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .schx-tick{
@@ -933,3 +974,143 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   .task-label{ font-size:11px; padding:6px 9px; }
 }
 
+
+/* ------------------------------------------------------------------
+   Members — Floating Graphical Task Status Panel (13126-11)
+   ------------------------------------------------------------------ */
+
+.graph-toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:12px;
+  background: rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.08);
+}
+.graph-toggle input{
+  width:16px;
+  height:16px;
+  accent-color: var(--accent, #4f8bff);
+}
+
+.graph-status-panel{
+  position:fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 520px;
+  height: 360px;
+  min-width: 320px;
+  min-height: 240px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  z-index: 120;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: linear-gradient(180deg, rgba(15,27,46,.98), rgba(12,22,40,.98));
+  box-shadow: 0 18px 48px rgba(0,0,0,.45);
+  overflow: hidden;
+  resize: both;
+}
+
+.graph-status-panel .gsp-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  user-select:none;
+  cursor: move;
+}
+.graph-status-panel .gsp-head.dragging{
+  background: rgba(255,255,255,.03);
+}
+
+.graph-status-panel .gsp-title{
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: .2px;
+}
+.graph-status-panel .gsp-sub{
+  font-size: 12px;
+  color: rgba(255,255,255,.65);
+  margin-top: 2px;
+}
+
+.graph-status-panel .gsp-body{
+  padding: 12px 14px;
+  overflow:auto;
+  height: calc(100% - 96px);
+}
+
+.graph-status-panel .gsp-foot{
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  padding: 10px 14px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  background: rgba(0,0,0,.10);
+  font-size: 12px;
+}
+
+.gsp-row{
+  display:grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+  align-items:center;
+  padding: 10px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.06);
+  background: rgba(255,255,255,.03);
+  margin-bottom: 10px;
+}
+
+.gsp-row.member-highlight{
+  border-color: rgba(79,139,255,.55);
+  box-shadow: 0 0 0 3px rgba(79,139,255,.12);
+}
+
+.gsp-name{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+}
+.gsp-name .name{
+  font-weight: 700;
+  font-size: 13px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.gsp-name .meta{
+  font-size: 12px;
+  color: rgba(255,255,255,.65);
+  margin-top: 2px;
+}
+
+.gsp-bar{
+  position:relative;
+  height: 16px;
+  border-radius: 999px;
+  overflow:hidden;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.08);
+  display:flex;
+}
+
+.task-bar{
+  height: 100%;
+  min-width: 3px;
+  background: var(--c, #4f8bff);
+  transition: width .18s ease, opacity .18s ease;
+}
+.task-bar:hover{
+  opacity: .92;
+}
+
+@media (max-width: 900px){
+  .graph-status-panel{ width: calc(100vw - 24px); height: 320px; right: 12px; bottom: 12px; }
+  .gsp-row{ grid-template-columns: 140px 1fr; }
+}

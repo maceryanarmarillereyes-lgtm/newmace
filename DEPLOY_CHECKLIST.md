@@ -210,3 +210,30 @@ After applying migrations:
     - `public/js/pages/members.js`
     - `public/js/ui.js`
   - Navigate: Dashboard → My Schedule → Members. Confirm no console errors.
+
+
+## Verification (13126-11)
+- Cache-busting:
+  - Confirm `?v=20260201-13126-11` is applied to **all** `public/*.html` assets (index, login, schedule, dashboard, debug, etc.) that reference CSS/JS.
+  - Confirm sidebar Build shows `20260201-13126-11` and no mixed-version assets are loaded.
+- Task schedule sync:
+  - As TEAM_LEAD, in Members view, add/update task blocks for multiple members and click **Apply Changes**.
+  - Verify the updated blocks are persisted in `mums_schedule_blocks` and reflected immediately (realtime) in:
+    - Members timeline view
+    - The affected member’s **My Schedule** (Weekly / Daily / Team)
+  - Verify schedule blocks remain after page refresh and across browser restart.
+- My Schedule time alignment:
+  - Hour tick labels align pixel-perfect with the horizontal hour grid lines and schedule blocks.
+  - Alignment holds during resize and common zoom levels (90% / 100% / 110%).
+  - Vertical grid lines remain visible and consistent across Weekly/Daily/Team.
+- Members graphical task status panel:
+  - Toggle:
+    - “Show Graphical Task Status” checkbox shows/hides the panel and persists state (localStorage).
+  - Behavior:
+    - Panel is draggable (header) and resizable (corner); close button hides without errors.
+    - Stacked bars render per member (task hour totals) and update live after Apply Changes.
+    - Selected member is highlighted.
+    - Hover tooltips show **task name + hour count**.
+- JS syntax verification:
+  - Run `node --check` against **all** `public/js/**/*.js` and `server/**/*.js` and confirm no syntax errors.
+  - Navigate: Dashboard → My Schedule → Members → Mailbox. Confirm no console errors.

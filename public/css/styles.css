@@ -737,7 +737,8 @@ body[data-mode="light"] .sp-photo{background:rgba(15,23,42,.04)}
 .timeline .seg .handle.r{right:0;cursor:ew-resize}
 .timeline .seg[data-role="lunch"] .handle{display:none} /* fixed 1hr lunch */
 
-.timeline-ruler{display:grid;grid-template-columns:260px 1fr 86px;gap:12px;align-items:end;height:22px;margin-bottom:8px}
+/* Keep the timeline ruler column widths perfectly in-sync with .members-row (prevents label/tick drift). */
+.timeline-ruler{display:grid;grid-template-columns:300px 1fr 120px;gap:12px;align-items:end;height:22px;margin-bottom:8px}
 .timeline-ruler .ruler-track{position:relative;height:22px}
 .timeline-ruler .ruler-tick{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed rgba(255,255,255,.45)}
 .timeline-ruler .mark{position:absolute;top:0;transform:translateX(-50%);font-size:11px;color:var(--muted);white-space:nowrap}

@@ -22,6 +22,9 @@
     'ums_announcements',
     'mums_team_reminders',
     'ums_weekly_schedules',
+    // Canonical schedule docs (enterprise) — used by My Schedule + Members for stable cross-device sync.
+    'mums_schedule_blocks',
+    'mums_schedule_snapshots',
     'ums_master_schedule',
     'ums_schedule_locks',
     'mums_schedule_lock_state',

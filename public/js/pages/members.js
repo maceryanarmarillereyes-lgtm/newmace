@@ -39,6 +39,11 @@ window.Pages.members = function(root){
   const defaultWeekStartISO = UI.addDaysISO(_todayISO, _deltaToMon);
   let weekStartISO = localStorage.getItem('ums_week_start_iso') || defaultWeekStartISO;
 
+  // Floating graphical task status panel (Team Lead)
+  const GRAPH_LS_KEY = 'mums_graph_status_panel_v1';
+  let graphEnabled = false;
+  let graphPanelState = null; // { left, top, width, height }
+
   function normalizeToMonday(iso){
     // Snap selected ISO date to Monday of that week using calendar math (timezone-safe)
     const wd = UI.weekdayFromISO(String(iso||defaultWeekStartISO));
@@ -197,6 +202,9 @@ window.Pages.members = function(root){
       const cb = r.querySelector('input.m-select');
       if(cb) cb.checked = !!(selMemberIds && selMemberIds.has(id));
     });
+
+    // Keep floating graph highlight in sync
+    if(graphEnabled) renderGraphPanel();
   }
 
   const wrap = document.createElement('div');
@@ -266,6 +274,10 @@ window.Pages.members = function(root){
           <button class="iconbtn flat" id="viewAcks" type="button" title="Acknowledgements" aria-label="Acknowledgements">✅</button>
           <button class="iconbtn flat" id="viewTrend" type="button" title="Health trend (weekly)" aria-label="Health trend">📈</button>
         </div>
+        <label class="graph-toggle" title="Show a floating, live-updating task status panel">
+          <input type="checkbox" id="graphToggle" />
+          <span>Show Graphical Task Status</span>
+        </label>
         <button class="btn primary" id="sendSchedule" type="button" title="Apply schedule changes and notify affected members">Apply Changes</button>
       </div>
       ` : ''}
@@ -328,9 +340,293 @@ window.Pages.members = function(root){
         <div class="body" id="trendBody"></div>
       </div>
     </div>
+
+    <!-- Floating graphical task status panel (Team Lead) -->
+    <div id="graphPanel" class="graph-status-panel" style="display:none" role="dialog" aria-label="Graphical task status">
+      <div class="gsp-head" id="graphPanelHead">
+        <div>
+          <div class="gsp-title">Graphical Task Status</div>
+          <div class="gsp-sub" id="graphPanelSub">—</div>
+        </div>
+        <button class="iconbtn flat" id="graphClose" type="button" aria-label="Close">✕</button>
+      </div>
+      <div class="gsp-body" id="graphPanelBody"></div>
+      <div class="gsp-foot small muted" id="graphPanelFoot">Tip: Drag the header to move. Use the corner to resize.</div>
+    </div>
   `;
 
   root.replaceChildren(wrap);
+
+  // ---------------------------------------------------------------------
+  // Floating Graphical Task Status Panel (Team Lead)
+  // ---------------------------------------------------------------------
+  (function initGraphPanel(){
+    const toggle = wrap.querySelector('#graphToggle');
+    const panel = wrap.querySelector('#graphPanel');
+    const head = wrap.querySelector('#graphPanelHead');
+    const closeBtn = wrap.querySelector('#graphClose');
+
+    if(!toggle || !panel || !head) return;
+
+    // Restore state
+    try{
+      const raw = localStorage.getItem(GRAPH_LS_KEY);
+      if(raw){
+        const st = JSON.parse(raw);
+        graphEnabled = !!st.enabled;
+        graphPanelState = st.panel || null;
+      }
+    }catch(_e){ /* ignore */ }
+
+    // Apply panel position/size if stored
+    function applyPanelState(){
+      if(!graphPanelState) return;
+      const { left, top, width, height } = graphPanelState || {};
+      if(Number.isFinite(left) && Number.isFinite(top)){
+        panel.style.left = `${Math.max(8, left)}px`;
+        panel.style.top = `${Math.max(8, top)}px`;
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+      }
+      if(Number.isFinite(width) && width > 220) panel.style.width = `${width}px`;
+      if(Number.isFinite(height) && height > 220) panel.style.height = `${height}px`;
+    }
+
+    function saveGraphState(){
+      try{
+        const r = panel.getBoundingClientRect();
+        const st = {
+          enabled: graphEnabled,
+          panel: {
+            left: Math.round(r.left),
+            top: Math.round(r.top),
+            width: Math.round(r.width),
+            height: Math.round(r.height),
+          }
+        };
+        localStorage.setItem(GRAPH_LS_KEY, JSON.stringify(st));
+      }catch(_e){ /* ignore */ }
+    }
+
+    function setEnabled(on){
+      graphEnabled = !!on;
+      toggle.checked = graphEnabled;
+      panel.style.display = graphEnabled ? '' : 'none';
+      if(graphEnabled){
+        applyPanelState();
+        renderGraphPanel();
+      }
+      saveGraphState();
+    }
+
+    // Draggable header
+    (function makeDraggable(){
+      let dragging = false;
+      let sx = 0, sy = 0;
+      let sl = 0, st = 0;
+
+      head.addEventListener('pointerdown', (e)=>{
+        if(e.button !== 0) return;
+        if(e.target && e.target.closest && e.target.closest('#graphClose')) return;
+        dragging = true;
+        const rect = panel.getBoundingClientRect();
+        sx = e.clientX; sy = e.clientY;
+        sl = rect.left; st = rect.top;
+        panel.style.left = `${sl}px`;
+        panel.style.top = `${st}px`;
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+        head.setPointerCapture(e.pointerId);
+        head.classList.add('dragging');
+      });
+
+      head.addEventListener('pointermove', (e)=>{
+        if(!dragging) return;
+        const dx = e.clientX - sx;
+        const dy = e.clientY - sy;
+        const left = Math.max(8, sl + dx);
+        const top = Math.max(8, st + dy);
+        panel.style.left = `${left}px`;
+        panel.style.top = `${top}px`;
+      });
+
+      const endDrag = (e)=>{
+        if(!dragging) return;
+        dragging = false;
+        head.classList.remove('dragging');
+        try{ head.releasePointerCapture(e.pointerId); }catch(_e){}
+        saveGraphState();
+      };
+      head.addEventListener('pointerup', endDrag);
+      head.addEventListener('pointercancel', endDrag);
+    })();
+
+    // Save size after resize (native resize handle)
+    panel.addEventListener('mouseup', ()=>{ if(graphEnabled) saveGraphState(); });
+    panel.addEventListener('touchend', ()=>{ if(graphEnabled) saveGraphState(); });
+
+    // Wire controls
+    toggle.addEventListener('change', ()=> setEnabled(toggle.checked));
+    if(closeBtn) closeBtn.addEventListener('click', ()=> setEnabled(false));
+
+    // Store-driven refresh
+    if(wrap._members_graph_store_listener){
+      window.removeEventListener('mums:store', wrap._members_graph_store_listener);
+      wrap._members_graph_store_listener = null;
+    }
+    wrap._members_graph_store_listener = (ev)=>{
+      if(!graphEnabled) return;
+      const k = ev && ev.detail && ev.detail.key;
+      if(!k) return;
+      const ks = String(k);
+      if(ks === '*' || ks.includes('schedule') || ks.includes('task') || ks.includes('team')){
+        renderGraphPanel();
+      }
+    };
+    window.addEventListener('mums:store', wrap._members_graph_store_listener);
+
+    // Initial paint
+    setEnabled(graphEnabled);
+  })();
+
+  function renderGraphPanel(){
+    const panel = wrap.querySelector('#graphPanel');
+    if(!panel) return;
+    const body = panel.querySelector('#graphPanelBody');
+    const sub = panel.querySelector('#graphPanelSub');
+    const foot = panel.querySelector('#graphPanelFoot');
+
+    if(!graphEnabled){
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = '';
+
+    const team = Config.teamById(selectedTeamId);
+    const shift = Config.shiftByKey((team && team.shiftKey) || 'morning');
+    const shiftHours = Math.max(1, Math.round((shift && shift.lenMin ? shift.lenMin : 540) / 60));
+
+    const iso = isoForDay(selectedDay);
+    const longDate = (()=>{
+      try{
+        const d = new Date(`${iso}T00:00:00`);
+        return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      }catch(_e){
+        return iso;
+      }
+    })();
+
+    if(sub){
+      const tLabel = (team && (team.label || team.name || team.key)) ? (team.label || team.name || team.key) : 'Team';
+      const sLabel = (shift && (shift.label || shift.key)) ? (shift.label || shift.key) : 'Shift';
+      sub.textContent = `${tLabel} • ${longDate} • ${sLabel}`;
+    }
+    if(foot){
+      foot.textContent = 'Tip: Click a member row to highlight (and scroll). Drag to reposition. Resize from the corner.';
+    }
+
+    const members = getMembersForView(selectedTeamId) || [];
+    if(!members.length){
+      body.innerHTML = `<div class="small muted">No members loaded for this team.</div>`;
+      return;
+    }
+
+    const fixedColorForLabel = (label, fallback)=>{
+      const l = String(label || '').toLowerCase();
+      if(l.includes('mailbox') && l.includes('manager')) return '#4aa3ff';
+      if(l.includes('back office')) return '#ffa21a';
+      if(l.includes('call available') || (l.includes('call') && l.includes('available'))) return '#2ecc71';
+      if(l.includes('lunch')) return '#22d3ee';
+      return fallback || '#64748b';
+    };
+
+    const roleMeta = (roleId)=>{
+      const s = Config.scheduleById(roleId);
+      if(s) return { label: s.label || roleId, color: fixedColorForLabel(s.label || roleId, s.color) };
+      const tasks = Store.getTeamTasks ? (Store.getTeamTasks(selectedTeamId) || []) : [];
+      const t = tasks.find(x=>String(x.id)===String(roleId));
+      if(t) return { label: t.label || roleId, color: fixedColorForLabel(t.label || roleId, t.color) };
+      return { label: roleId, color: fixedColorForLabel(roleId) };
+    };
+
+    const esc = UI.escapeHtml || ((s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'));
+
+    members.sort((a,b)=>String(a.fullName||a.name||'').localeCompare(String(b.fullName||b.name||'')));
+
+    const rowsHtml = members.map(m=>{
+      const raw = Store.getUserDayBlocks ? (Store.getUserDayBlocks(m.id, selectedDay) || []) : [];
+      const blocks = normalizeBlocks(team, raw);
+
+      const totals = Object.create(null);
+      let totalH = 0;
+      blocks.forEach(b=>{
+        const meta = roleMeta(b.role);
+        const durH = Math.max(0, (UI.offsetFromShiftStart(team, b.end) - UI.offsetFromShiftStart(team, b.start)) / 60);
+        if(!durH) return;
+        totals[meta.label] = (totals[meta.label] || 0) + durH;
+        totalH += durH;
+      });
+
+      // Order: known tasks first, then the rest (alpha)
+      const keys = Object.keys(totals);
+      const priority = ['Mailbox Manager','Back Office','Call Available','Lunch'];
+      keys.sort((a,b)=>{
+        const ia = priority.findIndex(p=>p.toLowerCase()===String(a).toLowerCase());
+        const ib = priority.findIndex(p=>p.toLowerCase()===String(b).toLowerCase());
+        if(ia!==-1 || ib!==-1){
+          if(ia===-1) return 1;
+          if(ib===-1) return -1;
+          return ia-ib;
+        }
+        return String(a).localeCompare(String(b));
+      });
+
+      const segments = keys.map(k=>{
+        const h = totals[k];
+        const w = (h / shiftHours) * 100;
+        const c = fixedColorForLabel(k);
+        const title = `${k}: ${h.toFixed(1)}h`;
+        return `<div class="task-bar" style="width:${w.toFixed(4)}%;background:${c};" title="${esc(title)}" aria-label="${esc(title)}"></div>`;
+      }).join('');
+
+      const rest = Math.max(0, shiftHours - totalH);
+      const restW = (rest / shiftHours) * 100;
+      const restSeg = restW > 0.5 ? `<div class="task-bar task-bar-rest" style="width:${restW.toFixed(4)}%;" title="Unassigned: ${rest.toFixed(1)}h" aria-label="Unassigned: ${rest.toFixed(1)}h"></div>` : '';
+
+      const name = m.fullName || m.name || m.email || m.id;
+      const mismatch = Math.abs(totalH - shiftHours) >= 0.25;
+      const hoursText = `${totalH.toFixed(1)}h / ${shiftHours}h`;
+
+      const rowCls = `gsp-row${String(selMemberId||'')===String(m.id) ? ' member-highlight' : ''}`;
+      return `
+        <div class="${rowCls}" data-mid="${esc(m.id)}" role="button" tabindex="0" aria-label="${esc(name)} task distribution">
+          <div class="gsp-rowhead">
+            <div class="gsp-name">${esc(name)}</div>
+            <div class="gsp-hours${mismatch ? ' warn' : ''}">${esc(hoursText)}</div>
+          </div>
+          <div class="gsp-bar" role="img" aria-label="${esc(name)} task hours">
+            ${segments}${restSeg}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    body.innerHTML = rowsHtml;
+
+    // Click to highlight / scroll to member row
+    body.querySelectorAll('.gsp-row').forEach(r=>{
+      const id = r.dataset.mid;
+      const go = ()=>{
+        selMemberId = id;
+        if(selMemberIds) selMemberIds.clear();
+        applyMemberRowSelectionStyles();
+        const row = wrap.querySelector(`.members-row[data-id="${CSS.escape(id)}"]`);
+        if(row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      };
+      r.addEventListener('click', go);
+      r.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); go(); } });
+    });
+  }
 
   // Smooth transitions when switching weeks/days
   function triggerSwap(){
