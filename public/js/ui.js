@@ -1457,6 +1457,58 @@ overrideLabel(override){
       }
 
       const channel = ('BroadcastChannel' in window) ? new BroadcastChannel('ums_schedule_updates') : null;
+
+      // Palette must match TEAM TASK catalog (used in My Schedule)
+      const TASK_PALETTE = {
+        'mailbox manager': '#4aa3ff',
+        'back office': '#ffa21a',
+        'call available': '#2ecc71',
+        'lunch': '#22d3ee',
+      };
+      const taskColorByLabel = (label)=>{
+        const s = String(label||'').trim().toLowerCase();
+        if(TASK_PALETTE[s]) return TASK_PALETTE[s];
+        if(s.includes('mailbox')) return TASK_PALETTE['mailbox manager'];
+        if(s.includes('back')) return TASK_PALETTE['back office'];
+        if(s.includes('call')) return TASK_PALETTE['call available'];
+        if(s.includes('lunch')) return TASK_PALETTE['lunch'];
+        return '';
+      };
+
+      const hexToRgb = (hex)=>{
+        const m = String(hex||'').trim().match(/^#?([0-9a-f]{6})$/i);
+        if(!m) return null;
+        const n = parseInt(m[1],16);
+        return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+      };
+
+      const renderNotifBody = (msg)=>{
+        const text = String(msg||'').trim();
+        const esc = UI.esc || ((x)=>String(x||'').replace(/[&<>"']/g,(c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;' }[c])));
+        // Expected format:
+        // “Schedule Updated: Call Available added on Sunday, February 01, 2026.”
+        const m = text.match(/^Schedule Updated:\s*(.+?)\s+(added|removed|updated)\s+on\s+(.+?)\.?\s*$/i);
+        if(!m){
+          return `<div style="white-space:pre-wrap">${esc(text || 'Your schedule has been updated.')}</div>`;
+        }
+        const label = m[1];
+        const action = m[2];
+        const date = m[3];
+        const c = taskColorByLabel(label);
+        const rgb = hexToRgb(c);
+        const bg = rgb ? `rgba(${rgb.r},${rgb.g},${rgb.b},0.14)` : 'rgba(255,255,255,.06)';
+        const border = rgb ? `rgba(${rgb.r},${rgb.g},${rgb.b},0.35)` : 'rgba(255,255,255,.14)';
+        const taskText = '#081018';
+        return `
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <span class="task-label" style="--task-color:${esc(c)};--task-bg:${esc(bg)};--task-border:${esc(border)};--task-text:${esc(taskText)}">
+              <span class="task-color" style="background:${esc(c)}"></span>
+              ${esc(label)}
+            </span>
+            <span>${esc(action)} on ${esc(date)}.</span>
+          </div>
+        `;
+      };
       // Prevent spam: show each notif once per tab session (unless page reloads).
       const shownIds = new Set();
       let openNotifId = null;
@@ -1483,7 +1535,9 @@ overrideLabel(override){
           UI.el('#schedNotifMeta').textContent = `From: ${n.fromName||'Team Lead'} • Week of ${n.weekStartISO||'—'}`;
         }
         const perUser = (n.userMessages && n.userMessages[user.id]) ? n.userMessages[user.id] : '';
-        UI.el('#schedNotifBody').textContent = perUser || n.body || 'Your schedule has been updated.';
+        const bodyMsg = perUser || n.body || 'Your schedule has been updated.';
+        // Use HTML so we can include a color-coded task badge when applicable.
+        UI.el('#schedNotifBody').innerHTML = renderNotifBody(bodyMsg);
 
         UI.el('#schedNotifAck').onclick = ()=>{
           Store.ackNotif(n.id, user.id);

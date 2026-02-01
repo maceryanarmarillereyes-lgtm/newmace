@@ -131,3 +131,28 @@ After applying migrations:
 - JS syntax verification:
   - Run `node --check` against **all** `public/js/**/*.js` and confirm no syntax errors.
   - Navigate: Dashboard → Members → My Schedule → Mailbox. Confirm no console errors.
+
+
+## Verification (13126-08)
+- Cache-busting:
+  - Confirm `?v=20260201-13126-08` is applied to **all** `public/*.html` assets that reference CSS/JS.
+  - Confirm sidebar Build shows `20260201-13126-08` and no mixed-version assets are loaded.
+- My Schedule — Enterprise Calendar:
+  - Weekly view:
+    - Blocks align cleanly to the shift ruler and hour grid (no shattered layout, no overlap).
+    - Horizontal scrolling is acceptable on narrow widths, but **Daily view** must remain the highest-readability mode.
+  - Daily view:
+    - Toggle works and persists (localStorage `mums_sched_view`).
+    - Day tabs work; swipe left/right changes day on mobile.
+  - Task color consistency (TEAM TASK catalog):
+    - Mailbox Manager → `#4aa3ff`
+    - Back Office → `#ffa21a`
+    - Call Available → `#2ecc71`
+    - Lunch → `#22d3ee`
+    - Badges (`.task-label` + `.task-color`) and block backgrounds use the same palette.
+  - Tooltip + accessibility:
+    - Hover + focus tooltips show task name, Manila time range, optional local time range, and audit info if available.
+    - Blocks are keyboard focusable with visible focus ring; ARIA labels present; contrast meets WCAG AA.
+- JS syntax verification:
+  - Run `node --check` against **all** `public/js/**/*.js` and confirm no syntax errors.
+  - Navigate: Dashboard → My Schedule → Members. Confirm no console errors.

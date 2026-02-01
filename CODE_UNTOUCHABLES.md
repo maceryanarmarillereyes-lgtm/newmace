@@ -197,3 +197,8 @@ This is required so authenticated users can read their own profile row under RLS
   - Have no close (X) control — only **Acknowledge**
   - Include task label + action (added/removed) + formatted date
 - My Schedule must always match TEAM TASK color codes (Mailbox Manager light blue, Back Office orange, Call Available green, Lunch cyan).
+
+## My Schedule Calendar Views + Task Color Standards (Permanent)
+- “My Schedule must reflect TEAM TASK color codes, support daily and weekly views, and meet enterprise-grade layout and accessibility standards.”
+- Weekly view must keep schedule blocks aligned to the shift ruler; Daily view must remain the highest-readability mode for mobile.
+- Tooltips and focus states must remain accessible (ARIA labels + visible focus ring). No shattered layouts on resize.
