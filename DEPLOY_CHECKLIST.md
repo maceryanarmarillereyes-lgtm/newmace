@@ -78,3 +78,17 @@ After applying migrations:
     - Others are blocked (UI disabled) and backend rejects.
   - Audit logging:
     - Each assignment generates an audit entry in `ums_activity_logs` including: assigner, assignee, time block, shiftKey, role, timestamp.
+
+
+## Verification (13126-06)
+- Cache-busting:
+  - Confirm `?v=20260201-13126-06` is applied to **all** `public/*.html` assets that reference CSS/JS.
+- Sidebar menu routing:
+  - Click **Dashboard** → loads Dashboard only.
+  - Click **My Schedule** (left sidebar) → loads the My Schedule grid (not Dashboard).
+  - From Dashboard quick actions/links, click **Schedule/My Schedule** → loads My Schedule.
+- My Schedule page load:
+  - `UI.renderSchedule()` renders `Pages.my_schedule` and mounts into `#main` without blank state.
+  - No missing container errors; no console errors on navigation.
+- JS syntax check:
+  - Run `node --check public/js/app.js public/js/ui.js public/js/pages/my_schedule.js` and confirm no syntax errors.

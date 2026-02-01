@@ -2821,8 +2821,17 @@ function updateClocksPreviewTimes(){
     try{
       const h = String(href||'').trim();
       if(!h) return '';
-      if(h[0] === '#') return h.slice(1).split('?')[0].split('#')[0].split('/')[0];
-      if(h[0] === '/') return h.slice(1).split('?')[0].split('#')[0].split('/')[0];
+      if(h[0] === '#'){
+        // Support legacy hash routes both with and without a leading slash:
+        //   #my_schedule   ✅
+        //   #/my_schedule  ✅
+        let s = h.slice(1).split('?')[0].split('#')[0];
+        if(s.startsWith('/')) s = s.slice(1);
+        return s.split('/')[0] || '';
+      }
+      if(h[0] === '/'){
+        return h.slice(1).split('?')[0].split('#')[0].split('/')[0];
+      }
       return '';
     }catch(_){ return ''; }
   }
@@ -2830,7 +2839,11 @@ function updateClocksPreviewTimes(){
   function resolveRoutePageId(){
     try{
       const pages = window.Pages || {};
-      const h = String(window.location.hash||'').replace(/^#/, '').trim();
+      let h = String(window.location.hash||'').replace(/^#/, '').trim();
+      // Support legacy hash routes both with and without a leading slash:
+      //   #my_schedule   ✅
+      //   #/my_schedule  ✅
+      if(h.startsWith('/')) h = h.slice(1);
       if(h && pages[h]) return h;
 
       const proto = String(window.location.protocol||'');

@@ -1,7 +1,7 @@
 (function(){
   const Config = {
     // Single source of truth for build label used by login + app.
-    BUILD: '20260201-13126-05',
+    BUILD: '20260201-13126-06',
     APP: {
       shortName: 'MUMS',
       fullName: 'MUMS User Management System'

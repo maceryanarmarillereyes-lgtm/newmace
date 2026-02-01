@@ -344,7 +344,7 @@
     const aria = `${d.dayLabel} column`;
 
     const blocksHtml = d.blocks.map((b, idx)=>{
-      const style = blockStyle(team, b);
+      const style = blockStyle(b);
       const id = b.schedule || b.role || '';
       const local = manilaHMtoLocal(d.iso, b.start, b.end);
       const audit = findAuditForBlock(d.dayIdx, b);
@@ -401,15 +401,7 @@
 
   function blockStyle(b){
     const m = blockMetrics(b);
-    return `top:${m.topPct}%;height:${m.hPct}%;`;
-  }
-      // fallback: full day
-      const a = UI.parseHM(block.start);
-      const b = UI.parseHM(block.end);
-      const wrap = (b <= a);
-      const dur = wrap ? ((24*60 - a) + b) : (b - a);
-      return { top: (a / (24*60))*100, height: Math.max(3, (dur/(24*60))*100) };
-    }catch(_){ return { top:0, height:8 }; }
+    return { top: m.topPct, height: m.hPct };
   }
 
   function clamp(n, a, b){ return Math.max(a, Math.min(b, Number(n)||0)); }

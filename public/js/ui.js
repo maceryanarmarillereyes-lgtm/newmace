@@ -1939,9 +1939,9 @@ setCursorMode(mode){
 
               <div class="dashx-actions">
                 <button class="btn" type="button" id="dashToggleSidebar">Toggle Sidebar</button>
-                <a class="btn" href="#/mailbox">Assign Case</a>
-                <a class="btn" href="#/${isAdmin||isLead ? 'master_schedule' : 'my_schedule'}">Schedule</a>
-                <a class="btn" href="#/logs">Export Logs</a>
+                <a class="btn" href="/mailbox">Assign Case</a>
+                <a class="btn" href="/${isAdmin||isLead ? 'master_schedule' : 'my_schedule'}">Schedule</a>
+                <a class="btn" href="/logs">Export Logs</a>
               </div>
             </div>
 
@@ -1997,12 +1997,12 @@ setCursorMode(mode){
                   <div class="dashx-title">Quick Navigation</div>
                   <div class="small muted" style="margin-top:6px">Role-aware shortcuts</div>
                   <div class="dashx-actions" style="margin-top:10px">
-                    <a class="btn" href="#/my_schedule">My Schedule</a>
-                    <a class="btn" href="#/mailbox">Mailbox</a>
-                    <a class="btn" href="#/attendance">Attendance</a>
-                    <a class="btn" href="#/tasks">Tasks</a>
-                    ${(isAdmin||isLead) ? `<a class="btn" href="#/master_schedule">Master Schedule</a>` : ''}
-                    ${isAdmin ? `<a class="btn" href="#/members">User Management</a>` : ''}
+                    <a class="btn" href="/my_schedule">My Schedule</a>
+                    <a class="btn" href="/mailbox">Mailbox</a>
+                    <a class="btn" href="/attendance">Attendance</a>
+                    <a class="btn" href="/tasks">Tasks</a>
+                    ${(isAdmin||isLead) ? `<a class="btn" href="/master_schedule">Master Schedule</a>` : ''}
+                    ${isAdmin ? `<a class="btn" href="/members">User Management</a>` : ''}
                   </div>
                 </div>
               </div>
@@ -2270,6 +2270,27 @@ setCursorMode(mode){
       try{ root.innerHTML = `<h2 style="margin:0 0 10px">Dashboard</h2><div class="card pad">Failed to load dashboard. Please reload.</div>`; }catch(_){ }
     }
   };
+
+  // My Schedule renderer alias.
+  // NOTE: Primary routing uses window.Pages, but some UI elements call this directly.
+  // Must render My Schedule, never Dashboard.
+  UI.renderSchedule = function(root){
+    try{
+      const host = root || document.getElementById('main') || document.body;
+      if(window.Pages && typeof window.Pages.my_schedule === 'function'){
+        window.Pages.my_schedule(host);
+        return;
+      }
+      host.innerHTML = `<div class="card pad">My Schedule module not loaded. Please reload.</div>`;
+    }catch(err){
+      try{ console.error(err); }catch(_){ }
+      try{
+        const host = root || document.getElementById('main') || document.body;
+        host.innerHTML = `<div class="card pad">Failed to load My Schedule. Please reload.</div>`;
+      }catch(_){ }
+    }
+  };
+
   window.UI = UI;
 
     // Realtime Sync Status badge
