@@ -202,3 +202,9 @@ This is required so authenticated users can read their own profile row under RLS
 - “My Schedule must reflect TEAM TASK color codes, support daily and weekly views, and meet enterprise-grade layout and accessibility standards.”
 - Weekly view must keep schedule blocks aligned to the shift ruler; Daily view must remain the highest-readability mode for mobile.
 - Tooltips and focus states must remain accessible (ARIA labels + visible focus ring). No shattered layouts on resize.
+
+## My Schedule Weekly/Daily/Team + Alignment Standards (Permanent)
+- “My Schedule must support Weekly, Daily, and Team views. Team tab must show full team schedule in tabular format with task color coding. Layout must be aligned, readable, and enterprise-grade.”
+- Hour ruler and grid lines must stay pixel-perfect aligned with schedule blocks across resize and common zoom levels.
+- Date labels must use full format (e.g., "Sunday, February 1, 2026") consistently across Weekly/Daily/Team.
+- Team view must be scrollable and responsive with a sticky MEMBER column and sticky time header row.

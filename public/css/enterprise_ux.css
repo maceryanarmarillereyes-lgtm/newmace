@@ -599,13 +599,16 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 }
 
 /* ------------------------------------------------------------------
-   My Schedule — Enterprise Weekly/Daily Calendar (13126-08)
+   My Schedule — Enterprise Weekly/Daily/Team Calendar (13126-09)
    ------------------------------------------------------------------ */
 
 .schx{
   display:flex;
   flex-direction:column;
   gap:14px;
+  /* shared grid sizing for pixel-perfect ruler alignment */
+  --schx-row-h: 56px;
+  --schx-hours: 9;
 }
 .schx-header{
   display:flex;
@@ -668,6 +671,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   font-weight:900;
   font-size:12px;
 }
+.schx-daytab .dot{ margin-left:8px; width:7px; height:7px; border-radius:999px; background: rgba(255,255,255,.55); }
 .schx-daytab.active{
   background: rgba(80,160,255,0.16);
   border-color: rgba(80,160,255,0.32);
@@ -680,15 +684,18 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   padding:12px;
   background: rgba(255,255,255,.02);
 }
+
 .schx-grid{
   display:grid;
-  grid-template-columns: 72px 1fr;
+  grid-template-columns: 76px 1fr;
   gap:10px;
-  align-items:stretch;
+  align-items:start;
 }
+.schedule-ruler,
 .schx-ruler{
   position:relative;
-  min-height: 640px;
+  height: calc(var(--schx-hours) * var(--schx-row-h));
+  min-height: calc(var(--schx-hours) * var(--schx-row-h));
 }
 .schx-tick{
   position:absolute;
@@ -708,7 +715,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   min-width:0;
 }
 .schx-cols.week{
-  grid-template-columns: repeat(7, minmax(160px, 1fr));
+  grid-template-columns: repeat(7, minmax(180px, 1fr));
   overflow-x:auto;
   padding-bottom:6px;
 }
@@ -719,29 +726,44 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .schx-day{
   display:flex;
   flex-direction:column;
-  min-width:160px;
+  min-width:180px;
 }
 .schx-dayhead{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   justify-content:space-between;
-  gap:8px;
+  gap:10px;
   padding:8px 10px;
   border:1px solid var(--border);
   border-radius:14px;
   background: rgba(255,255,255,.03);
 }
 .schx-dayname{ font-weight:950; letter-spacing:.2px; }
-.schx-daydate{ font-size:12px; opacity:.78; }
+.schx-daydate{
+  font-size:11px;
+  opacity:.76;
+  line-height:1.2;
+  text-align:right;
+  max-width: 70%;
+}
 
 .schx-daybody{
   position:relative;
   margin-top:8px;
-  min-height: 640px;
+  height: calc(var(--schx-hours) * var(--schx-row-h));
+  min-height: calc(var(--schx-hours) * var(--schx-row-h));
   border:1px solid var(--border);
   border-radius:16px;
   background: rgba(0,0,0,.18);
   overflow:hidden;
+  /* subtle grid backing (lines also rendered as elements for crispness) */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(255,255,255,.04) 0px,
+    rgba(255,255,255,.04) 1px,
+    rgba(0,0,0,0) 1px,
+    rgba(0,0,0,0) var(--schx-row-h)
+  );
 }
 .schx-lines{ position:absolute; inset:0; pointer-events:none; }
 .schx-line{ position:absolute; left:0; right:0; height:1px; background: rgba(255,255,255,.08); }
@@ -753,6 +775,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   right:8px;
   padding:10px;
 }
+
 .schx-btop{
   display:flex;
   align-items:center;
@@ -775,14 +798,114 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   gap:10px;
 }
 
+/* ------------------------------------------------------------------
+   Team tabular view (13126-09)
+   ------------------------------------------------------------------ */
+
+.team-schedule-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.team-schedule-wrap{
+  border:1px solid var(--border);
+  border-radius:16px;
+  background: rgba(0,0,0,.18);
+  overflow:auto;
+}
+
+.team-schedule-grid{
+  min-width: 920px;
+}
+
+.team-schedule-row{
+  display:grid;
+  align-items:stretch;
+}
+
+.team-schedule-header{
+  position:sticky;
+  top:0;
+  z-index:4;
+  background: rgba(8,14,24,.96);
+  border-bottom:1px solid rgba(255,255,255,.10);
+}
+
+.tsg-h{
+  padding:10px 8px;
+  font-size:12px;
+  font-weight:950;
+  letter-spacing:.2px;
+  color: rgba(255,255,255,.82);
+  border-left:1px solid rgba(255,255,255,.08);
+  white-space:nowrap;
+}
+.tsg-h.ts-name{
+  border-left:none;
+  position:sticky;
+  left:0;
+  z-index:5;
+  background: rgba(8,14,24,.98);
+}
+
+.tsg-name{
+  padding:10px 10px;
+  font-weight:950;
+  color: rgba(255,255,255,.92);
+  border-right:1px solid rgba(255,255,255,.10);
+  position:sticky;
+  left:0;
+  z-index:3;
+  background: rgba(0,0,0,.18);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.tsg-cell{
+  min-height:44px;
+  border-left:1px solid rgba(255,255,255,.08);
+  border-top:1px solid rgba(255,255,255,.06);
+  background: rgba(255,255,255,.02);
+  position:relative;
+}
+.team-schedule-row.member-row:hover .tsg-name{
+  background: rgba(80,160,255,0.10);
+}
+.tsg-cell.has-task{
+  /* background is set inline to exact task color */
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.10);
+}
+.tsg-badge{
+  position:absolute;
+  top:8px;
+  left:8px;
+  max-width: calc(100% - 16px);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:11px;
+  padding:5px 8px;
+  border-radius:999px;
+  backdrop-filter: blur(6px);
+}
+
+/* ------------------------------------------------------------------
+   Responsive / density tweaks
+   ------------------------------------------------------------------ */
+
 @media (max-width: 1100px){
   .schx-kpis{ grid-template-columns: repeat(2, minmax(0,1fr)); }
 }
 @media (max-width: 720px){
   .schx-grid{ grid-template-columns: 1fr; }
-  .schx-ruler{ display:none; }
+  .schx-ruler, .schedule-ruler{ display:none; }
   .schx-day{ min-width:0; }
-  .schx-daybody{ min-height: 520px; }
+  /* reduce hour height on mobile to avoid excessive scrolling */
+  .schx{ --schx-row-h: 48px; }
 }
 
 @media (max-width: 900px){

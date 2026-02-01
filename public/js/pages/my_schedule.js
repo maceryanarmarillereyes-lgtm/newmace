@@ -1,214 +1,198 @@
 (window.Pages = window.Pages || {}, window.Pages.my_schedule = function (root) {
   // ---------------------------------------------------------------------------
-  // My Schedule — Enterprise Weekly/Daily Calendar (13126-08)
-  // - Clean grid calendar aligned to team shift ruler
-  // - Weekly + Daily views
-  // - TEAM TASK color coding with badges
-  // - Tooltip (task/time/audit), WCAG focus rings, mobile swipe day nav
+  // My Schedule — Enterprise Calendar (13126-09)
+  // - Weekly / Daily / Team views
+  // - Pixel-perfect hour ruler alignment (shared row height grid)
+  // - TEAM TASK color coding + badges (.task-label / .task-color)
+  // - Team tabular view inspired by enterprise scheduling systems
   // ---------------------------------------------------------------------------
 
-  const UI = window.UI || {};
-  const Store = window.Store || {};
-  const Auth = window.Auth || {};
-  const Config = window.Config || {};
+  const me = (window.Auth && Auth.user) ? Auth.user : (window.Store && Store.getSession ? Store.getSession() : null) || {};
+  const role = (me && me.role) ? String(me.role) : '';
+  const canEditSelf = (role === 'TEAM_LEAD' || role === 'SUPER_ADMIN');
 
-  const esc = UI.esc || function (s) {
-    return String(s ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/\'/g, '&#39;');
-  };
+  const tzManila = 'Asia/Manila';
+  let localTZ = '';
+  try { localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { localTZ = ''; }
 
-  const DAYS = UI.DAYS || ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const tzManila = (Config && Config.TZ) || 'Asia/Manila';
-  const localTZ = (() => {
-    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local'; } catch (_) { return 'Local'; }
-  })();
+  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-  const me = (Auth.getUser ? (Auth.getUser() || {}) : {});
-  const role = String(me.role || '');
-  const ROLES = (Config.ROLES || {});
-  const isSA = role === (ROLES.SUPER_ADMIN || 'SUPER_ADMIN');
-  const isAdmin = isSA || role === (ROLES.ADMIN || 'ADMIN') || role === (ROLES.SUPER_USER || 'SUPER_USER');
-  const isLead = role === (ROLES.TEAM_LEAD || 'TEAM_LEAD');
+  function esc(s) { return (window.UI && UI.esc) ? UI.esc(s) : String(s || '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
 
-  const canEditSelf = isAdmin || isLead;
+  function pad2(n) { return String(n).padStart(2, '0'); }
 
-  const parseHM = UI.parseHM || function (hm) {
-    const m = String(hm || '00:00').match(/^(\d{1,2}):(\d{2})$/);
+  function hm(min) {
+    let m = ((min % (24 * 60)) + (24 * 60)) % (24 * 60);
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    return `${pad2(h)}:${pad2(mm)}`;
+  }
+
+  function hmShort(min) {
+    let m = ((min % (24 * 60)) + (24 * 60)) % (24 * 60);
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    return `${h}:${pad2(mm)}`;
+  }
+
+  function parseHM(s) {
+    const m = String(s || '').trim().match(/^(\d{1,2}):(\d{2})$/);
     if (!m) return 0;
-    const hh = Math.max(0, Math.min(23, Number(m[1]) || 0));
-    const mm = Math.max(0, Math.min(59, Number(m[2]) || 0));
-    return hh * 60 + mm;
-  };
+    return (Number(m[1]) || 0) * 60 + (Number(m[2]) || 0);
+  }
 
-  const pad2 = (n) => String(n).padStart(2, '0');
-  const hm = (mins) => {
-    const m = ((Number(mins) || 0) % (24 * 60) + (24 * 60)) % (24 * 60);
-    return `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
-  };
+  function addDaysISO(iso, delta) {
+    try {
+      const d = new Date(`${iso}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + Number(delta || 0));
+      return d.toISOString().slice(0, 10);
+    } catch (_) {
+      return iso;
+    }
+  }
 
-  const addDaysISO = UI.addDaysISO || function (iso, delta) {
-    const d = new Date(`${iso}T00:00:00Z`);
-    d.setUTCDate(d.getUTCDate() + (Number(delta) || 0));
-    return d.toISOString().slice(0, 10);
-  };
+  function weekdayFromISO(iso) {
+    try {
+      const d = new Date(`${iso}T00:00:00Z`);
+      return d.getUTCDay();
+    } catch (_) {
+      return 0;
+    }
+  }
 
-  const weekdayFromISO = UI.weekdayFromISO || function (iso) {
-    // iso assumed Manila date; using UTC as stable mapping (good enough for day index)
-    const d = new Date(`${iso}T00:00:00Z`);
-    return d.getUTCDay();
-  };
+  function formatDateLong(iso) {
+    try {
+      // Use UTC midnight so TZ formatting does not shift the day.
+      const d = new Date(`${iso}T00:00:00Z`);
+      return new Intl.DateTimeFormat('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+        timeZone: tzManila,
+      }).format(d);
+    } catch (_) {
+      return String(iso || '');
+    }
+  }
 
-  const manilaTodayISO = UI.manilaTodayISO || function () {
-    // Best-effort: use browser date; Manila may differ near midnight for non-UTC+8
+  function nowISOManila() {
+    try {
+      if (window.UI && UI.manilaNow) {
+        const p = UI.manilaNow();
+        if (p && p.isoDate) return String(p.isoDate);
+      }
+    } catch (_) { }
     return new Date().toISOString().slice(0, 10);
-  };
+  }
+
+  const todayISO = nowISOManila();
+  const todayWD = weekdayFromISO(todayISO);
+  const weekStartSunISO = addDaysISO(todayISO, -todayWD);
+
+  function isoForDay(dayIdx) {
+    return addDaysISO(weekStartSunISO, Number(dayIdx || 0));
+  }
 
   function getTeam() {
     try {
-      if (Config.teamById && me.teamId != null) return Config.teamById(me.teamId) || null;
+      if (window.Store && Store.getTeamConfig && me.teamId != null) {
+        const cfg = Store.getTeamConfig(me.teamId);
+        if (cfg) return { id: me.teamId, label: cfg.label || cfg.name || me.teamId, cfg };
+      }
     } catch (_) { }
-    return null;
+    return { id: me.teamId, label: me.teamId, cfg: null };
   }
 
   function inferTeamShift(team) {
-    // Returns { startMin, endMin, lenMin, wraps, startHM, endHM }
-    const teamId = String(me.teamId || (team && team.id) || '').toLowerCase();
-    let startHM = (team && team.teamStart) ? String(team.teamStart) : '';
-    let endHM = (team && team.teamEnd) ? String(team.teamEnd) : '';
-
-    // Fallback defaults by shift key
-    if (!startHM || !endHM) {
-      if (teamId === 'morning') { startHM = '06:00'; endHM = '15:00'; }
-      else if (teamId === 'mid') { startHM = '15:00'; endHM = '23:00'; }
-      else if (teamId === 'night') { startHM = '23:00'; endHM = '06:00'; }
-      else { startHM = '06:00'; endHM = '15:00'; }
-    }
-
-    const startMin = parseHM(startHM);
-    const endMin = parseHM(endHM);
-    const wraps = endMin <= startMin;
-    const lenMin = wraps ? ((24 * 60) - startMin + endMin) : (endMin - startMin);
-    return { startMin, endMin, lenMin: Math.max(60, lenMin), wraps, startHM, endHM };
+    // Align with existing conventions used across app:
+    // - Team config schedule.start/end or defaults per shift key
+    const cfg = (team && team.cfg) ? team.cfg : null;
+    const s = (cfg && cfg.schedule && cfg.schedule.start) ? String(cfg.schedule.start) : (me.shift === 'MID' ? '15:00' : (me.shift === 'NIGHT' ? '22:00' : '06:00'));
+    const e = (cfg && cfg.schedule && cfg.schedule.end) ? String(cfg.schedule.end) : (me.shift === 'MID' ? '22:00' : (me.shift === 'NIGHT' ? '06:00' : '15:00'));
+    const startMin = parseHM(s);
+    let endMin = parseHM(e);
+    let lenMin = endMin - startMin;
+    if (lenMin <= 0) lenMin += (24 * 60);
+    return { startHM: s, endHM: e, startMin, endMin, lenMin };
   }
 
   function shiftKey() {
-    const t = String(me.teamId || '').toLowerCase();
-    if (t === 'morning' || t === 'mid' || t === 'night') return t;
-    const label = String((Config.teamLabel && me.teamId != null) ? Config.teamLabel(me.teamId) : '').toLowerCase();
-    if (label.includes('morning')) return 'morning';
-    if (label.includes('mid')) return 'mid';
-    if (label.includes('night')) return 'night';
-    return 'mid';
+    try {
+      const t = getTeam();
+      const cfg = t && t.cfg ? t.cfg : null;
+      const sk = (cfg && cfg.shiftKey) ? String(cfg.shiftKey) : ((me && me.shift) ? String(me.shift).toLowerCase() : '');
+      return sk || 'shift';
+    } catch (_) {
+      return 'shift';
+    }
   }
-
-  const DEFAULT_TASK_COLORS = {
-    'mailbox manager': '#4aa3ff',
-    'back office': '#ffa21a',
-    'call available': '#2ecc71',
-    'lunch': '#22d3ee',
-  };
 
   function getTeamTasks() {
     try {
-      if (Store.getTeamTasks && me.teamId != null) return Store.getTeamTasks(me.teamId) || [];
+      if (window.Store && Store.getTeamTasks && me.teamId != null) return Store.getTeamTasks(me.teamId) || [];
     } catch (_) { }
     return [];
   }
 
   function taskLabel(taskId) {
+    const id = String(taskId || '');
     const tasks = getTeamTasks();
-    const hit = tasks.find(t => t && String(t.id) === String(taskId));
-    if (hit && hit.label) return String(hit.label);
-    const cs = (Config.SCHEDULES && Config.SCHEDULES[String(taskId)]) ? Config.SCHEDULES[String(taskId)] : null;
-    if (cs && cs.label) return String(cs.label);
-    return String(taskId || '');
+    const t = tasks.find(x => String(x && (x.id || x.taskId || x.label || x.name)) === id) || null;
+    if (t) return String(t.label || t.name || t.id || id);
+    // If schedule stores label directly
+    if (id && !/^[0-9a-f\-]{6,}$/i.test(id)) return id;
+    return id;
+  }
+
+  function normalizeTaskColor(labelOrId, rawColor) {
+    const lbl = String(labelOrId || '').toLowerCase();
+    if (lbl === 'mailbox manager') return '#4aa3ff';
+    if (lbl === 'back office') return '#ffa21a';
+    if (lbl === 'call available') return '#2ecc71';
+    if (lbl === 'lunch') return '#22d3ee';
+    return rawColor || '';
   }
 
   function taskColor(taskId) {
+    let c = '';
     try {
-      if (Store.getTeamTaskColor && me.teamId != null) {
-        const c = Store.getTeamTaskColor(me.teamId, taskId);
-        if (c) return String(c);
+      if (window.Store && Store.getTeamTaskColor && me.teamId != null) {
+        c = Store.getTeamTaskColor(me.teamId, String(taskId || '')) || '';
       }
     } catch (_) { }
-    const label = taskLabel(taskId).toLowerCase();
-    if (DEFAULT_TASK_COLORS[label]) return DEFAULT_TASK_COLORS[label];
-    // Secondary: match substrings (for legacy labels)
-    if (label.includes('mailbox')) return DEFAULT_TASK_COLORS['mailbox manager'];
-    if (label.includes('back')) return DEFAULT_TASK_COLORS['back office'];
-    if (label.includes('call')) return DEFAULT_TASK_COLORS['call available'];
-    if (label.includes('lunch')) return DEFAULT_TASK_COLORS['lunch'];
-    return '';
+    const lbl = taskLabel(taskId);
+    return normalizeTaskColor(lbl, c) || 'rgba(255,255,255,.18)';
   }
 
-  function hexToRgb(hex) {
-    const h = String(hex || '').trim();
-    const m = h.match(/^#?([0-9a-f]{6})$/i);
-    if (!m) return null;
-    const n = parseInt(m[1], 16);
-    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  function taskVars(color) {
+    const c = String(color || '#4aa3ff');
+    // Build consistent translucent background + borders
+    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.16) : 'rgba(80,160,255,0.16)';
+    const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.32) : 'rgba(80,160,255,0.32)';
+    const text = '#ffffff';
+    return { color: c, bg, border, text };
   }
 
-  function taskVars(colorHex) {
-    const rgb = hexToRgb(colorHex);
-    if (!rgb) {
-      return { color: '', bg: 'rgba(255,255,255,.04)', border: 'rgba(255,255,255,.12)', text: 'rgba(255,255,255,.92)' };
-    }
+  function normalizeBlock(b) {
+    const o = b || {};
     return {
-      color: colorHex,
-      bg: `rgba(${rgb.r},${rgb.g},${rgb.b},0.14)`,
-      border: `rgba(${rgb.r},${rgb.g},${rgb.b},0.35)`,
-      text: '#081018', // these palette colors are light; dark text is readable
+      start: String(o.start || o.s || '00:00'),
+      end: String(o.end || o.e || '00:00'),
+      schedule: String(o.schedule || o.task || o.role || o.label || ''),
+      notes: String(o.notes || ''),
     };
   }
 
-  function getBlocks(dayIdx) {
+  function getBlocksForUserDay(userId, dayIdx) {
     try {
-      if (Store.getUserDayBlocks && me.id != null) return (Store.getUserDayBlocks(me.id, dayIdx) || []).slice();
+      if (window.Store && Store.getUserDayBlocks) {
+        const list = Store.getUserDayBlocks(String(userId || ''), Number(dayIdx || 0)) || [];
+        return Array.isArray(list) ? list : [];
+      }
     } catch (_) { }
     return [];
   }
 
-  function normalizeBlock(b) {
-    const o = Object.assign({}, b || {});
-    o.start = String(o.start || '00:00');
-    o.end = String(o.end || '00:00');
-    o.schedule = String(o.schedule || o.role || o.label || '');
-    o.notes = (o.notes == null) ? '' : String(o.notes);
-    return o;
-  }
-
-  // Week range (Sun..Sat) based on Manila date
-  const todayISO = manilaTodayISO();
-  const todayWD = weekdayFromISO(todayISO);
-  const weekStartSunISO = addDaysISO(todayISO, -todayWD);
-  const isoForDay = (d) => addDaysISO(weekStartSunISO, d);
-
-  // State
-  let viewMode = (function () {
-    try {
-      const v = localStorage.getItem('mums_sched_view');
-      if (v === 'week' || v === 'day') return v;
-    } catch (_) { }
-    return (window.innerWidth <= 720) ? 'day' : 'week';
-  })();
-  let focusDay = todayWD;
-  let tickTimer = null;
-  let storeListener = null;
-
-  function setViewMode(mode) {
-    viewMode = (mode === 'day') ? 'day' : 'week';
-    try { localStorage.setItem('mums_sched_view', viewMode); } catch (_) { }
-    render();
-  }
-
-  function setFocusDay(d) {
-    focusDay = Math.max(0, Math.min(6, Number(d) || 0));
-    render();
+  function getMyBlocks(dayIdx) {
+    return getBlocksForUserDay(me.id, dayIdx);
   }
 
   // Time conversion: Manila schedule times -> local display label
@@ -221,7 +205,7 @@
     } catch (_) { return ''; }
   }
 
-  function localRangeLabel(isoDate, startHM, endHM, shift) {
+  function localRangeLabel(isoDate, startHM, endHM) {
     try {
       const sMin = parseHM(startHM);
       const eMin = parseHM(endHM);
@@ -240,17 +224,22 @@
     return off;
   }
 
+  function clampShiftRange(shift, startOff, endOff) {
+    let s = Math.max(0, Math.min(shift.lenMin, startOff));
+    let e = endOff;
+    if (e <= s) e += (24 * 60);
+    e = Math.max(0, Math.min(shift.lenMin, e));
+    if (e <= s) e = Math.min(shift.lenMin, s + 15);
+    return { s, e, dur: e - s };
+  }
+
   function blockMetrics(shift, b) {
-    const startOff = Math.max(0, Math.min(shift.lenMin, computeOffset(shift, b.start)));
-    let endOff = computeOffset(shift, b.end);
-    // If end is before start (relative), assume wrap within shift window
-    if (endOff <= startOff) endOff += (24 * 60);
-    endOff = Math.max(0, Math.min(shift.lenMin, endOff));
-    let dur = endOff - startOff;
-    if (dur <= 0) dur = Math.min(15, shift.lenMin);
-    const top = (startOff / shift.lenMin) * 100;
-    const height = Math.max(2.8, (dur / shift.lenMin) * 100);
-    return { top, height, dur, startOff };
+    const startOff = computeOffset(shift, b.start);
+    const endOff = computeOffset(shift, b.end);
+    const r = clampShiftRange(shift, startOff, endOff);
+    const topH = r.s / 60;
+    const heightH = Math.max(0.25, r.dur / 60);
+    return { topH, heightH, durMin: r.dur, startOff: r.s, endOff: r.e };
   }
 
   function nowManilaParts() {
@@ -258,11 +247,10 @@
   }
 
   function computeCountdown(shift) {
-    // Determine active/next block for today
     const parts = nowManilaParts() || { isoDate: todayISO, hh: new Date().getHours(), mm: new Date().getMinutes() };
     const nowMin = (Number(parts.hh) || 0) * 60 + (Number(parts.mm) || 0);
     const wd = weekdayFromISO(parts.isoDate || todayISO);
-    const blocks = getBlocks(wd).map(normalizeBlock).sort((a, b) => parseHM(a.start) - parseHM(b.start));
+    const blocks = getMyBlocks(wd).map(normalizeBlock).sort((a, b) => parseHM(a.start) - parseHM(b.start));
     if (!blocks.length) return { label: '—', active: null, next: null, wd, isoDate: parts.isoDate || todayISO, blocks };
 
     const inBlock = (b) => {
@@ -301,7 +289,6 @@
   }
 
   function currentWeekStartMondayISO() {
-    // Used for audit lookups (existing convention)
     const wd = weekdayFromISO(todayISO);
     const delta = (wd === 0) ? -6 : (1 - wd);
     return addDaysISO(todayISO, delta);
@@ -320,16 +307,57 @@
     } catch (_) { return null; }
   }
 
+  function formatTs(ts) {
+    try {
+      return new Date(Number(ts || 0)).toLocaleString('en-CA', {
+        timeZone: tzManila,
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+    } catch (_) { return ''; }
+  }
+
+  // Persistent state
+  let viewMode = 'week';
+  let focusDay = todayWD;
+  try {
+    const stored = String(localStorage.getItem('mums_sched_view') || '').toLowerCase();
+    if (stored === 'day' || stored === 'week' || stored === 'team') viewMode = stored;
+  } catch (_) { }
+  try {
+    const fd = Number(localStorage.getItem('mums_sched_day'));
+    if (!Number.isNaN(fd)) focusDay = Math.max(0, Math.min(6, fd));
+  } catch (_) { }
+
+  let tickTimer = null;
+  let storeListener = null;
+
+  function setViewMode(mode) {
+    const m = String(mode || '').toLowerCase();
+    viewMode = (m === 'day' || m === 'team') ? m : 'week';
+    try { localStorage.setItem('mums_sched_view', viewMode); } catch (_) { }
+    render();
+  }
+
+  function setFocusDay(d) {
+    focusDay = Math.max(0, Math.min(6, Number(d) || 0));
+    try { localStorage.setItem('mums_sched_day', String(focusDay)); } catch (_) { }
+    render();
+  }
+
   function render() {
     const host = root || document.getElementById('main') || document.body;
     const team = getTeam();
-    const teamLabel = (Config.teamLabel && me.teamId != null) ? Config.teamLabel(me.teamId) : (team ? (team.label || team.id) : (me.teamId || '—'));
+    const teamLabel = (window.Config && Config.teamLabel && me.teamId != null) ? Config.teamLabel(me.teamId) : (team ? (team.label || team.id) : (me.teamId || '—'));
     const shift = inferTeamShift(team);
     const sk = shiftKey();
 
     const week = Array.from({ length: 7 }, (_, d) => {
       const iso = isoForDay(d);
-      const blocks = getBlocks(d).map(normalizeBlock).sort((a, b) => parseHM(a.start) - parseHM(b.start));
+      const blocks = getMyBlocks(d).map(normalizeBlock).sort((a, b) => parseHM(a.start) - parseHM(b.start));
       return { dayIdx: d, iso, dayLabel: DAYS[d], blocks };
     });
 
@@ -337,24 +365,31 @@
     const visibleDays = (mode === 'day') ? [week[focusDay]] : week;
     const countdown = computeCountdown(shift);
 
-    const localStrip = (localTZ && localTZ !== tzManila)
+    const todayLong = formatDateLong(todayISO);
+    const focusISO = isoForDay(focusDay);
+    const focusLong = formatDateLong(focusISO);
+
+    const tzLine = (localTZ && localTZ !== tzManila)
       ? `Local: <b>${esc(localTZ)}</b> • Manila: <b>${esc(tzManila)}</b>`
       : `Timezone: <b>${esc(tzManila)}</b>`;
 
     const totalWeekBlocks = week.reduce((n, d) => n + d.blocks.length, 0);
     const todayBlocks = week[todayWD] ? week[todayWD].blocks : [];
 
+    const hours = Math.max(1, Math.ceil(shift.lenMin / 60));
+
     host.innerHTML = `
-      <div class="schx" data-shift="${esc(sk)}">
+      <div class="schx" data-shift="${esc(sk)}" style="--schx-hours:${(shift.lenMin / 60)}">
         <div class="schx-header">
           <div>
             <div class="ux-h1">My Schedule</div>
-            <div class="small muted">${esc(todayISO)} • ${esc(DAYS[todayWD] || '')} • ${localStrip}</div>
+            <div class="small muted">${esc(todayLong)} • ${tzLine}</div>
           </div>
           <div class="schx-actions">
             <div class="schx-toggle" role="tablist" aria-label="Schedule view">
               <button class="btn ghost small ${mode === 'week' ? 'active' : ''}" type="button" data-view="week" role="tab" aria-selected="${mode === 'week'}">Weekly</button>
               <button class="btn ghost small ${mode === 'day' ? 'active' : ''}" type="button" data-view="day" role="tab" aria-selected="${mode === 'day'}">Daily</button>
+              <button class="btn ghost small ${mode === 'team' ? 'active' : ''}" type="button" data-view="team" role="tab" aria-selected="${mode === 'team'}">Team</button>
             </div>
             <span class="ux-chip"><span class="dot"></span>${esc(role || '')}${teamLabel ? ` • ${esc(teamLabel)}` : ''}</span>
             <a class="btn" href="/my_attendance">Attendance</a>
@@ -381,30 +416,35 @@
           <div class="schx-kpi">
             <div class="small muted">This week</div>
             <div class="big">${totalWeekBlocks} total</div>
-            <div class="small muted">${esc(weekStartSunISO)} → ${esc(isoForDay(6))}</div>
+            <div class="small muted">${esc(formatDateLong(weekStartSunISO))} → ${esc(formatDateLong(isoForDay(6)))}</div>
           </div>
         </div>
 
-        ${mode === 'day' ? renderDailyControls(week) : ''}
+        ${(mode === 'day' || mode === 'team') ? renderDayTabs(week) : ''}
 
         <div class="schx-cal" aria-label="Schedule calendar">
-          <div class="schx-grid" style="--shift-len:${shift.lenMin}">
-            <div class="schx-ruler" aria-hidden="true">
-              ${renderRuler(shift)}
+          ${mode === 'team'
+      ? renderTeamView(shift, hours, focusISO, focusLong)
+      : `
+            <div class="schx-grid" style="--shift-len:${shift.lenMin}">
+              <div class="schedule-ruler schx-ruler" aria-hidden="true">
+                ${renderRuler(shift, hours)}
+              </div>
+
+              <div class="schx-cols ${mode === 'day' ? 'day' : 'week'}" id="schxCols" aria-label="${mode === 'day' ? 'Daily calendar' : 'Weekly calendar'}">
+                ${visibleDays.map(d => renderDay(d, shift, hours)).join('')}
+              </div>
             </div>
 
-            <div class="schx-cols ${mode === 'day' ? 'day' : 'week'}" id="schxCols" aria-label="${mode === 'day' ? 'Daily calendar' : 'Weekly calendar'}">
-              ${visibleDays.map(d => renderDay(d, shift)).join('')}
+            <div class="schx-foot">
+              <div class="small muted">Tip: ${mode === 'day' ? 'Swipe left/right on the day canvas to change day.' : 'On smaller screens, switch to Daily view for maximum readability.'}</div>
+              <div class="ux-row" style="justify-content:flex-end">
+                <a class="btn" href="/master_schedule">Master Schedule</a>
+                ${canEditSelf ? '<a class="btn" href="/members">Edit Team Schedules</a>' : ''}
+              </div>
             </div>
-          </div>
-
-          <div class="schx-foot">
-            <div class="small muted">Tip: ${mode === 'day' ? 'Swipe left/right to change day.' : 'On smaller screens, switch to Daily view for maximum readability.'}</div>
-            <div class="ux-row" style="justify-content:flex-end">
-              <a class="btn" href="/master_schedule">Master Schedule</a>
-              ${canEditSelf ? '<a class="btn" href="/members">Edit Team Schedules</a>' : ''}
-            </div>
-          </div>
+          `
+    }
         </div>
 
         <details class="schx-audit" style="margin-top:14px">
@@ -424,49 +464,43 @@
     startTickLoop(host, shift);
   }
 
-  function renderDailyControls(week) {
+  function renderDayTabs(week) {
     return `
-      <div class="schx-daytabs" role="tablist" aria-label="Daily focus day">
+      <div class="schx-daytabs" role="tablist" aria-label="Focus day">
         ${week.map(d => {
-          const active = d.dayIdx === focusDay ? 'active' : '';
-          const dot = d.blocks.length ? '<span class="dot" aria-hidden="true"></span>' : '';
-          return `<button class="schx-daytab ${active}" type="button" data-day="${d.dayIdx}" role="tab" aria-selected="${d.dayIdx === focusDay}">${esc(d.dayLabel.slice(0, 3))}${dot}</button>`;
-        }).join('')}
+      const active = d.dayIdx === focusDay ? 'active' : '';
+      const dot = d.blocks.length ? '<span class="dot" aria-hidden="true"></span>' : '';
+      return `<button class="schx-daytab ${active}" type="button" data-day="${d.dayIdx}" role="tab" aria-selected="${d.dayIdx === focusDay}">${esc(d.dayLabel.slice(0, 3))}${dot}</button>`;
+    }).join('')}
       </div>
     `;
   }
 
-  function renderRuler(shift) {
-    // Hour ticks within shift range
+  function renderRuler(shift, hours) {
     const ticks = [];
-    const step = 60;
-    const count = Math.floor(shift.lenMin / step);
-    for (let i = 0; i <= count; i++) {
-      const off = i * step;
-      const top = (off / shift.lenMin) * 100;
-      const label = hm(shift.startMin + off);
-      ticks.push(`<div class="schx-tick" style="top:${top}%"><span>${esc(label)}</span></div>`);
+    for (let i = 0; i <= hours; i++) {
+      const label = hm(shift.startMin + (i * 60));
+      ticks.push(`<div class="schx-tick" style="top:calc(${i} * var(--schx-row-h))"><span>${esc(label)}</span></div>`);
     }
     return ticks.join('');
   }
 
-  function renderDay(day, shift) {
+  function renderDay(day, shift, hours) {
     const d = day;
     const blocks = (d.blocks || []).map(normalizeBlock);
-    const lines = renderGridLines(shift);
 
-    const blocksHtml = blocks.map((b, idx) => {
-      const id = b.schedule || '';
-      const label = taskLabel(id) || 'Block';
-      const c = taskColor(id);
+    const blocksHtml = blocks.map((b) => {
+      const label = taskLabel(b.schedule) || 'Block';
+      const c = taskColor(b.schedule);
       const vars = taskVars(c);
       const m = blockMetrics(shift, b);
-      const localRange = (localTZ && localTZ !== tzManila) ? localRangeLabel(d.iso, b.start, b.end, shift) : '';
+      const localRange = (localTZ && localTZ !== tzManila) ? localRangeLabel(d.iso, b.start, b.end) : '';
       const audit = findAuditForBlock(d.dayIdx, b);
       const auditLine = audit ? `Assigned by ${audit.actorName || '—'} • ${formatTs(audit.ts)}` : '';
 
       const tooltipLines = [
         `${label}`,
+        `${formatDateLong(d.iso)}`,
         `${b.start}–${b.end} (Manila)`,
       ];
       if (localRange) tooltipLines.push(`${localRange} (${localTZ})`);
@@ -476,7 +510,7 @@
       return `
         <div
           class="schedule-block schx-block"
-          style="top:${m.top}%;height:${m.height}%;--task-color:${esc(vars.color)};--task-bg:${esc(vars.bg)};--task-border:${esc(vars.border)};--task-text:${esc(vars.text)}"
+          style="top:calc(${m.topH} * var(--schx-row-h));height:calc(${m.heightH} * var(--schx-row-h));--task-color:${esc(vars.color)};--task-bg:${esc(vars.bg)};--task-border:${esc(vars.border)};--task-text:${esc(vars.text)}"
           role="button"
           tabindex="0"
           data-tooltip="${esc(tooltipLines.join('\n'))}"
@@ -496,13 +530,15 @@
       `;
     }).join('');
 
+    const lines = renderGridLines(hours);
+
     return `
       <section class="schx-day" aria-label="${esc(d.dayLabel)} schedule">
         <header class="schx-dayhead">
           <div class="schx-dayname">${esc(d.dayLabel.slice(0, 3))}</div>
-          <div class="schx-daydate">${esc(d.iso)}</div>
+          <div class="schx-daydate">${esc(formatDateLong(d.iso))}</div>
         </header>
-        <div class="schx-daybody" data-day="${d.dayIdx}" style="--shift-len:${shift.lenMin}">
+        <div class="schx-daybody" data-day="${d.dayIdx}" style="--shift-len:${shift.lenMin}" aria-label="${esc(d.dayLabel)} blocks">
           ${lines}
           ${blocksHtml || `<div class="schx-empty small muted">No blocks</div>`}
         </div>
@@ -510,16 +546,130 @@
     `;
   }
 
-  function renderGridLines(shift) {
+  function renderGridLines(hours) {
     const lines = [];
-    const step = 60;
-    const count = Math.floor(shift.lenMin / step);
-    for (let i = 0; i <= count; i++) {
-      const off = i * step;
-      const top = (off / shift.lenMin) * 100;
-      lines.push(`<div class="schx-line" style="top:${top}%" aria-hidden="true"></div>`);
+    for (let i = 0; i <= hours; i++) {
+      lines.push(`<div class="schx-line" style="top:calc(${i} * var(--schx-row-h))" aria-hidden="true"></div>`);
     }
     return `<div class="schx-lines" aria-hidden="true">${lines.join('')}</div>`;
+  }
+
+  function getTeamMembers() {
+    try {
+      if (!window.Store || !Store.getUsers) return [];
+      const tid = String(me.teamId || '');
+      const users = Store.getUsers() || [];
+      const inTeam = users.filter(u => {
+        if (!u) return false;
+        if (String(u.teamId || '') !== tid) return false;
+        if (u.deleted || u.isDeleted) return false;
+        return true;
+      });
+      const nameOf = (u) => String(u.fullName || u.name || u.displayName || u.username || u.email || u.id || '');
+      inTeam.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+      return inTeam;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function renderTeamView(shift, hours, focusISO, focusLong) {
+    const members = getTeamMembers();
+    const cols = hours;
+
+    const colLabels = Array.from({ length: cols }, (_, i) => hmShort(shift.startMin + i * 60));
+
+    const gridTemplate = `240px repeat(${cols}, minmax(72px, 1fr))`;
+
+    const header = `
+      <div class="team-schedule-head">
+        <div>
+          <div class="mysx-section-title">Team Schedule</div>
+          <div class="small muted">${esc(focusLong)} • ${esc(tzManila)}${(localTZ && localTZ !== tzManila) ? ` • Local: ${esc(localTZ)}` : ''}</div>
+        </div>
+      </div>
+
+      <div class="team-schedule-wrap" role="table" aria-label="Team schedule table">
+        <div class="team-schedule-grid" style="grid-template-columns:${gridTemplate}" role="rowgroup">
+          <div class="team-schedule-row team-schedule-header" role="row">
+            <div class="tsg-h ts-name" role="columnheader">MEMBER</div>
+            ${colLabels.map(t => `<div class="tsg-h" role="columnheader">${esc(t)}</div>`).join('')}
+          </div>
+          ${members.map(m => renderTeamRow(m, shift, cols, focusDay, focusISO, gridTemplate)).join('') || `<div class="small muted" style="padding:12px">No team members found.</div>`}
+        </div>
+      </div>
+    `;
+
+    return header;
+  }
+
+  function renderTeamRow(member, shift, cols, dayIdx, iso, gridTemplate) {
+    const nameOf = (u) => String(u.fullName || u.name || u.displayName || u.username || u.email || u.id || '');
+    const memberName = nameOf(member);
+
+    const blocks = getBlocksForUserDay(member.id, dayIdx).map(normalizeBlock);
+
+    // Build hour slots
+    const slots = Array.from({ length: cols }, () => null);
+    blocks.forEach(raw => {
+      const b = normalizeBlock(raw);
+      const startOff = computeOffset(shift, b.start);
+      const endOff = computeOffset(shift, b.end);
+      const r = clampShiftRange(shift, startOff, endOff);
+      const c0 = Math.max(0, Math.floor(r.s / 60));
+      const c1 = Math.min(cols, Math.ceil(r.e / 60));
+      for (let i = c0; i < c1; i++) {
+        // Prefer earlier block if overlap occurs
+        if (!slots[i]) slots[i] = { taskId: b.schedule, b };
+      }
+    });
+
+    const cells = [];
+    for (let i = 0; i < cols; i++) {
+      const slot = slots[i];
+      if (!slot) {
+        cells.push(`<div class="tsg-cell" role="cell" aria-label="${esc(memberName)} empty"></div>`);
+        continue;
+      }
+      const taskId = slot.taskId;
+      const label = taskLabel(taskId);
+      const color = taskColor(taskId);
+      const vars = taskVars(color);
+
+      const prev = i > 0 ? slots[i - 1] : null;
+      const showLabel = !prev || !prev.taskId || prev.taskId !== taskId;
+
+      const hourStart = hm(shift.startMin + i * 60);
+      const hourEnd = hm(shift.startMin + (i + 1) * 60);
+
+      const tooltip = [
+        `${memberName}`,
+        `${label}`,
+        `${formatDateLong(iso)}`,
+        `${slot.b.start}–${slot.b.end} (Manila)`,
+        `Hour cell: ${hourStart}–${hourEnd}`,
+      ].join('\n');
+
+      cells.push(`
+        <div
+          class="tsg-cell has-task"
+          role="cell"
+          tabindex="0"
+          style="--task-color:${esc(vars.color)};--task-bg:${esc(vars.bg)};--task-border:${esc(vars.border)};--task-text:${esc(vars.text)};background:${esc(vars.color)}"
+          data-tooltip="${esc(tooltip)}"
+          aria-label="${esc(memberName)} ${esc(label)} ${esc(hourStart)} to ${esc(hourEnd)}"
+        >
+          ${showLabel ? `<span class="task-label tsg-badge" style="--task-color:${esc(vars.color)};--task-bg:rgba(0,0,0,.20);--task-border:rgba(255,255,255,.18);--task-text:#fff"><span class="task-color" style="background:${esc(vars.color)}"></span>${esc(label)}</span>` : ''}
+        </div>
+      `);
+    }
+
+    return `
+      <div class="team-schedule-row member-row" role="row" style="grid-template-columns:${gridTemplate}">
+        <div class="tsg-name" role="rowheader">${esc(memberName)}</div>
+        ${cells.join('')}
+      </div>
+    `;
   }
 
   function renderAuditList() {
@@ -530,7 +680,7 @@
       if (!mine.length) return `<div class="small muted">No audit entries recorded for your schedule yet this week.</div>`;
       return `<div class="mysx-audit">
         ${mine.map(a => {
-          return `<div class="mysx-audit-row">
+        return `<div class="mysx-audit-row">
             <div class="mysx-audit-main">
               <div class="mysx-audit-action">${esc(a.action || '')}</div>
               <div class="small muted">${esc(a.detail || '')}</div>
@@ -538,24 +688,11 @@
             </div>
             <div class="mysx-audit-ts small muted">${esc(formatTs(a.ts))}</div>
           </div>`;
-        }).join('')}
+      }).join('')}
       </div>`;
     } catch (_) {
       return `<div class="small muted">Audit unavailable.</div>`;
     }
-  }
-
-  function formatTs(ts) {
-    try {
-      return new Date(Number(ts || 0)).toLocaleString('en-CA', {
-        timeZone: tzManila,
-        month: 'short',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      });
-    } catch (_) { return ''; }
   }
 
   function bindViewToggle(host) {
@@ -594,7 +731,8 @@
       tip.style.opacity = '0';
     }
 
-    host.querySelectorAll('.schx-block').forEach(el => {
+    // Bind to any element with data-tooltip
+    host.querySelectorAll('[data-tooltip]').forEach(el => {
       const text = el.getAttribute('data-tooltip') || '';
       el.addEventListener('mouseenter', (ev) => show(ev, text));
       el.addEventListener('mousemove', (ev) => show(ev, text));
@@ -640,7 +778,6 @@
   }
 
   function startRealtimeRefresh() {
-    // Rollback-safe: listen to store updates; re-render schedule if schedule-related keys changed
     if (storeListener && Store.unlisten) {
       try { Store.unlisten(storeListener); } catch (_) { }
       storeListener = null;
@@ -649,7 +786,7 @@
     try {
       storeListener = Store.listen(function (key) {
         const k = String(key || '');
-        if (k.includes('schedule') || k.includes('tasks') || k.includes('audit')) {
+        if (k.includes('schedule') || k.includes('tasks') || k.includes('audit') || k.includes('weekly') || k.includes('users')) {
           render();
         }
       });

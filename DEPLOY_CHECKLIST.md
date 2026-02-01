@@ -156,3 +156,34 @@ After applying migrations:
 - JS syntax verification:
   - Run `node --check` against **all** `public/js/**/*.js` and confirm no syntax errors.
   - Navigate: Dashboard → My Schedule → Members. Confirm no console errors.
+
+
+## Verification (13126-09)
+- Cache-busting:
+  - Confirm `?v=20260201-13126-09` is applied to **all** `public/*.html` assets that reference CSS/JS.
+  - Confirm sidebar Build shows `20260201-13126-09` and no mixed-version assets are loaded.
+- My Schedule (/#/my_schedule):
+  - Horizontal alignment:
+    - Hour ruler ticks align **pixel-perfect** with the hour grid lines and schedule blocks.
+    - Alignment holds during resize and at common zoom levels (90% / 100% / 110%).
+  - Date format:
+    - Date labels use full format: `Sunday, February 1, 2026` across **Weekly**, **Daily**, and **Team** views.
+    - Timezone context is visible (Manila + Local when different).
+  - Tabs:
+    - Weekly / Daily / Team tabs switch instantly with no blank state.
+    - View mode persists via localStorage `mums_sched_view`.
+  - Team tabular view:
+    - Renders a team schedule table (rows = members, columns = hourly slots).
+    - Sticky MEMBER column and sticky header row remain readable while scrolling.
+    - TASK color codes match TEAM TASK catalog:
+      - Mailbox Manager → `#4aa3ff`
+      - Back Office → `#ffa21a`
+      - Call Available → `#2ecc71`
+      - Lunch → `#22d3ee`
+    - Hover/focus tooltips show member name, task label, and time context.
+  - Accessibility:
+    - Blocks and team cells are keyboard-focusable with visible focus ring.
+    - ARIA labels present; contrast meets WCAG AA.
+- JS syntax verification:
+  - Run `node --check` against **all** `public/js/**/*.js` and confirm no syntax errors.
+  - Navigate: Dashboard → My Schedule → Members → Mailbox. Confirm no console errors.
