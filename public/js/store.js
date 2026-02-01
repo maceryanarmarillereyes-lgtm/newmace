@@ -2474,5 +2474,58 @@ Store.startMailboxOverrideSync = function(opts){
     write(key, value, opts);
   };
 
+  // ---------------------------------------------------------------------------
+  // Supabase Keep-Alive (client-side best-effort)
+  // ---------------------------------------------------------------------------
+  // This complements the server-side scheduled ping (GitHub Actions / external cron).
+  // It only triggers at most once per 24h per browser (throttled via localStorage).
+  const KEEPALIVE_LS_KEY = 'mums_keepalive_last_ts';
+  const KEEPALIVE_MIN_MS = 24 * 60 * 60 * 1000;
+
+  Store.keepAlivePing = async function(reason = 'client_boot'){
+    try{
+      const res = await fetch('/api/keep_alive', {
+        method: 'GET',
+        headers: { 'accept': 'application/json' },
+        cache: 'no-store',
+      });
+      const text = await res.text();
+      // Best-effort parse; never throw.
+      let data = null;
+      try{ data = text ? JSON.parse(text) : null; }catch(_){ data = { raw: text }; }
+      return { ok: res.ok, status: res.status, data, reason };
+    }catch(e){
+      return { ok: false, error: String(e && (e.message||e) || 'keepalive_failed'), reason };
+    }
+  };
+
+  Store.maybeKeepAlivePing = async function(reason = 'client_throttled'){
+    try{
+      const now = Date.now();
+      const last = parseInt(localStorage.getItem(KEEPALIVE_LS_KEY) || '0', 10);
+      if(last && (now - last) < KEEPALIVE_MIN_MS) return { ok:true, skipped:true, reason };
+      localStorage.setItem(KEEPALIVE_LS_KEY, String(now));
+      return await Store.keepAlivePing(reason);
+    }catch(_){
+      // If localStorage is blocked, still try once per page load.
+      return await Store.keepAlivePing('client_fallback');
+    }
+  };
+
+  // Trigger once per page load, and again after resume/focus (still throttled).
+  (function bindKeepAlive(){
+    try{
+      if(window.__mumsKeepAliveBound) return;
+      window.__mumsKeepAliveBound = true;
+
+      // Fire-and-forget; do not block boot.
+      setTimeout(()=>{ Store.maybeKeepAlivePing('client_boot'); }, 1200);
+      window.addEventListener('focus', ()=>{ Store.maybeKeepAlivePing('client_focus'); });
+      document.addEventListener('visibilitychange', ()=>{
+        if(document.visibilityState === 'visible') Store.maybeKeepAlivePing('client_visibility');
+      });
+    }catch(_){ }
+  })();
+
 window.Store = Store;
 })();

@@ -6,9 +6,19 @@
   // - TEAM TASK color coding + badges (.task-label / .task-color)
   // - Team tabular view inspired by enterprise scheduling systems
   // ---------------------------------------------------------------------------
-
-  const me = (window.Auth && Auth.user) ? Auth.user : (window.Store && Store.getSession ? Store.getSession() : null) || {};
-  const role = (me && me.role) ? String(me.role) : '';
+  const session = (window.Store && Store.getSession) ? Store.getSession() : null;
+  const sessionUserId = session && (session.userId || session.user_id || session.uid || session.id);
+  let me = (window.Auth && Auth.user) ? Auth.user : null;
+  // Backfill user profile from Store when Auth.user is not yet hydrated (fixes 'No blocks' on My Schedule).
+  try{
+    if((!me || !me.id) && sessionUserId && window.Store && Store.getUserById){
+      const prof = Store.getUserById(String(sessionUserId));
+      if(prof) me = prof;
+    }
+    if(me && !me.id && sessionUserId) me.id = String(sessionUserId);
+  }catch(_){ }
+  if(!me) me = { id: String(sessionUserId || ''), role: 'MEMBER' };
+  const role = (me && me.role) ? String(me.role) : 'MEMBER';
   const canEditSelf = (role === 'TEAM_LEAD' || role === 'SUPER_ADMIN');
 
   const tzManila = 'Asia/Manila';

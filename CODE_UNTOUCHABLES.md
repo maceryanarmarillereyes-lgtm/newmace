@@ -219,3 +219,9 @@ This is required so authenticated users can read their own profile row under RLS
 - Canonical schedule store is `mums_schedule_blocks` (client mirror `Store.KEYS.schedule_blocks`), with `mums_schedule_snapshots` used for rollback/audit.
 - My Schedule ruler + grid must share a single unit system (`--schx-row-h`, `--schx-hours`) to prevent drift on resize/zoom.
 - Members graphical status panel must remain role-gated (Team Lead/Admin) and must not block scheduling workflows if disabled.
+
+## Graph Panel Stability + Member Schedule Visibility (Permanent)
+- “Graphical panels must not throw runtime errors. Member schedules must be visible across all views. Time labels must align with grid blocks and layout must meet enterprise-grade standards.”
+
+## Supabase Keep-Alive (Permanent)
+- “Supabase must receive periodic activity via keep-alive endpoint to prevent project pausing. Heartbeat table must exist and be writable. Cron job must trigger endpoint at least once every 48 hours.”

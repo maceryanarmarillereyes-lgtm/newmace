@@ -1,7 +1,7 @@
 (function(){
   const Config = {
     // Single source of truth for build label used by login + app.
-    BUILD: '20260201-13126-11',
+    BUILD: '20260201-13126-12',
     APP: {
       shortName: 'MUMS',
       fullName: 'MUMS User Management System'
@@ -230,6 +230,62 @@
 
     scheduleById(id){
       return this.SCHEDULES[id] || null;
+    },
+
+    // Map a shift/team key to its configured window (used by Members Graph Panel).
+    // Accepts keys like: 'morning' | 'mid' | 'night' | 'dev' | 'developer_access'
+    shiftByKey(key){
+      try{
+        const raw = String(key || '').trim();
+        const k = raw.toLowerCase().replace(/\s+/g,'_');
+        const teams = Config.TEAMS || {};
+
+        // direct id match (morning/mid/night/dev)
+        let t = teams[k] || null;
+
+        // common aliases
+        if(!t){
+          if(k.includes('morning')) t = teams.morning || null;
+          else if(k.includes('mid')) t = teams.mid || null;
+          else if(k.includes('night')) t = teams.night || null;
+          else if(k.includes('dev')) t = teams.dev || null;
+        }
+
+        // role/team objects sometimes pass full label
+        if(!t && raw){
+          const rk = raw.toLowerCase();
+          if(rk.includes('morning')) t = teams.morning || null;
+          else if(rk.includes('mid')) t = teams.mid || null;
+          else if(rk.includes('night')) t = teams.night || null;
+          else if(rk.includes('developer')) t = teams.dev || null;
+        }
+
+        if(!t) t = teams.morning || { id:'morning', label:'Morning Shift', teamStart:'06:00', teamEnd:'15:00', dutyStart:'06:00', dutyEnd:'15:00' };
+
+        const startHM = t.startHM || t.teamStart || '06:00';
+        const endHM = t.endHM || t.teamEnd || '15:00';
+        const parseHM = (hm)=>{
+          const parts = String(hm||'').split(':');
+          const h = parseInt(parts[0], 10);
+          const m = parseInt(parts[1] || 0, 10);
+          if(Number.isNaN(h) || Number.isNaN(m)) return 0;
+          return h*60 + m;
+        };
+        const sm = parseHM(startHM);
+        let em = parseHM(endHM);
+        let lenMin = em - sm;
+        if(lenMin <= 0) lenMin += 24*60;
+
+        return {
+          key: t.id || k,
+          label: t.label || raw || k,
+          startHM,
+          endHM,
+          dutyStart: t.dutyStart || startHM,
+          dutyEnd: t.dutyEnd || endHM,
+          lenMin,
+        };
+      }catch(_){ return null; }
     },
   };
 

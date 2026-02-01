@@ -237,3 +237,51 @@ After applying migrations:
 - JS syntax verification:
   - Run `node --check` against **all** `public/js/**/*.js` and `server/**/*.js` and confirm no syntax errors.
   - Navigate: Dashboard → My Schedule → Members → Mailbox. Confirm no console errors.
+
+
+## Verification (13126-12)
+- Cache-busting:
+  - Confirm `?v=20260201-13126-12` is applied to **all** `public/*.html` assets (index, login, schedule, dashboard, debug, etc.) that reference CSS/JS.
+  - Confirm sidebar Build shows `20260201-13126-12` and no mixed-version assets are loaded.
+- Schedule storage authority:
+  - Confirm `mums_schedule_blocks` is treated as **authoritative** schedule storage.
+  - Confirm `ums_weekly_schedules` is used only as **read-only fallback** (no new writes required for normal operations).
+- Members graphical panel stability:
+  - Members page loads with **no** `TypeError: Config.shiftByKey is not a function` (or other JS exceptions).
+  - Toggle “Show Graphical Task Status”:
+    - Panel opens/closes without crashes.
+    - Draggable + resizable behavior works.
+    - Tooltips show task name + hour count.
+- Member schedule visibility (sync + rendering):
+  - As TEAM_LEAD, assign/update blocks in Members view and click **Apply Changes**.
+  - Verify the affected member’s **My Schedule** shows assigned blocks (not “No blocks”) in:
+    - Weekly view
+    - Daily view
+    - Team tab
+  - Refresh both clients; verify blocks persist and remain visible.
+- Time label alignment:
+  - Verify My Schedule hour tick labels align with the hour grid lines and schedule blocks at 90% / 100% / 110% zoom.
+  - Verify Members timeline hour labels align with the timeline grid and blocks.
+- JS syntax verification:
+  - Run `node --check` against modified files and confirm no syntax errors:
+    - `public/js/config.js`
+    - `public/js/store.js`
+    - `public/js/pages/members.js`
+    - `public/js/pages/my_schedule.js`
+  - Navigate: Dashboard → My Schedule → Members. Confirm no console errors.
+
+
+## Keep-Alive Patch Verification (MEYS-TESTING)
+- Endpoint:
+  - Hit `/api/keep_alive` and confirm 200 OK with JSON `ok: true` (or `ok: false` but with a clear `need_manual_setup` message).
+  - Verify server logs show keep-alive success/failure details.
+- Heartbeat table:
+  - Confirm `heartbeat` table exists in MEYS-TESTING Supabase with columns:
+    - `id` UUID primary key (default `gen_random_uuid()`)
+    - `timestamp` timestamptz (default `now()`)
+  - Confirm inserts succeed (row count increases after calling endpoint).
+  - Confirm RLS is OFF (or, if enabled, a public insert policy exists) and `anon/authenticated` have INSERT privileges.
+- Scheduled trigger:
+  - GitHub Actions workflow `Supabase Keep-Alive` exists and is enabled.
+  - Confirm the workflow runs at least once every 24 hours (and at least once every 48 hours per policy).
+  - Confirm the workflow output contains a valid JSON response from `/api/keep_alive`.
