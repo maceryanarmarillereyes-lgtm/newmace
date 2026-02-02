@@ -1110,7 +1110,64 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   opacity: .92;
 }
 
+/* Graph panel controls + governance notices (Phase 1-500) */
+.gsp-controls{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  padding:8px 10px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.08);
+  background: rgba(0,0,0,.14);
+  margin-bottom: 12px;
+}
+.gsp-controls label{
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.10em;
+  text-transform:uppercase;
+  color: rgba(255,255,255,.70);
+}
+.gsp-controls .input{
+  padding:6px 10px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.92);
+}
+.gsp-controls .input:focus{
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79,139,255,.20);
+  border-color: rgba(79,139,255,.45);
+}
+.gsp-controls-hint{
+  margin-left:auto;
+}
+
+.gsp-note{
+  margin-top:6px;
+  padding:6px 8px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.04);
+  color: rgba(255,255,255,.78);
+  font-size:12px;
+  line-height:1.35;
+}
+.gsp-note.low{
+  border-color: rgba(34,211,238,.35);
+  background: rgba(34,211,238,.10);
+  color: rgba(224,252,255,.92);
+}
+.gsp-note.high{
+  border-color: rgba(255,162,26,.40);
+  background: rgba(255,162,26,.12);
+  color: rgba(255,245,232,.92);
+}
+
 @media (max-width: 900px){
   .graph-status-panel{ width: calc(100vw - 24px); height: 320px; right: 12px; bottom: 12px; }
   .gsp-row{ grid-template-columns: 140px 1fr; }
+  .gsp-controls-hint{ flex-basis:100%; margin-left:0; }
 }

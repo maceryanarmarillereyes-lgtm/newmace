@@ -19,6 +19,21 @@ window.Pages.members = function(root){
   // Every assignable unit is 60 minutes.
   const GRID_STEP_MIN = 60;
 
+  // Schedule lock UX (Team Lead/Admin/Super Admin must unlock before editing)
+  let unlockTriggered = false;
+  function showWarning(msg){
+    try{
+      if(UI && typeof UI.toast === 'function'){
+        return UI.toast({ message: String(msg||''), type: 'warning' });
+      }
+    }catch(_e){}
+    try{ alert(String(msg||'')); }catch(_e){}
+  }
+  function warnScheduleLocked(){
+    showWarning('Schedule is locked. Please unlock before making changes.');
+  }
+
+
   // Team filter
   let selectedTeamId = isLead ? me.teamId : (Config.TEAMS[0] && Config.TEAMS[0].id);
 
@@ -43,6 +58,7 @@ window.Pages.members = function(root){
   const GRAPH_LS_KEY = 'mums_graph_status_panel_v1';
   let graphEnabled = false;
   let graphPanelState = null; // { left, top, width, height }
+  let graphCompareMode = 'mailbox'; // 'mailbox' | 'call'
 
   function normalizeToMonday(iso){
     // Snap selected ISO date to Monday of that week using calendar math (timezone-safe)
@@ -78,8 +94,7 @@ window.Pages.members = function(root){
   }
 
   function isDayLockedForEdit(teamId, dayIndex){
-    // Team Leads/Admins must be able to work across all dates; lock is primarily for MEMBER visibility.
-    if(isLead || isAdmin || isSuper) return false;
+    // Lock is an approval barrier: ALL roles (Team Lead/Admin/Super Admin) must unlock before editing.
     return isDayLocked(teamId, dayIndex);
   }
 
@@ -94,6 +109,17 @@ window.Pages.members = function(root){
     }catch(_){
       return false;
     }
+  }
+
+  function isScheduleEditLocked(teamId, dayIndex){
+    return isDayLockedForEdit(teamId, dayIndex) && !unlockTriggered;
+  }
+  function guardScheduleEditLocked(teamId, dayIndex){
+    if(isScheduleEditLocked(teamId, dayIndex)){
+      warnScheduleLocked();
+      return true;
+    }
+    return false;
   }
 
   function dayHasAnyBlocks(teamId, dayIndex){
@@ -130,6 +156,8 @@ window.Pages.members = function(root){
     const previewBtn = wrap.querySelector('#previewAuto');
     const autoSettingsBtn = wrap.querySelector('#autoSettings');
     if(badge) badge.style.display = lockedMonFri ? '' : 'none';
+    // If the week is locked, require a fresh unlock action before any edits.
+    if(lockedMonFri) unlockTriggered = false;
     const canUnlock = lockedMonFri && (isLead || isAdmin || isSuper);
     if(unlockBtn) unlockBtn.style.display = canUnlock ? '' : 'none';
     // When locked, prevent accidental re-apply until unlocked
@@ -375,6 +403,7 @@ window.Pages.members = function(root){
         const st = JSON.parse(raw);
         graphEnabled = !!st.enabled;
         graphPanelState = st.panel || null;
+        if(st.mode === 'mailbox' || st.mode === 'call') graphCompareMode = st.mode;
       }
     }catch(_e){ /* ignore */ }
 
@@ -397,6 +426,7 @@ window.Pages.members = function(root){
         const r = panel.getBoundingClientRect();
         const st = {
           enabled: graphEnabled,
+          mode: graphCompareMode,
           panel: {
             left: Math.round(r.left),
             top: Math.round(r.top),
@@ -404,6 +434,8 @@ window.Pages.members = function(root){
             height: Math.round(r.height),
           }
         };
+        // Keep in-memory state in sync so mode changes don't clobber geometry.
+        graphPanelState = st.panel;
         localStorage.setItem(GRAPH_LS_KEY, JSON.stringify(st));
       }catch(_e){ /* ignore */ }
     }
@@ -503,26 +535,34 @@ window.Pages.members = function(root){
     panel.style.display = '';
 
     const team = Config.teamById(selectedTeamId);
-    const shift = Config.shiftByKey((team && team.shiftKey) || 'morning');
-    const shiftHours = Math.max(1, Math.round((shift && shift.lenMin ? shift.lenMin : 540) / 60));
+    if(!team){
+      body.innerHTML = `<div class="small muted">No team selected.</div>`;
+      return;
+    }
 
-    const iso = isoForDay(selectedDay);
-    const longDate = (()=>{
+    // Comparison mode: Mailbox vs Call (filtered by selected task).
+    // - Mailbox Manager → Mailbox comparison only
+    // - Call Available → Call comparison only
+    const compareLabel = (graphCompareMode==='call') ? 'Call Available' : 'Mailbox Manager';
+    const weekLong = (()=>{
       try{
-        const d = new Date(`${iso}T00:00:00`);
-        return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-      }catch(_e){
-        return iso;
+        const d0 = new Date(`${weekStartISO}T00:00:00`);
+        const endISO = UI.addDaysISO(weekStartISO, 6);
+        const d1 = new Date(`${endISO}T00:00:00`);
+        const a = d0.toLocaleDateString('en-US', { month:'short', day:'2-digit', year:'numeric' });
+        const b = d1.toLocaleDateString('en-US', { month:'short', day:'2-digit', year:'numeric' });
+        return `${a} – ${b}`;
+      }catch(_){
+        return String(weekStartISO||'');
       }
     })();
 
     if(sub){
       const tLabel = (team && (team.label || team.name || team.key)) ? (team.label || team.name || team.key) : 'Team';
-      const sLabel = (shift && (shift.label || shift.key)) ? (shift.label || shift.key) : 'Shift';
-      sub.textContent = `${tLabel} • ${longDate} • ${sLabel}`;
+      sub.textContent = `${tLabel} • Week ${weekLong} • Compare: ${compareLabel}`;
     }
     if(foot){
-      foot.textContent = 'Tip: Click a member row to highlight (and scroll). Drag to reposition. Resize from the corner.';
+      foot.textContent = 'Tip: Sorted by fewest hours in the selected task. Click a member to highlight + scroll.';
     }
 
     const members = getMembersForView(selectedTeamId) || [];
@@ -531,100 +571,128 @@ window.Pages.members = function(root){
       return;
     }
 
-    const fixedColorForLabel = (label, fallback)=>{
-      const l = String(label || '').toLowerCase();
-      if(l.includes('mailbox') && l.includes('manager')) return '#4aa3ff';
-      if(l.includes('back office')) return '#ffa21a';
-      if(l.includes('call available') || (l.includes('call') && l.includes('available'))) return '#2ecc71';
-      if(l.includes('lunch')) return '#22d3ee';
-      return fallback || '#64748b';
-    };
-
-    const roleMeta = (roleId)=>{
-      const s = Config.scheduleById(roleId);
-      if(s) return { label: s.label || roleId, color: fixedColorForLabel(s.label || roleId, s.color) };
-      const tasks = Store.getTeamTasks ? (Store.getTeamTasks(selectedTeamId) || []) : [];
-      const t = tasks.find(x=>String(x.id)===String(roleId));
-      if(t) return { label: t.label || roleId, color: fixedColorForLabel(t.label || roleId, t.color) };
-      return { label: roleId, color: fixedColorForLabel(roleId) };
-    };
-
     const esc = UI.escapeHtml || ((s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'));
 
-    members.sort((a,b)=>String(a.fullName||a.name||'').localeCompare(String(b.fullName||b.name||'')));
+    const cfg = (window.Store && Store.getTeamConfig) ? Store.getTeamConfig(team.id) : null;
+    const callRole = (cfg && cfg.coverageTaskId) ? String(cfg.coverageTaskId) : 'call_onqueue';
 
-    const rowsHtml = members.map(m=>{
-      const raw = Store.getUserDayBlocks ? (Store.getUserDayBlocks(m.id, selectedDay) || []) : [];
-      const blocks = normalizeBlocks(team, raw);
-
-      const totals = Object.create(null);
-      let totalH = 0;
-      blocks.forEach(b=>{
-        const meta = roleMeta(b.role);
-        const durH = Math.max(0, (UI.offsetFromShiftStart(team, b.end) - UI.offsetFromShiftStart(team, b.start)) / 60);
-        if(!durH) return;
-        totals[meta.label] = (totals[meta.label] || 0) + durH;
-        totalH += durH;
-      });
-
-      // Order: known tasks first, then the rest (alpha)
-      const keys = Object.keys(totals);
-      const priority = ['Mailbox Manager','Back Office','Call Available','Lunch'];
-      keys.sort((a,b)=>{
-        const ia = priority.findIndex(p=>p.toLowerCase()===String(a).toLowerCase());
-        const ib = priority.findIndex(p=>p.toLowerCase()===String(b).toLowerCase());
-        if(ia!==-1 || ib!==-1){
-          if(ia===-1) return 1;
-          if(ib===-1) return -1;
-          return ia-ib;
+    function blockMinutes(b){
+      try{
+        const s = UI.offsetFromShiftStart(team, b.start);
+        const e = UI.offsetFromShiftStart(team, b.end);
+        return Math.max(0, e - s);
+      }catch(_){ return 0; }
+    }
+    function computeWeeklyHours(member){
+      let mailboxMin = 0;
+      let callMin = 0;
+      for(let d=0; d<7; d++){
+        const bl = normalizeBlocks(team, Store.getUserDayBlocks(member.id, d) || []);
+        for(const b of (bl||[])){
+          const mins = blockMinutes(b);
+          if(!mins) continue;
+          const r = String(b.role||'');
+          if(r==='mailbox_manager' || r==='mailbox_call') mailboxMin += mins;
+          if(r===callRole || r==='call_available' || r==='mailbox_call') callMin += mins;
         }
-        return String(a).localeCompare(String(b));
-      });
+      }
+      return { mailboxH: mailboxMin/60, callH: callMin/60 };
+    }
 
-      const segments = keys.map(k=>{
-        const h = totals[k];
-        const w = (h / shiftHours) * 100;
-        const c = fixedColorForLabel(k);
-        const title = `${k}: ${h.toFixed(1)}h`;
-        return `<div class="task-bar" style="width:${w.toFixed(4)}%;background:${c};" title="${esc(title)}" aria-label="${esc(title)}"></div>`;
-      }).join('');
-
-      const rest = Math.max(0, shiftHours - totalH);
-      const restW = (rest / shiftHours) * 100;
-      const restSeg = restW > 0.5 ? `<div class="task-bar task-bar-rest" style="width:${restW.toFixed(4)}%;" title="Unassigned: ${rest.toFixed(1)}h" aria-label="Unassigned: ${rest.toFixed(1)}h"></div>` : '';
-
+    const rows = members.map(m=>{
+      const h = computeWeeklyHours(m);
       const name = m.fullName || m.name || m.email || m.id;
-      const mismatch = Math.abs(totalH - shiftHours) >= 0.25;
-      const hoursText = `${totalH.toFixed(1)}h / ${shiftHours}h`;
+      return {
+        id: m.id,
+        name: name,
+        mailboxH: h.mailboxH,
+        callH: h.callH
+      };
+    });
 
-      const rowCls = `gsp-row${String(selMemberId||'')===String(m.id) ? ' member-highlight' : ''}`;
+    const getVal = (r)=> (graphCompareMode==='call' ? r.callH : r.mailboxH);
+    rows.sort((a,b)=>{
+      const da = getVal(a);
+      const db = getVal(b);
+      if(da!==db) return da-db;
+      return String(a.name||'').localeCompare(String(b.name||''));
+    });
+
+    const maxObserved = rows.reduce((m,r)=>Math.max(m, getVal(r)), 0);
+    const scaleMax = Math.max(20, maxObserved, 1); // anchor visual scale to the governance high threshold
+
+    // Resolve task color from team task settings when available.
+    const taskIdForColor = (graphCompareMode==='call') ? callRole : 'mailbox_manager';
+    const taskColor = (window.Store && Store.getTeamTaskColor) ? (Store.getTeamTaskColor(team.id, taskIdForColor) || '') : '';
+    const fallbackColor = (graphCompareMode==='call') ? '#2ecc71' : '#4aa3ff';
+    const barColor = taskColor || fallbackColor;
+
+    const controlHtml = `
+      <div class="gsp-controls">
+        <label class="small muted" for="gspCompare">Comparison</label>
+        <select class="input" id="gspCompare" aria-label="Select task comparison">
+          <option value="mailbox">📥 Mailbox Manager</option>
+          <option value="call">📞 Call Available</option>
+        </select>
+        <div class="gsp-controls-hint small muted">Auto-sorted by fewest hours in the selected task.</div>
+      </div>
+    `;
+
+    const rowsHtml = rows.map(r=>{
+      const val = getVal(r);
+      const pct = Math.min(100, (val/scaleMax)*100);
+
+      let notice = '';
+      if(val < 10){
+        notice = `<div class="gsp-note low">This member has limited hours in this task. Priority assignment recommended.</div>`;
+      }else if(val >= 20){
+        notice = `<div class="gsp-note high">This member already has 20 hours in this task. Assigning more may cause imbalance. You may proceed or reselect from the list below.</div>`;
+      }
+
+      const rowCls = `gsp-row${String(selMemberId||'')===String(r.id) ? ' member-highlight' : ''}`;
+      const hoursText = `${val.toFixed(1)}h`;
+
       return `
-        <div class="${rowCls}" data-mid="${esc(m.id)}" role="button" tabindex="0" aria-label="${esc(name)} task distribution">
-          <div class="gsp-rowhead">
-            <div class="gsp-name">${esc(name)}</div>
-            <div class="gsp-hours${mismatch ? ' warn' : ''}">${esc(hoursText)}</div>
+        <div class="${rowCls}" data-mid="${esc(r.id)}" role="button" tabindex="0" aria-label="${esc(r.name)} ${esc(compareLabel)} hours">
+          <div class="gsp-name">
+            <div class="name">${esc(r.name)}</div>
+            <div class="meta">${esc(compareLabel)} this week: <b>${esc(hoursText)}</b></div>
+            ${notice}
           </div>
-          <div class="gsp-bar" role="img" aria-label="${esc(name)} task hours">
-            ${segments}${restSeg}
+          <div class="gsp-bar" role="img" aria-label="${esc(compareLabel)} hours bar">
+            <div class="task-bar" style="width:${pct.toFixed(4)}%;--c:${esc(barColor)}" title="${esc(compareLabel)}: ${esc(hoursText)}"></div>
           </div>
         </div>
       `;
     }).join('');
 
-    body.innerHTML = rowsHtml;
+    body.innerHTML = controlHtml + rowsHtml;
+
+    // Wire compare selector
+    const sel = body.querySelector('#gspCompare');
+    if(sel){
+      sel.value = graphCompareMode;
+      sel.addEventListener('change', ()=>{
+        const v = String(sel.value||'');
+        if(v==='mailbox' || v==='call') graphCompareMode = v;
+        try{ localStorage.setItem(GRAPH_LS_KEY, JSON.stringify({ enabled: graphEnabled, mode: graphCompareMode, panel: graphPanelState || null })); }catch(_){ }
+        renderGraphPanel();
+      });
+    }
 
     // Click to highlight / scroll to member row
-    body.querySelectorAll('.gsp-row').forEach(r=>{
-      const id = r.dataset.mid;
+    body.querySelectorAll('.gsp-row').forEach(rEl=>{
+      const id = rEl.dataset.mid;
       const go = ()=>{
         selMemberId = id;
         if(selMemberIds) selMemberIds.clear();
         applyMemberRowSelectionStyles();
         const row = wrap.querySelector(`.members-row[data-id="${CSS.escape(id)}"]`);
         if(row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        renderGraphPanel();
       };
-      r.addEventListener('click', go);
-      r.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); go(); } });
+      rEl.addEventListener('click', go);
+      rEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); go(); } });
     });
   }
 
@@ -796,8 +864,8 @@ window.Pages.members = function(root){
     const member = Store.getUsers().find(u=>u.id===selMemberId);
     if(!member || !canEditTarget(member)) return;
     const team = Config.teamById(member.teamId);
-    if(isDayLockedForEdit(member.teamId, selectedDay)) return;
-    const blocks = normalizeBlocks(team, Store.getUserDayBlocks(member.id, selectedDay));
+    if(guardScheduleEditLocked(selectedTeamId, selectedDay)) return;
+    const blocks = normalizeBlocks(team, Store.getUserDayBlocks(member.id, selectedDay), { locked: isScheduleEditLocked(selectedTeamId, selectedDay) });
     const idxs = Array.from(selIdx).filter(i=>blocks[i]).sort((a,b)=>a-b);
     if(!idxs.length) return;
     if(o.confirm){
@@ -830,6 +898,12 @@ window.Pages.members = function(root){
     const users = Store.getUsers();
     const members = ids.map(id=>users.find(u=>u.id===id)).filter(Boolean);
     if(!members.length) return;
+
+    // Schedule lock enforcement: unlocking required before bulk schedule edits
+    if([1,2,3,4,5].some(d=>isScheduleEditLocked(selectedTeamId, d))){
+      warnScheduleLocked();
+      return;
+    }
 
     // Confirm message
     const label = members.length===1 ? (members[0].name||members[0].username) : `${members.length} members`;
@@ -1263,7 +1337,10 @@ window.Pages.members = function(root){
       if(isLead && team.id !== me.teamId) return;
       const ok = await UI.confirm({ title:'Unlock Week', message:`Unlock Mon–Fri for ${team.label} (week of ${weekStartISO})?`, okText:'Unlock', danger:true });
       if(!ok) return;
+      // Allow immediate edits right after unlock click (prevents stale-lock race conditions)
+      unlockTriggered = true;
       if(Store.clearLock) Store.clearLock(team.id, weekStartISO);
+      setTimeout(()=>{ unlockTriggered = false; }, 1200);
       const actor = Auth.getUser();
       if(actor) Store.addLog({ ts: Date.now(), teamId: team.id, actorId: actor.id, actorName: actor.name||actor.username, action: 'SCHEDULE_UNLOCK', targetId: team.id, targetName: team.label, msg: `${actor.name||actor.username} unlocked Mon–Fri schedules for ${team.label}`, detail: `WeekStart ${weekStartISO}` });
       addAudit('SCHEDULE_UNLOCK', team.id, team.label, `Unlocked Mon–Fri for week of ${weekStartISO}`);
@@ -1429,8 +1506,6 @@ window.Pages.members = function(root){
 
   function canEditTarget(member){
     if(!member) return false;
-    // Respect lock: Mon–Fri can be locked after approval
-    if(isDayLockedForEdit(selectedTeamId, selectedDay)) return false;
     if(isSuper || isAdmin) return Config.can(me, 'manage_members_scheduling') || Config.can(me, 'manage_users') || Config.can(me, 'manage_members');
     if(isLead) return (member.teamId === me.teamId) && Config.can(me, 'manage_members_scheduling');
     return false;
@@ -1464,7 +1539,7 @@ window.Pages.members = function(root){
     return roleId;
   }
 
-  function normalizeBlocks(team, blocks){
+  function normalizeBlocks(team, blocks, opts){
     const meta = UI.shiftMeta(team);
 
     function isHourAligned(hm){
@@ -1474,7 +1549,8 @@ window.Pages.members = function(root){
     const clean = (blocks||[]).map(b=>({
       start: String(b.start||'').slice(0,5),
       end: String(b.end||'').slice(0,5),
-      role: String(b.role||'block')
+      role: String(b.role||'block'),
+      locked: !!(opts && opts.locked)
     })).filter(b=>b.start && b.end && isHourAligned(b.start) && isHourAligned(b.end));
 
     // sort by start offset
@@ -1500,6 +1576,8 @@ window.Pages.members = function(root){
   }
 
   function openEditModal(member){
+    if(!member) return;
+    if(guardScheduleEditLocked(selectedTeamId, selectedDay)) return;
     const modal = wrap.querySelector('#memberSchedModal');
     const body = wrap.querySelector('#msBody');
     const title = wrap.querySelector('#msTitle');
@@ -1530,7 +1608,7 @@ window.Pages.members = function(root){
     }
 
     function renderModal(){
-      const list = normalizeBlocks(team, Store.getUserDayBlocks(member.id, selectedDay));
+      const list = normalizeBlocks(team, Store.getUserDayBlocks(member.id, selectedDay), { locked: isScheduleEditLocked(selectedTeamId, selectedDay) });
       body.innerHTML = `
         <div class="muted small" style="margin-bottom:8px">Blocks must be inside the shift window, must not overlap, and must be aligned to the hour (<b>:00</b>) in 1-hour increments.</div>
         <div class="ms-grid" id="msGrid">
@@ -1551,6 +1629,7 @@ window.Pages.members = function(root){
         const btn = e.target.closest('button');
         if(!btn) return;
         if(btn.dataset.act==='del'){
+          if(guardScheduleEditLocked(selectedTeamId, selectedDay)) return;
           const row = btn.closest('.ms-row');
           const idx = Number(row.dataset.idx);
           const cur = Store.getUserDayBlocks(member.id, selectedDay).slice();
@@ -1563,6 +1642,7 @@ window.Pages.members = function(root){
 
       body.querySelectorAll('.ms-row').forEach(row=>{
         row.addEventListener('change', ()=>{
+          if(guardScheduleEditLocked(selectedTeamId, selectedDay)) return;
           const idx = Number(row.dataset.idx);
           const cur = Store.getUserDayBlocks(member.id, selectedDay).slice();
           const start = row.querySelector('[data-field="start"]').value;
@@ -1745,14 +1825,14 @@ window.Pages.members = function(root){
 
       const ws = weeklyStats(m);
 
-      const blocks = normalizeBlocks(team, Store.getUserDayBlocks(m.id, selectedDay));
+      const blocks = normalizeBlocks(team, Store.getUserDayBlocks(m.id, selectedDay), { locked: dayLockedForGrid && !unlockTriggered });
       const segs = (blocks||[]).map((b,i)=>{
         const st = UI.blockToStyle(team, b);
         const role = b.role || 'block';
         const title = `${blockLabel(role)} ${b.start}–${b.end}`;
         const sRole = Config.scheduleById(role);
         const icon = sRole ? (sRole.icon||'') : '🧩';
-        return `<div class="seg" data-idx="${i}" data-role="${UI.esc(role)}" style="left:${st.left}%;width:${st.width}%";${(()=>{ try{ const c=(window.Store&&Store.getTeamTaskColor)?Store.getTeamTaskColor(team.id, role):null; if(!c) return ""; const tc=_textColorForBg(c); return "background:"+c+";color:"+tc; }catch(_){return "";} })()} title="${UI.esc(title)}">
+        return `<div class="seg${b.locked ? " is-locked" : ""}" data-idx="${i}" data-role="${UI.esc(role)}" style="left:${st.left}%;width:${st.width}%";${(()=>{ try{ const c=(window.Store&&Store.getTeamTaskColor)?Store.getTeamTaskColor(team.id, role):null; if(!c) return ""; const tc=_textColorForBg(c); return "background:"+c+";color:"+tc; }catch(_){return "";} })()} title="${UI.esc(title)}">
           <span>${UI.esc(icon)}</span>
           <div class="handle l"></div>
           <div class="handle r"></div>
@@ -2162,16 +2242,21 @@ window.Pages.members = function(root){
       const memberId = row.dataset.id;
       const member = Store.getUsers().find(u=>u.id===memberId);
       if(!member || !canEditTarget(member)) return;
+      const scheduleBlock = { locked: isDayLockedForEdit(selectedTeamId, selectedDay) };
+      if(scheduleBlock.locked && !unlockTriggered){
+        warnScheduleLocked();
+        return;
+      }
       const team = Config.teamById(member.teamId);
       const meta = UI.shiftMeta(team);
-      const blocks = normalizeBlocks(team, Store.getUserDayBlocks(member.id, selectedDay));
+      const blocks = normalizeBlocks(team, Store.getUserDayBlocks(member.id, selectedDay), { locked: scheduleBlock.locked });
 
       // Paint mode: click+drag across hours
       if(paint.enabled && !e.shiftKey){
         const rect = timeline.getBoundingClientRect();
         const hours = Math.ceil(meta.length / GRID_STEP_MIN);
         const h0 = hourIndexFromX(rect, e.clientX, hours);
-        const preSlots = slotsFromBlocks(team, normalizeBlocks(team, Store.getUserDayBlocks(member.id, selectedDay))).slice();
+        const preSlots = slotsFromBlocks(team, normalizeBlocks(team, Store.getUserDayBlocks(member.id, selectedDay), { locked: scheduleBlock.locked })).slice();
         const startedRoleBefore = preSlots[h0] || null;
         applyPaintHours(member, [h0], paint.role);
         paintDrag = { member, team, meta, timeline, rect, hours, lastHour: h0, touched: new Set([h0]), startedRoleBefore, preSlots };
@@ -2214,6 +2299,11 @@ window.Pages.members = function(root){
       const memberId = row.dataset.id;
       const member = Store.getUsers().find(u=>u.id===memberId);
       if(!member || !canEditTarget(member)) return;
+      const scheduleBlock = { locked: isDayLockedForEdit(selectedTeamId, selectedDay) };
+      if(scheduleBlock.locked && !unlockTriggered){
+        warnScheduleLocked();
+        return;
+      }
 
       // Paint mode: allow painting over existing segments too
       if(paint.enabled && !e.shiftKey){
@@ -2253,7 +2343,7 @@ window.Pages.members = function(root){
       const team = Config.teamById(member.teamId);
       const meta = UI.shiftMeta(team);
       const idx = Number(seg.dataset.idx);
-      const blocks = normalizeBlocks(team, Store.getUserDayBlocks(member.id, selectedDay));
+      const blocks = normalizeBlocks(team, Store.getUserDayBlocks(member.id, selectedDay), { locked: scheduleBlock.locked });
       const b = blocks[idx];
       if(!b) return;
 

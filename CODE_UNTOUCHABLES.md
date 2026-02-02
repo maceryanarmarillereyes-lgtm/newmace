@@ -191,7 +191,7 @@ This is required so authenticated users can read their own profile row under RLS
 
 ## Schedule Apply Changes + One-Time Notifications + Task Colors (Permanent)
 - “Team Lead must be able to apply schedule changes across all dates. Members must receive one-time, acknowledge-only notifications with task and date context. My Schedule must reflect TEAM TASK color codes and enterprise-grade layout.”
-- Team Lead can view and edit across all dates even if a week/day is locked.
+- Team Lead/Super Admin can view all dates, but **cannot edit locked schedule blocks**. Locked blocks must remain immutable until explicitly unlocked.
 - Members receive schedule update notifications only when their schedule changed. Notifications must:
   - Pop out once per change (no spam loops)
   - Have no close (X) control — only **Acknowledge**
@@ -210,15 +210,16 @@ This is required so authenticated users can read their own profile row under RLS
 - Team view must be scrollable and responsive with a sticky MEMBER column and sticky time header row.
 
 ## Schedule Time Ruler Alignment + Lock Function Safety (Permanent)
-- “Time labels must align precisely with schedule grid lines. All lock-related functions must be defined and scoped correctly. Team Lead must be able to view/edit all dates regardless of lock state. Members page must not throw runtime errors.”
+- “Time labels must align precisely with schedule grid lines. All lock-related functions must be defined and scoped correctly. Locked blocks must be immutable until explicitly unlocked. Members page must not throw runtime errors.”
 - Time ruler (left column) must share the same header offset + row-height unit system as the schedule grid to prevent drift on resize/zoom.
-- Lock helpers (e.g., `dayLockedForGridDisplay`, `isDayLockedForEdit`) must always be defined before any render path and must respect Team Lead/Admin overrides.
+- Lock helpers (e.g., `dayLockedForGridDisplay`, `isDayLockedForEdit`) must always be defined before any render path and must **not** allow role-based bypass of block locks.
 
 ## Task Sync + Time Alignment + Graphical Balancing Panel (Permanent)
 - “All task assignments must sync across Team Lead and Member views. Time labels must align with grid blocks. Team Lead must have access to a floating graphical panel to balance task hours across members.”
 - Canonical schedule store is `mums_schedule_blocks` (client mirror `Store.KEYS.schedule_blocks`), with `mums_schedule_snapshots` used for rollback/audit.
 - My Schedule ruler + grid must share a single unit system (`--schx-row-h`, `--schx-hours`) to prevent drift on resize/zoom.
 - Members graphical status panel must remain role-gated (Team Lead/Admin) and must not block scheduling workflows if disabled.
+- Graph panel must support **Mailbox Manager vs Call Available** comparison mode, auto-sort by fewest hours in the selected task, and show governance notices (<10h low / ≥20h high) to guide balanced assignment.
 
 ## Graph Panel Stability + Member Schedule Visibility (Permanent)
 - “Graphical panels must not throw runtime errors. Member schedules must be visible across all views. Time labels must align with grid blocks and layout must meet enterprise-grade standards.”
@@ -230,4 +231,5 @@ This is required so authenticated users can read their own profile row under RLS
 
 ## Root Login + Release Packaging Naming (Permanent)
 - “Root access must always load login page. No internal content visible before authentication.”
-- “All packaged builds must follow naming format MUMS Phase 1‑<sequence>, starting at 500 and incrementing by 1.”
+- “All packaged builds must follow naming format `MUMS Phase 1-<sequence>`, starting at 500 and incrementing by +1 per release.”
+- Packaging must use the authoritative tool: `tools/package_phase1_release.js` (or `npm run package:phase1`) to generate the zip and bump build labels for the next release (500 → 501 → 502...).

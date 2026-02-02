@@ -9,6 +9,7 @@
   "scripts": {
     "vercel-build": "echo \"Static site deployment — no build step required\"",
     "build": "npm run vercel-build",
-    "start": "node -e \"console.log(\\\"Static site: no start script\\\")\""
+    "start": "node -e \"console.log(\\\"Static site: no start script\\\")\"",
+    "package:phase1": "node tools/package_phase1_release.js"
   }
 }

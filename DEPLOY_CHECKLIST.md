@@ -113,7 +113,9 @@ After applying migrations:
     - Responsive layout holds; no horizontal overflow; interactions remain usable.
 - Members (Team Lead tooling):
   - Lock/Unlock:
-    - Team Lead can access and edit all calendar dates even if locked.
+    - Team Lead/Super Admin can view all calendar dates, but **locked schedule blocks are immutable** until explicitly unlocked.
+    - Editing attempts on locked blocks must show a warning and must not change data.
+    - Locked blocks must display the “🔒 Locked” label below the icon/label.
     - Unlocking days persists and does not revert on refresh or cross-session sync.
     - Lock state syncs via `mums_schedule_lock_state`.
   - Apply Changes:
@@ -202,7 +204,8 @@ After applying migrations:
   - No runtime errors:
     - Page loads without `ReferenceError: dayLockedForGridDisplay` or any other JS exceptions.
   - Lock behavior:
-    - Team Lead/Admin can view and edit schedules across all dates regardless of lock state.
+    - Team Lead/Admin can view all dates, but **cannot edit locked schedule blocks** until unlocked.
+    - Editing locked blocks must show a warning and keep blocks unchanged.
     - Non-priv roles (MEMBER) see locked-day indicators and cannot edit locked days.
 - JS syntax verification:
   - Run `node --check` against modified files:
@@ -303,6 +306,27 @@ After applying migrations:
   - Confirm the packaged artifact name follows: `MUMS Phase 1-500.zip`.
   - Confirm the UI header shows: `Build ID: MUMS Phase 1-500`.
   - Confirm no legacy build IDs (`13126-*`) appear in the UI.
+
+- Schedule lock enforcement (Members):
+  - As TEAM_LEAD and SUPER_ADMIN: lock a weekday (Mon–Fri), then attempt to drag/resize/edit a locked block.
+    - Expect: warning shown; no changes persisted.
+  - Confirm each locked block shows the label: “🔒 Locked”.
+  - Unlock explicitly, then edit; confirm edits now persist.
+
+- Graphical status panel (Members):
+  - As TEAM_LEAD/Admin, enable **Graphical Status Panel**.
+  - Comparison dropdown:
+    - Select **Mailbox Manager** → list shows Mailbox hours only, sorted by fewest hours.
+    - Select **Call Available** → list shows Call hours only, sorted by fewest hours.
+  - Governance notices:
+    - Low hours (<10h): “This member has limited hours in this task. Priority assignment recommended.”
+    - High hours (≥20h): “This member already has 20 hours in this task. Assigning more may cause imbalance. You may proceed or reselect from the list below.”
+
+- Sequential packaging auto-increment:
+  - Confirm the tool exists: `tools/package_phase1_release.js`.
+  - Dry-run check: `npm run package:phase1 -- --dry-run`.
+    - Expect: it would create `MUMS Phase 1-500.zip`, then bump labels to `MUMS Phase 1-501`.
+  - After packaging (real run), confirm the next run would generate: `MUMS Phase 1-501.zip`.
 - Keep-alive regression:
   - Confirm `/api/keep_alive` still returns `{ ok: true }` and inserts into `heartbeat`.
   - Confirm GitHub Actions `Supabase Keep-Alive` workflow still exists and runs on schedule.
