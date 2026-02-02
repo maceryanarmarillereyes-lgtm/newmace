@@ -40,6 +40,43 @@
       .replace(/'/g,'&#39;');
   }
 
+  // Per-task layout defaults (Phase 1-504 landscape rebuild)
+  // The Members page passes callRole so we can normalize call variants.
+  GP.getTaskLayout = function(taskId, ctx){
+    const tid = String(taskId || '').trim();
+    const callRole = String(ctx && ctx.callRole ? ctx.callRole : '').trim();
+    const meta = ctx && ctx.meta ? ctx.meta : null;
+
+    // Known task families
+    const isMailbox = (tid === 'mailbox_manager');
+    const isCall = (tid === callRole || tid === 'call_available' || tid === 'call_onqueue');
+    const isBackOffice = (tid === 'back_office' || tid === 'backoffice');
+
+    if(isMailbox){
+      return { key:'mailbox', cls:'gsp-task-mailbox', defaultMax: 20, barColor: '#f59e0b' };
+    }
+    if(isCall){
+      return { key:'call', cls:'gsp-task-call', defaultMax: 25, barColor: '#16a34a' };
+    }
+    if(isBackOffice){
+      return { key:'backoffice', cls:'gsp-task-backoffice', defaultMax: 20, barColor: '#f59e0b' };
+    }
+
+    // Fallback: use configured task color when available.
+    const c = (meta && meta.color) ? String(meta.color) : '#4f8bff';
+    return { key:'generic', cls:'gsp-task-generic', defaultMax: 20, barColor: c };
+  };
+
+  GP.defaultMaxHours = function(taskId, ctx){
+    try{
+      const lay = GP.getTaskLayout(taskId, ctx);
+      const n = Number(lay && lay.defaultMax ? lay.defaultMax : 20);
+      return (Number.isFinite(n) && n > 0) ? n : 20;
+    }catch(_e){
+      return 20;
+    }
+  };
+
   function radarPolygonPath(vals, maxVal){
     const n = Array.isArray(vals) ? vals.length : 0;
     if(n < 3) return '';
@@ -66,16 +103,22 @@
     return d;
   }
 
+  // Visualization renderer used by Members page.
+  // For bar view: render a percent-based progress bar (landscape table cell).
   GP.renderVizHTML = function(viewId, data){
     const id = GP.normalizeViewId(viewId);
     const pct = clamp(data && data.pct, 0, 100);
     const color = String((data && data.color) || '#4f8bff');
     const title = String((data && data.title) || '');
+    const pctText = String((data && data.pctText) || (Math.round(pct) + '%'));
 
     if(id === 'bar'){
       return (
-        '<div class="gsp-bar" role="img" aria-label="Hours bar">' +
-          '<div class="task-bar" style="width:' + pct.toFixed(4) + '%;--c:' + svgEscape(color) + '" title="' + svgEscape(title) + '"></div>' +
+        '<div class="gsp-progress" role="img" aria-label="Progress bar" title="' + svgEscape(title) + '">' +
+          '<div class="gsp-progress-track" style="--p:' + pct.toFixed(4) + ';--c:' + svgEscape(color) + '">' +
+            '<div class="gsp-progress-fill"></div>' +
+            '<div class="gsp-progress-label">' + svgEscape(pctText) + '</div>' +
+          '</div>' +
         '</div>'
       );
     }
@@ -118,13 +161,17 @@
     }
 
     if(id === 'radar'){
-      // Expect dailyHours for Mon–Fri (5 axes). If not provided, fall back to bar.
+      // Expect radarVals (e.g., Mon–Fri) and radarMax.
       const vals = Array.isArray(data && data.radarVals) ? data.radarVals : null;
       const maxVal = Math.max(1e-6, Number((data && data.radarMax) || 8));
       if(!vals || vals.length < 3){
+        // Fallback to bar
         return (
-          '<div class="gsp-bar" role="img" aria-label="Hours bar">' +
-            '<div class="task-bar" style="width:' + pct.toFixed(4) + '%;--c:' + svgEscape(color) + '" title="' + svgEscape(title) + '"></div>' +
+          '<div class="gsp-progress" role="img" aria-label="Progress bar" title="' + svgEscape(title) + '">' +
+            '<div class="gsp-progress-track" style="--p:' + pct.toFixed(4) + ';--c:' + svgEscape(color) + '">' +
+              '<div class="gsp-progress-fill"></div>' +
+              '<div class="gsp-progress-label">' + svgEscape(pctText) + '</div>' +
+            '</div>' +
           '</div>'
         );
       }
@@ -145,8 +192,11 @@
 
     // Default
     return (
-      '<div class="gsp-bar" role="img" aria-label="Hours bar">' +
-        '<div class="task-bar" style="width:' + pct.toFixed(4) + '%;--c:' + svgEscape(color) + '" title="' + svgEscape(title) + '"></div>' +
+      '<div class="gsp-progress" role="img" aria-label="Progress bar" title="' + svgEscape(title) + '">' +
+        '<div class="gsp-progress-track" style="--p:' + pct.toFixed(4) + ';--c:' + svgEscape(color) + '">' +
+          '<div class="gsp-progress-fill"></div>' +
+          '<div class="gsp-progress-label">' + svgEscape(pctText) + '</div>' +
+        '</div>' +
       '</div>'
     );
   };

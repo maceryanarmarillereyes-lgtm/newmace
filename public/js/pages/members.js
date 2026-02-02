@@ -681,6 +681,10 @@ function syncTaskSelection(taskId, opts){
   function renderGraphPanel(){
     const panel = wrap.querySelector('#graphPanel');
     if(!panel) return;
+
+    // Landscape orientation (sample layout)
+    panel.classList.add('gsp-landscape');
+
     const body = panel.querySelector('#graphPanelBody');
     const sub = panel.querySelector('#graphPanelSub');
     const foot = panel.querySelector('#graphPanelFoot');
@@ -715,12 +719,12 @@ function syncTaskSelection(taskId, opts){
       syncTaskSelection(desiredTaskId, { render:false, persist:true });
     }
 
-    // Normalize analytics view (defaults to Bar Graph)
+    // Analytics view (defaults to Bar Graph). Landscape applies across all views.
     try{ if(window.GraphPanel && typeof GraphPanel.normalizeViewId === 'function') graphViewId = GraphPanel.normalizeViewId(graphViewId); }catch(_e){ graphViewId = 'bar'; }
     if(!graphViewId) graphViewId = 'bar';
 
     const meta = taskMeta(team.id, graphTaskFilterId);
-    const compareLabel = meta.label || String(graphTaskFilterId||'');
+    const compareLabel = (meta && meta.label) ? meta.label : String(graphTaskFilterId||'');
 
     const weekLong = (()=>{
       try{
@@ -740,13 +744,49 @@ function syncTaskSelection(taskId, opts){
       sub.textContent = `${tLabel} • Week ${weekLong} • Compare: ${compareLabel}`;
     }
     if(foot){
-      foot.textContent = 'Synced with Paint • Auto-sorted by fewest hours in the selected task.';
+      foot.textContent = 'Synced with Paint • Sorted by percentage (lowest at top, highest at bottom).';
     }
 
     const members = getMembersForView(selectedTeamId) || [];
     if(!members.length){
       body.innerHTML = `<div class="small muted">No members loaded for this team.</div>`;
       return;
+    }
+
+    // Max-hours settings (stored per team)
+    const maxKey = `mums_gsp_max_hours_${team.id}`;
+    let maxMap = {};
+    try{ maxMap = JSON.parse(localStorage.getItem(maxKey) || '{}') || {}; }catch(_){ maxMap = {}; }
+
+    function taskLayout(taskId){
+      try{
+        if(window.GraphPanel && typeof GraphPanel.getTaskLayout === 'function'){
+          return GraphPanel.getTaskLayout(taskId, { callRole, meta });
+        }
+      }catch(_){}
+      // Fallback layout
+      const c = (meta && meta.color) ? meta.color : fallbackColorForLabel(compareLabel);
+      return { cls:'gsp-task-generic', defaultMax: 20, barColor: c };
+    }
+
+    function getMaxHoursForTask(taskId){
+      const k = String(taskId||'');
+      const v = Number(maxMap[k]);
+      if(Number.isFinite(v) && v > 0) return v;
+      const lay = taskLayout(taskId);
+      const d = Number(lay && lay.defaultMax ? lay.defaultMax : 20);
+      return (Number.isFinite(d) && d > 0) ? d : 20;
+    }
+
+    function setMaxHoursForTask(taskId, val){
+      const k = String(taskId||'');
+      const n = Number(val);
+      if(!Number.isFinite(n) || n <= 0){
+        delete maxMap[k];
+      }else{
+        maxMap[k] = Math.round(n*10)/10;
+      }
+      try{ localStorage.setItem(maxKey, JSON.stringify(maxMap)); }catch(_){}
     }
 
     function blockMinutes(b){
@@ -807,34 +847,54 @@ function syncTaskSelection(taskId, opts){
       return { totalMin: total, byDayMin: byDay };
     }
 
+    const maxH = getMaxHoursForTask(graphTaskFilterId);
+    const lay = taskLayout(graphTaskFilterId);
+
+    // Apply per-task styling class to the panel (mailbox/call/backoffice/etc.)
+    panel.classList.remove('gsp-task-mailbox','gsp-task-call','gsp-task-backoffice','gsp-task-generic');
+    if(lay && lay.cls) panel.classList.add(lay.cls);
+
+    const barColor = (lay && lay.barColor) ? lay.barColor : ((meta && meta.color) ? meta.color : fallbackColorForLabel(compareLabel));
+
     const rows = members.map(m=>{
       const res = computeTaskMinutesForMember(m, graphTaskFilterId);
       const name = m.fullName || m.name || m.email || m.id;
-      const dailyHours = res.byDayMin.map(x=>x/60);
       const hours = (res.totalMin||0)/60;
-      // Radar: Mon–Fri (5 axes)
+
+      const dailyHours = (res.byDayMin||[]).map(x => (Number(x||0) / 60));
       const radarVals = [dailyHours[1]||0, dailyHours[2]||0, dailyHours[3]||0, dailyHours[4]||0, dailyHours[5]||0];
-      return { id: m.id, name, hours, dailyHours, radarVals };
+
+      const pctRaw = maxH > 0 ? (hours / maxH) * 100 : 0;
+      const pct = Math.max(0, pctRaw);
+      const pctCapped = Math.min(100, pct);
+
+      return {
+        id: m.id,
+        name,
+        hours,
+        dailyHours,
+        radarVals,
+        pctRaw,
+        pct: pctCapped,
+        pctText: `${Math.round(pctCapped)}%`
+      };
     });
 
+    // Sort by percentage: lowest at top, highest at bottom (matches sample)
     rows.sort((a,b)=>{
-      if(a.hours !== b.hours) return a.hours - b.hours;
+      if(a.pctRaw !== b.pctRaw) return a.pctRaw - b.pctRaw;
       return String(a.name||'').localeCompare(String(b.name||''));
     });
 
-    const maxObserved = rows.reduce((m,r)=>Math.max(m, r.hours), 0);
-    const scaleMax = Math.max(20, maxObserved, 1);
-
-    let maxDayObs = 0;
-    let maxRadarObs = 0;
+    // Maxima for day-based views (heatmap/radar)
+    let maxDayObs = 1;
+    let maxRadarObs = 1;
     for(const r of rows){
       for(const v of (r.dailyHours||[])) maxDayObs = Math.max(maxDayObs, Number(v||0));
       for(const v of (r.radarVals||[])) maxRadarObs = Math.max(maxRadarObs, Number(v||0));
     }
     maxDayObs = Math.max(1, maxDayObs);
     maxRadarObs = Math.max(1, maxRadarObs);
-
-    const barColor = (meta && meta.color) ? meta.color : fallbackColorForLabel(compareLabel);
 
     const viewList = (window.GraphPanel && Array.isArray(GraphPanel.VIEWS)) ? GraphPanel.VIEWS : [
       { id:'bar', label:'Bar Graph' },
@@ -844,6 +904,30 @@ function syncTaskSelection(taskId, opts){
       { id:'heat', label:'Heatmap' },
       { id:'radar', label:'Radar Chart' },
     ];
+
+    const settingsHtml = `
+      <div class="gsp-settings">
+        <div class="gsp-settings-title">Graph Panel Settings</div>
+        <div class="small muted" style="margin-top:2px">Set Max Hours per Task</div>
+        <div class="gsp-max-grid">
+          ${taskOpts
+            .filter(o=>String(o.id) !== '__clear__')
+            .map(o=>{
+              const tid = String(o.id);
+              const l = taskLayout(tid);
+              const defMax = getMaxHoursForTask(tid);
+              const label = (o.label || o.id);
+              const icon = o.icon || '';
+              return `
+                <div class="gsp-max-item ${esc(l && l.cls ? l.cls : '')}">
+                  <div class="lbl">${esc(icon)} ${esc(label)}</div>
+                  <input class="input gsp-max" data-taskid="${esc(tid)}" type="number" min="1" step="1" value="${esc(defMax)}" aria-label="Max hours for ${esc(label)}"/>
+                </div>
+              `;
+            }).join('')}
+        </div>
+      </div>
+    `;
 
     const controlHtml = `
       <div class="gsp-controls">
@@ -859,74 +943,35 @@ function syncTaskSelection(taskId, opts){
             ${viewList.map(v=>`<option value="${esc(v.id)}">${esc(v.label||v.id)}</option>`).join('')}
           </select>
         </div>
-        <div class="gsp-controls-hint small muted">Synced with Paint • Auto-sorted by fewest hours.</div>
+        <div class="gsp-controls-hint small muted">Landscape • % based on max hours • Synced with Paint</div>
       </div>
     `;
 
-    function priorityInfo(valHours){
-      if(String(graphTaskFilterId) === '__clear__') return null;
-      if(valHours < 10){
-        return {
-          cls: 'pri-high',
-          label: 'High Priority to Assign',
-          tip: 'This member has limited hours in this task. Priority assignment recommended.'
-        };
-      }
-      if(valHours >= 20){
-        return {
-          cls: 'pri-over',
-          label: 'Overloaded',
-          tip: 'This member already has 20+ hours in this task. Assigning more may cause imbalance.'
-        };
-      }
-      return { cls: 'pri-balanced', label: 'Balanced', tip: '' };
-    }
-
-    const rowsHtml = rows.map(r=>{
-      const val = Number(r.hours||0);
-      const pct = Math.min(100, (val/scaleMax)*100);
-      const hoursText = `${val.toFixed(1)}h`;
-
-      const pri = priorityInfo(val);
-      let priHtml = '';
-      if(pri){
-        priHtml = `
-          <div class="gsp-pri">
-            <span class="gsp-badge ${esc(pri.cls)}" tabindex="0">${esc(pri.label)}</span>
-            ${pri.tip ? `<div class="gsp-tip ${esc(pri.cls)}">${esc(pri.tip)}</div>` : ''}
-          </div>
-        `;
-      }
-
-      const title = `${compareLabel}: ${hoursText}`;
-      const viz = (window.GraphPanel && typeof GraphPanel.renderVizHTML === 'function')
-        ? GraphPanel.renderVizHTML(graphViewId, {
-            pct,
-            color: barColor,
-            title,
-            dailyHours: r.dailyHours,
-            dailyMax: maxDayObs,
-            dayLabels: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
-            radarVals: r.radarVals,
-            radarMax: maxRadarObs,
-          })
-        : `<div class="gsp-bar"><div class="task-bar" style="width:${pct.toFixed(4)}%;--c:${esc(barColor)}" title="${esc(title)}"></div></div>`;
-
-      const rowCls = `gsp-row${String(selMemberId||'')===String(r.id) ? ' member-highlight' : ''}`;
-
-      return `
-        <div class="${rowCls}" data-mid="${esc(r.id)}" role="button" tabindex="0" aria-label="${esc(r.name)} ${esc(compareLabel)} hours">
-          <div class="gsp-name">
-            <div class="name">${esc(r.name)}</div>
-            <div class="meta">${esc(compareLabel)} this week: <b>${esc(hoursText)}</b></div>
-            ${priHtml}
-          </div>
-          ${viz}
+    const tableHtml = `
+      <div class="gsp-landscape-table ${esc(lay && lay.cls ? lay.cls : 'gsp-task-generic')}" style="--gsp-bar:${esc(barColor)}">
+        <div class="gsp-thead">
+          <div class="gsp-th gsp-th-name">Members</div>
+          <div class="gsp-th gsp-th-task">${esc(compareLabel)}</div>
         </div>
-      `;
-    }).join('');
+        <div class="gsp-tbody">
+          ${rows.map(r=>{
+            const title = `${compareLabel}: ${r.hours.toFixed(1)}h / ${maxH}h (${r.pctRaw.toFixed(1)}%)`;
+            const viz = (window.GraphPanel && typeof GraphPanel.renderVizHTML === 'function')
+              ? GraphPanel.renderVizHTML(graphViewId, { pct: r.pct, pctText: r.pctText, color: barColor, title, dailyHours: r.dailyHours, dailyMax: maxDayObs, dayLabels: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], radarVals: r.radarVals, radarMax: maxRadarObs })
+              : `<div class="gsp-progress" title="${esc(title)}"><div class="gsp-progress-track" style="--p:${r.pct.toFixed(2)};--c:${esc(barColor)}"><div class="gsp-progress-fill"></div><div class="gsp-progress-label">${esc(r.pctText)}</div></div></div>`;
+            const rowCls = `gsp-tr${String(selMemberId||'')===String(r.id) ? ' member-highlight' : ''}`;
+            return `
+              <div class="${rowCls}" data-mid="${esc(r.id)}" role="button" tabindex="0" aria-label="${esc(r.name)} ${esc(compareLabel)} percentage">
+                <div class="gsp-td gsp-td-name">${esc(r.name)}</div>
+                <div class="gsp-td gsp-td-bar">${viz}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
 
-    body.innerHTML = controlHtml + rowsHtml;
+    body.innerHTML = controlHtml + settingsHtml + tableHtml;
 
     const taskSel = body.querySelector('#gspTask');
     if(taskSel){
@@ -949,7 +994,15 @@ function syncTaskSelection(taskId, opts){
       });
     }
 
-    body.querySelectorAll('.gsp-row').forEach(rEl=>{
+    body.querySelectorAll('.gsp-max').forEach(inp=>{
+      inp.addEventListener('change', ()=>{
+        const tid = inp.dataset.taskid;
+        setMaxHoursForTask(tid, inp.value);
+        renderGraphPanel();
+      });
+    });
+
+    body.querySelectorAll('.gsp-tr').forEach(rEl=>{
       const id = rEl.dataset.mid;
       const go = ()=>{
         selMemberId = id;
@@ -963,6 +1016,7 @@ function syncTaskSelection(taskId, opts){
       rEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); go(); } });
     });
   }
+
 
   // Smooth transitions when switching weeks/days
   function triggerSwap(){
