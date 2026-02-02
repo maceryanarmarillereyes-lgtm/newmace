@@ -6,32 +6,13 @@
 
   const GP = (window.GraphPanel = window.GraphPanel || {});
 
-  const VIEWS = [
-    { id: 'bar',   label: 'Bar Graph' },
-    { id: 'pie',   label: 'Pie Chart' },
-    { id: 'stack', label: 'Stacked Column' },
-    { id: 'donut', label: 'Donut Chart' },
-    { id: 'heat',  label: 'Heatmap' },
-    { id: 'radar', label: 'Radar Chart' },
-  ];
-
-  GP.VIEWS = VIEWS;
-
   function clamp(n, a, b){
     n = Number(n);
     if(!Number.isFinite(n)) n = 0;
     return Math.max(a, Math.min(b, n));
   }
 
-  GP.normalizeViewId = function(viewId){
-    const id = String(viewId || '').trim().toLowerCase();
-    for(const v of VIEWS){
-      if(v.id === id) return id;
-    }
-    return 'bar';
-  };
-
-  function svgEscape(s){
+  function escAttr(s){
     return String(s || '')
       .replace(/&/g,'&amp;')
       .replace(/</g,'&lt;')
@@ -40,14 +21,13 @@
       .replace(/'/g,'&#39;');
   }
 
-  // Per-task layout defaults (Phase 1-504 landscape rebuild)
+  // Per-task layout defaults (Phase 1-504 landscape rebuild; still used in Phase 1-505)
   // The Members page passes callRole so we can normalize call variants.
   GP.getTaskLayout = function(taskId, ctx){
     const tid = String(taskId || '').trim();
     const callRole = String(ctx && ctx.callRole ? ctx.callRole : '').trim();
     const meta = ctx && ctx.meta ? ctx.meta : null;
 
-    // Known task families
     const isMailbox = (tid === 'mailbox_manager');
     const isCall = (tid === callRole || tid === 'call_available' || tid === 'call_onqueue');
     const isBackOffice = (tid === 'back_office' || tid === 'backoffice');
@@ -77,127 +57,139 @@
     }
   };
 
-  function radarPolygonPath(vals, maxVal){
-    const n = Array.isArray(vals) ? vals.length : 0;
-    if(n < 3) return '';
-    maxVal = Math.max(1e-6, Number(maxVal || 1));
-
-    const cx = 50, cy = 50;
-    const rMax = 38;
-    const pts = [];
-    for(let i=0;i<n;i++){
-      const v = clamp(vals[i], 0, maxVal);
-      const f = v / maxVal;
-      const ang = (-Math.PI/2) + (i * 2*Math.PI / n);
-      const r = rMax * f;
-      const x = cx + r * Math.cos(ang);
-      const y = cy + r * Math.sin(ang);
-      pts.push([x,y]);
-    }
-    let d = '';
-    for(let i=0;i<pts.length;i++){
-      const p = pts[i];
-      d += (i === 0 ? 'M' : 'L') + p[0].toFixed(2) + ' ' + p[1].toFixed(2) + ' ';
-    }
-    d += 'Z';
-    return d;
-  }
-
-  // Visualization renderer used by Members page.
-  // For bar view: render a percent-based progress bar (landscape table cell).
-  GP.renderVizHTML = function(viewId, data){
-    const id = GP.normalizeViewId(viewId);
+  // Permanent, default visualization: landscape progress bar using percent width.
+  GP.renderProgressBarHTML = function(data){
     const pct = clamp(data && data.pct, 0, 100);
     const color = String((data && data.color) || '#4f8bff');
     const title = String((data && data.title) || '');
     const pctText = String((data && data.pctText) || (Math.round(pct) + '%'));
-
-    if(id === 'bar'){
-      return (
-        '<div class="gsp-progress" role="img" aria-label="Progress bar" title="' + svgEscape(title) + '">' +
-          '<div class="gsp-progress-track" style="--p:' + pct.toFixed(4) + ';--c:' + svgEscape(color) + '">' +
-            '<div class="gsp-progress-fill"></div>' +
-            '<div class="gsp-progress-label">' + svgEscape(pctText) + '</div>' +
-          '</div>' +
-        '</div>'
-      );
-    }
-
-    if(id === 'pie' || id === 'donut'){
-      const innerCls = (id === 'donut') ? 'gsp-pie gsp-donut' : 'gsp-pie';
-      return (
-        '<div class="gsp-viz gsp-vizwrap" title="' + svgEscape(title) + '" role="img" aria-label="Pie visualization">' +
-          '<div class="' + innerCls + '" style="--p:' + pct.toFixed(4) + ';--c:' + svgEscape(color) + '"></div>' +
-        '</div>'
-      );
-    }
-
-    if(id === 'stack'){
-      return (
-        '<div class="gsp-viz gsp-vizwrap" title="' + svgEscape(title) + '" role="img" aria-label="Stacked column visualization">' +
-          '<div class="gsp-stackcol" style="--p:' + pct.toFixed(4) + ';--c:' + svgEscape(color) + '">' +
-            '<div class="fill"></div>' +
-          '</div>' +
-        '</div>'
-      );
-    }
-
-    if(id === 'heat'){
-      const daily = Array.isArray(data && data.dailyHours) ? data.dailyHours : [];
-      const dailyMax = Math.max(1e-6, Number((data && data.dailyMax) || 8));
-      const labels = Array.isArray(data && data.dayLabels) ? data.dayLabels : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-      let cells = '';
-      for(let i=0;i<7;i++){
-        const v = clamp(daily[i] || 0, 0, dailyMax);
-        const a = clamp(v / dailyMax, 0, 1);
-        const tip = labels[i] + ': ' + (v || 0).toFixed(1) + 'h';
-        cells += '<span class="cell" style="--a:' + a.toFixed(4) + ';--c:' + svgEscape(color) + '" title="' + svgEscape(tip) + '"></span>';
-      }
-      return (
-        '<div class="gsp-viz gsp-heat" role="img" aria-label="Heatmap visualization" title="' + svgEscape(title) + '">' +
-          cells +
-        '</div>'
-      );
-    }
-
-    if(id === 'radar'){
-      // Expect radarVals (e.g., Mon–Fri) and radarMax.
-      const vals = Array.isArray(data && data.radarVals) ? data.radarVals : null;
-      const maxVal = Math.max(1e-6, Number((data && data.radarMax) || 8));
-      if(!vals || vals.length < 3){
-        // Fallback to bar
-        return (
-          '<div class="gsp-progress" role="img" aria-label="Progress bar" title="' + svgEscape(title) + '">' +
-            '<div class="gsp-progress-track" style="--p:' + pct.toFixed(4) + ';--c:' + svgEscape(color) + '">' +
-              '<div class="gsp-progress-fill"></div>' +
-              '<div class="gsp-progress-label">' + svgEscape(pctText) + '</div>' +
-            '</div>' +
-          '</div>'
-        );
-      }
-      const d = radarPolygonPath(vals, maxVal);
-      return (
-        '<div class="gsp-viz gsp-vizwrap" title="' + svgEscape(title) + '" role="img" aria-label="Radar chart visualization">' +
-          '<div class="gsp-radar">' +
-            '<svg viewBox="0 0 100 100" aria-hidden="true">' +
-              '<circle cx="50" cy="50" r="38" class="grid" />' +
-              '<circle cx="50" cy="50" r="26" class="grid" />' +
-              '<circle cx="50" cy="50" r="14" class="grid" />' +
-              '<path d="' + svgEscape(d) + '" class="poly" style="--c:' + svgEscape(color) + '"></path>' +
-            '</svg>' +
-          '</div>' +
-        '</div>'
-      );
-    }
-
-    // Default
     return (
-      '<div class="gsp-progress" role="img" aria-label="Progress bar" title="' + svgEscape(title) + '">' +
-        '<div class="gsp-progress-track" style="--p:' + pct.toFixed(4) + ';--c:' + svgEscape(color) + '">' +
+      '<div class="gsp-progress" role="img" aria-label="Progress bar" title="' + escAttr(title) + '">' +
+        '<div class="gsp-progress-track" style="--p:' + pct.toFixed(4) + ';--c:' + escAttr(color) + '">' +
           '<div class="gsp-progress-fill"></div>' +
-          '<div class="gsp-progress-label">' + svgEscape(pctText) + '</div>' +
+          '<div class="gsp-progress-label">' + escAttr(pctText) + '</div>' +
         '</div>' +
       '</div>'
     );
+  };
+
+  // Resizable helper: adds 8 enterprise-grade resize handles (edges + corners).
+  // The Members page persists geometry via its own saveGraphState().
+  GP.enableResizable = function(panel, opts){
+    try{
+      if(!panel || panel._gspResizableEnabled) return;
+      panel._gspResizableEnabled = true;
+
+      const o = opts || {};
+      const minW = Number.isFinite(o.minWidth) ? o.minWidth : 320;
+      const minH = Number.isFinite(o.minHeight) ? o.minHeight : 240;
+      const onResizeEnd = (typeof o.onResizeEnd === 'function') ? o.onResizeEnd : null;
+
+      const dirs = ['n','s','e','w','ne','nw','se','sw'];
+      for(const d of dirs){
+        const h = document.createElement('div');
+        h.className = 'gsp-resize-handle gsp-rh-' + d;
+        h.dataset.dir = d;
+        h.tabIndex = -1;
+        panel.appendChild(h);
+      }
+
+      function viewportMax(){
+        return {
+          w: Math.max(320, window.innerWidth - 16),
+          h: Math.max(240, window.innerHeight - 16),
+        };
+      }
+
+      function ensureLeftTop(){
+        // Ensure we resize from left/top coordinate space.
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+        const r = panel.getBoundingClientRect();
+        if(!panel.style.left) panel.style.left = Math.round(r.left) + 'px';
+        if(!panel.style.top) panel.style.top = Math.round(r.top) + 'px';
+      }
+
+      let resizing = false;
+      let dir = 'se';
+      let sx = 0, sy = 0;
+      let start = null;
+
+      function onDown(e){
+        if(e.button !== 0) return;
+        const t = e.currentTarget;
+        if(!t || !t.dataset) return;
+        e.preventDefault();
+        e.stopPropagation();
+        ensureLeftTop();
+        resizing = true;
+        dir = String(t.dataset.dir || 'se');
+        const r = panel.getBoundingClientRect();
+        sx = e.clientX; sy = e.clientY;
+        start = { left: r.left, top: r.top, width: r.width, height: r.height };
+        try{ t.setPointerCapture(e.pointerId); }catch(_e){}
+        panel.classList.add('gsp-resizing');
+      }
+
+      function onMove(e){
+        if(!resizing || !start) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const dx = e.clientX - sx;
+        const dy = e.clientY - sy;
+        const isN = dir.includes('n');
+        const isS = dir.includes('s');
+        const isE = dir.includes('e');
+        const isW = dir.includes('w');
+
+        let left = start.left;
+        let top = start.top;
+        let width = start.width;
+        let height = start.height;
+
+        if(isE) width = start.width + dx;
+        if(isS) height = start.height + dy;
+        if(isW){ width = start.width - dx; left = start.left + dx; }
+        if(isN){ height = start.height - dy; top = start.top + dy; }
+
+        const vmax = viewportMax();
+        width = clamp(width, minW, vmax.w);
+        height = clamp(height, minH, vmax.h);
+
+        // If clamped, adjust left/top so we don't drift.
+        if(isW){ left = start.left + (start.width - width); }
+        if(isN){ top = start.top + (start.height - height); }
+
+        left = clamp(left, 8, Math.max(8, window.innerWidth - width - 8));
+        top = clamp(top, 8, Math.max(8, window.innerHeight - height - 8));
+
+        panel.style.left = Math.round(left) + 'px';
+        panel.style.top = Math.round(top) + 'px';
+        panel.style.width = Math.round(width) + 'px';
+        panel.style.height = Math.round(height) + 'px';
+      }
+
+      function onUp(e){
+        if(!resizing) return;
+        resizing = false;
+        start = null;
+        panel.classList.remove('gsp-resizing');
+        try{ e.currentTarget.releasePointerCapture(e.pointerId); }catch(_e){}
+        if(onResizeEnd) {
+          try{ onResizeEnd(); }catch(_e){}
+        }
+      }
+
+      const handles = panel.querySelectorAll('.gsp-resize-handle');
+      handles.forEach(h=>{
+        h.addEventListener('pointerdown', onDown);
+        h.addEventListener('pointermove', onMove);
+        h.addEventListener('pointerup', onUp);
+        h.addEventListener('pointercancel', onUp);
+      });
+    }catch(_e){
+      // non-fatal
+    }
   };
 })();

@@ -111,6 +111,10 @@ function main(){
   const nextSeq = seq + 1;
   const filesToBump = [
     configPath,
+    path.join(root, 'index.html'),
+    path.join(root, 'login.html'),
+    path.join(root, 'dashboard.html'),
+    path.join(root, 'schedule.html'),
     path.join(root, 'public', 'index.html'),
     path.join(root, 'public', 'login.html'),
     path.join(root, 'public', 'dashboard.html'),

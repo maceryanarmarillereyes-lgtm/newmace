@@ -1013,6 +1013,44 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   resize: both;
 }
 
+/* Phase 1-505: floating panel must always be on top */
+.graph-status-panel.gsp-floating{
+  position: fixed;
+  z-index: 9999;
+}
+
+/* Phase 1-505: default anchor to avoid bottom bars */
+.graph-status-panel.gsp-float-anchor{
+  right: 18px;
+  bottom: 64px;
+}
+
+/* Phase 1-505: resize handles (edges + corners) */
+.graph-status-panel.gsp-resizable{
+  /* keep base resize handle as fallback, but handles enable edge resizing */
+}
+.gsp-resize-handle{
+  position:absolute;
+  z-index: 3;
+  background: transparent;
+  touch-action: none;
+}
+.gsp-rh-n, .gsp-rh-s{ left: 10px; right: 10px; height: 10px; }
+.gsp-rh-n{ top: 0; cursor: ns-resize; }
+.gsp-rh-s{ bottom: 0; cursor: ns-resize; }
+.gsp-rh-e, .gsp-rh-w{ top: 10px; bottom: 10px; width: 10px; }
+.gsp-rh-e{ right: 0; cursor: ew-resize; }
+.gsp-rh-w{ left: 0; cursor: ew-resize; }
+.gsp-rh-ne, .gsp-rh-nw, .gsp-rh-se, .gsp-rh-sw{ width: 14px; height: 14px; }
+.gsp-rh-ne{ top: 0; right: 0; cursor: nesw-resize; }
+.gsp-rh-nw{ top: 0; left: 0; cursor: nwse-resize; }
+.gsp-rh-se{ bottom: 0; right: 0; cursor: nwse-resize; }
+.gsp-rh-sw{ bottom: 0; left: 0; cursor: nesw-resize; }
+.graph-status-panel.gsp-resizing{
+  outline: 2px solid rgba(79,139,255,.25);
+  outline-offset: -2px;
+}
+
 .graph-status-panel .gsp-head{
   display:flex;
   align-items:center;
@@ -1459,11 +1497,17 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .gsp-tr:last-child{
   border-bottom:none;
 }
-.gsp-tr.member-highlight{
-  background: rgba(79,139,255,.08);
+
+/* Phase 1-505: highlight selected member in Graph Panel */
+.gsp-tr.gsp-highlighted{
+  background: rgba(79,139,255,.10);
 }
 
 .gsp-td-name{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
   font-weight: 800;
   font-size: 13px;
   white-space: nowrap;
@@ -1471,6 +1515,16 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   text-overflow: ellipsis;
   padding-right: 12px;
   border-right: 1px solid rgba(255,255,255,.06);
+}
+.gsp-td-name .gsp-member{
+  overflow:hidden;
+  text-overflow: ellipsis;
+}
+.gsp-td-name .gsp-hours{
+  flex: 0 0 auto;
+  font-weight: 900;
+  font-size: 12px;
+  color: rgba(255,255,255,.78);
 }
 
 .gsp-td-bar{

@@ -242,6 +242,6 @@ This is required so authenticated users can read their own profile row under RLS
   - Low hours (< 10h): “This member has limited hours in this task. Priority assignment recommended.”
   - High hours (≥ 20h): “This member already has 20 hours in this task. Assigning more may cause imbalance. You may proceed or reselect from the list below.”
 
-- “Graph Panel must support multiple analytics views selectable via dropdown. Task priority must be tagged visually based on hours.”
+- “Graph Panel must render in landscape layout with progress bars. Analytics view selector must be removed. Member selection must highlight name. Panel must be resizable and float above all layers.”
 
 - “Graph Panel must render in landscape layout with progress bars based on percentage logic. Task layout must match Paint selection. Sorting must be by percentage, descending.”

@@ -119,7 +119,8 @@ window.Pages.members = function(root){
   let graphEnabled = false;
   let graphPanelState = null; // { left, top, width, height }
   let graphTaskFilterId = paint.role; // role id; synced with Paint dropdown
-  let graphViewId = 'bar'; // analytics view (default Bar Graph)
+  // Graph Panel Settings are hidden by default (Phase 1-505)
+  let graphSettingsOpen = false;
   let _taskSyncing = false;
 
 // Unified task selection sync (Paint ↔ Graph Panel). Paint is primary, but changes are bidirectional.
@@ -171,28 +172,16 @@ function syncTaskSelection(taskId, opts){
       try{ st = raw ? JSON.parse(raw) : {}; }catch(_e){ st = {}; }
       st.enabled = !!graphEnabled;
       st.taskId = String(graphTaskFilterId||'');
-      st.view = String(graphViewId||'bar');
+      st.settingsOpen = !!graphSettingsOpen;
       st.panel = graphPanelState || st.panel || null;
+      // Analytics view selector removed (Phase 1-505)
+      try{ delete st.view; }catch(_e){}
       localStorage.setItem(GRAPH_LS_KEY, JSON.stringify(st));
     }catch(_e){}
   }
 
   function setGraphTaskFilter(taskId, opts){
     syncTaskSelection(taskId, Object.assign({ render:true, persist:true }, opts||{}));
-  }
-
-  function setGraphView(viewId, opts){
-    let v = String(viewId||'').trim();
-    try{
-      if(window.GraphPanel && typeof GraphPanel.normalizeViewId === 'function') v = GraphPanel.normalizeViewId(v);
-    }catch(_e){ /* ignore */ }
-    if(!v) v = 'bar';
-    graphViewId = v;
-    const o = opts || {};
-    if(o.persist !== false) persistGraphPrefs();
-    if(o.render !== false && graphEnabled){
-      try{ renderGraphPanel(); }catch(_e){}
-    }
   }
 
   function requestGraphRefresh(){
@@ -515,7 +504,7 @@ function syncTaskSelection(taskId, opts){
     </div>
 
     <!-- Floating graphical task status panel (Team Lead) -->
-    <div id="graphPanel" class="graph-status-panel" style="display:none" role="dialog" aria-label="Graphical task status">
+    <div id="graphPanel" class="graph-status-panel gsp-floating gsp-float-anchor gsp-resizable" style="display:none" role="dialog" aria-label="Graphical task status">
       <div class="gsp-head" id="graphPanelHead">
         <div>
           <div class="gsp-title">Graphical Task Status</div>
@@ -524,7 +513,7 @@ function syncTaskSelection(taskId, opts){
         <button class="iconbtn flat" id="graphClose" type="button" aria-label="Close">✕</button>
       </div>
       <div class="gsp-body" id="graphPanelBody"></div>
-      <div class="gsp-foot small muted" id="graphPanelFoot">Tip: Drag the header to move. Use the corner to resize.</div>
+      <div class="gsp-foot small muted" id="graphPanelFoot">Tip: Drag the header to move. Drag edges/corners to resize. Settings are hidden by default.</div>
     </div>
   `;
 
@@ -551,11 +540,7 @@ function syncTaskSelection(taskId, opts){
         if(st && st.taskId) graphTaskFilterId = String(st.taskId);
         else if(st && st.mode === 'call') graphTaskFilterId = 'call_onqueue'; // legacy
         else if(st && st.mode === 'mailbox') graphTaskFilterId = 'mailbox_manager'; // legacy
-        if(st && st.view){
-          try{
-            graphViewId = (window.GraphPanel && GraphPanel.normalizeViewId) ? GraphPanel.normalizeViewId(st.view) : String(st.view);
-          }catch(_e){ graphViewId = 'bar'; }
-        }
+        graphSettingsOpen = !!(st && st.settingsOpen);
         // Keep Paint + Graph synchronized on load
         syncTaskSelection(graphTaskFilterId, { render:false, persist:true });
       }
@@ -581,7 +566,7 @@ function syncTaskSelection(taskId, opts){
         const st = {
           enabled: graphEnabled,
           taskId: String(graphTaskFilterId||''),
-          view: String(graphViewId||'bar'),
+          settingsOpen: !!graphSettingsOpen,
           panel: {
             left: Math.round(r.left),
             top: Math.round(r.top),
@@ -650,7 +635,15 @@ function syncTaskSelection(taskId, opts){
       head.addEventListener('pointercancel', endDrag);
     })();
 
-    // Save size after resize (native resize handle)
+    // Resizable from any edge/corner (enterprise handles)
+    try{
+      if(window.GraphPanel && typeof GraphPanel.enableResizable === 'function'){
+        panel.classList.add('gsp-resizable');
+        GraphPanel.enableResizable(panel, { minWidth: 320, minHeight: 240, onResizeEnd: saveGraphState });
+      }
+    }catch(_e){ /* non-fatal */ }
+
+    // Save size after resize (native resize handle fallback)
     panel.addEventListener('mouseup', ()=>{ if(graphEnabled) saveGraphState(); });
     panel.addEventListener('touchend', ()=>{ if(graphEnabled) saveGraphState(); });
 
@@ -718,10 +711,6 @@ function syncTaskSelection(taskId, opts){
     if(String(graphTaskFilterId||'') !== String(desiredTaskId) || String(paint.role||'') !== String(desiredTaskId)){
       syncTaskSelection(desiredTaskId, { render:false, persist:true });
     }
-
-    // Analytics view (defaults to Bar Graph). Landscape applies across all views.
-    try{ if(window.GraphPanel && typeof GraphPanel.normalizeViewId === 'function') graphViewId = GraphPanel.normalizeViewId(graphViewId); }catch(_e){ graphViewId = 'bar'; }
-    if(!graphViewId) graphViewId = 'bar';
 
     const meta = taskMeta(team.id, graphTaskFilterId);
     const compareLabel = (meta && meta.label) ? meta.label : String(graphTaskFilterId||'');
@@ -860,23 +849,19 @@ function syncTaskSelection(taskId, opts){
       const res = computeTaskMinutesForMember(m, graphTaskFilterId);
       const name = m.fullName || m.name || m.email || m.id;
       const hours = (res.totalMin||0)/60;
-
-      const dailyHours = (res.byDayMin||[]).map(x => (Number(x||0) / 60));
-      const radarVals = [dailyHours[1]||0, dailyHours[2]||0, dailyHours[3]||0, dailyHours[4]||0, dailyHours[5]||0];
+      const hoursRounded = Math.round(hours);
 
       const pctRaw = maxH > 0 ? (hours / maxH) * 100 : 0;
-      const pct = Math.max(0, pctRaw);
-      const pctCapped = Math.min(100, pct);
+      const pct = Math.min(100, Math.max(0, pctRaw));
 
       return {
         id: m.id,
         name,
         hours,
-        dailyHours,
-        radarVals,
+        hoursRounded,
         pctRaw,
-        pct: pctCapped,
-        pctText: `${Math.round(pctCapped)}%`
+        pct,
+        pctText: `${Math.round(pct)}%`
       };
     });
 
@@ -886,45 +871,28 @@ function syncTaskSelection(taskId, opts){
       return String(a.name||'').localeCompare(String(b.name||''));
     });
 
-    // Maxima for day-based views (heatmap/radar)
-    let maxDayObs = 1;
-    let maxRadarObs = 1;
-    for(const r of rows){
-      for(const v of (r.dailyHours||[])) maxDayObs = Math.max(maxDayObs, Number(v||0));
-      for(const v of (r.radarVals||[])) maxRadarObs = Math.max(maxRadarObs, Number(v||0));
-    }
-    maxDayObs = Math.max(1, maxDayObs);
-    maxRadarObs = Math.max(1, maxRadarObs);
-
-    const viewList = (window.GraphPanel && Array.isArray(GraphPanel.VIEWS)) ? GraphPanel.VIEWS : [
-      { id:'bar', label:'Bar Graph' },
-      { id:'pie', label:'Pie Chart' },
-      { id:'stack', label:'Stacked Column' },
-      { id:'donut', label:'Donut Chart' },
-      { id:'heat', label:'Heatmap' },
-      { id:'radar', label:'Radar Chart' },
-    ];
-
     const settingsHtml = `
-      <div class="gsp-settings">
-        <div class="gsp-settings-title">Graph Panel Settings</div>
-        <div class="small muted" style="margin-top:2px">Set Max Hours per Task</div>
-        <div class="gsp-max-grid">
-          ${taskOpts
-            .filter(o=>String(o.id) !== '__clear__')
-            .map(o=>{
-              const tid = String(o.id);
-              const l = taskLayout(tid);
-              const defMax = getMaxHoursForTask(tid);
-              const label = (o.label || o.id);
-              const icon = o.icon || '';
-              return `
-                <div class="gsp-max-item ${esc(l && l.cls ? l.cls : '')}">
-                  <div class="lbl">${esc(icon)} ${esc(label)}</div>
-                  <input class="input gsp-max" data-taskid="${esc(tid)}" type="number" min="1" step="1" value="${esc(defMax)}" aria-label="Max hours for ${esc(label)}"/>
-                </div>
-              `;
-            }).join('')}
+      <div class="gsp-settings-wrap">
+        <button class="btn ghost gsp-settings-toggle" type="button" id="gspSettingsToggle" aria-expanded="${graphSettingsOpen ? 'true' : 'false'}">⚙️ Graph Panel Settings</button>
+        <div class="gsp-settings ${graphSettingsOpen ? '' : 'gsp-settings-hidden'}" id="gspSettings">
+          <div class="small muted" style="margin-top:2px">Set Max Hours per Task</div>
+          <div class="gsp-max-grid">
+            ${taskOpts
+              .filter(o=>String(o.id) !== '__clear__')
+              .map(o=>{
+                const tid = String(o.id);
+                const l = taskLayout(tid);
+                const defMax = getMaxHoursForTask(tid);
+                const label = (o.label || o.id);
+                const icon = o.icon || '';
+                return `
+                  <div class="gsp-max-item ${esc(l && l.cls ? l.cls : '')}">
+                    <div class="lbl">${esc(icon)} ${esc(label)}</div>
+                    <input class="input gsp-max" data-taskid="${esc(tid)}" type="number" min="1" step="1" value="${esc(defMax)}" aria-label="Max hours for ${esc(label)}"/>
+                  </div>
+                `;
+              }).join('')}
+          </div>
         </div>
       </div>
     `;
@@ -935,12 +903,6 @@ function syncTaskSelection(taskId, opts){
           <label class="small muted" for="gspTask">Comparison</label>
           <select class="input" id="gspTask" aria-label="Select task comparison">
             ${taskOpts.map(o=>`<option value="${esc(o.id)}">${esc(o.icon||'')} ${esc(o.label||o.id)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="gsp-field">
-          <label class="small muted" for="gspView">Select Analytic View</label>
-          <select class="input" id="gspView" aria-label="Select analytics view">
-            ${viewList.map(v=>`<option value="${esc(v.id)}">${esc(v.label||v.id)}</option>`).join('')}
           </select>
         </div>
         <div class="gsp-controls-hint small muted">Landscape • % based on max hours • Synced with Paint</div>
@@ -956,13 +918,17 @@ function syncTaskSelection(taskId, opts){
         <div class="gsp-tbody">
           ${rows.map(r=>{
             const title = `${compareLabel}: ${r.hours.toFixed(1)}h / ${maxH}h (${r.pctRaw.toFixed(1)}%)`;
-            const viz = (window.GraphPanel && typeof GraphPanel.renderVizHTML === 'function')
-              ? GraphPanel.renderVizHTML(graphViewId, { pct: r.pct, pctText: r.pctText, color: barColor, title, dailyHours: r.dailyHours, dailyMax: maxDayObs, dayLabels: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], radarVals: r.radarVals, radarMax: maxRadarObs })
+            const viz = (window.GraphPanel && typeof GraphPanel.renderProgressBarHTML === 'function')
+              ? GraphPanel.renderProgressBarHTML({ pct: r.pct, pctText: r.pctText, color: barColor, title })
               : `<div class="gsp-progress" title="${esc(title)}"><div class="gsp-progress-track" style="--p:${r.pct.toFixed(2)};--c:${esc(barColor)}"><div class="gsp-progress-fill"></div><div class="gsp-progress-label">${esc(r.pctText)}</div></div></div>`;
-            const rowCls = `gsp-tr${String(selMemberId||'')===String(r.id) ? ' member-highlight' : ''}`;
+            const isHL = (String(selMemberId||'')===String(r.id)) || (selMemberIds && selMemberIds.has(String(r.id)));
+            const rowCls = `gsp-tr${isHL ? ' gsp-highlighted' : ''}`;
             return `
               <div class="${rowCls}" data-mid="${esc(r.id)}" role="button" tabindex="0" aria-label="${esc(r.name)} ${esc(compareLabel)} percentage">
-                <div class="gsp-td gsp-td-name">${esc(r.name)}</div>
+                <div class="gsp-td gsp-td-name">
+                  <span class="gsp-member">${esc(r.name)}</span>
+                  <span class="gsp-hours">(${esc(r.hoursRounded)}h)</span>
+                </div>
                 <div class="gsp-td gsp-td-bar">${viz}</div>
               </div>
             `;
@@ -984,13 +950,16 @@ function syncTaskSelection(taskId, opts){
       });
     }
 
-    const viewSel = body.querySelector('#gspView');
-    if(viewSel){
-      viewSel.value = String(graphViewId||'bar');
-      viewSel.addEventListener('change', ()=>{
-        const v = String(viewSel.value||'').trim();
-        if(!v) return;
-        setGraphView(v, { render:true, persist:true });
+    // Analytics view selector removed (Phase 1-505)
+
+    const settingsToggle = body.querySelector('#gspSettingsToggle');
+    const settingsEl = body.querySelector('#gspSettings');
+    if(settingsToggle && settingsEl){
+      settingsToggle.addEventListener('click', ()=>{
+        graphSettingsOpen = !graphSettingsOpen;
+        settingsEl.classList.toggle('gsp-settings-hidden', !graphSettingsOpen);
+        settingsToggle.setAttribute('aria-expanded', graphSettingsOpen ? 'true' : 'false');
+        persistGraphPrefs();
       });
     }
 
