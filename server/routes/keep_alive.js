@@ -1,116 +1,96 @@
+// Supabase keep-alive endpoint
+// - Harmless write into `heartbeat` table to prevent Supabase project pausing on free plans.
+// - Uses server-side service role key.
+
 const { serviceInsert, serviceFetch } = require('../lib/supabase');
 
-// /api/keep_alive
-// Purpose: Prevent Supabase projects from pausing due to inactivity by performing a lightweight write.
-// NOTE: This endpoint is safe to call anonymously (no auth required). It returns 200 even on failure so
-//       schedulers (GitHub Actions / external uptime pings) don't spam retries.
-
-function json(res, statusCode, payload) {
+function sendJson(res, statusCode, body) {
   res.statusCode = statusCode;
-  res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', 'application/json');
-  return res.end(JSON.stringify(payload));
+  res.setHeader('Cache-Control', 'no-store');
+  res.end(JSON.stringify(body));
 }
 
-function looksLikeMissingTable(resultText) {
-  const t = String(resultText || '').toLowerCase();
-  // Common PostgREST missing relation errors
-  return (
-    t.includes('could not find the table') ||
-    t.includes('relation') && t.includes('does not exist') ||
-    t.includes('pgrst') && t.includes('not found')
-  );
+function nowIso() {
+  return new Date().toISOString();
 }
 
-async function tryCreateHeartbeatTableViaRpc(sql) {
-  // Supabase does not provide a built-in "exec SQL" RPC by default.
-  // If your project defines one (e.g., mums_exec_sql / exec_sql), this will attempt it.
-  const rpcNames = ['mums_exec_sql', 'exec_sql', 'run_sql', 'sql'];
+function missingTable(out) {
+  const t = String(out && out.text ? out.text : '');
+  const j = out && out.json ? JSON.stringify(out.json) : '';
+  const blob = (t + ' ' + j).toLowerCase();
+  return /heartbeat/.test(blob) && (/does not exist/.test(blob) || /relation/.test(blob) || /not found/.test(blob));
+}
 
-  for (const fn of rpcNames) {
+const HEARTBEAT_SQL = [
+  'create table if not exists public.heartbeat (',
+  '  id uuid primary key default gen_random_uuid(),',
+  '  timestamp timestamptz default now()',
+  ');',
+  'alter table public.heartbeat disable row level security;'
+].join('\n');
+
+async function tryRpcCreateTable() {
+  // Best-effort: many projects will NOT have any SQL-exec RPC installed.
+  // We try a few common function names; if none exist, caller will return manual setup instructions.
+  const candidates = ['exec_sql', 'execute_sql', 'mums_exec_sql', 'sql'];
+  for (const fn of candidates) {
     try {
-      const out = await serviceFetch(`/rest/v1/rpc/${fn}`, {
+      const out = await serviceFetch(`/rest/v1/rpc/${encodeURIComponent(fn)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql })
+        body: { sql: HEARTBEAT_SQL }
       });
-
-      // If the function exists, it should return 200-299.
-      if (out && out.ok) {
-        console.log('[keep_alive] heartbeat table created via RPC:', fn);
-        return { ok: true, via: fn };
-      }
-    } catch (e) {
-      // ignore and continue
+      if (out && out.ok) return { ok: true, via: fn };
+    } catch (_) {
+      // ignore
     }
   }
-
   return { ok: false };
 }
 
 module.exports = async (req, res) => {
+  // Accept GET or POST. Always respond 200 with ok flag.
   try {
-    if (req.method && !['GET', 'POST'].includes(req.method)) {
-      return json(res, 405, { ok: false, error: 'method_not_allowed' });
-    }
-
-    const ts = new Date().toISOString();
-
-    // 1) Primary action: lightweight insert
+    const ts = nowIso();
     let out = await serviceInsert('heartbeat', [{ timestamp: ts }]);
 
-    if (out.ok) {
-      console.log('[keep_alive] ok:', ts);
-      return json(res, 200, { ok: true, inserted: true, timestamp: ts, status: out.status });
-    }
-
-    const text = out.text || '';
-    console.warn('[keep_alive] insert failed:', out.status, text);
-
-    // 2) Best-effort auto-create (only works if the Supabase project includes an exec-sql RPC)
-    if (out.status === 404 || looksLikeMissingTable(text)) {
-      const ddl = `
-        create extension if not exists pgcrypto;
-        create table if not exists public.heartbeat (
-          id uuid primary key default gen_random_uuid(),
-          timestamp timestamptz not null default now()
-        );
-        grant insert on table public.heartbeat to anon, authenticated;
-        grant select on table public.heartbeat to anon, authenticated;
-      `;
-
-      const created = await tryCreateHeartbeatTableViaRpc(ddl);
+    if (!out.ok && missingTable(out)) {
+      // Attempt auto-create via SQL RPC (best-effort)
+      const created = await tryRpcCreateTable();
       if (created.ok) {
         out = await serviceInsert('heartbeat', [{ timestamp: ts }]);
-        if (out.ok) {
-          console.log('[keep_alive] ok (after create):', ts);
-          return json(res, 200, { ok: true, inserted: true, created_table: true, created_via: created.via, timestamp: ts, status: out.status });
-        }
       }
 
-      // Still missing: provide actionable instructions but keep 200 to avoid retry storms.
-      return json(res, 200, {
+      if (!out.ok) {
+        console.warn('[keep_alive] heartbeat table missing; manual setup required');
+        return sendJson(res, 200, {
+          ok: false,
+          error: 'heartbeat_table_missing',
+          need_manual_setup: true,
+          sql: HEARTBEAT_SQL
+        });
+      }
+    }
+
+    if (!out.ok) {
+      console.warn('[keep_alive] insert failed', out && out.status, out && out.text);
+      return sendJson(res, 200, {
         ok: false,
-        inserted: false,
-        error: 'heartbeat_table_missing',
-        message: 'Heartbeat table is missing. Create it in Supabase (SQL Editor / migrations) and re-test.',
-        required_table: 'heartbeat',
-        recommended_sql: ddl.trim(),
+        error: 'insert_failed',
         status: out.status,
-        detail: String(text).slice(0, 600)
+        message: out.text || null
       });
     }
 
-    // Non-table error
-    return json(res, 200, {
-      ok: false,
-      inserted: false,
-      error: 'insert_failed',
-      status: out.status,
-      detail: String(text).slice(0, 600)
+    console.log('[keep_alive] ok', ts);
+    return sendJson(res, 200, {
+      ok: true,
+      ts,
+      inserted: Array.isArray(out.json) ? out.json.length : 1
     });
   } catch (e) {
-    console.error('[keep_alive] server_error:', e);
-    return json(res, 200, { ok: false, inserted: false, error: 'server_error', message: String(e?.message || e) });
+    console.warn('[keep_alive] error', e);
+    return sendJson(res, 200, { ok: false, error: 'exception', message: String(e && (e.message || e) || 'unknown') });
   }
 };

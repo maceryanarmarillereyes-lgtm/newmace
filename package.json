@@ -7,8 +7,8 @@
   },
   "version": "1.0.0",
   "scripts": {
-    "build": "echo \"No build step for static site\"",
-    "vercel-build": "npm run build",
+    "vercel-build": "echo \"Static site deployment — no build step required\"",
+    "build": "npm run vercel-build",
     "start": "node -e \"console.log(\\\"Static site: no start script\\\")\""
   }
 }

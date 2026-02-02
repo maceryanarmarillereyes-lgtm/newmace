@@ -2474,5 +2474,70 @@ Store.startMailboxOverrideSync = function(opts){
     write(key, value, opts);
   };
 
+  // ---------------------------------------------------------------------------
+  // Supabase keep-alive (best-effort)
+  // - Pings /api/keep_alive at most once every 24h.
+  // - Also tries again when tab becomes visible or window regains focus.
+  // - Never blocks UI.
+  // ---------------------------------------------------------------------------
+  (function bindKeepAlive(){
+    try{
+      if(window.__mumsKeepAliveBound) return;
+      window.__mumsKeepAliveBound = true;
+
+      const LS_KEY = 'mums_keepalive_last_ts';
+      const PERIOD_MS = 24 * 60 * 60 * 1000;
+
+      function getLast(){
+        try{ return Number(localStorage.getItem(LS_KEY) || 0) || 0; }catch(_){ return 0; }
+      }
+      function setLast(ts){
+        try{ localStorage.setItem(LS_KEY, String(ts||0)); }catch(_){ }
+      }
+
+      async function ping(reason){
+        try{
+          if(typeof fetch !== 'function') return;
+          if(navigator && navigator.onLine === false) return;
+          const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+          const t = setTimeout(()=>{ try{ ctrl && ctrl.abort(); }catch(_){ } }, 6000);
+          const r = await fetch('/api/keep_alive', {
+            method: 'GET',
+            cache: 'no-store',
+            credentials: 'same-origin',
+            headers: { 'X-MUMS-KeepAlive': '1', 'X-MUMS-Reason': String(reason||'') },
+            signal: ctrl ? ctrl.signal : undefined
+          }).catch(()=>null);
+          clearTimeout(t);
+
+          // If request failed, don't advance the timer.
+          if(!r || !r.ok) return;
+
+          // Advance timer on any 200 from the endpoint.
+          setLast(Date.now());
+        }catch(_){ }
+      }
+
+      Store.maybeKeepAlive = function(reason){
+        try{
+          const now = Date.now();
+          const last = getLast();
+          if(now - last < PERIOD_MS) return;
+          // Fire-and-forget
+          ping(reason || 'periodic');
+        }catch(_){ }
+      };
+
+      // Boot ping (non-blocking)
+      setTimeout(()=>{ Store.maybeKeepAlive('boot'); }, 1500);
+
+      // Resume/visibility-based pings
+      document.addEventListener('visibilitychange', ()=>{
+        if(document.visibilityState === 'visible') Store.maybeKeepAlive('visibility');
+      });
+      window.addEventListener('focus', ()=>{ Store.maybeKeepAlive('focus'); });
+    }catch(_){ }
+  })();
+
 window.Store = Store;
 })();

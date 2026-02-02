@@ -241,8 +241,8 @@ After applying migrations:
 
 ## Verification (13126-12)
 - Cache-busting:
-  - Confirm `?v=20260201-13126-12` is applied to **all** `public/*.html` assets (index, login, schedule, dashboard, debug, etc.) that reference CSS/JS.
-  - Confirm sidebar Build shows `20260201-13126-12` and no mixed-version assets are loaded.
+  - Confirm `?v=20260201-keepalive` is applied to **all** `public/*.html` assets (index, login, schedule, dashboard, debug, etc.) that reference CSS/JS.
+  - Confirm the UI header shows `Build ID: MUMS Phase 1-500` and no mixed-version assets are loaded.
 - Schedule storage authority:
   - Confirm `mums_schedule_blocks` is treated as **authoritative** schedule storage.
   - Confirm `ums_weekly_schedules` is used only as **read-only fallback** (no new writes required for normal operations).
@@ -269,3 +269,40 @@ After applying migrations:
     - `public/js/pages/members.js`
     - `public/js/pages/my_schedule.js`
   - Navigate: Dashboard → My Schedule → Members. Confirm no console errors.
+
+- Supabase keep-alive:
+  - API endpoint:
+    - Deploy the build, then run: `curl -s https://meystest.vercel.app/api/keep_alive`
+    - Expect JSON `{ ok: true }` (or `{ ok: false, need_manual_setup: true }` if `heartbeat` table does not exist).
+    - Optional alias test: `curl -s https://meystest.vercel.app/api/keep_alive.js`
+  - Heartbeat table:
+    - Confirm `heartbeat` table exists and receives a new row on each ping.
+    - If missing, create table using the SQL returned by the endpoint (or create manually per ops).
+  - Scheduled trigger:
+    - Confirm the GitHub Action workflow `Supabase Keep-Alive` exists and runs on schedule.
+    - Ensure it triggers at least once every 48h (daily is preferred).
+
+- Vercel deployment warnings:
+  - Build step:
+    - Confirm Vercel build logs show: `Static site deployment — no build step required`.
+    - Confirm there is no repeated/legacy `No build step for static site` message after the script update.
+  - ESM/CJS warning:
+    - Confirm Vercel logs do **not** show: `Node.js functions are compiled from ESM to CommonJS`.
+    - Confirm `server/routes/debug/log.js` is CommonJS (no `export default`) to avoid ESM transpilation.
+  - Config presence:
+    - Confirm `vercel.json` is present and remains in the v4.2 structure (rewrites + functions.maxDuration).
+
+
+## Verification (MUMS Phase 1-500)
+- Root login enforcement:
+  - Deploy, open an **incognito/private** window.
+  - Visit `/` (root) and confirm the **login page** appears immediately.
+  - Confirm there is **no dashboard flash** / internal UI rendered before authentication.
+  - Visit `/login` (no extension) and confirm it also resolves to the login page (via early redirect).
+- Release naming + build ID:
+  - Confirm the packaged artifact name follows: `MUMS Phase 1-500.zip`.
+  - Confirm the UI header shows: `Build ID: MUMS Phase 1-500`.
+  - Confirm no legacy build IDs (`13126-*`) appear in the UI.
+- Keep-alive regression:
+  - Confirm `/api/keep_alive` still returns `{ ok: true }` and inserts into `heartbeat`.
+  - Confirm GitHub Actions `Supabase Keep-Alive` workflow still exists and runs on schedule.

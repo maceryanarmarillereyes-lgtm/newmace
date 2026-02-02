@@ -222,3 +222,12 @@ This is required so authenticated users can read their own profile row under RLS
 
 ## Graph Panel Stability + Member Schedule Visibility (Permanent)
 - “Graphical panels must not throw runtime errors. Member schedules must be visible across all views. Time labels must align with grid blocks and layout must meet enterprise-grade standards.”
+
+## Supabase Keep-Alive Governance (Permanent)
+- “Supabase must receive periodic activity via keep-alive endpoint to prevent project pausing. Heartbeat table must exist and be writable. Cron job must trigger endpoint at least once every 48 hours.”
+- Keep-alive must remain best-effort and non-blocking (no UI freezes; failures should only log + return `{ ok: false }`).
+- Endpoint must remain available at `/api/keep_alive` (and alias `/api/keep_alive.js`), and should attempt a lightweight insert into `heartbeat`.
+
+## Root Login + Release Packaging Naming (Permanent)
+- “Root access must always load login page. No internal content visible before authentication.”
+- “All packaged builds must follow naming format MUMS Phase 1‑<sequence>, starting at 500 and incrementing by 1.”
