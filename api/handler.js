@@ -24,9 +24,6 @@ function normalizePath(raw) {
 const ROUTES = {
   'env': require('../server/routes/env'),
   'health': require('../server/routes/health'),
-  // Supabase keep-alive (prevents project pausing on inactivity)
-  'keep_alive': require('../server/routes/keep_alive'),
-  'keep_alive.js': require('../server/routes/keep_alive'),
   'debug/log': require('../server/routes/debug/log'),
 
   'mailbox_override/get': require('../server/routes/mailbox_override/get'),
