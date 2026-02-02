@@ -25,9 +25,30 @@ function missingTable(out) {
 const HEARTBEAT_SQL = [
   'create table if not exists public.heartbeat (',
   '  id uuid primary key default gen_random_uuid(),',
+  '  uid uuid,',
   '  timestamp timestamptz default now()',
   ');',
-  'alter table public.heartbeat disable row level security;'
+  '',
+  '-- Ensure uid exists (for older deployments)',
+  'alter table public.heartbeat add column if not exists uid uuid;',
+  '',
+  '-- Enterprise: enforce per-user RLS (service role bypasses)',
+  'alter table public.heartbeat enable row level security;',
+  '',
+  '-- Idempotent policy creation',
+  'do $$',
+  'begin',
+  "  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'heartbeat' and policyname = 'User can read own heartbeat') then",
+  '    create policy "User can read own heartbeat" on public.heartbeat for select using (auth.uid() = uid);',
+  '  end if;',
+  "  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'heartbeat' and policyname = 'User can insert own heartbeat') then",
+  '    create policy "User can insert own heartbeat" on public.heartbeat for insert with check (auth.uid() = uid);',
+  '  end if;',
+  "  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'heartbeat' and policyname = 'User can update own heartbeat') then",
+  '    create policy "User can update own heartbeat" on public.heartbeat for update using (auth.uid() = uid) with check (auth.uid() = uid);',
+  '  end if;',
+  'end',
+  '$$;'
 ].join('\n');
 
 async function tryRpcCreateTable() {

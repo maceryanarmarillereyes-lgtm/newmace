@@ -295,7 +295,7 @@ After applying migrations:
   - Config presence:
     - Confirm `vercel.json` is present and remains in the v4.2 structure (rewrites + functions.maxDuration).
 
-## Verification (MUMS Phase 1-506)
+## Verification (MUMS Phase 1-507)
 - Root login enforcement:
   - Deploy, open an **incognito/private** window.
   - Visit `/` (root) and confirm the **login page** appears immediately.
@@ -303,8 +303,8 @@ After applying migrations:
   - Visit `/login` (no extension) and confirm it also resolves to the login page (via early redirect).
 
 - Release naming + build ID:
-  - Confirm the packaged artifact name follows: `MUMS Phase 1-506.zip`.
-  - Confirm the UI header shows: `Build ID: MUMS Phase 1-506`.
+  - Confirm the packaged artifact name follows: `MUMS Phase 1-507.zip`.
+  - Confirm the UI header shows: `Build ID: MUMS Phase 1-507`.
   - Confirm no legacy build IDs (`13126-*`) appear in the UI.
 
 - Schedule lock enforcement (Members):
@@ -358,9 +358,16 @@ After applying migrations:
 - Sequential packaging auto-increment:
   - Confirm the tool exists: `tools/package_phase1_release.js`.
   - Dry-run check: `npm run package:phase1 -- --dry-run`.
-    - Expect: it would create `MUMS Phase 1-506.zip`, then bump labels to `MUMS Phase 1-507`.
-  - After packaging (real run), confirm the next run would generate: `MUMS Phase 1-507.zip`.
+    - Expect: it would create `MUMS Phase 1-507.zip`, then bump labels to `MUMS Phase 1-508`.
+  - After packaging (real run), confirm the next run would generate: `MUMS Phase 1-508.zip`.
 
 - Keep-alive regression:
   - Confirm `/api/keep_alive` still returns `{ ok: true }` and inserts into `heartbeat`.
+  - Supabase RLS alignment (public.heartbeat):
+    - Confirm column `uid uuid` exists on `public.heartbeat`.
+    - Confirm Row Level Security is **enabled** on `public.heartbeat`.
+    - Confirm policies exist: SELECT/INSERT/UPDATE restricted to `auth.uid() = uid`.
+    - Confirm the app performs an authenticated heartbeat insert including `uid` (Cloud mode):
+      - In DevTools Network, look for a `rest/v1/heartbeat` insert (200) or verify with SQL: `SELECT * FROM public.heartbeat WHERE uid = auth.uid();`
+    - Confirm Supabase Security Advisor no longer reports RLS issues for `public.heartbeat`.
   - Confirm GitHub Actions `Supabase Keep-Alive` workflow still exists and runs on schedule.

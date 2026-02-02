@@ -2495,8 +2495,50 @@ Store.startMailboxOverrideSync = function(opts){
         try{ localStorage.setItem(LS_KEY, String(ts||0)); }catch(_){ }
       }
 
+      async function tryAuthedInsert(reason){
+        try{
+          // Prefer authenticated Supabase insert (RLS-aligned).
+          if(!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled())) return false;
+          if(!(window.supabase && typeof window.supabase.createClient === 'function')) return false;
+          const env = (window.EnvRuntime && EnvRuntime.env && EnvRuntime.env()) || (window.MUMS_ENV || {});
+          if(!env || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return false;
+
+          const token = (CloudAuth.accessToken && CloudAuth.accessToken()) ? String(CloudAuth.accessToken()||'').trim() : '';
+          if(!token) return false;
+
+          const sbUser = (CloudAuth.getUser && typeof CloudAuth.getUser === 'function') ? CloudAuth.getUser() : null;
+          const uid = sbUser && sbUser.id ? String(sbUser.id) : '';
+          if(!uid) return false;
+
+          // Reuse a dedicated client for heartbeat to keep it lightweight.
+          if(!window.__MUMS_HB_CLIENT || window.__MUMS_HB_CLIENT_TOKEN !== token){
+            window.__MUMS_HB_CLIENT_TOKEN = token;
+            window.__MUMS_HB_CLIENT = window.supabase.createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
+              auth: { persistSession: false, autoRefreshToken: false },
+              global: { headers: { Authorization: 'Bearer ' + token } }
+            });
+          }
+
+          const client = window.__MUMS_HB_CLIENT;
+          try { client && client.realtime && client.realtime.setAuth && client.realtime.setAuth(token); } catch(_){ }
+
+          const payload = [{ uid: uid, timestamp: new Date().toISOString() }];
+          const out = await client.from('heartbeat').insert(payload);
+          if(out && out.error) return false;
+          return true;
+        }catch(_){ return false; }
+      }
+
       async function ping(reason){
         try{
+          // Prefer authenticated Supabase insert (satisfies heartbeat RLS).
+          const okDirect = await tryAuthedInsert(reason);
+          if(okDirect){
+            setLast(Date.now());
+            return;
+          }
+
+          // Fallback: server-side keep-alive (service role) for anon/offline modes.
           if(typeof fetch !== 'function') return;
           if(navigator && navigator.onLine === false) return;
           const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
