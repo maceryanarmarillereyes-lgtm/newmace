@@ -245,3 +245,5 @@ This is required so authenticated users can read their own profile row under RLS
 - “Graph Panel must render in landscape layout with progress bars. Analytics view selector must be removed. Member selection must highlight name. Panel must be resizable and float above all layers.”
 
 - “Graph Panel must render in landscape layout with progress bars based on percentage logic. Task layout must match Paint selection. Sorting must be by percentage, descending.”
+- “Members Page must support compressed layout with task stats below name. Graph Panel must include toggle for settings. Reporting tools must be consolidated into a dropdown. Block deletion must be error-free and readable.”
+

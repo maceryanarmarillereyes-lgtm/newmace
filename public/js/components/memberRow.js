@@ -59,25 +59,19 @@
                 <label class="m-selwrap" title="Select member">
                   <input class="m-select" type="checkbox" data-act="mselect" />
                 </label>
-                <div class="m-name-text">${esc(name)}</div>
+                <div class="m-name-text">${esc(name)}${isInactive ? ` <span class="status-pill">${esc(inactiveText)}</span>`:''}</div>
               </div>
-              <div class="m-stats" aria-label="Weekly workload">
-                <span class="statpill" data-kind="mailbox" title="Mailbox hours this week">Mailbox <b>${esc(ws.mailboxH)}h</b></span>
-                <span class="statpill" data-kind="back" title="Back Office hours this week">Back Office <b>${esc(ws.backOfficeH)}h</b></span>
-                <span class="statpill" data-kind="call" title="Call Available hours this week">Call Available <b>${esc(ws.callAvailableH)}h</b></span>
-                <span class="statpill" data-kind="case" title="Cases assigned this week">Case Assigned <b>${esc(ws.caseAssigned)}</b></span>
-              </div>
-              <div class="m-sub">${esc(memberTeamLabel)} ${isInactive ? `<span class="status-pill">${esc(inactiveText)}</span>`:''}</div>
             </div>
 
             <div>
+              <div class="member-task-stats" aria-label="Weekly workload">Mailbox: ${esc(ws.mailboxH)}h • Back Office: ${esc(ws.backOfficeH)}h • Call: ${esc(ws.callAvailableH)}h • Cases: ${esc(ws.caseAssigned)}</div>
               <div class="timeline-wrap">
                 <div class="timeline" data-team="${esc(timelineTeamId)}">
                 ${ticksHtml}
                 ${segsHtml}
                 ${isInactive ? `<div class="timeline-overlay">${esc(inactiveText)}</div>`:''}
               </div>
-                ${dayLocked ? `<div class=\"locked-below\" aria-label=\"Locked day\"><span class=\"lk-ic\">🔒</span><span class=\"lk-tx\">LOCKED</span></div>`:''}
+                ${dayLocked ? `<div class="locked-below" aria-label="Locked day"><span class="lk-ic">🔒</span><span class="lk-tx">LOCKED</span></div>`:''}
               </div>
             </div>
 
@@ -86,8 +80,7 @@
               ${leaveActions}
             </div>
           </div>
-        `;
-      }catch(e){
+        `;      }catch(e){
         console.error('MemberRow.render error', e);
         return '';
       }

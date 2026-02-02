@@ -295,7 +295,7 @@ After applying migrations:
   - Config presence:
     - Confirm `vercel.json` is present and remains in the v4.2 structure (rewrites + functions.maxDuration).
 
-## Verification (MUMS Phase 1-505)
+## Verification (MUMS Phase 1-506)
 - Root login enforcement:
   - Deploy, open an **incognito/private** window.
   - Visit `/` (root) and confirm the **login page** appears immediately.
@@ -303,8 +303,8 @@ After applying migrations:
   - Visit `/login` (no extension) and confirm it also resolves to the login page (via early redirect).
 
 - Release naming + build ID:
-  - Confirm the packaged artifact name follows: `MUMS Phase 1-505.zip`.
-  - Confirm the UI header shows: `Build ID: MUMS Phase 1-505`.
+  - Confirm the packaged artifact name follows: `MUMS Phase 1-506.zip`.
+  - Confirm the UI header shows: `Build ID: MUMS Phase 1-506`.
   - Confirm no legacy build IDs (`13126-*`) appear in the UI.
 
 - Schedule lock enforcement (Members):
@@ -343,11 +343,23 @@ After applying migrations:
     - Confirm the panel is resizable from edges/corners and does not clip contents.
     - Resize, refresh page → confirm size persists.
 
+
+
+- Members page compression + REPORTS dropdown:
+  - Confirm the team label (e.g., “Morning Shift”) is removed from each member row.
+  - Confirm the pill badges are replaced by a single compressed stats line below the name:
+    - `Mailbox: 3h • Back Office: 10h • Call: 27h • Cases: 0`
+  - Confirm member row padding/height is reduced so more members fit onscreen.
+  - Confirm the 📊 REPORTS dropdown replaces the individual report/export icons and opens on hover/focus.
+
+- Block deletion error handling:
+  - Delete unlocked blocks (single + bulk) and confirm no error toast appears.
+  - If deletion fails, confirm the warning is readable (not `[object Object]`) and falls back to: “Unable to delete block. Please try again.”
 - Sequential packaging auto-increment:
   - Confirm the tool exists: `tools/package_phase1_release.js`.
   - Dry-run check: `npm run package:phase1 -- --dry-run`.
-    - Expect: it would create `MUMS Phase 1-505.zip`, then bump labels to `MUMS Phase 1-506`.
-  - After packaging (real run), confirm the next run would generate: `MUMS Phase 1-506.zip`.
+    - Expect: it would create `MUMS Phase 1-506.zip`, then bump labels to `MUMS Phase 1-507`.
+  - After packaging (real run), confirm the next run would generate: `MUMS Phase 1-507.zip`.
 
 - Keep-alive regression:
   - Confirm `/api/keep_alive` still returns `{ ok: true }` and inserts into `heartbeat`.

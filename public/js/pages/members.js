@@ -21,13 +21,30 @@ window.Pages.members = function(root){
 
   // Schedule lock UX (Team Lead/Admin/Super Admin must unlock before editing)
   let unlockTriggered = false;
+  function readableError(err, fallback){
+    if(err == null) return String(fallback||'');
+    if(typeof err === 'string') return err;
+    if(err instanceof Error) return String(err.message || fallback || err);
+    try{
+      if(typeof err === 'object'){
+        if(typeof err.message === 'string' && err.message.trim()) return err.message;
+        if(typeof err.error === 'string' && err.error.trim()) return err.error;
+        if(typeof err.details === 'string' && err.details.trim()) return err.details;
+        if(typeof err.statusText === 'string' && err.statusText.trim()) return err.statusText;
+        const j = JSON.stringify(err);
+        if(j && j !== '{}' ) return j;
+      }
+    }catch(_e){ /* ignore */ }
+    return String(fallback || err);
+  }
   function showWarning(msg){
+    const m = readableError(msg, 'Notice');
     try{
       if(UI && typeof UI.toast === 'function'){
-        return UI.toast({ message: String(msg||''), type: 'warning' });
+        return UI.toast(m, 'warn');
       }
     }catch(_e){}
-    try{ alert(String(msg||'')); }catch(_e){}
+    try{ alert(m); }catch(_e){}
   }
   function warnScheduleLocked(){
     showWarning('Schedule is locked. Please unlock before making changes.');
@@ -176,6 +193,7 @@ function syncTaskSelection(taskId, opts){
       st.panel = graphPanelState || st.panel || null;
       // Analytics view selector removed (Phase 1-505)
       try{ delete st.view; }catch(_e){}
+      try{ localStorage.setItem('settingsOpen', graphSettingsOpen ? '1' : '0'); }catch(_e){}
       localStorage.setItem(GRAPH_LS_KEY, JSON.stringify(st));
     }catch(_e){}
   }
@@ -429,12 +447,15 @@ function syncTaskSelection(taskId, opts){
 
       ${(isLead||isAdmin) ? `
       <div class="sched-float-actions" aria-label="Member scheduling actions">
-        <div class="iconrow" aria-label="Exports, audit, acknowledgements">
-          <button class="iconbtn flat" id="exportSchedule" type="button" title="Export schedule CSV" aria-label="Export schedule CSV">📄</button>
-          <button class="iconbtn flat" id="exportWorkload" type="button" title="Export workload CSV" aria-label="Export workload CSV">📊</button>
-          <button class="iconbtn flat" id="viewAudit" type="button" title="Audit history for the week" aria-label="Audit history">🕘</button>
-          <button class="iconbtn flat" id="viewAcks" type="button" title="Acknowledgements" aria-label="Acknowledgements">✅</button>
-          <button class="iconbtn flat" id="viewTrend" type="button" title="Health trend (weekly)" aria-label="Health trend">📈</button>
+        <div class="reports-dropdown" id="reportsDropdown" aria-label="Reports">
+          <button class="btn ghost reports-toggle" id="reportsToggle" type="button" aria-haspopup="menu" aria-expanded="false">📊 REPORTS</button>
+          <div class="reports-menu" id="reportsMenu" role="menu" aria-label="Reports Menu">
+            <button class="reports-item" id="exportSchedule" type="button" role="menuitem">Export Schedule CSV</button>
+            <button class="reports-item" id="exportWorkload" type="button" role="menuitem">Export Workload CSV</button>
+            <button class="reports-item" id="viewAudit" type="button" role="menuitem">View Audit History</button>
+            <button class="reports-item" id="viewAcks" type="button" role="menuitem">View Acknowledgements</button>
+            <button class="reports-item" id="viewHealthTrend" type="button" role="menuitem">View Health Trend Weekly</button>
+          </div>
         </div>
         <label class="graph-toggle" title="Show a floating, live-updating task status panel">
           <input type="checkbox" id="graphToggle" />
@@ -519,6 +540,47 @@ function syncTaskSelection(taskId, opts){
 
   root.replaceChildren(wrap);
 
+  // REPORTS dropdown (hover-open + click toggle)
+  (function initReportsDropdown(){
+    const dd = wrap.querySelector('#reportsDropdown');
+    const btn = wrap.querySelector('#reportsToggle');
+    const menu = wrap.querySelector('#reportsMenu');
+    if(!dd || !btn || !menu) return;
+
+    const setOpen = (on)=>{
+      dd.classList.toggle('open', !!on);
+      try{ btn.setAttribute('aria-expanded', on ? 'true' : 'false'); }catch(_e){}
+    };
+
+    btn.addEventListener('click', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(!dd.classList.contains('open'));
+    });
+
+    // Hover-open (enterprise UX) + keyboard focus support
+    const hasFocus = ()=>{ try{ return dd.contains(document.activeElement); }catch(_e){ return false; } };
+    dd.addEventListener('mouseenter', ()=>setOpen(true));
+    dd.addEventListener('mouseleave', ()=>{ if(!hasFocus()) setOpen(false); });
+    dd.addEventListener('focusin', ()=>setOpen(true));
+    dd.addEventListener('focusout', ()=>{ setTimeout(()=>{ if(!hasFocus()) setOpen(false); }, 0); });
+
+    // Close on outside click
+    document.addEventListener('click', (e)=>{
+      if(!dd.contains(e.target)) setOpen(false);
+    });
+
+    // Close after selecting an item
+    menu.querySelectorAll('button').forEach(b=>{
+      b.addEventListener('click', ()=>setOpen(false));
+    });
+
+    // ESC closes
+    dd.addEventListener('keydown', (e)=>{
+      if(e.key === 'Escape') setOpen(false);
+    });
+  })();
+
   // ---------------------------------------------------------------------
   // Floating Graphical Task Status Panel (Team Lead)
   // ---------------------------------------------------------------------
@@ -541,6 +603,10 @@ function syncTaskSelection(taskId, opts){
         else if(st && st.mode === 'call') graphTaskFilterId = 'call_onqueue'; // legacy
         else if(st && st.mode === 'mailbox') graphTaskFilterId = 'mailbox_manager'; // legacy
         graphSettingsOpen = !!(st && st.settingsOpen);
+        try{
+          const so = localStorage.getItem('settingsOpen');
+          if(so != null) graphSettingsOpen = (String(so) === '1' || String(so).toLowerCase() === 'true');
+        }catch(_e){}
         // Keep Paint + Graph synchronized on load
         syncTaskSelection(graphTaskFilterId, { render:false, persist:true });
       }
@@ -873,7 +939,7 @@ function syncTaskSelection(taskId, opts){
 
     const settingsHtml = `
       <div class="gsp-settings-wrap">
-        <button class="btn ghost gsp-settings-toggle" type="button" id="gspSettingsToggle" aria-expanded="${graphSettingsOpen ? 'true' : 'false'}">⚙️ Graph Panel Settings</button>
+        <label class="gsp-settings-toggle" title="Show/hide Graph Panel settings"><input class="gsp-settings-checkbox" type="checkbox" id="gspSettingsToggle" ${graphSettingsOpen ? "checked" : ""} /><span class="gsp-switch" aria-hidden="true"></span><span class="gsp-settings-text">⚙️ Graph Panel Settings</span></label>
         <div class="gsp-settings ${graphSettingsOpen ? '' : 'gsp-settings-hidden'}" id="gspSettings">
           <div class="small muted" style="margin-top:2px">Set Max Hours per Task</div>
           <div class="gsp-max-grid">
@@ -955,10 +1021,11 @@ function syncTaskSelection(taskId, opts){
     const settingsToggle = body.querySelector('#gspSettingsToggle');
     const settingsEl = body.querySelector('#gspSettings');
     if(settingsToggle && settingsEl){
-      settingsToggle.addEventListener('click', ()=>{
-        graphSettingsOpen = !graphSettingsOpen;
+      // Toggle switch (default hidden, persistent)
+      try{ settingsToggle.checked = !!graphSettingsOpen; }catch(_e){}
+      settingsToggle.addEventListener('change', ()=>{
+        graphSettingsOpen = !!settingsToggle.checked;
         settingsEl.classList.toggle('gsp-settings-hidden', !graphSettingsOpen);
-        settingsToggle.setAttribute('aria-expanded', graphSettingsOpen ? 'true' : 'false');
         persistGraphPrefs();
       });
     }
@@ -1156,7 +1223,12 @@ function syncTaskSelection(taskId, opts){
     }
 
     const keep = blocks.filter((_,i)=>!selIdx.has(i));
-    Store.setUserDayBlocks(member.id, member.teamId, selectedDay, keep);
+    try{
+      Store.setUserDayBlocks(member.id, member.teamId, selectedDay, keep);
+    }catch(err){
+      showWarning(readableError(err, 'Unable to delete block. Please try again.'));
+      return;
+    }
     requestGraphRefresh();
 
     const actor = Auth.getUser();
@@ -2158,17 +2230,11 @@ function syncTaskSelection(taskId, opts){
               <label class="m-selwrap" title="Select member">
                 <input class="m-select" type="checkbox" data-act="mselect" />
               </label>
-              <div class="m-name-text">${UI.esc(m.name||m.username)}</div>
+              <div class="m-name-text">${UI.esc(m.name||m.username)}${isInactive ? ` <span class="status-pill">${UI.esc(inactiveText)}</span>`:''}</div>
             </div>
-            <div class="m-stats" aria-label="Weekly workload">
-              <span class="statpill" data-kind="mailbox" title="Mailbox hours this week">Mailbox <b>${ws.mailboxH}h</b></span>
-              <span class="statpill" data-kind="back" title="Back Office hours this week">Back Office <b>${ws.backOfficeH}h</b></span>
-              <span class="statpill" data-kind="call" title="Call Available hours this week">Call Available <b>${ws.callAvailableH}h</b></span>
-              <span class="statpill" data-kind="case" title="Cases assigned this week">Case Assigned <b>${ws.caseAssigned}</b></span>
-            </div>
-            <div class="m-sub">${UI.esc(Config.teamById(m.teamId).label)} ${isInactive ? `<span class="status-pill">${UI.esc(inactiveText)}</span>`:''}</div>
           </div>
           <div>
+            <div class="member-task-stats" aria-label="Weekly workload">Mailbox: ${ws.mailboxH}h • Back Office: ${ws.backOfficeH}h • Call: ${ws.callAvailableH}h • Cases: ${ws.caseAssigned}</div>
             <div class="timeline" data-team="${UI.esc(team.id)}">
               ${ticks.join('')}
               ${segs}
@@ -2176,7 +2242,7 @@ function syncTaskSelection(taskId, opts){
               ${dayLockedForGrid ? `<div class="locked-ind" aria-label="Locked"><div class="lk-ic">🔒</div><div class="lk-tx">LOCKED</div></div>`:''}
             </div>
           </div>
-          <div class="row" style="justify-content:flex-end;flex-direction:column;align-items:flex-end;gap:8px">
+          <div class="member-actions">
             ${canEditTarget(m) ? `
               <button class="iconbtn" data-act="edit" type="button" title="Edit schedule" ${isInactive?'disabled':''}>✎</button>
             ` : '<span class="small muted">View</span>'}

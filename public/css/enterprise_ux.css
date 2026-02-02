@@ -1619,3 +1619,95 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .gsp-max-item .input{
   width: 100%;
 }
+
+/* ------------------------------------------------------------------
+   Phase 1-506: Members page compression + REPORTS dropdown
+   ------------------------------------------------------------------ */
+
+/* Compressed member row: reduce vertical space so more users fit onscreen */
+.members-row{
+  padding: 6px 10px !important;
+  gap: 10px !important;
+}
+.members-row .members-meta{
+  gap: 2px !important;
+}
+.members-row .m-name{
+  gap: 8px !important;
+}
+.members-row .m-name-text{
+  line-height: 1.1;
+}
+.members-row .status-pill{
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  margin-left: 6px;
+}
+.members-row .timeline-wrap{
+  gap: 4px !important;
+}
+
+/* Compact workload line (replaces pill badges) */
+.member-task-stats{
+  font-size: 10px;
+  line-height: 1.15;
+  color: rgba(255,255,255,.62);
+  margin: 0 0 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* REPORTS dropdown (hover-open + polished menu) */
+.reports-dropdown{
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  z-index: 9000;
+}
+.reports-toggle{
+  border-radius: 12px;
+}
+.reports-menu{
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 240px;
+  padding: 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: linear-gradient(180deg, rgba(15,27,46,.98), rgba(12,22,40,.98));
+  box-shadow: 0 18px 48px rgba(0,0,0,.45);
+  backdrop-filter: blur(8px);
+  display: none;
+  z-index: 10001;
+}
+.reports-dropdown.open .reports-menu,
+.reports-dropdown:hover .reports-menu,
+.reports-dropdown:focus-within .reports-menu{
+  display: block;
+}
+.reports-item{
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(255,255,255,.92);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.reports-item:hover,
+.reports-item:focus{
+  background: rgba(79,139,255,.10);
+  border-color: rgba(79,139,255,.22);
+  outline: none;
+}
+.reports-item:active{
+  transform: translateY(1px);
+}
