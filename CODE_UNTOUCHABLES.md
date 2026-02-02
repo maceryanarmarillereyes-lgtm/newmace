@@ -233,3 +233,12 @@ This is required so authenticated users can read their own profile row under RLS
 - “Root access must always load login page. No internal content visible before authentication.”
 - “All packaged builds must follow naming format `MUMS Phase 1-<sequence>`, starting at 500 and incrementing by +1 per release.”
 - Packaging must use the authoritative tool: `tools/package_phase1_release.js` (or `npm run package:phase1`) to generate the zip and bump build labels for the next release (500 → 501 → 502...).
+
+## Members Tooling: Paint + Graph Panel Sync (Permanent)
+- Paint dropdown selection must directly control the **Graphical Task Status** panel task filter. No manual re-selection required.
+- Graph panel dropdown must also sync back to Paint if changed manually (bidirectional sync).
+- Graphical Task Status must refresh in real time after schedule edits (paint/drag/apply changes), reflecting updated task hours immediately.
+- Governance notices must appear as enterprise-grade tooltips (or modal alerts) using thresholds:
+  - Low hours (< 10h): “This member has limited hours in this task. Priority assignment recommended.”
+  - High hours (≥ 20h): “This member already has 20 hours in this task. Assigning more may cause imbalance. You may proceed or reselect from the list below.”
+

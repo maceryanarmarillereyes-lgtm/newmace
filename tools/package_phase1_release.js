@@ -127,7 +127,8 @@ function main(){
     }
   }
 
-  console.log(`[package_phase1_release] Bumped build labels to MUMS Phase 1-${nextSeq}`);
+  if(opts.dryRun) console.log(`[package_phase1_release] DRY RUN: would bump build labels to MUMS Phase 1-${nextSeq}`);
+  else console.log(`[package_phase1_release] Bumped build labels to MUMS Phase 1-${nextSeq}`);
   console.log(`[package_phase1_release] Next run will create: MUMS Phase 1-${nextSeq}.zip`);
 }
 

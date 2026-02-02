@@ -34,6 +34,60 @@ window.Pages.members = function(root){
   }
 
 
+  // Shared dropdown options (Paint + Graph Panel must stay synchronized)
+  function getTeamTaskOptions(teamId){
+    const tasks = (window.Store && Store.getTeamTasks) ? (Store.getTeamTasks(teamId) || []) : [];
+    const roleIds = (tasks && tasks.length) ? tasks.map(t=>t.id) : ['call_onqueue','back_office','block','lunch','mailbox_manager','mailbox_call'];
+    const core = ['mailbox_manager','mailbox_call','call_onqueue','back_office','lunch','block'];
+    const seen = new Set();
+    const ids = [];
+    for(const id of [...roleIds, ...core]){
+      const v = String(id||'').trim();
+      if(!v || seen.has(v)) continue;
+      seen.add(v);
+      ids.push(v);
+    }
+    const out = [];
+    for(const id of ids){
+      const s = Config.scheduleById(id);
+      if(s){
+        out.push({ id: s.id, label: s.label || id, icon: s.icon || '', color: s.color || '' });
+        continue;
+      }
+      const t = (tasks||[]).find(x=>String(x.id)===String(id));
+      if(t){
+        out.push({ id, label: t.label || id, icon: '🧩', color: t.color || '' });
+        continue;
+      }
+      out.push({ id, label: id, icon: '🧩', color: '' });
+    }
+    out.push({ id: '__clear__', label: 'Clear (empty)', icon: '🧽', color: '' });
+    return out;
+  }
+
+  function taskMeta(teamId, roleId){
+    const rid = String(roleId||'').trim();
+    if(!rid) return { id:'', label:'', icon:'', color:'' };
+    if(rid === '__clear__') return { id:'__clear__', label:'Clear (empty)', icon:'🧽', color:'' };
+    const s = Config.scheduleById(rid);
+    if(s) return { id: s.id, label: s.label || rid, icon: s.icon || '', color: s.color || '' };
+    const tasks = (window.Store && Store.getTeamTasks) ? (Store.getTeamTasks(teamId) || []) : [];
+    const t = (tasks||[]).find(x=>String(x.id)===rid);
+    if(t) return { id: rid, label: t.label || rid, icon: '🧩', color: t.color || '' };
+    return { id: rid, label: rid, icon: '🧩', color: '' };
+  }
+
+  function fallbackColorForLabel(label){
+    const l = String(label||'').toLowerCase();
+    if(l.includes('mailbox')) return '#4aa3ff';
+    if(l.includes('call')) return '#2ecc71';
+    if(l.includes('back')) return '#ffa21a';
+    if(l.includes('lunch')) return '#22d3ee';
+    if(l.includes('break')) return '#22d3ee';
+    return '#64748b';
+  }
+
+
   // Team filter
   let selectedTeamId = isLead ? me.teamId : (Config.TEAMS[0] && Config.TEAMS[0].id);
 
@@ -54,11 +108,86 @@ window.Pages.members = function(root){
   const defaultWeekStartISO = UI.addDaysISO(_todayISO, _deltaToMon);
   let weekStartISO = localStorage.getItem('ums_week_start_iso') || defaultWeekStartISO;
 
+  // Paint state (also drives Graph Panel task comparison)
+  let paint = {
+    enabled: false,
+    role: 'call_onqueue',
+  };
+
   // Floating graphical task status panel (Team Lead)
   const GRAPH_LS_KEY = 'mums_graph_status_panel_v1';
   let graphEnabled = false;
   let graphPanelState = null; // { left, top, width, height }
-  let graphCompareMode = 'mailbox'; // 'mailbox' | 'call'
+  let graphTaskFilterId = paint.role; // role id; synced with Paint dropdown
+  let _taskSyncing = false;
+
+// Unified task selection sync (Paint ↔ Graph Panel). Paint is primary, but changes are bidirectional.
+function syncTaskSelection(taskId, opts){
+  const v = String(taskId||'').trim();
+  if(!v) return;
+  const o = opts || {};
+  const shouldRender = (o.render !== false);
+  const shouldPersist = (o.persist !== false);
+
+  if(_taskSyncing){
+    paint.role = v;
+    graphTaskFilterId = v;
+    if(shouldPersist) persistGraphPrefs();
+    return;
+  }
+
+  _taskSyncing = true;
+  try{
+    paint.role = v;
+    graphTaskFilterId = v;
+
+    if(shouldPersist) persistGraphPrefs();
+
+    // Keep dropdown UIs in lockstep (no manual re-selection).
+    try{
+      const pSel = document.getElementById('paintRole');
+      if(pSel && String(pSel.value||'') !== v) pSel.value = v;
+    }catch(_e){}
+    try{
+      const gSel = document.getElementById('gspTask');
+      if(gSel && String(gSel.value||'') !== v) gSel.value = v;
+    }catch(_e){}
+  }finally{
+    _taskSyncing = false;
+  }
+
+  if(shouldRender && graphEnabled){
+    try{ renderGraphPanel(); }catch(_e){}
+  }
+}
+
+
+
+  function persistGraphPrefs(){
+    try{
+      const raw = localStorage.getItem(GRAPH_LS_KEY);
+      let st = {};
+      try{ st = raw ? JSON.parse(raw) : {}; }catch(_e){ st = {}; }
+      st.enabled = !!graphEnabled;
+      st.taskId = String(graphTaskFilterId||'');
+      st.panel = graphPanelState || st.panel || null;
+      localStorage.setItem(GRAPH_LS_KEY, JSON.stringify(st));
+    }catch(_e){}
+  }
+
+  function setGraphTaskFilter(taskId, opts){
+    syncTaskSelection(taskId, Object.assign({ render:true, persist:true }, opts||{}));
+  }
+
+  function requestGraphRefresh(){
+    if(!graphEnabled) return;
+    if(requestGraphRefresh._t) return;
+    requestGraphRefresh._t = window.setTimeout(()=>{
+      requestGraphRefresh._t = 0;
+      try{ if(graphEnabled) renderGraphPanel(); }catch(_e){}
+    }, 40);
+  }
+  requestGraphRefresh._t = 0;
 
   function normalizeToMonday(iso){
     // Snap selected ISO date to Monday of that week using calendar math (timezone-safe)
@@ -403,7 +532,11 @@ window.Pages.members = function(root){
         const st = JSON.parse(raw);
         graphEnabled = !!st.enabled;
         graphPanelState = st.panel || null;
-        if(st.mode === 'mailbox' || st.mode === 'call') graphCompareMode = st.mode;
+        if(st && st.taskId) graphTaskFilterId = String(st.taskId);
+        else if(st && st.mode === 'call') graphTaskFilterId = 'call_onqueue'; // legacy
+        else if(st && st.mode === 'mailbox') graphTaskFilterId = 'mailbox_manager'; // legacy
+        // Keep Paint + Graph synchronized on load
+        syncTaskSelection(graphTaskFilterId, { render:false, persist:true });
       }
     }catch(_e){ /* ignore */ }
 
@@ -426,7 +559,7 @@ window.Pages.members = function(root){
         const r = panel.getBoundingClientRect();
         const st = {
           enabled: graphEnabled,
-          mode: graphCompareMode,
+          taskId: String(graphTaskFilterId||''),
           panel: {
             left: Math.round(r.left),
             top: Math.round(r.top),
@@ -446,6 +579,8 @@ window.Pages.members = function(root){
       panel.style.display = graphEnabled ? '' : 'none';
       if(graphEnabled){
         applyPanelState();
+        // Ensure the panel always reflects the current Paint selection when opened.
+        syncTaskSelection(paint.role, { render:false, persist:true });
         renderGraphPanel();
       }
       saveGraphState();
@@ -540,10 +675,32 @@ window.Pages.members = function(root){
       return;
     }
 
-    // Comparison mode: Mailbox vs Call (filtered by selected task).
-    // - Mailbox Manager → Mailbox comparison only
-    // - Call Available → Call comparison only
-    const compareLabel = (graphCompareMode==='call') ? 'Call Available' : 'Mailbox Manager';
+    // Paint dropdown selection must directly control Graphical Task Comparison filter.
+    // Task comparison auto-sorts members by fewest hours in the selected task.
+
+    const esc = UI.escapeHtml || ((s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'));
+
+    const cfg = (window.Store && Store.getTeamConfig) ? Store.getTeamConfig(team.id) : null;
+    const callRole = (cfg && cfg.coverageTaskId) ? String(cfg.coverageTaskId) : 'call_onqueue';
+
+    // Build unified task list (Paint + Graph)
+    const taskOpts = getTeamTaskOptions(team.id);
+    const optIds = new Set(taskOpts.map(o=>String(o.id)));
+
+    // Ensure the chosen task is valid for this team. Paint is the source of truth,
+    // but if Paint points to an unavailable task we fall back and sync both controls.
+    let desiredTaskId = String(paint.role||'').trim();
+    if(!desiredTaskId || !optIds.has(desiredTaskId)){
+      desiredTaskId = optIds.has(String(callRole)) ? String(callRole) : (taskOpts[0] ? String(taskOpts[0].id) : String(callRole));
+    }
+    // Keep both dropdowns + internal state in sync without triggering a nested re-render.
+    if(String(graphTaskFilterId||'') !== String(desiredTaskId) || String(paint.role||'') !== String(desiredTaskId)){
+      syncTaskSelection(desiredTaskId, { render:false, persist:true });
+    }
+
+    const meta = taskMeta(team.id, graphTaskFilterId);
+    const compareLabel = meta.label || String(graphTaskFilterId||'');
+
     const weekLong = (()=>{
       try{
         const d0 = new Date(`${weekStartISO}T00:00:00`);
@@ -562,7 +719,7 @@ window.Pages.members = function(root){
       sub.textContent = `${tLabel} • Week ${weekLong} • Compare: ${compareLabel}`;
     }
     if(foot){
-      foot.textContent = 'Tip: Sorted by fewest hours in the selected task. Click a member to highlight + scroll.';
+      foot.textContent = 'Tip: Paint dropdown controls this comparison. Sorted by fewest hours in the selected task.';
     }
 
     const members = getMembersForView(selectedTeamId) || [];
@@ -571,11 +728,6 @@ window.Pages.members = function(root){
       return;
     }
 
-    const esc = UI.escapeHtml || ((s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'));
-
-    const cfg = (window.Store && Store.getTeamConfig) ? Store.getTeamConfig(team.id) : null;
-    const callRole = (cfg && cfg.coverageTaskId) ? String(cfg.coverageTaskId) : 'call_onqueue';
-
     function blockMinutes(b){
       try{
         const s = UI.offsetFromShiftStart(team, b.start);
@@ -583,70 +735,99 @@ window.Pages.members = function(root){
         return Math.max(0, e - s);
       }catch(_){ return 0; }
     }
-    function computeWeeklyHours(member){
-      let mailboxMin = 0;
-      let callMin = 0;
+
+    const shiftMin = (()=>{
+      try{
+        const sm = UI.shiftMeta(team);
+        return Math.max(60, Number(sm && sm.length ? sm.length : 540));
+      }catch(_){ return 540; }
+    })();
+
+    function computeWeeklyMinutesForTask(member, taskId){
+      const tid = String(taskId||'');
+      let taskMin = 0;
+      if(tid === '__clear__'){
+        // Clear (empty) → show unassigned hours (no governance notices in this mode)
+        let unassigned = 0;
+        for(let d=0; d<7; d++){
+          const bl = normalizeBlocks(team, Store.getUserDayBlocks(member.id, d) || []);
+          let assigned = 0;
+          for(const b of (bl||[])) assigned += blockMinutes(b);
+          unassigned += Math.max(0, shiftMin - assigned);
+        }
+        return unassigned;
+      }
+
+      const isMailbox = (tid === 'mailbox_manager');
+      const isCall = (tid === callRole || tid === 'call_onqueue' || tid === 'call_available');
+
       for(let d=0; d<7; d++){
         const bl = normalizeBlocks(team, Store.getUserDayBlocks(member.id, d) || []);
         for(const b of (bl||[])){
           const mins = blockMinutes(b);
           if(!mins) continue;
           const r = String(b.role||'');
-          if(r==='mailbox_manager' || r==='mailbox_call') mailboxMin += mins;
-          if(r===callRole || r==='call_available' || r==='mailbox_call') callMin += mins;
+          if(isMailbox){
+            if(r==='mailbox_manager' || r==='mailbox_call') taskMin += mins;
+          }else if(isCall){
+            if(r===callRole || r==='call_available' || r==='mailbox_call' || r==='call_onqueue') taskMin += mins;
+          }else{
+            if(r===tid) taskMin += mins;
+          }
         }
       }
-      return { mailboxH: mailboxMin/60, callH: callMin/60 };
+      return taskMin;
     }
 
     const rows = members.map(m=>{
-      const h = computeWeeklyHours(m);
+      const mins = computeWeeklyMinutesForTask(m, graphTaskFilterId);
       const name = m.fullName || m.name || m.email || m.id;
-      return {
-        id: m.id,
-        name: name,
-        mailboxH: h.mailboxH,
-        callH: h.callH
-      };
+      return { id: m.id, name, hours: mins/60 };
     });
 
-    const getVal = (r)=> (graphCompareMode==='call' ? r.callH : r.mailboxH);
     rows.sort((a,b)=>{
-      const da = getVal(a);
-      const db = getVal(b);
-      if(da!==db) return da-db;
+      if(a.hours !== b.hours) return a.hours - b.hours;
       return String(a.name||'').localeCompare(String(b.name||''));
     });
 
-    const maxObserved = rows.reduce((m,r)=>Math.max(m, getVal(r)), 0);
-    const scaleMax = Math.max(20, maxObserved, 1); // anchor visual scale to the governance high threshold
+    const maxObserved = rows.reduce((m,r)=>Math.max(m, r.hours), 0);
+    const scaleMax = Math.max(20, maxObserved, 1);
 
-    // Resolve task color from team task settings when available.
-    const taskIdForColor = (graphCompareMode==='call') ? callRole : 'mailbox_manager';
-    const taskColor = (window.Store && Store.getTeamTaskColor) ? (Store.getTeamTaskColor(team.id, taskIdForColor) || '') : '';
-    const fallbackColor = (graphCompareMode==='call') ? '#2ecc71' : '#4aa3ff';
-    const barColor = taskColor || fallbackColor;
+    const barColor = (meta && meta.color) ? meta.color : fallbackColorForLabel(compareLabel);
 
     const controlHtml = `
       <div class="gsp-controls">
-        <label class="small muted" for="gspCompare">Comparison</label>
-        <select class="input" id="gspCompare" aria-label="Select task comparison">
-          <option value="mailbox">📥 Mailbox Manager</option>
-          <option value="call">📞 Call Available</option>
+        <label class="small muted" for="gspTask">Comparison</label>
+        <select class="input" id="gspTask" aria-label="Select task comparison">
+          ${taskOpts.map(o=>`<option value="${esc(o.id)}">${esc(o.icon||'')} ${esc(o.label||o.id)}</option>`).join('')}
         </select>
-        <div class="gsp-controls-hint small muted">Auto-sorted by fewest hours in the selected task.</div>
+        <div class="gsp-controls-hint small muted">Synced with Paint • Auto-sorted by fewest hours.</div>
       </div>
     `;
 
     const rowsHtml = rows.map(r=>{
-      const val = getVal(r);
+      const val = r.hours;
       const pct = Math.min(100, (val/scaleMax)*100);
 
-      let notice = '';
-      if(val < 10){
-        notice = `<div class="gsp-note low">This member has limited hours in this task. Priority assignment recommended.</div>`;
-      }else if(val >= 20){
-        notice = `<div class="gsp-note high">This member already has 20 hours in this task. Assigning more may cause imbalance. You may proceed or reselect from the list below.</div>`;
+      let gov = '';
+      if(String(graphTaskFilterId) !== '__clear__'){
+        if(val < 10){
+          const msg = 'This member has limited hours in this task. Priority assignment recommended.';
+          gov = `
+            <div class="gsp-gov">
+              <span class="gsp-govbadge low" tabindex="0">⚖️ Governance</span>
+              <div class="gsp-govtip low">${esc(msg)}</div>
+            </div>
+          `;
+        }else if(val >= 20){
+          const msg = 'This member already has 20 hours in this task. Assigning more may cause imbalance. You may proceed or reselect from the list below.';
+          gov = `
+            <div class="gsp-gov">
+              <span class="gsp-govbadge high" tabindex="0">⚖️ Governance</span>
+              <div class="gsp-govtip high">${esc(msg)}</div>
+            </div>
+          `;
+        }
       }
 
       const rowCls = `gsp-row${String(selMemberId||'')===String(r.id) ? ' member-highlight' : ''}`;
@@ -657,7 +838,7 @@ window.Pages.members = function(root){
           <div class="gsp-name">
             <div class="name">${esc(r.name)}</div>
             <div class="meta">${esc(compareLabel)} this week: <b>${esc(hoursText)}</b></div>
-            ${notice}
+            ${gov}
           </div>
           <div class="gsp-bar" role="img" aria-label="${esc(compareLabel)} hours bar">
             <div class="task-bar" style="width:${pct.toFixed(4)}%;--c:${esc(barColor)}" title="${esc(compareLabel)}: ${esc(hoursText)}"></div>
@@ -668,18 +849,19 @@ window.Pages.members = function(root){
 
     body.innerHTML = controlHtml + rowsHtml;
 
-    // Wire compare selector
-    const sel = body.querySelector('#gspCompare');
-    if(sel){
-      sel.value = graphCompareMode;
-      sel.addEventListener('change', ()=>{
-        const v = String(sel.value||'');
-        if(v==='mailbox' || v==='call') graphCompareMode = v;
-        try{ localStorage.setItem(GRAPH_LS_KEY, JSON.stringify({ enabled: graphEnabled, mode: graphCompareMode, panel: graphPanelState || null })); }catch(_){ }
-        renderGraphPanel();
+    // Wire task selector — keep synced with Paint
+    const taskSel = body.querySelector('#gspTask');
+    if(taskSel){
+      taskSel.value = String(graphTaskFilterId||'');
+      taskSel.addEventListener('change', ()=>{
+        const v = String(taskSel.value||'').trim();
+        if(!v) return;
+        // Graph dropdown can be changed manually, but it must sync back to Paint.
+        syncTaskSelection(v, { render:true, persist:true });
+        // Re-render Paint bar to ensure UI reflects the selection (and keeps handlers wired).
+        renderPaintBar();
       });
     }
-
     // Click to highlight / scroll to member row
     body.querySelectorAll('.gsp-row').forEach(rEl=>{
       const id = rEl.dataset.mid;
@@ -810,33 +992,19 @@ window.Pages.members = function(root){
   }
 
   // Paint mode (click + drag across hours) — still strictly 1-hour blocks
-  const paint = {
-    enabled: false,
-    role: 'call_onqueue',
-  };
 
   function renderPaintBar(){
     const el = wrap.querySelector('#paintBar');
     if(!el) return;
-    const tasks = (window.Store && Store.getTeamTasks) ? Store.getTeamTasks(selectedTeamId) : [];
-    const roleIds = tasks && tasks.length ? tasks.map(t=>t.id) : ['call_onqueue','back_office','block','lunch','mailbox_manager','mailbox_call'];
-    const opts = roleIds.map(id=>{
-      const s = Config.scheduleById(id);
-      if(s){
-        return `<option value="${s.id}">${UI.esc(s.icon||'')} ${UI.esc(s.label)}</option>`;
-      }
-      const t = (tasks||[]).find(x=>x.id===id);
-      if(t){
-        return `<option value="${UI.esc(id)}">🧩 ${UI.esc(t.label||id)}</option>`;
-      }
-      return '';
+    const opts = getTeamTaskOptions(selectedTeamId).map(o=>{
+      const icon = o.icon ? (UI.esc(o.icon) + ' ') : '';
+      return `<option value="${UI.esc(o.id)}">${icon}${UI.esc(o.label||o.id)}</option>`;
     }).join('');
     el.innerHTML = `
       <div class="paintbar-inner ${paint.enabled?'on':''}">
         <button class="btn ${paint.enabled?'primary':''}" type="button" id="paintToggle" title="Paint mode: click & drag across hours">🖌 Paint</button>
         <select class="input" id="paintRole" title="Role to paint" style="min-width:170px">
           ${opts}
-          <option value="__clear__">🧽 Clear (empty)</option>
         </select>
       </div>
     `;
@@ -848,7 +1016,12 @@ window.Pages.members = function(root){
       wrap.classList.toggle('paint-enabled', paint.enabled);
       renderPaintBar();
     };
-    if(sel) sel.onchange = ()=>{ paint.role = sel.value; };
+    if(sel) sel.onchange = ()=>{
+      const v = String(sel.value||'').trim();
+      if(!v) return;
+      // Paint dropdown directly drives Graph Panel task comparison.
+      syncTaskSelection(v, { render:true, persist:true });
+    };
     wrap.classList.toggle('paint-enabled', paint.enabled);
   }
 
@@ -875,6 +1048,7 @@ window.Pages.members = function(root){
 
     const keep = blocks.filter((_,i)=>!selIdx.has(i));
     Store.setUserDayBlocks(member.id, member.teamId, selectedDay, keep);
+    requestGraphRefresh();
 
     const actor = Auth.getUser();
     if(actor) Store.addLog({
@@ -914,6 +1088,7 @@ window.Pages.members = function(root){
       for(let d=0; d<=6; d++){
         if(isDayLockedForEdit(member.teamId, d)) continue;
         Store.setUserDayBlocks(member.id, member.teamId, d, []);
+    requestGraphRefresh();
       }
       const actor = Auth.getUser();
       if(actor) Store.addLog({
@@ -1131,6 +1306,7 @@ window.Pages.members = function(root){
       const plan = plans[String(day)] || {};
       for(const u of members){
         Store.setUserDayBlocks(u.id, u.teamId, day, plan[u.id] || []);
+    requestGraphRefresh();
       }
     }
     // lock Mon–Fri for this Manila week
@@ -1635,6 +1811,7 @@ window.Pages.members = function(root){
           const cur = Store.getUserDayBlocks(member.id, selectedDay).slice();
           cur.splice(idx,1);
           Store.setUserDayBlocks(member.id, member.teamId, selectedDay, cur);
+    requestGraphRefresh();
           renderModal();
           renderAll();
         }
@@ -1650,6 +1827,7 @@ window.Pages.members = function(root){
           const role = row.querySelector('[data-field="role"]').value;
           cur[idx] = { start, end, role };
           Store.setUserDayBlocks(member.id, member.teamId, selectedDay, cur);
+    requestGraphRefresh();
         });
       });
 
@@ -1666,6 +1844,7 @@ window.Pages.members = function(root){
         const toHM = (m)=>String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
         cur.push({ start: toHM(absNewStart), end: toHM(absNewEnd), role: 'block' });
         Store.setUserDayBlocks(member.id, member.teamId, selectedDay, cur);
+    requestGraphRefresh();
         renderModal();
         renderAll();
       });
@@ -1683,6 +1862,7 @@ window.Pages.members = function(root){
         }
         err.style.display = 'none';
         Store.setUserDayBlocks(member.id, member.teamId, selectedDay, normalized);
+    requestGraphRefresh();
         UI.closeModal('memberSchedModal');
         renderAll();
       });
@@ -2060,6 +2240,7 @@ window.Pages.members = function(root){
       }
       const updated = normalizeBlocks(team, blocksFromSlots(team, slots));
       Store.setUserDayBlocks(member.id, member.teamId, selectedDay, updated);
+    requestGraphRefresh();
     }
 
     function roleAtHour(member, team, hourIdx){
@@ -2118,6 +2299,7 @@ window.Pages.members = function(root){
 
         const updated = normalizeBlocks(team, blocksFromSlots(team, slots));
         Store.setUserDayBlocks(member.id, member.teamId, selectedDay, updated);
+    requestGraphRefresh();
       }catch(e){
         console.error('trimRoleOutsideTouched error', e);
       }
@@ -2575,6 +2757,7 @@ window.Pages.members = function(root){
           nowCur.push({ start: startHM, end: endHM, role: role || 'block' });
           const updated = normalizeBlocks(team, nowCur);
           Store.setUserDayBlocks(member.id, member.teamId, selectedDay, updated);
+    requestGraphRefresh();
           if(actor){
             Store.addLog({
               ts: Date.now(),
@@ -2601,6 +2784,7 @@ window.Pages.members = function(root){
       const updated = drag.blocks.slice();
       updated[drag.idx] = { ...updated[drag.idx], start: UI.offsetToHM(drag.team,s), end: UI.offsetToHM(drag.team,e2) };
       Store.setUserDayBlocks(drag.member.id, drag.member.teamId, selectedDay, updated);
+    requestGraphRefresh();
 
       // log
       const actor = Auth.getUser();

@@ -1166,6 +1166,71 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   color: rgba(255,245,232,.92);
 }
 
+/* Governance tooltip (enterprise-grade) */
+.gsp-gov{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  margin-top:6px;
+}
+.gsp-govbadge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.05);
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color: rgba(255,255,255,.88);
+  cursor:help;
+}
+.gsp-govbadge:focus{
+  outline:none;
+  box-shadow:0 0 0 3px rgba(79,139,255,.22);
+}
+.gsp-govtip{
+  display:none;
+  position:absolute;
+  left:0;
+  top: calc(100% + 8px);
+  width:min(520px, calc(100vw - 64px));
+  padding:10px 12px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(8,12,22,.95);
+  backdrop-filter: blur(8px);
+  color: rgba(255,255,255,.92);
+  font-size:12px;
+  line-height:1.4;
+  box-shadow: 0 14px 32px rgba(0,0,0,.35);
+  z-index: 20;
+}
+.gsp-gov:hover .gsp-govtip,
+.gsp-gov:focus-within .gsp-govtip{
+  display:block;
+}
+.gsp-govtip.low{
+  border-color: rgba(34,211,238,.35);
+}
+.gsp-govtip.high{
+  border-color: rgba(255,162,26,.40);
+}
+.gsp-govbadge.low{
+  border-color: rgba(34,211,238,.35);
+  background: rgba(34,211,238,.10);
+  color: rgba(224,252,255,.95);
+}
+.gsp-govbadge.high{
+  border-color: rgba(255,162,26,.40);
+  background: rgba(255,162,26,.12);
+  color: rgba(255,245,232,.95);
+}
+
 @media (max-width: 900px){
   .graph-status-panel{ width: calc(100vw - 24px); height: 320px; right: 12px; bottom: 12px; }
   .gsp-row{ grid-template-columns: 140px 1fr; }
