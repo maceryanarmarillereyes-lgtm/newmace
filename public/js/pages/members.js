@@ -119,6 +119,7 @@ window.Pages.members = function(root){
   let graphEnabled = false;
   let graphPanelState = null; // { left, top, width, height }
   let graphTaskFilterId = paint.role; // role id; synced with Paint dropdown
+  let graphViewId = 'bar'; // analytics view (default Bar Graph)
   let _taskSyncing = false;
 
 // Unified task selection sync (Paint ↔ Graph Panel). Paint is primary, but changes are bidirectional.
@@ -170,6 +171,7 @@ function syncTaskSelection(taskId, opts){
       try{ st = raw ? JSON.parse(raw) : {}; }catch(_e){ st = {}; }
       st.enabled = !!graphEnabled;
       st.taskId = String(graphTaskFilterId||'');
+      st.view = String(graphViewId||'bar');
       st.panel = graphPanelState || st.panel || null;
       localStorage.setItem(GRAPH_LS_KEY, JSON.stringify(st));
     }catch(_e){}
@@ -177,6 +179,20 @@ function syncTaskSelection(taskId, opts){
 
   function setGraphTaskFilter(taskId, opts){
     syncTaskSelection(taskId, Object.assign({ render:true, persist:true }, opts||{}));
+  }
+
+  function setGraphView(viewId, opts){
+    let v = String(viewId||'').trim();
+    try{
+      if(window.GraphPanel && typeof GraphPanel.normalizeViewId === 'function') v = GraphPanel.normalizeViewId(v);
+    }catch(_e){ /* ignore */ }
+    if(!v) v = 'bar';
+    graphViewId = v;
+    const o = opts || {};
+    if(o.persist !== false) persistGraphPrefs();
+    if(o.render !== false && graphEnabled){
+      try{ renderGraphPanel(); }catch(_e){}
+    }
   }
 
   function requestGraphRefresh(){
@@ -535,6 +551,11 @@ function syncTaskSelection(taskId, opts){
         if(st && st.taskId) graphTaskFilterId = String(st.taskId);
         else if(st && st.mode === 'call') graphTaskFilterId = 'call_onqueue'; // legacy
         else if(st && st.mode === 'mailbox') graphTaskFilterId = 'mailbox_manager'; // legacy
+        if(st && st.view){
+          try{
+            graphViewId = (window.GraphPanel && GraphPanel.normalizeViewId) ? GraphPanel.normalizeViewId(st.view) : String(st.view);
+          }catch(_e){ graphViewId = 'bar'; }
+        }
         // Keep Paint + Graph synchronized on load
         syncTaskSelection(graphTaskFilterId, { render:false, persist:true });
       }
@@ -560,6 +581,7 @@ function syncTaskSelection(taskId, opts){
         const st = {
           enabled: graphEnabled,
           taskId: String(graphTaskFilterId||''),
+          view: String(graphViewId||'bar'),
           panel: {
             left: Math.round(r.left),
             top: Math.round(r.top),
@@ -675,28 +697,27 @@ function syncTaskSelection(taskId, opts){
       return;
     }
 
-    // Paint dropdown selection must directly control Graphical Task Comparison filter.
-    // Task comparison auto-sorts members by fewest hours in the selected task.
-
     const esc = UI.escapeHtml || ((s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'));
 
     const cfg = (window.Store && Store.getTeamConfig) ? Store.getTeamConfig(team.id) : null;
     const callRole = (cfg && cfg.coverageTaskId) ? String(cfg.coverageTaskId) : 'call_onqueue';
 
-    // Build unified task list (Paint + Graph)
+    // Unified task list (Paint + Graph)
     const taskOpts = getTeamTaskOptions(team.id);
     const optIds = new Set(taskOpts.map(o=>String(o.id)));
 
-    // Ensure the chosen task is valid for this team. Paint is the source of truth,
-    // but if Paint points to an unavailable task we fall back and sync both controls.
+    // Paint dropdown is the source of truth; Graph Panel must follow.
     let desiredTaskId = String(paint.role||'').trim();
     if(!desiredTaskId || !optIds.has(desiredTaskId)){
       desiredTaskId = optIds.has(String(callRole)) ? String(callRole) : (taskOpts[0] ? String(taskOpts[0].id) : String(callRole));
     }
-    // Keep both dropdowns + internal state in sync without triggering a nested re-render.
     if(String(graphTaskFilterId||'') !== String(desiredTaskId) || String(paint.role||'') !== String(desiredTaskId)){
       syncTaskSelection(desiredTaskId, { render:false, persist:true });
     }
+
+    // Normalize analytics view (defaults to Bar Graph)
+    try{ if(window.GraphPanel && typeof GraphPanel.normalizeViewId === 'function') graphViewId = GraphPanel.normalizeViewId(graphViewId); }catch(_e){ graphViewId = 'bar'; }
+    if(!graphViewId) graphViewId = 'bar';
 
     const meta = taskMeta(team.id, graphTaskFilterId);
     const compareLabel = meta.label || String(graphTaskFilterId||'');
@@ -719,7 +740,7 @@ function syncTaskSelection(taskId, opts){
       sub.textContent = `${tLabel} • Week ${weekLong} • Compare: ${compareLabel}`;
     }
     if(foot){
-      foot.textContent = 'Tip: Paint dropdown controls this comparison. Sorted by fewest hours in the selected task.';
+      foot.textContent = 'Synced with Paint • Auto-sorted by fewest hours in the selected task.';
     }
 
     const members = getMembersForView(selectedTeamId) || [];
@@ -743,46 +764,57 @@ function syncTaskSelection(taskId, opts){
       }catch(_){ return 540; }
     })();
 
-    function computeWeeklyMinutesForTask(member, taskId){
+    function computeTaskMinutesForMember(member, taskId){
       const tid = String(taskId||'');
-      let taskMin = 0;
+      const byDay = new Array(7).fill(0);
+
       if(tid === '__clear__'){
-        // Clear (empty) → show unassigned hours (no governance notices in this mode)
-        let unassigned = 0;
+        // Clear (empty) → unassigned minutes
+        let total = 0;
         for(let d=0; d<7; d++){
           const bl = normalizeBlocks(team, Store.getUserDayBlocks(member.id, d) || []);
           let assigned = 0;
           for(const b of (bl||[])) assigned += blockMinutes(b);
-          unassigned += Math.max(0, shiftMin - assigned);
+          const unassigned = Math.max(0, shiftMin - assigned);
+          byDay[d] = unassigned;
+          total += unassigned;
         }
-        return unassigned;
+        return { totalMin: total, byDayMin: byDay };
       }
 
       const isMailbox = (tid === 'mailbox_manager');
       const isCall = (tid === callRole || tid === 'call_onqueue' || tid === 'call_available');
 
+      let total = 0;
       for(let d=0; d<7; d++){
         const bl = normalizeBlocks(team, Store.getUserDayBlocks(member.id, d) || []);
+        let dayMin = 0;
         for(const b of (bl||[])){
           const mins = blockMinutes(b);
           if(!mins) continue;
           const r = String(b.role||'');
           if(isMailbox){
-            if(r==='mailbox_manager' || r==='mailbox_call') taskMin += mins;
+            if(r==='mailbox_manager' || r==='mailbox_call') dayMin += mins;
           }else if(isCall){
-            if(r===callRole || r==='call_available' || r==='mailbox_call' || r==='call_onqueue') taskMin += mins;
+            if(r===callRole || r==='call_available' || r==='mailbox_call' || r==='call_onqueue') dayMin += mins;
           }else{
-            if(r===tid) taskMin += mins;
+            if(r===tid) dayMin += mins;
           }
         }
+        byDay[d] = dayMin;
+        total += dayMin;
       }
-      return taskMin;
+      return { totalMin: total, byDayMin: byDay };
     }
 
     const rows = members.map(m=>{
-      const mins = computeWeeklyMinutesForTask(m, graphTaskFilterId);
+      const res = computeTaskMinutesForMember(m, graphTaskFilterId);
       const name = m.fullName || m.name || m.email || m.id;
-      return { id: m.id, name, hours: mins/60 };
+      const dailyHours = res.byDayMin.map(x=>x/60);
+      const hours = (res.totalMin||0)/60;
+      // Radar: Mon–Fri (5 axes)
+      const radarVals = [dailyHours[1]||0, dailyHours[2]||0, dailyHours[3]||0, dailyHours[4]||0, dailyHours[5]||0];
+      return { id: m.id, name, hours, dailyHours, radarVals };
     });
 
     rows.sort((a,b)=>{
@@ -793,76 +825,130 @@ function syncTaskSelection(taskId, opts){
     const maxObserved = rows.reduce((m,r)=>Math.max(m, r.hours), 0);
     const scaleMax = Math.max(20, maxObserved, 1);
 
+    let maxDayObs = 0;
+    let maxRadarObs = 0;
+    for(const r of rows){
+      for(const v of (r.dailyHours||[])) maxDayObs = Math.max(maxDayObs, Number(v||0));
+      for(const v of (r.radarVals||[])) maxRadarObs = Math.max(maxRadarObs, Number(v||0));
+    }
+    maxDayObs = Math.max(1, maxDayObs);
+    maxRadarObs = Math.max(1, maxRadarObs);
+
     const barColor = (meta && meta.color) ? meta.color : fallbackColorForLabel(compareLabel);
+
+    const viewList = (window.GraphPanel && Array.isArray(GraphPanel.VIEWS)) ? GraphPanel.VIEWS : [
+      { id:'bar', label:'Bar Graph' },
+      { id:'pie', label:'Pie Chart' },
+      { id:'stack', label:'Stacked Column' },
+      { id:'donut', label:'Donut Chart' },
+      { id:'heat', label:'Heatmap' },
+      { id:'radar', label:'Radar Chart' },
+    ];
 
     const controlHtml = `
       <div class="gsp-controls">
-        <label class="small muted" for="gspTask">Comparison</label>
-        <select class="input" id="gspTask" aria-label="Select task comparison">
-          ${taskOpts.map(o=>`<option value="${esc(o.id)}">${esc(o.icon||'')} ${esc(o.label||o.id)}</option>`).join('')}
-        </select>
+        <div class="gsp-field">
+          <label class="small muted" for="gspTask">Comparison</label>
+          <select class="input" id="gspTask" aria-label="Select task comparison">
+            ${taskOpts.map(o=>`<option value="${esc(o.id)}">${esc(o.icon||'')} ${esc(o.label||o.id)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="gsp-field">
+          <label class="small muted" for="gspView">Select Analytic View</label>
+          <select class="input" id="gspView" aria-label="Select analytics view">
+            ${viewList.map(v=>`<option value="${esc(v.id)}">${esc(v.label||v.id)}</option>`).join('')}
+          </select>
+        </div>
         <div class="gsp-controls-hint small muted">Synced with Paint • Auto-sorted by fewest hours.</div>
       </div>
     `;
 
-    const rowsHtml = rows.map(r=>{
-      const val = r.hours;
-      const pct = Math.min(100, (val/scaleMax)*100);
+    function priorityInfo(valHours){
+      if(String(graphTaskFilterId) === '__clear__') return null;
+      if(valHours < 10){
+        return {
+          cls: 'pri-high',
+          label: 'High Priority to Assign',
+          tip: 'This member has limited hours in this task. Priority assignment recommended.'
+        };
+      }
+      if(valHours >= 20){
+        return {
+          cls: 'pri-over',
+          label: 'Overloaded',
+          tip: 'This member already has 20+ hours in this task. Assigning more may cause imbalance.'
+        };
+      }
+      return { cls: 'pri-balanced', label: 'Balanced', tip: '' };
+    }
 
-      let gov = '';
-      if(String(graphTaskFilterId) !== '__clear__'){
-        if(val < 10){
-          const msg = 'This member has limited hours in this task. Priority assignment recommended.';
-          gov = `
-            <div class="gsp-gov">
-              <span class="gsp-govbadge low" tabindex="0">⚖️ Governance</span>
-              <div class="gsp-govtip low">${esc(msg)}</div>
-            </div>
-          `;
-        }else if(val >= 20){
-          const msg = 'This member already has 20 hours in this task. Assigning more may cause imbalance. You may proceed or reselect from the list below.';
-          gov = `
-            <div class="gsp-gov">
-              <span class="gsp-govbadge high" tabindex="0">⚖️ Governance</span>
-              <div class="gsp-govtip high">${esc(msg)}</div>
-            </div>
-          `;
-        }
+    const rowsHtml = rows.map(r=>{
+      const val = Number(r.hours||0);
+      const pct = Math.min(100, (val/scaleMax)*100);
+      const hoursText = `${val.toFixed(1)}h`;
+
+      const pri = priorityInfo(val);
+      let priHtml = '';
+      if(pri){
+        priHtml = `
+          <div class="gsp-pri">
+            <span class="gsp-badge ${esc(pri.cls)}" tabindex="0">${esc(pri.label)}</span>
+            ${pri.tip ? `<div class="gsp-tip ${esc(pri.cls)}">${esc(pri.tip)}</div>` : ''}
+          </div>
+        `;
       }
 
+      const title = `${compareLabel}: ${hoursText}`;
+      const viz = (window.GraphPanel && typeof GraphPanel.renderVizHTML === 'function')
+        ? GraphPanel.renderVizHTML(graphViewId, {
+            pct,
+            color: barColor,
+            title,
+            dailyHours: r.dailyHours,
+            dailyMax: maxDayObs,
+            dayLabels: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+            radarVals: r.radarVals,
+            radarMax: maxRadarObs,
+          })
+        : `<div class="gsp-bar"><div class="task-bar" style="width:${pct.toFixed(4)}%;--c:${esc(barColor)}" title="${esc(title)}"></div></div>`;
+
       const rowCls = `gsp-row${String(selMemberId||'')===String(r.id) ? ' member-highlight' : ''}`;
-      const hoursText = `${val.toFixed(1)}h`;
 
       return `
         <div class="${rowCls}" data-mid="${esc(r.id)}" role="button" tabindex="0" aria-label="${esc(r.name)} ${esc(compareLabel)} hours">
           <div class="gsp-name">
             <div class="name">${esc(r.name)}</div>
             <div class="meta">${esc(compareLabel)} this week: <b>${esc(hoursText)}</b></div>
-            ${gov}
+            ${priHtml}
           </div>
-          <div class="gsp-bar" role="img" aria-label="${esc(compareLabel)} hours bar">
-            <div class="task-bar" style="width:${pct.toFixed(4)}%;--c:${esc(barColor)}" title="${esc(compareLabel)}: ${esc(hoursText)}"></div>
-          </div>
+          ${viz}
         </div>
       `;
     }).join('');
 
     body.innerHTML = controlHtml + rowsHtml;
 
-    // Wire task selector — keep synced with Paint
     const taskSel = body.querySelector('#gspTask');
     if(taskSel){
       taskSel.value = String(graphTaskFilterId||'');
       taskSel.addEventListener('change', ()=>{
         const v = String(taskSel.value||'').trim();
         if(!v) return;
-        // Graph dropdown can be changed manually, but it must sync back to Paint.
         syncTaskSelection(v, { render:true, persist:true });
-        // Re-render Paint bar to ensure UI reflects the selection (and keeps handlers wired).
         renderPaintBar();
       });
     }
-    // Click to highlight / scroll to member row
+
+    const viewSel = body.querySelector('#gspView');
+    if(viewSel){
+      viewSel.value = String(graphViewId||'bar');
+      viewSel.addEventListener('change', ()=>{
+        const v = String(viewSel.value||'').trim();
+        if(!v) return;
+        setGraphView(v, { render:true, persist:true });
+      });
+    }
+
     body.querySelectorAll('.gsp-row').forEach(rEl=>{
       const id = rEl.dataset.mid;
       const go = ()=>{

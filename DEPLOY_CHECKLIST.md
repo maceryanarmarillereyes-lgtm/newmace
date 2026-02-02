@@ -245,7 +245,7 @@ After applying migrations:
 ## Verification (13126-12)
 - Cache-busting:
   - Confirm `?v=20260201-keepalive` is applied to **all** `public/*.html` assets (index, login, schedule, dashboard, debug, etc.) that reference CSS/JS.
-  - Confirm the UI header shows `Build ID: MUMS Phase 1-502` and no mixed-version assets are loaded.
+  - Confirm the UI header shows `Build ID: MUMS Phase 1-503` and no mixed-version assets are loaded.
 - Schedule storage authority:
   - Confirm `mums_schedule_blocks` is treated as **authoritative** schedule storage.
   - Confirm `ums_weekly_schedules` is used only as **read-only fallback** (no new writes required for normal operations).
@@ -296,15 +296,15 @@ After applying migrations:
     - Confirm `vercel.json` is present and remains in the v4.2 structure (rewrites + functions.maxDuration).
 
 
-## Verification (MUMS Phase 1-502)
+## Verification (MUMS Phase 1-503)
 - Root login enforcement:
   - Deploy, open an **incognito/private** window.
   - Visit `/` (root) and confirm the **login page** appears immediately.
   - Confirm there is **no dashboard flash** / internal UI rendered before authentication.
   - Visit `/login` (no extension) and confirm it also resolves to the login page (via early redirect).
 - Release naming + build ID:
-  - Confirm the packaged artifact name follows: `MUMS Phase 1-502.zip`.
-  - Confirm the UI header shows: `Build ID: MUMS Phase 1-502`.
+  - Confirm the packaged artifact name follows: `MUMS Phase 1-503.zip`.
+  - Confirm the UI header shows: `Build ID: MUMS Phase 1-503`.
   - Confirm no legacy build IDs (`13126-*`) appear in the UI.
 
 - Schedule lock enforcement (Members):
@@ -323,21 +323,25 @@ After applying migrations:
   - Comparison dropdown:
     - Select **Mailbox Manager** → list shows Mailbox hours only, sorted by fewest hours.
     - Select **Call Available** → list shows Call hours only, sorted by fewest hours.
-  - Governance notices:
+  - Priority tags + notices:
     - Low hours (<10h): “This member has limited hours in this task. Priority assignment recommended.”
     - High hours (≥20h): “This member already has 20 hours in this task. Assigning more may cause imbalance. You may proceed or reselect from the list below.”
 
+  - Analytics view selector (Graph panel):
+    - Confirm dropdown selector updates Graph Panel view.
+    - Confirm priority tags appear correctly.
+    - Confirm default view is Bar Graph.
 - Sequential packaging auto-increment:
   - Confirm the tool exists: `tools/package_phase1_release.js`.
   - Dry-run check: `npm run package:phase1 -- --dry-run`.
-    - Expect: it would create `MUMS Phase 1-502.zip`, then bump labels to `MUMS Phase 1-502`.
-  - After packaging (real run), confirm the next run would generate: `MUMS Phase 1-502.zip`.
+    - Expect: it would create `MUMS Phase 1-503.zip`, then bump labels to `MUMS Phase 1-504`.
+  - After packaging (real run), confirm the next run would generate: `MUMS Phase 1-504.zip`.
 - Keep-alive regression:
   - Confirm `/api/keep_alive` still returns `{ ok: true }` and inserts into `heartbeat`.
   - Confirm GitHub Actions `Supabase Keep-Alive` workflow still exists and runs on schedule.
 
 
-## Verification (MUMS Phase 1-502)
+## Verification (MUMS Phase 1-503)
 - Members: Paint ↔ Graph sync
   - Select a task in **Paint** → confirm the Graphical Task Status panel instantly switches to the same task (dropdown value stays synced).
   - Assign/paint/drag blocks → confirm the panel updates member hours without manual refresh.
@@ -345,10 +349,10 @@ After applying migrations:
   - Low hours (<10h): tooltip shows: "This member has limited hours in this task. Priority assignment recommended."
   - High hours (≥20h): tooltip shows: "This member already has 20 hours in this task. Assigning more may cause imbalance. You may proceed or reselect from the list below."
 - Release naming + sequential packaging
-  - Confirm the packaged artifact name follows: `MUMS Phase 1-502.zip`.
-  - Confirm the UI header shows: `Build ID: MUMS Phase 1-502`.
+  - Confirm the packaged artifact name follows: `MUMS Phase 1-503.zip`.
+  - Confirm the UI header shows: `Build ID: MUMS Phase 1-503`.
   - Run: `npm run package:phase1 -- --dry-run`
-    - Expect: it would create `MUMS Phase 1-502.zip`, then bump labels to `MUMS Phase 1-502`.
-  - After packaging (real run), confirm the next run would generate: `MUMS Phase 1-502.zip`.
+    - Expect: it would create `MUMS Phase 1-503.zip`, then bump labels to `MUMS Phase 1-504`.
+  - After packaging (real run), confirm the next run would generate: `MUMS Phase 1-504.zip`.
 - Keep-alive regression
   - Confirm `/api/keep_alive` still returns `{ ok: true }` and inserts into `heartbeat`.
