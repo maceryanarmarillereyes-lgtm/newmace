@@ -36,6 +36,22 @@
         const leave = args.leave || null;
         const dayLocked = !!args.dayLocked;
 
+        // Progress bar under member name (percentage of selected task hours vs max)
+        // args.progress = { pct:number, pctText:string, cls:string, title?:string }
+        const prog = args.progress || null;
+        const progPct = prog && Number.isFinite(prog.pct) ? Math.max(0, Math.min(100, Number(prog.pct))) : 0;
+        const progText = prog && prog.pctText ? String(prog.pctText) : (prog ? `${progPct}%` : '');
+        const progCls = prog && prog.cls ? String(prog.cls) : 'pct-green';
+        const progTitle = prog && prog.title ? String(prog.title) : '';
+        const progressHtml = prog ? `
+          <div class="member-progress" title="${esc(progTitle)}" aria-label="Task completion ${esc(progText)}">
+            <div class="member-progress-track">
+              <div class="member-progress-fill ${esc(progCls)}" style="width:${progPct}%"></div>
+            </div>
+            <div class="member-progress-pct">${esc(progText)}</div>
+          </div>
+        ` : '';
+
         const teamClass = 'team-' + memberTeamId;
         const rowClass = isInactive ? 'inactive' : '';
 
@@ -61,6 +77,7 @@
                 </label>
                 <div class="m-name-text">${esc(name)}${isInactive ? ` <span class="status-pill">${esc(inactiveText)}</span>`:''}</div>
               </div>
+              ${progressHtml}
             </div>
 
             <div>
@@ -75,7 +92,7 @@
               </div>
             </div>
 
-            <div class="row" style="justify-content:flex-end;flex-direction:column;align-items:flex-end;gap:8px">
+            <div class="member-actions">
               ${editBtn}
               ${leaveActions}
             </div>

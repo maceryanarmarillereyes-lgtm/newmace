@@ -159,13 +159,33 @@ overrideLabel(override){
       document.body.appendChild(host);
       return host;
     },
-    toast(message, variant){
+        _normalizeToastMessage(message){
+      if(message == null) return '';
+      if(typeof message === 'string') return message;
+      try{
+        if(message instanceof Error) return message.message || String(message);
+      }catch(_){ }
+      if(typeof message === 'object'){
+        // Common shapes: {message}, {error}, Supabase errors, fetch responses
+        try{
+          if(typeof message.message === 'string') return message.message;
+          if(typeof message.error === 'string') return message.error;
+          if(typeof message.details === 'string') return message.details;
+          if(typeof message.hint === 'string') return message.hint;
+        }catch(_){ }
+        try{ return JSON.stringify(message); }catch(_){ return String(message); }
+      }
+      return String(message);
+    },
+
+toast(message, variant){
       try{
         const host = UI._ensureToastHost();
         const t = document.createElement('div');
         const v = String(variant||'').toLowerCase();
         t.className = 'toast' + (v ? ` ${v}` : '');
-        t.textContent = String(message||'');
+        const msg = UI._normalizeToastMessage(message);
+        t.textContent = msg;
         host.appendChild(t);
         // animate in
         requestAnimationFrame(()=>t.classList.add('show'));
@@ -174,7 +194,7 @@ overrideLabel(override){
           setTimeout(()=>{ try{ t.remove(); }catch(_){} }, 250);
         }, 3200);
       }catch(e){
-        try{ console.log(message); }catch(_){}
+        try{ console.log(UI._normalizeToastMessage(message)); }catch(_){}
       }
     },
 

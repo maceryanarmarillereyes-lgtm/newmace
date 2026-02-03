@@ -295,7 +295,7 @@ After applying migrations:
   - Config presence:
     - Confirm `vercel.json` is present and remains in the v4.2 structure (rewrites + functions.maxDuration).
 
-## Verification (MUMS Phase 1-507)
+## Verification (MUMS Phase 1-508)
 - Root login enforcement:
   - Deploy, open an **incognito/private** window.
   - Visit `/` (root) and confirm the **login page** appears immediately.
@@ -303,8 +303,8 @@ After applying migrations:
   - Visit `/login` (no extension) and confirm it also resolves to the login page (via early redirect).
 
 - Release naming + build ID:
-  - Confirm the packaged artifact name follows: `MUMS Phase 1-507.zip`.
-  - Confirm the UI header shows: `Build ID: MUMS Phase 1-507`.
+  - Confirm the packaged artifact name follows: `MUMS Phase 1-508.zip`.
+  - Confirm the UI header shows: `Build ID: MUMS Phase 1-508`.
   - Confirm no legacy build IDs (`13126-*`) appear in the UI.
 
 - Schedule lock enforcement (Members):
@@ -345,6 +345,17 @@ After applying migrations:
 
 
 
+- Members progress bars + fixed anchors + grid compression (Phase 1-508):
+  - Confirm each member row shows a progress bar under the name, based on total task hours converted to percentage.
+  - Confirm color thresholds:
+    - 0–60% → green
+    - 61–85% → orange
+    - 86–100% → red
+  - Resize browser: confirm Team dropdown, Week selector, and lock bar stay anchored (scale down but do not drift or wrap incorrectly).
+  - Confirm Members block grid density is compressed ~20% (row padding/height reduced) while time labels remain aligned to vertical grid lines.
+  - Confirm leave buttons (SL/EL/VL/HL) render horizontally with consistent spacing and no overflow.
+  - Confirm overlay background density is reduced ~20% (more members visible without scrolling).
+
 - Members page compression + REPORTS dropdown:
   - Confirm the team label (e.g., “Morning Shift”) is removed from each member row.
   - Confirm the pill badges are replaced by a single compressed stats line below the name:
@@ -358,8 +369,8 @@ After applying migrations:
 - Sequential packaging auto-increment:
   - Confirm the tool exists: `tools/package_phase1_release.js`.
   - Dry-run check: `npm run package:phase1 -- --dry-run`.
-    - Expect: it would create `MUMS Phase 1-507.zip`, then bump labels to `MUMS Phase 1-508`.
-  - After packaging (real run), confirm the next run would generate: `MUMS Phase 1-508.zip`.
+    - Expect: it would create `MUMS Phase 1-508.zip`, then bump labels to `MUMS Phase 1-509`.
+  - After packaging (real run), confirm the next run would generate: `MUMS Phase 1-509.zip`.
 
 - Keep-alive regression:
   - Confirm `/api/keep_alive` still returns `{ ok: true }` and inserts into `heartbeat`.

@@ -248,3 +248,4 @@ This is required so authenticated users can read their own profile row under RLS
 - “Graph Panel must render in landscape layout with progress bars based on percentage logic. Task layout must match Paint selection. Sorting must be by percentage, descending.”
 - “Members Page must support compressed layout with task stats below name. Graph Panel must include toggle for settings. Reporting tools must be consolidated into a dropdown. Block deletion must be error-free and readable.”
 
+- “Members Page must support real-time progress bars (0–60% green, 61–85% orange, 86–100% red) under member names, fixed header anchors (Team/Week/Lock bar), compressed block grid density, and horizontal leave buttons (SL/EL/VL/HL).”

@@ -1711,3 +1711,64 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .reports-item:active{
   transform: translateY(1px);
 }
+
+/* ------------------------------------------------------------------
+   Phase 1-508: Members UX anchors + progress bars + grid compression
+   ------------------------------------------------------------------ */
+
+/* Member progress bar under name (0–60 green, 61–85 orange, 86–100 red) */
+.member-progress{display:flex;align-items:center;gap:8px;margin-top:4px;min-width:0}
+.member-progress-track{flex:1;height:6px;border-radius:999px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);overflow:hidden}
+.member-progress-fill{height:100%;border-radius:999px;transition:width .18s ease}
+.member-progress-pct{font-size:10px;line-height:1;color:rgba(255,255,255,.70);min-width:34px;text-align:right}
+.member-progress-fill.pct-green{background:rgba(34,197,94,.92)}
+.member-progress-fill.pct-orange{background:rgba(245,158,11,.92)}
+.member-progress-fill.pct-red{background:rgba(239,68,68,.92)}
+body[data-mode="light"] .member-progress-track{border-color:rgba(15,23,42,.14);background:rgba(15,23,42,.04)}
+body[data-mode="light"] .member-progress-pct{color:rgba(15,23,42,.66)}
+
+/* Fixed anchors: Team dropdown + Week selector + Lock bar */
+.members-topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.members-topbar-left{min-width:0}
+.members-topbar-right{display:flex;align-items:flex-start;justify-content:flex-end;gap:14px;flex-wrap:nowrap;position:sticky;top:10px;z-index:3500}
+.members-teamctl{min-width:210px}
+.weekctl{min-width:520px}
+.weekctl-row{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:nowrap}
+.week-warn{max-width:520px}
+@media (max-width: 980px){
+  .members-topbar-right{transform:scale(.92);transform-origin:top right}
+}
+@media (max-width: 820px){
+  .weekctl{min-width:460px}
+  .members-teamctl{min-width:190px}
+}
+@media (max-width: 720px){
+  .members-topbar{flex-direction:column;align-items:stretch}
+  .members-topbar-right{justify-content:flex-start;transform:none}
+  .weekctl{min-width:0;width:100%}
+  .members-teamctl{min-width:0;width:100%}
+  .weekctl-row{justify-content:flex-start;flex-wrap:wrap}
+  .week-warn{max-width:100%;text-align:left}
+}
+
+/* Block grid compression (~20%): row spacing, columns, timeline + ruler alignment */
+.members-page #schedulePane{padding:10px !important}
+.members-page .members-wrap{gap:10px !important}
+.members-page .members-table{display:flex;flex-direction:column;gap:8px}
+.members-page .members-row{padding:5px 8px !important;gap:10px !important;grid-template-columns:240px 1fr 190px !important;border-radius:14px}
+.members-page .timeline-ruler{grid-template-columns:240px 1fr 190px !important;gap:10px !important;height:18px !important;margin-bottom:6px !important}
+.members-page .timeline-ruler .ruler-track{height:18px !important}
+.members-page .timeline-ruler .mark{font-size:10px !important}
+.members-page .timeline{height:27px !important;border-radius:12px}
+.members-page .timeline .seg{top:3px !important;bottom:3px !important;font-size:10px !important;padding:0 5px !important}
+
+/* Horizontal leave buttons */
+.members-page .member-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.members-page .leave-actions{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
+.members-page .leavebtn{min-width:28px;height:26px;padding:0 8px;border-radius:10px;font-size:11px;line-height:24px}
+
+/* Members overlay background compression (~20%): reduce vertical density in key controls */
+.members-page .timeline-legend{margin-bottom:8px}
+.members-page .sched-toolbar{gap:10px}
+.members-page .sched-toolbar .left{gap:8px}
+.members-page .coverage-panel{margin-top:8px !important}

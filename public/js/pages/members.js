@@ -388,29 +388,30 @@ function syncTaskSelection(taskId, opts){
   }
 
   const wrap = document.createElement('div');
-  wrap.className = 'grid';
-  wrap.style.gap = '14px';
+  // Add a page-level class so enterprise UX rules can reliably anchor / compress layout.
+  wrap.className = 'grid members-page';
+  wrap.style.gap = '12px';
 
   wrap.innerHTML = `
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
-      <div>
+    <div class="members-topbar">
+      <div class="members-topbar-left">
         <div class="h1">Members</div>
         <div class="muted">Plan coverage by assigning time blocks (Sun–Sat). Timeline view shows the whole team shift.</div>
       </div>
-      <div class="row" style="gap:10px;align-items:center">
+      <div class="members-topbar-right" aria-label="Members header controls">
         ${isLead ? '' : `
-        <label class="small" style="display:flex;gap:8px;align-items:center">
-          Team
-          <select class="input" id="teamSelect" style="min-width:180px">
+        <label class="small members-teamctl">
+          <span class="muted">Team</span>
+          <select class="input" id="teamSelect">
             ${Config.TEAMS.map(t=>`<option value="${t.id}">${UI.esc(t.label)}</option>`).join('')}
           </select>
         </label>
         `}
         <div class="weekctl">
-          <div class="small" style="display:flex;gap:8px;align-items:center">
-            <span>Week of (Mon)</span>
+          <div class="small weekctl-row">
+            <span class="muted">Week of (Mon)</span>
             <button class="iconbtn" id="weekHelp" type="button" aria-label="Week selector help" title="What does this do?">ⓘ</button>
-            <input class="input" id="weekSelect" type="date" value="${UI.esc(weekStartISO)}" style="min-width:160px" />
+            <input class="input" id="weekSelect" type="date" value="${UI.esc(weekStartISO)}" />
             <button class="btn" id="jumpToday" type="button" title="Jump to Manila Today / This Week">📅 Today</button>
           </div>
           <div id="weekWarn" class="week-warn" style="display:none"></div>
@@ -2170,6 +2171,71 @@ function syncTaskSelection(taskId, opts){
       };
     }
 
+    // Member-level progress bar: selected Paint task hours -> percentage vs max hours.
+    const _taskCfg = (Store.getTeamTaskConfig ? Store.getTeamTaskConfig(team.id) : null) || {};
+    const _callRole = _taskCfg.callRole ? String(_taskCfg.callRole) : 'call_onqueue';
+    let _maxMap = {};
+    try{
+      _maxMap = JSON.parse(localStorage.getItem(`mums_gsp_max_hours_${team.id}`) || '{}') || {};
+    }catch(e){ _maxMap = {}; }
+
+    function _defaultMaxHours(taskId){
+      const tid = String(taskId||'');
+      try{
+        if(window.GraphPanel && typeof GraphPanel.defaultMaxHours === 'function'){
+          return Number(GraphPanel.defaultMaxHours(tid, { callRole: _callRole })) || 20;
+        }
+      }catch(_e){}
+      if(tid===_callRole || tid==='call_onqueue' || tid==='call_available') return 25;
+      return 20;
+    }
+
+    function _getMaxHours(taskId){
+      const tid = String(taskId||'');
+      const n = Number(_maxMap[tid]);
+      return (Number.isFinite(n) && n>0) ? n : _defaultMaxHours(tid);
+    }
+
+    function _minutesForTaskWeek(u, taskId){
+      const tid = String(taskId||'');
+      if(!tid || tid==='__clear__') return 0;
+      const isMailbox = (tid === 'mailbox_manager');
+      const isCall = (tid === _callRole || tid === 'call_onqueue' || tid === 'call_available');
+      let total = 0;
+      for(let d=0; d<7; d++){
+        const bl = Store.getUserDayBlocks(u.id, d) || [];
+        const t = Config.teamById(u.teamId);
+        for(const b of bl){
+          const s = UI.offsetFromShiftStart(t, b.start);
+          const e = UI.offsetFromShiftStart(t, b.end);
+          const mins = Math.max(0, e - s);
+          const r = String(b.role||'');
+          if(isMailbox){
+            if(r==='mailbox_manager' || r==='mailbox_call') total += mins;
+          }else if(isCall){
+            if(r==='call_onqueue' || r==='call_available' || r===_callRole || r==='mailbox_call') total += mins;
+          }else{
+            if(r===tid) total += mins;
+          }
+        }
+      }
+      return total;
+    }
+
+    function _progressForMember(u, taskId){
+      const maxH = _getMaxHours(taskId);
+      const hours = _minutesForTaskWeek(u, taskId) / 60;
+      const pctRaw = maxH>0 ? (hours / maxH) * 100 : 0;
+      const pct = Math.max(0, Math.min(100, Math.round(pctRaw)));
+      const cls = (pct<=60) ? 'pct-green' : (pct<=85 ? 'pct-orange' : 'pct-red');
+      return {
+        pct,
+        pctText: `${pct}%`,
+        cls,
+        title: `${hours.toFixed(1)}h / ${maxH}h`
+      };
+    }
+
     table.innerHTML = members.map(m=>{
       const isoDate = isoForDay(selectedDay);
       const dayLockedForGrid = dayLockedForGridDisplay(isoDate, team.id);
@@ -2185,6 +2251,7 @@ function syncTaskSelection(taskId, opts){
       const inactiveText = leave ? leaveLabel(leave.type) : (rest ? 'ON REST DAY' : '');
 
       const ws = weeklyStats(m);
+      const prog = _progressForMember(m, paint.role || graphTaskFilterId);
 
       const blocks = normalizeBlocks(team, Store.getUserDayBlocks(m.id, selectedDay), { locked: dayLockedForGrid && !unlockTriggered });
       const segs = (blocks||[]).map((b,i)=>{
@@ -2212,6 +2279,7 @@ function syncTaskSelection(taskId, opts){
             timelineTeamId: team.id,
             isoDate: isoDate,
             weeklyStats: ws,
+            progress: prog,
             ticksHtml: ticks.join(''),
             segsHtml: segs,
             isInactive: isInactive,
@@ -2231,6 +2299,12 @@ function syncTaskSelection(taskId, opts){
                 <input class="m-select" type="checkbox" data-act="mselect" />
               </label>
               <div class="m-name-text">${UI.esc(m.name||m.username)}${isInactive ? ` <span class="status-pill">${UI.esc(inactiveText)}</span>`:''}</div>
+            </div>
+            <div class="member-progress" title="${UI.esc(prog.title||'')}" aria-label="Task completion ${UI.esc(prog.pctText||'')}">
+              <div class="member-progress-track">
+                <div class="member-progress-fill ${UI.esc(prog.cls||'pct-green')}" style="width:${Math.max(0, Math.min(100, Number(prog.pct)||0))}%"></div>
+              </div>
+              <div class="member-progress-pct">${UI.esc(prog.pctText||'')}</div>
             </div>
           </div>
           <div>
