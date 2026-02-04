@@ -1722,14 +1722,13 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .member-progress{
   display:flex;
   flex-direction:column;
-  align-items:stretch;
+  align-items:center;
   gap:2px;
   margin-top:4px;
   min-width:0;
   max-width:100%;
   width:100%;
   overflow:hidden;
-  font-size:10px; /* matches percent + tooltip */
   line-height:1;
 }
 
@@ -1752,16 +1751,31 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 }
 .progress-text{
   display:block;
+  width:100%;
   font-size:inherit;
   color:rgba(255,255,255,.70);
   text-align:right;
 }
 .progress-tooltip{
   display:block;
+  width:100%;
   text-align:center;
   font-size:inherit; /* same as .progress-text */
   color:rgba(255,255,255,.65);
   margin-top:2px;
+  opacity:.86;
+  transform:translateY(1px);
+  transition:opacity .16s ease, transform .16s ease;
+  pointer-events:none;
+}
+
+.member-progress:hover .progress-tooltip,
+.member-progress:focus-within .progress-tooltip{
+  opacity:1;
+  transform:translateY(0);
+}
+@media (prefers-reduced-motion: reduce){
+  .progress-tooltip{transition:none;transform:none;}
 }
 
 /* Threshold colors (requested enterprise hex values) */

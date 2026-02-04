@@ -369,8 +369,8 @@ After applying migrations:
 - Sequential packaging auto-increment:
   - Confirm the tool exists: `tools/package_phase1_release.js`.
   - Dry-run check: `npm run package:phase1 -- --dry-run`.
-    - Expect: it would create `MUMS Phase 1-508.zip`, then bump labels to `MUMS Phase 1-509`.
-  - After packaging (real run), confirm the next run would generate: `MUMS Phase 1-509.zip`.
+    - Expect: it would create `MUMS Phase 1-511.zip`, then bump SEQ/cache tokens to `MUMS Phase 1-512`.
+  - After packaging (real run), confirm the next run would generate: `MUMS Phase 1-512.zip`.
 
 - Keep-alive regression:
   - Confirm `/api/keep_alive` still returns `{ ok: true }` and inserts into `heartbeat`.
@@ -382,3 +382,14 @@ After applying migrations:
       - In DevTools Network, look for a `rest/v1/heartbeat` insert (200) or verify with SQL: `SELECT * FROM public.heartbeat WHERE uid = auth.uid();`
     - Confirm Supabase Security Advisor no longer reports RLS issues for `public.heartbeat`.
   - Confirm GitHub Actions `Supabase Keep-Alive` workflow still exists and runs on schedule.
+
+- Build version + cache busting (Phase 1-511+):
+  - Confirm `public/js/config/version.js` exists and defines `const SEQ = <n>`.
+  - Confirm UI build label placeholders exist (`[data-build-label]`) and show the correct build in UI.
+  - Confirm key HTML pages include `?v=p1-<n>` on CSS/JS assets and that the token matches SEQ.
+  - Confirm packager dry-run indicates it will bump SEQ and cache tokens to the next build.
+
+- Member progress tooltip UX (Phase 1-511):
+  - Confirm tooltip label does not shift layout (no reflow) and uses hover/fade animation only.
+  - Confirm schedule task blocks are unchanged by progress/tooltip behavior.
+

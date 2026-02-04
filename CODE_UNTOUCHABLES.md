@@ -249,3 +249,8 @@ This is required so authenticated users can read their own profile row under RLS
 - “Members Page must support compressed layout with task stats below name. Graph Panel must include toggle for settings. Reporting tools must be consolidated into a dropdown. Block deletion must be error-free and readable.”
 
 - “Members Page must support real-time progress bars (0–60% green, 61–85% orange, 86–100% red) under member names, fixed header anchors (Team/Week/Lock bar), compressed block grid density, and horizontal leave buttons (SL/EL/VL/HL).”
+
+## Phase 1 Build Version + Cache Busting + Tooltip UX (Permanent)
+- Build/version must be sourced from `public/js/config/version.js` (`const SEQ = <n>`). UI build labels must render via `[data-build-label]` placeholders (no hardcoded build IDs in HTML).
+- Cache-busting must be applied via `?v=p1-<SEQ>` on all HTML asset links (CSS/JS). The packager must bump both `SEQ` and the `p1-<n>` tokens after each release.
+- Member progress tooltip must use hover/fade animation only (no layout shifts). Schedule task blocks must not be altered by tooltip, progress, or cache-busting changes.

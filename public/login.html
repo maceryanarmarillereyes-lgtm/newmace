@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Login | MUMS (Build MUMS Phase 1-510)</title><link rel="stylesheet" href="./css/styles.css?v=20260201-keepalive" />
-  <link rel="stylesheet" href="./css/enterprise_ux.css?v=20260201-keepalive" />
+  <title>Login | MUMS</title><link rel="stylesheet" href="./css/styles.css?v=p1-511" />
+  <link rel="stylesheet" href="./css/enterprise_ux.css?v=p1-511" />
 </head>
 <body>
   <div class="auth-wrap">
@@ -15,7 +15,7 @@
           <div class="brand-text">
             <div class="brand-name">MUMS</div>
             <div class="brand-sub">MUMS User Management System</div>
-          <div class="brand-build">Build ID: MUMS Phase 1-510</div>
+          <div class="brand-build">Build ID: <span data-build-label></span></div>
           </div>
         </div>
         <h1 class="h1" style="margin-top:10px">Login</h1>
@@ -74,14 +74,15 @@
   </div>
 
   <!-- Load in order (no modules) so it works via file:// in Edge -->
-  <script src="./js/env_runtime.js?v=20260201-keepalive"></script>
-  <script src="./js/remote_patch.js?v=20260201-keepalive"></script>
-  <script src="./js/config.js?v=20260201-keepalive"></script>
-  <script src="./js/store.js?v=20260201-keepalive"></script>
-  <script src="./js/cloud_auth.js?v=20260201-keepalive"></script>
-  <script src="./js/cloud_users.js?v=20260201-keepalive"></script>
-  <script src="./js/auth.js?v=20260201-keepalive"></script>
-  <script src="./js/ui.js?v=20260201-keepalive"></script>
+  <script src="./js/env_runtime.js?v=p1-511"></script>
+  <script src="./js/remote_patch.js?v=p1-511"></script>
+  <script src="./js/config/version.js?v=p1-511"></script>
+  <script src="./js/config.js?v=p1-511"></script>
+  <script src="./js/store.js?v=p1-511"></script>
+  <script src="./js/cloud_auth.js?v=p1-511"></script>
+  <script src="./js/cloud_users.js?v=p1-511"></script>
+  <script src="./js/auth.js?v=p1-511"></script>
+  <script src="./js/ui.js?v=p1-511"></script>
   <script>
   // Force native system cursor (no delay)
   try{ localStorage.setItem("mums_cursor_mode","system"); }catch(e){}
