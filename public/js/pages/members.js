@@ -175,6 +175,12 @@ function syncTaskSelection(taskId, opts){
     _taskSyncing = false;
   }
 
+  // Re-render the Members list so per-member progress bars update immediately
+  // when Paint task selection changes.
+  if(shouldRender){
+    try{ renderAll(); }catch(_e){}
+  }
+
   if(shouldRender && graphEnabled){
     try{ renderGraphPanel(); }catch(_e){}
   }
@@ -2223,16 +2229,39 @@ function syncTaskSelection(taskId, opts){
     }
 
     function _progressForMember(u, taskId){
-      const maxH = _getMaxHours(taskId);
-      const hours = _minutesForTaskWeek(u, taskId) / 60;
+      const tid = String(taskId||'').trim();
+      const maxH = _getMaxHours(tid);
+      const hours = _minutesForTaskWeek(u, tid) / 60;
       const pctRaw = maxH>0 ? (hours / maxH) * 100 : 0;
       const pct = Math.max(0, Math.min(100, Math.round(pctRaw)));
-      const cls = (pct<=60) ? 'pct-green' : (pct<=85 ? 'pct-orange' : 'pct-red');
+      const cls = (pct<=60) ? 'progress-green' : (pct<=85 ? 'progress-orange' : 'progress-red');
+
+      // Short label format for the tooltip.
+      function shortTaskLabel(){
+        if(tid==='mailbox_manager' || tid==='mailbox_call') return 'Mailbox';
+        if(tid==='back_office') return 'Back Office';
+        if(tid===_callRole || tid==='call_onqueue' || tid==='call_available') return 'Call';
+        if(tid==='case_assigned' || tid==='cases') return 'Cases';
+        const m = taskMeta(team.id, tid);
+        const lbl = String((m && m.label) ? m.label : tid);
+        const l = lbl.toLowerCase();
+        if(l.includes('mailbox')) return 'Mailbox';
+        if(l.includes('back')) return 'Back Office';
+        if(l.includes('call')) return 'Call';
+        if(l.includes('case')) return 'Cases';
+        return lbl.replace(/\bmanager\b/i,'').trim() || lbl;
+      }
+
+      const maxFmt = Number.isInteger(maxH) ? String(maxH) : String(Math.round(maxH*10)/10);
+      const hoursFmt = String(Math.round(hours));
+      const taskHoursTooltip = `${shortTaskLabel()}: ${hoursFmt}h/${maxFmt}h`;
+
       return {
         pct,
         pctText: `${pct}%`,
         cls,
-        title: `${hours.toFixed(1)}h / ${maxH}h`
+        taskHoursTooltip,
+        title: taskHoursTooltip
       };
     }
 
@@ -2301,10 +2330,11 @@ function syncTaskSelection(taskId, opts){
               <div class="m-name-text">${UI.esc(m.name||m.username)}${isInactive ? ` <span class="status-pill">${UI.esc(inactiveText)}</span>`:''}</div>
             </div>
             <div class="member-progress" title="${UI.esc(prog.title||'')}" aria-label="Task completion ${UI.esc(prog.pctText||'')}">
-              <div class="member-progress-track">
-                <div class="member-progress-fill ${UI.esc(prog.cls||'pct-green')}" style="width:${Math.max(0, Math.min(100, Number(prog.pct)||0))}%"></div>
+              <div class="progress-track">
+                <div class="progress-bar ${UI.esc(prog.cls||'progress-green')}" style="width:${Math.max(0, Math.min(100, Number(prog.pct)||0))}%"></div>
               </div>
-              <div class="member-progress-pct">${UI.esc(prog.pctText||'')}</div>
+              <span class="progress-text">${UI.esc(prog.pctText||'')}</span>
+              <div class="progress-tooltip">${UI.esc(prog.taskHoursTooltip||'')}</div>
             </div>
           </div>
           <div>

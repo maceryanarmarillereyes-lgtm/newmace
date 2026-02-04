@@ -37,20 +37,24 @@
         const dayLocked = !!args.dayLocked;
 
         // Progress bar under member name (percentage of selected task hours vs max)
-        // args.progress = { pct:number, pctText:string, cls:string, title?:string }
-        const prog = args.progress || null;
-        const progPct = prog && Number.isFinite(prog.pct) ? Math.max(0, Math.min(100, Number(prog.pct))) : 0;
-        const progText = prog && prog.pctText ? String(prog.pctText) : (prog ? `${progPct}%` : '');
-        const progCls = prog && prog.cls ? String(prog.cls) : 'pct-green';
-        const progTitle = prog && prog.title ? String(prog.title) : '';
-        const progressHtml = prog ? `
+        // args.progress = { pct:number, pctText:string, cls:string, taskHoursTooltip:string, title?:string }
+        const prog = args.progress || {};
+        const progPct = Number.isFinite(prog.pct) ? Math.max(0, Math.min(100, Number(prog.pct))) : 0;
+        const progText = prog.pctText ? String(prog.pctText) : `${progPct}%`;
+        const progCls = prog.cls ? String(prog.cls) : 'progress-green';
+        const progTitle = prog.title ? String(prog.title) : '';
+        const taskHoursTooltip = prog.taskHoursTooltip ? String(prog.taskHoursTooltip) : '';
+
+        // Always render the progress container so it never disappears due to missing data.
+        const progressHtml = `
           <div class="member-progress" title="${esc(progTitle)}" aria-label="Task completion ${esc(progText)}">
-            <div class="member-progress-track">
-              <div class="member-progress-fill ${esc(progCls)}" style="width:${progPct}%"></div>
+            <div class="progress-track">
+              <div class="progress-bar ${esc(progCls)}" style="width:${progPct}%"></div>
             </div>
-            <div class="member-progress-pct">${esc(progText)}</div>
+            <span class="progress-text">${esc(progText)}</span>
+            <div class="progress-tooltip">${esc(taskHoursTooltip)}</div>
           </div>
-        ` : '';
+        `;
 
         const teamClass = 'team-' + memberTeamId;
         const rowClass = isInactive ? 'inactive' : '';

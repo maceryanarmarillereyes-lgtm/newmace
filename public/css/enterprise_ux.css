@@ -1716,16 +1716,72 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
    Phase 1-508: Members UX anchors + progress bars + grid compression
    ------------------------------------------------------------------ */
 
-/* Member progress bar under name (0–60 green, 61–85 orange, 86–100 red) */
-.member-progress{display:flex;align-items:center;gap:8px;margin-top:4px;min-width:0}
+/* Member progress bar under name (0–60 green, 61–85 orange, 86–100 red)
+   Phase 1-510: Tooltip label centered below the progress bar in the member name section.
+*/
+.member-progress{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:2px;
+  margin-top:4px;
+  min-width:0;
+  max-width:100%;
+  width:100%;
+  overflow:hidden;
+  font-size:10px; /* matches percent + tooltip */
+  line-height:1;
+}
+
+/* Track + bar (new markup) */
+.progress-track{
+  width:100%;
+  max-width:100%;
+  height:6px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.04);
+  overflow:hidden;
+  box-sizing:border-box;
+}
+.progress-bar{
+  height:100%;
+  border-radius:999px;
+  transition:width .18s ease;
+  max-width:100%;
+}
+.progress-text{
+  display:block;
+  font-size:inherit;
+  color:rgba(255,255,255,.70);
+  text-align:right;
+}
+.progress-tooltip{
+  display:block;
+  text-align:center;
+  font-size:inherit; /* same as .progress-text */
+  color:rgba(255,255,255,.65);
+  margin-top:2px;
+}
+
+/* Threshold colors (requested enterprise hex values) */
+.progress-green{background-color:#4CAF50;}
+.progress-orange{background-color:#FF9800;}
+.progress-red{background-color:#F44336;}
+
+/* Back-compat selectors (older markup) */
 .member-progress-track{flex:1;height:6px;border-radius:999px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);overflow:hidden}
-.member-progress-fill{height:100%;border-radius:999px;transition:width .18s ease}
-.member-progress-pct{font-size:10px;line-height:1;color:rgba(255,255,255,.70);min-width:34px;text-align:right}
-.member-progress-fill.pct-green{background:rgba(34,197,94,.92)}
-.member-progress-fill.pct-orange{background:rgba(245,158,11,.92)}
-.member-progress-fill.pct-red{background:rgba(239,68,68,.92)}
+.member-progress-fill{height:100%;border-radius:999px;transition:width .18s ease;max-width:100%}
+.member-progress-pct{font-size:inherit;line-height:1;color:rgba(255,255,255,.70);text-align:right}
+.member-progress-fill.pct-green{background-color:#4CAF50;}
+.member-progress-fill.pct-orange{background-color:#FF9800;}
+.member-progress-fill.pct-red{background-color:#F44336;}
+
+body[data-mode="light"] .progress-track,
 body[data-mode="light"] .member-progress-track{border-color:rgba(15,23,42,.14);background:rgba(15,23,42,.04)}
+body[data-mode="light"] .progress-text,
 body[data-mode="light"] .member-progress-pct{color:rgba(15,23,42,.66)}
+body[data-mode="light"] .progress-tooltip{color:#555;}
 
 /* Fixed anchors: Team dropdown + Week selector + Lock bar */
 .members-topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
