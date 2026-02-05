@@ -40,6 +40,7 @@ async function safeProfileUpdate(userId, patch) {
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
+<<<<<<< HEAD
     try {
       // Cloudflare Pages Functions adapter will provide req.body directly.
       if (req && typeof req.body !== 'undefined' && req.body !== null) {
@@ -50,6 +51,8 @@ function readBody(req) {
       }
     } catch (_) {}
 
+=======
+>>>>>>> 6d0188b85578d391a5251805aa5311d13aaacb9b
     let data = '';
     req.on('data', (c) => { data += c; });
     req.on('end', () => {

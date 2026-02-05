@@ -76,6 +76,7 @@ function decodeJwtSub(jwt) {
     if (parts.length < 2) return '';
     const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
     const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
+<<<<<<< HEAD
     const payloadB64 = b64 + pad;
 
     // Decode without depending on Node-only Buffer (Cloudflare-compatible).
@@ -92,6 +93,9 @@ function decodeJwtSub(jwt) {
       // JWT payload is ASCII/UTF-8 JSON; this direct conversion is sufficient.
       json = bin;
     }
+=======
+    const json = Buffer.from(b64 + pad, 'base64').toString('utf8');
+>>>>>>> 6d0188b85578d391a5251805aa5311d13aaacb9b
     const obj = JSON.parse(json);
     return String(obj && (obj.sub || obj.user_id || obj.uid) ? (obj.sub || obj.user_id || obj.uid) : '').trim();
   } catch (_) {

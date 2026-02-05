@@ -8,6 +8,7 @@ function sendJson(res, statusCode, body) {
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
+<<<<<<< HEAD
     try {
       if (req && typeof req.body !== 'undefined' && req.body !== null) {
         if (typeof req.body === 'object' && !Array.isArray(req.body)) return resolve(req.body);
@@ -17,6 +18,8 @@ function readBody(req) {
       }
     } catch (_) {}
 
+=======
+>>>>>>> 6d0188b85578d391a5251805aa5311d13aaacb9b
     let data = '';
     req.on('data', (c) => { data += c; });
     req.on('end', () => {

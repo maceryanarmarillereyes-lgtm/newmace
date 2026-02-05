@@ -8,6 +8,7 @@ function sendJson(res, statusCode, body) {
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
+<<<<<<< HEAD
     try {
       if (req && typeof req.body !== 'undefined' && req.body !== null) {
         if (typeof req.body === 'object' && !Array.isArray(req.body)) return resolve(req.body);
@@ -17,6 +18,8 @@ function readBody(req) {
       }
     } catch (_) {}
 
+=======
+>>>>>>> 6d0188b85578d391a5251805aa5311d13aaacb9b
     let data = '';
     req.on('data', (c) => { data += c; });
     req.on('end', () => {
@@ -25,6 +28,7 @@ function readBody(req) {
   });
 }
 
+<<<<<<< HEAD
 function base64ToBytes(b64) {
   const raw = String(b64 || '').replace(/\s/g, '');
   // Node (Vercel) path
@@ -41,6 +45,8 @@ function base64ToBytes(b64) {
   return out;
 }
 
+=======
+>>>>>>> 6d0188b85578d391a5251805aa5311d13aaacb9b
 function encodePath(p) {
   return String(p || '')
     .split('/')
@@ -55,7 +61,11 @@ function parseDataUrl(dataUrl) {
   if (!m) return null;
   const contentType = String(m[1] || '').trim() || 'application/octet-stream';
   const b64 = String(m[2] || '');
+<<<<<<< HEAD
   const buf = base64ToBytes(b64);
+=======
+  const buf = Buffer.from(b64, 'base64');
+>>>>>>> 6d0188b85578d391a5251805aa5311d13aaacb9b
   let ext = 'bin';
   if (contentType.includes('png')) ext = 'png';
   else if (contentType.includes('jpeg') || contentType.includes('jpg')) ext = 'jpg';

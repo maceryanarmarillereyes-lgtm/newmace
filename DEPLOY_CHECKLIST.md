@@ -1,5 +1,6 @@
 # Deploy checklist (Node 20)
 
+<<<<<<< HEAD
 ## Dual deploy (single repo): Vercel (UAT) + Cloudflare Pages (Main)
 
 This repo is structured to deploy the same codebase to both platforms:
@@ -29,6 +30,8 @@ Verify runtime loader:
 
 - `GET /api/env` returns JSON with `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `USERNAME_EMAIL_DOMAIN`.
 
+=======
+>>>>>>> 6d0188b85578d391a5251805aa5311d13aaacb9b
 ## Why you saw Node 18 build failures on Vercel
 Vercel builds whatever commit is on your production branch. If the build log still shows the same commit SHA, the repo wasn't updated.
 
