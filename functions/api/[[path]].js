@@ -1,0 +1,186 @@
+// Cloudflare Pages Functions catch-all router for /api/*.
+//
+// Keeps behavior in sync with Vercel's /api/handler.js routing, while allowing
+// a single repo to deploy to both platforms.
+//
+// IMPORTANT:
+// - Server routes are implemented as Node-style (req, res) handlers in /server/routes.
+// - This file adapts the Cloudflare Request/Response model to that interface.
+
+let ROUTES = null;
+
+function ensureProcessEnv(env) {
+  // Cloudflare Workers don't provide process.env; map context.env into a minimal process.env.
+  // This MUST happen before importing server route modules because some read env at module init.
+  if (!globalThis.process) globalThis.process = {};
+  if (!globalThis.process.env) globalThis.process.env = {};
+  const src = env || {};
+  for (const k of Object.keys(src)) {
+    // Ensure env values are strings (Vercel/Node behavior).
+    globalThis.process.env[k] = src[k] == null ? '' : String(src[k]);
+  }
+}
+
+function unwrapCjs(mod) {
+  return (mod && (mod.default || mod)) || mod;
+}
+
+async function getRoutes(env) {
+  if (ROUTES) return ROUTES;
+  ensureProcessEnv(env);
+
+  // Static imports via dynamic import (one-time) so env is available at module init.
+  ROUTES = {
+    env: unwrapCjs(await import('../../server/routes/env.js')),
+    'env.js': unwrapCjs(await import('../../server/routes/env.js')),
+    health: unwrapCjs(await import('../../server/routes/health.js')),
+    keep_alive: unwrapCjs(await import('../../server/routes/keep_alive.js')),
+    'keep_alive.js': unwrapCjs(await import('../../server/routes/keep_alive.js')),
+    'debug/log': unwrapCjs(await import('../../server/routes/debug/log.js')),
+
+    'mailbox_override/get': unwrapCjs(await import('../../server/routes/mailbox_override/get.js')),
+    'mailbox_override/set': unwrapCjs(await import('../../server/routes/mailbox_override/set.js')),
+
+    'presence/heartbeat': unwrapCjs(await import('../../server/routes/presence/heartbeat.js')),
+    'presence/list': unwrapCjs(await import('../../server/routes/presence/list.js')),
+
+    'sync/pull': unwrapCjs(await import('../../server/routes/sync/pull.js')),
+    'sync/push': unwrapCjs(await import('../../server/routes/sync/push.js')),
+
+    'users/list': unwrapCjs(await import('../../server/routes/users/list.js')),
+    'users/create': unwrapCjs(await import('../../server/routes/users/create.js')),
+    'users/ensure_profile': unwrapCjs(await import('../../server/routes/users/ensure_profile.js')),
+    'users/me': unwrapCjs(await import('../../server/routes/users/me.js')),
+    'users/update_me': unwrapCjs(await import('../../server/routes/users/update_me.js')),
+    'users/upload_avatar': unwrapCjs(await import('../../server/routes/users/upload_avatar.js')),
+    'users/remove_avatar': unwrapCjs(await import('../../server/routes/users/remove_avatar.js')),
+    'users/resolve_email': unwrapCjs(await import('../../server/routes/users/resolve_email.js')),
+    'users/update_user': unwrapCjs(await import('../../server/routes/users/update_user.js')),
+    'users/delete': unwrapCjs(await import('../../server/routes/users/delete.js')),
+
+    'mailbox/assign': unwrapCjs(await import('../../server/routes/mailbox/assign.js')),
+    'mailbox/confirm': unwrapCjs(await import('../../server/routes/mailbox/confirm.js'))
+  };
+
+  return ROUTES;
+}
+
+function toNodeHeaders(request) {
+  const out = {};
+  request.headers.forEach((v, k) => {
+    out[String(k).toLowerCase()] = v;
+  });
+  return out;
+}
+
+function toQueryObject(url) {
+  const q = {};
+  for (const [k, v] of url.searchParams.entries()) {
+    if (Object.prototype.hasOwnProperty.call(q, k)) {
+      // Preserve multiple values in an array (best-effort).
+      const cur = q[k];
+      q[k] = Array.isArray(cur) ? [...cur, v] : [cur, v];
+    } else {
+      q[k] = v;
+    }
+  }
+  return q;
+}
+
+async function readBodyForNodeReq(request) {
+  const m = String(request.method || 'GET').toUpperCase();
+  if (m === 'GET' || m === 'HEAD') return undefined;
+
+  const text = await request.text();
+  if (!text) return {};
+  const ct = String(request.headers.get('content-type') || '').toLowerCase();
+
+  if (!ct || ct.includes('application/json')) {
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      return text;
+    }
+  }
+
+  // Leave other content-types as raw string; route-specific readers can parse if needed.
+  return text;
+}
+
+function createNodeRes() {
+  const headers = new Headers();
+  let statusCode = 200;
+  let ended = false;
+  let body = '';
+
+  return {
+    get statusCode() { return statusCode; },
+    set statusCode(v) { statusCode = Number(v || 200); },
+    setHeader(name, value) {
+      try { headers.set(String(name), String(value)); } catch (_) {}
+    },
+    getHeader(name) {
+      try { return headers.get(String(name)); } catch (_) { return null; }
+    },
+    end(data) {
+      ended = true;
+      if (typeof data === 'undefined' || data === null) return;
+      if (typeof data === 'string') { body += data; return; }
+      // Best-effort stringification
+      try { body += String(data); } catch (_) {}
+    },
+    _toResponse() {
+      if (!headers.has('cache-control')) headers.set('cache-control', 'no-store');
+      return new Response(body || '', { status: statusCode || 200, headers });
+    },
+    _isEnded() { return ended; }
+  };
+}
+
+function normalizeRoutePath(p) {
+  const raw = String(p || '').replace(/^\/+/, '').replace(/\/+$/, '');
+  return raw;
+}
+
+export async function onRequest(context) {
+  const request = context.request;
+  const url = new URL(request.url);
+
+  // Catch-all param: /api/<path>
+  let p = context.params ? context.params.path : '';
+  if (Array.isArray(p)) p = p.join('/');
+  const routePath = normalizeRoutePath(p);
+
+  const routes = await getRoutes(context.env);
+  const handler = routes[routePath];
+
+  if (!handler) {
+    return new Response(JSON.stringify({ ok: false, error: 'not_found', path: routePath }), {
+      status: 404,
+      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
+    });
+  }
+
+  const headers = toNodeHeaders(request);
+  headers.host = url.host;
+
+  const nodeReq = {
+    method: request.method,
+    url: request.url,
+    headers,
+    query: toQueryObject(url),
+    body: await readBodyForNodeReq(request),
+    socket: { remoteAddress: '' }
+  };
+
+  const nodeRes = createNodeRes();
+  try {
+    await handler(nodeReq, nodeRes);
+  } catch (err) {
+    return new Response(JSON.stringify({ ok: false, error: 'handler_failed', message: String(err?.message || err) }), {
+      status: 500,
+      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
+    });
+  }
+  return nodeRes._toResponse();
+}

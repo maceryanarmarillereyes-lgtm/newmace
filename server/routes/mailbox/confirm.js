@@ -1,0 +1,146 @@
+const { getUserFromJwt, getProfileForUserId, serviceSelect, serviceUpsert } = require('../../lib/supabase');
+
+// POST /api/mailbox/confirm
+// Body: { shiftKey, assignmentId }
+//
+// Rules:
+// - Assignee (MEMBER) may confirm only their own assigned cases.
+// - SUPER_ADMIN / SUPER_USER / ADMIN / TEAM_LEAD may confirm any case.
+// - Writes with service role; appends audit log entry (ums_activity_logs).
+
+const ADMIN_ROLES = new Set(['SUPER_ADMIN','SUPER_USER','ADMIN','TEAM_LEAD']);
+
+async function getDocValue(key){
+  const q = `select=key,value&key=eq.${encodeURIComponent(key)}&limit=1`;
+  const out = await serviceSelect('mums_documents', q);
+  if(!out.ok) return { ok:false, error:'select_failed', details: out.json || out.text };
+  const row = Array.isArray(out.json) ? out.json[0] : null;
+  return { ok:true, value: row ? row.value : null };
+}
+function safeString(x, max=240){
+  const s = (x==null) ? '' : String(x);
+  return s.length>max ? s.slice(0,max) : s;
+}
+async function upsertDoc(key, value, actor, profile, clientId){
+  const row = {
+    key,
+    value,
+    updated_at: new Date().toISOString(),
+    updated_by_user_id: actor.id,
+    updated_by_name: profile && profile.name ? profile.name : null,
+    updated_by_client_id: clientId || null
+  };
+  const up = await serviceUpsert('mums_documents', [row], 'key');
+  if(!up.ok) return { ok:false, error:'upsert_failed', details: up.json || up.text };
+  return { ok:true, json: up.json };
+}
+function pruneLogs(list){
+  const arr = Array.isArray(list) ? list : [];
+  const cutoff = Date.now() - (183*24*60*60*1000);
+  return arr.filter(x => x && x.ts && Number(x.ts) >= cutoff).slice(0, 2500);
+}
+
+module.exports = async (req, res) => {
+  try{
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json');
+    if(req.method !== 'POST'){
+      res.statusCode = 405;
+      return res.end(JSON.stringify({ ok:false, error:'Method not allowed' }));
+    }
+
+    const auth = req.headers.authorization || '';
+    const jwt = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7) : '';
+    const actor = await getUserFromJwt(jwt);
+    if(!actor){
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ ok:false, error:'Unauthorized' }));
+    }
+    const profile = await getProfileForUserId(actor.id);
+    const role = safeString(profile && profile.role ? profile.role : 'MEMBER', 40);
+
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    const shiftKey = safeString(body.shiftKey, 120);
+    const assignmentId = safeString(body.assignmentId, 160);
+    const clientId = safeString(body.clientId, 120) || null;
+
+    if(!shiftKey || !assignmentId){
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ ok:false, error:'Missing required fields' }));
+    }
+
+    const tablesDoc = await getDocValue('mums_mailbox_tables');
+    if(!tablesDoc.ok){
+      res.statusCode = 500;
+      return res.end(JSON.stringify({ ok:false, error:'Failed to read mailbox tables', details: tablesDoc.details }));
+    }
+    const allTables = (tablesDoc.value && typeof tablesDoc.value === 'object') ? tablesDoc.value : {};
+    const table = allTables[shiftKey];
+    if(!table || typeof table !== 'object'){
+      res.statusCode = 404;
+      return res.end(JSON.stringify({ ok:false, error:'Mailbox table not found', shiftKey }));
+    }
+
+    const next = JSON.parse(JSON.stringify(table));
+    next.assignments = Array.isArray(next.assignments) ? next.assignments : [];
+    const a = next.assignments.find(x=>x && String(x.id||'') === assignmentId);
+    if(!a){
+      res.statusCode = 404;
+      return res.end(JSON.stringify({ ok:false, error:'Assignment not found' }));
+    }
+
+    // Permission
+    if(!ADMIN_ROLES.has(role)){
+      if(String(a.assigneeId||'') !== String(actor.id||'')){
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not your assignment)' }));
+      }
+    }
+
+    if(a.confirmedAt){
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ ok:true, shiftKey, table: next, alreadyConfirmed:true }));
+    }
+
+    a.confirmedAt = Date.now();
+    a.confirmedById = actor.id;
+    a.confirmedByName = (profile && profile.name) ? profile.name : (actor.email || '');
+
+    allTables[shiftKey] = next;
+    const up = await upsertDoc('mums_mailbox_tables', allTables, actor, profile, clientId);
+    if(!up.ok){
+      res.statusCode = 500;
+      return res.end(JSON.stringify({ ok:false, error:'Failed to update mailbox tables', details: up.details }));
+    }
+
+    // Audit log
+    try{
+      const logsDoc = await getDocValue('ums_activity_logs');
+      const prevLogs = (logsDoc.ok && Array.isArray(logsDoc.value)) ? logsDoc.value : [];
+      const logEntry = {
+        ts: a.confirmedAt,
+        teamId: safeString(next?.meta?.teamId, 40),
+        actorId: actor.id,
+        actorName: a.confirmedByName,
+        action: 'MAILBOX_CASE_CONFIRM',
+        targetId: safeString(a.caseNo, 120),
+        targetName: safeString(a.caseNo, 120),
+        msg: `Mailbox case confirmed`.trim(),
+        detail: `${safeString(a.caseNo,120)} • confirmed • shiftKey ${shiftKey} • actorRole ${role}`,
+        shiftKey,
+        bucketId: safeString(a.bucketId, 60),
+        assigneeId: safeString(a.assigneeId, 80),
+        actorRole: role
+      };
+      const nextLogs = pruneLogs([logEntry, ...prevLogs]);
+      await upsertDoc('ums_activity_logs', nextLogs, actor, profile, clientId);
+    }catch(_){}
+
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ ok:true, shiftKey, table: next }));
+  }catch(e){
+    res.statusCode = 500;
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(JSON.stringify({ ok:false, error:'Server error', details: String(e?.message||e) }));
+  }
+};
