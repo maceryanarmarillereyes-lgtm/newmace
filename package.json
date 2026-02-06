@@ -10,15 +10,6 @@
     "vercel-build": "echo \"Static site deployment — no build step required\"",
     "build": "npm run vercel-build",
     "start": "node -e \"console.log(\\\"Static site: no start script\\\")\"",
-<<<<<<< HEAD
-    "test:env": "node scripts/test-env.js",
-    "test:login": "playwright test tests/login.spec.js",
     "package:phase1": "node tools/package_phase1_release.js"
-  },
-  "devDependencies": {
-    "@playwright/test": "^1.50.0"
-=======
-    "package:phase1": "node tools/package_phase1_release.js"
->>>>>>> 6d0188b85578d391a5251805aa5311d13aaacb9b
   }
 }

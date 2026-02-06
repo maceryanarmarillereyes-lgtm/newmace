@@ -7,19 +7,10 @@ function sendJson(res, statusCode, body) {
 }
 
 function readBody(req) {
-  return new Promise((resolve, reject) => {
-<<<<<<< HEAD
-    try {
-      if (req && typeof req.body !== 'undefined' && req.body !== null) {
-        if (typeof req.body === 'object' && !Array.isArray(req.body)) return resolve(req.body);
-        if (typeof req.body === 'string') {
-          try { return resolve(req.body ? JSON.parse(req.body) : {}); } catch (e) { return reject(e); }
-        }
-      }
-    } catch (_) {}
+  // Cloudflare adapter: body is provided as req.bodyText
+  if (typeof req.bodyText === 'string') return Promise.resolve(req.bodyText);
 
-=======
->>>>>>> 6d0188b85578d391a5251805aa5311d13aaacb9b
+  return new Promise((resolve, reject) => {
     let data = '';
     req.on('data', (c) => { data += c; });
     req.on('end', () => {

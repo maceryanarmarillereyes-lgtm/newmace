@@ -11,6 +11,9 @@ function isPlainObject(x) {
 }
 
 function readBody(req) {
+  // Cloudflare adapter: body is provided as req.bodyText
+  if (typeof req.bodyText === 'string') return Promise.resolve(req.bodyText);
+
   return new Promise((resolve, reject) => {
     try {
       if (req && typeof req.body !== 'undefined' && req.body !== null) {

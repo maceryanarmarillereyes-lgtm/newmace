@@ -76,26 +76,7 @@ function decodeJwtSub(jwt) {
     if (parts.length < 2) return '';
     const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
     const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
-<<<<<<< HEAD
-    const payloadB64 = b64 + pad;
-
-    // Decode without depending on Node-only Buffer (Cloudflare-compatible).
-    let json = '';
-    try {
-      if (typeof Buffer !== 'undefined') {
-        json = Buffer.from(payloadB64, 'base64').toString('utf8');
-      }
-    } catch (_) {}
-    if (!json) {
-      // atob exists in Workers and in Node 20+.
-      const bin = (typeof atob === 'function') ? atob(payloadB64) : '';
-      // atob returns a binary string; convert to UTF-8 safe string.
-      // JWT payload is ASCII/UTF-8 JSON; this direct conversion is sufficient.
-      json = bin;
-    }
-=======
-    const json = Buffer.from(b64 + pad, 'base64').toString('utf8');
->>>>>>> 6d0188b85578d391a5251805aa5311d13aaacb9b
+    const json = base64ToUtf8(b64 + pad);
     const obj = JSON.parse(json);
     return String(obj && (obj.sub || obj.user_id || obj.uid) ? (obj.sub || obj.user_id || obj.uid) : '').trim();
   } catch (_) {
@@ -144,6 +125,22 @@ function releaseLock(key) {
   } catch (_) {}
 }
 
+
+function base64ToBytes(b64) {
+  try {
+    if (typeof Buffer !== 'undefined' && Buffer.from) return Uint8Array.from(Buffer.from(b64, 'base64'));
+  } catch (_) {}
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function base64ToUtf8(b64) {
+  const bytes = base64ToBytes(b64);
+  return new TextDecoder().decode(bytes);
+}
+
 function sendJson(res, statusCode, body) {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json');
@@ -182,6 +179,9 @@ function isMissingColumn(resp, columnName) {
  * - Supports urlencoded forms as a fallback.
  */
 function readBody(req) {
+  // Cloudflare adapter: body is provided as req.bodyText
+  if (typeof req.bodyText === 'string') return Promise.resolve(req.bodyText);
+
   return new Promise((resolve, reject) => {
     try {
       if (req && typeof req.body !== 'undefined' && req.body !== null) {
