@@ -186,13 +186,15 @@
       const res = await Auth.login(login, pass);
       if(!res.ok) return showErr(res.message || 'Login failed.');
       try{ _persistSavedDetails(); }catch(e){}
-      // Always land on the SPA entrypoint with a hash route.
-      // This avoids Cloudflare Pages resolving clean URLs like /dashboard to dashboard.html,
-      // which can cause redirect loops / flicker.
+      // Use replace() to avoid a slow back navigation and slightly reduce perceived latency.
       try{
-        window.location.replace("./index.html#dashboard");
+        if(String(window.location.protocol||'') === 'file:'){
+          window.location.replace("./index.html#dashboard");
+        }else{
+          window.location.replace("./dashboard");
+        }
       }catch(_){
-        window.location.href = "./index.html#dashboard";
+        window.location.replace("./index.html#dashboard");
       }
     }
 

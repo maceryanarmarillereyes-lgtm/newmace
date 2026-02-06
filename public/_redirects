@@ -1,0 +1,7 @@
+/health /health 200
+/api/* /api/:splat 200
+/login /login.html 200
+/login.html /login.html 200
+/css/* /css/:splat 200
+/js/* /js/:splat 200
+/* /index.html 200

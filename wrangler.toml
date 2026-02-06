@@ -1,4 +1,5 @@
-# Cloudflare Pages Functions: enable Node.js compatibility shims (process, Buffer, etc.)
-# This prevents "process is not defined" during publish when bundled code assumes Node globals.
+# Cloudflare Pages configuration
+# This file is optional, but keeping it valid avoids build warnings.
 compatibility_date = "2026-02-06"
 compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "public"

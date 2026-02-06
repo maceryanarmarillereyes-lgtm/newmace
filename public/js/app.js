@@ -4283,9 +4283,7 @@ async function boot(){
         if(!hasHash && !hasPathPage){
           const p = String(window.location.pathname||'/');
           if(p === '/' || p.endsWith('.html')){
-            // Cloudflare Pages may resolve /dashboard to dashboard.html. Keep the SPA entrypoint explicit
-            // and use a hash route to avoid refresh/deep-link loops.
-            try{ history.replaceState({},'', '/index.html#dashboard'); }catch(_){ }
+            try{ history.replaceState({},'', '/dashboard'); }catch(_){ }
           }
         }
       }
