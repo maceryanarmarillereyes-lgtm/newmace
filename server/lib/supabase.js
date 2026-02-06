@@ -1,20 +1,51 @@
 /**
- * Supabase server helpers (Vercel functions)
+ * Supabase server helpers
  *
- * - Uses SERVICE ROLE key for privileged operations.
- * - Keeps all secrets server-side (service role key never leaves the function runtime).
- * - Normalizes fetch responses into { ok, status, text, json }.
+ * Supports both:
+ *  - Node runtimes (Vercel) where `process.env` exists
+ *  - Cloudflare Workers/Pages Functions where `process` may not exist
+ *
+ * Important: we avoid reading env at module init time so Workers can populate env per-request.
  */
 
+function envBag() {
+  // Cloudflare Pages Functions entrypoints can set this per request:
+  //   globalThis.__MUMS_ENV = context.env
+  if (typeof globalThis !== 'undefined' && globalThis && globalThis.__MUMS_ENV) {
+    return globalThis.__MUMS_ENV;
+  }
+
+  // Node / Vercel (avoid bare `process` identifier to prevent ReferenceError in Workers)
+  const proc = typeof globalThis !== 'undefined' && globalThis ? globalThis.process : undefined;
+  if (proc && proc.env) return proc.env;
+
+  // Fallback
+  return {};
+}
+
+function envValue(name) {
+  const bag = envBag();
+  const v = bag ? bag[name] : undefined;
+  return v == null ? '' : String(v);
+}
+
 function requireEnv(name) {
-  const v = process.env[name];
+  const v = envValue(name);
   if (!v) throw new Error(`Missing env: ${name}`);
   return v;
 }
 
-const SUPABASE_URL = String(process.env.SUPABASE_URL || '').replace(/\/$/, '');
-const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || '');
-const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+function supabaseUrl() {
+  return envValue('SUPABASE_URL').replace(/\/$/, '');
+}
+
+function supabaseAnonKey() {
+  return envValue('SUPABASE_ANON_KEY');
+}
+
+function supabaseServiceRoleKey() {
+  return envValue('SUPABASE_SERVICE_ROLE_KEY');
+}
 
 function isPlainObject(x) {
   return !!x && typeof x === 'object' && !Array.isArray(x);
@@ -44,12 +75,15 @@ async function fetchJson(url, opts) {
 }
 
 function serviceHeaders(extra) {
-  if (!SUPABASE_URL) requireEnv('SUPABASE_URL');
-  if (!SUPABASE_SERVICE_ROLE_KEY) requireEnv('SUPABASE_SERVICE_ROLE_KEY');
+  const url = supabaseUrl();
+  const key = supabaseServiceRoleKey();
+  if (!url) requireEnv('SUPABASE_URL');
+  if (!key) requireEnv('SUPABASE_SERVICE_ROLE_KEY');
+
   return Object.assign(
     {
-      apikey: SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+      apikey: key,
+      Authorization: `Bearer ${key}`
     },
     extra || {}
   );
@@ -78,14 +112,16 @@ function normalizeBodyAndHeaders(opts) {
  * Path MUST start with '/'.
  */
 async function serviceFetch(path, opts) {
-  if (!SUPABASE_URL) requireEnv('SUPABASE_URL');
+  const base = supabaseUrl();
+  if (!base) requireEnv('SUPABASE_URL');
+
   const p = String(path || '');
   if (!p.startsWith('/')) throw new Error('serviceFetch path must start with /');
 
   const o = normalizeBodyAndHeaders(opts);
   o.headers = serviceHeaders(o.headers);
 
-  return fetchJson(SUPABASE_URL + p, o);
+  return fetchJson(base + p, o);
 }
 
 /**
@@ -94,18 +130,24 @@ async function serviceFetch(path, opts) {
  * - serviceSelect('/rest/v1/table?select=*')  // legacy path form
  */
 async function serviceSelect(tableOrPath, queryMaybe) {
+  const base = supabaseUrl();
+  if (!base) requireEnv('SUPABASE_URL');
+
   const a = String(tableOrPath || '');
   if (a.startsWith('/')) {
     return serviceFetch(a, { method: 'GET' });
   }
   const table = a;
   const query = String(queryMaybe || 'select=*');
-  const url = `${SUPABASE_URL}/rest/v1/${table}?${query}`;
+  const url = `${base}/rest/v1/${table}?${query}`;
   return fetchJson(url, { headers: serviceHeaders() });
 }
 
 async function serviceUpsert(table, rows, conflict) {
-  const url = `${SUPABASE_URL}/rest/v1/${table}${conflict ? `?on_conflict=${encodeURIComponent(conflict)}` : ''}`;
+  const base = supabaseUrl();
+  if (!base) requireEnv('SUPABASE_URL');
+
+  const url = `${base}/rest/v1/${table}${conflict ? `?on_conflict=${encodeURIComponent(conflict)}` : ''}`;
   return fetchJson(url, {
     method: 'POST',
     headers: serviceHeaders({
@@ -117,7 +159,10 @@ async function serviceUpsert(table, rows, conflict) {
 }
 
 async function serviceInsert(table, rows) {
-  const url = `${SUPABASE_URL}/rest/v1/${table}`;
+  const base = supabaseUrl();
+  if (!base) requireEnv('SUPABASE_URL');
+
+  const url = `${base}/rest/v1/${table}`;
   return fetchJson(url, {
     method: 'POST',
     headers: serviceHeaders({
@@ -146,11 +191,14 @@ function matchToQuery(match) {
 //  1) serviceUpdate('table', 'id=eq.1', { patch })           (legacy)
 //  2) serviceUpdate('table', { patch }, { id: 'eq.1' })      (convenient)
 async function serviceUpdate(table, arg2, arg3) {
+  const base = supabaseUrl();
+  if (!base) requireEnv('SUPABASE_URL');
+
   const legacy = typeof arg2 === 'string';
   const matchQuery = legacy ? String(arg2 || '') : matchToQuery(arg3);
   const patch = legacy ? (arg3 || {}) : (arg2 || {});
 
-  const url = `${SUPABASE_URL}/rest/v1/${table}?${matchQuery}`;
+  const url = `${base}/rest/v1/${table}?${matchQuery}`;
   return fetchJson(url, {
     method: 'PATCH',
     headers: serviceHeaders({
@@ -162,15 +210,18 @@ async function serviceUpdate(table, arg2, arg3) {
 }
 
 async function getUserFromJwt(jwt) {
-  if (!SUPABASE_URL) requireEnv('SUPABASE_URL');
-  if (!SUPABASE_ANON_KEY) requireEnv('SUPABASE_ANON_KEY');
+  const base = supabaseUrl();
+  const anon = supabaseAnonKey();
+  if (!base) requireEnv('SUPABASE_URL');
+  if (!anon) requireEnv('SUPABASE_ANON_KEY');
+
   const token = String(jwt || '').trim();
   if (!token) return null;
 
-  const url = `${SUPABASE_URL}/auth/v1/user`;
+  const url = `${base}/auth/v1/user`;
   const out = await fetchJson(url, {
     headers: {
-      apikey: SUPABASE_ANON_KEY,
+      apikey: anon,
       Authorization: `Bearer ${token}`
     }
   });

@@ -8,12 +8,37 @@ function sendJson(res, statusCode, body) {
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
+    try {
+      if (req && typeof req.body !== 'undefined' && req.body !== null) {
+        if (typeof req.body === 'object' && !Array.isArray(req.body)) return resolve(req.body);
+        if (typeof req.body === 'string') {
+          try { return resolve(req.body ? JSON.parse(req.body) : {}); } catch (e) { return reject(e); }
+        }
+      }
+    } catch (_) {}
+
     let data = '';
     req.on('data', (c) => { data += c; });
     req.on('end', () => {
       try { resolve(data ? JSON.parse(data) : {}); } catch (e) { reject(e); }
     });
   });
+}
+
+function base64ToBytes(b64) {
+  const raw = String(b64 || '').replace(/\s/g, '');
+  // Node (Vercel) path
+  try {
+    if (typeof Buffer !== 'undefined') {
+      return new Uint8Array(Buffer.from(raw, 'base64'));
+    }
+  } catch (_) {}
+
+  // Worker/Browser path
+  const bin = (typeof atob === 'function') ? atob(raw) : '';
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 function encodePath(p) {
@@ -30,7 +55,7 @@ function parseDataUrl(dataUrl) {
   if (!m) return null;
   const contentType = String(m[1] || '').trim() || 'application/octet-stream';
   const b64 = String(m[2] || '');
-  const buf = Buffer.from(b64, 'base64');
+  const buf = base64ToBytes(b64);
   let ext = 'bin';
   if (contentType.includes('png')) ext = 'png';
   else if (contentType.includes('jpeg') || contentType.includes('jpg')) ext = 'jpg';

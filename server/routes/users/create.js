@@ -26,9 +26,14 @@ const COOLDOWNS = globalThis.__MUMS_CREATE_COOLDOWNS || (globalThis.__MUMS_CREAT
   usernames: new Map() // username -> { cooldownUntilMs, backoffCount, reason }
 });
 
-const MIN_CREATOR_INTERVAL_MS = parseInt(process.env.CREATE_USER_CREATOR_COOLDOWN_MS || '5000', 10);
-const BASE_BACKOFF_SECONDS = parseInt(process.env.CREATE_USER_BASE_BACKOFF_SECONDS || '5', 10);
-const MAX_BACKOFF_SECONDS = parseInt(process.env.CREATE_USER_MAX_BACKOFF_SECONDS || '120', 10);
+// Cloudflare Workers do not have Node's `process` global.
+const ENV = (typeof process !== 'undefined' && process && process.env)
+  ? process.env
+  : (globalThis.__MUMS_ENV || {});
+
+const MIN_CREATOR_INTERVAL_MS = parseInt(ENV.CREATE_USER_CREATOR_COOLDOWN_MS || '5000', 10);
+const BASE_BACKOFF_SECONDS = parseInt(ENV.CREATE_USER_BASE_BACKOFF_SECONDS || '5', 10);
+const MAX_BACKOFF_SECONDS = parseInt(ENV.CREATE_USER_MAX_BACKOFF_SECONDS || '120', 10);
 
 function getState(map, key) {
   const k = String(key || '').trim();
@@ -76,7 +81,22 @@ function decodeJwtSub(jwt) {
     if (parts.length < 2) return '';
     const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
     const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
-    const json = Buffer.from(b64 + pad, 'base64').toString('utf8');
+    const payloadB64 = b64 + pad;
+
+    // Decode without depending on Node-only Buffer (Cloudflare-compatible).
+    let json = '';
+    try {
+      if (typeof Buffer !== 'undefined') {
+        json = Buffer.from(payloadB64, 'base64').toString('utf8');
+      }
+    } catch (_) {}
+    if (!json) {
+      // atob exists in Workers and in Node 20+.
+      const bin = (typeof atob === 'function') ? atob(payloadB64) : '';
+      // atob returns a binary string; convert to UTF-8 safe string.
+      // JWT payload is ASCII/UTF-8 JSON; this direct conversion is sufficient.
+      json = bin;
+    }
     const obj = JSON.parse(json);
     return String(obj && (obj.sub || obj.user_id || obj.uid) ? (obj.sub || obj.user_id || obj.uid) : '').trim();
   } catch (_) {
