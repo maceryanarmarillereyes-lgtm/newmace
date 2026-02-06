@@ -26,9 +26,14 @@ const COOLDOWNS = globalThis.__MUMS_CREATE_COOLDOWNS || (globalThis.__MUMS_CREAT
   usernames: new Map() // username -> { cooldownUntilMs, backoffCount, reason }
 });
 
-const MIN_CREATOR_INTERVAL_MS = parseInt(process.env.CREATE_USER_CREATOR_COOLDOWN_MS || '5000', 10);
-const BASE_BACKOFF_SECONDS = parseInt(process.env.CREATE_USER_BASE_BACKOFF_SECONDS || '5', 10);
-const MAX_BACKOFF_SECONDS = parseInt(process.env.CREATE_USER_MAX_BACKOFF_SECONDS || '120', 10);
+// Cloudflare Workers do not have Node's `process` global.
+const ENV = (typeof process !== 'undefined' && process && process.env)
+  ? process.env
+  : (globalThis.__MUMS_ENV || {});
+
+const MIN_CREATOR_INTERVAL_MS = parseInt(ENV.CREATE_USER_CREATOR_COOLDOWN_MS || '5000', 10);
+const BASE_BACKOFF_SECONDS = parseInt(ENV.CREATE_USER_BASE_BACKOFF_SECONDS || '5', 10);
+const MAX_BACKOFF_SECONDS = parseInt(ENV.CREATE_USER_MAX_BACKOFF_SECONDS || '120', 10);
 
 function getState(map, key) {
   const k = String(key || '').trim();
@@ -76,7 +81,22 @@ function decodeJwtSub(jwt) {
     if (parts.length < 2) return '';
     const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
     const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
-    const json = base64ToUtf8(b64 + pad);
+    const payloadB64 = b64 + pad;
+
+    // Decode without depending on Node-only Buffer (Cloudflare-compatible).
+    let json = '';
+    try {
+      if (typeof Buffer !== 'undefined') {
+        json = Buffer.from(payloadB64, 'base64').toString('utf8');
+      }
+    } catch (_) {}
+    if (!json) {
+      // atob exists in Workers and in Node 20+.
+      const bin = (typeof atob === 'function') ? atob(payloadB64) : '';
+      // atob returns a binary string; convert to UTF-8 safe string.
+      // JWT payload is ASCII/UTF-8 JSON; this direct conversion is sufficient.
+      json = bin;
+    }
     const obj = JSON.parse(json);
     return String(obj && (obj.sub || obj.user_id || obj.uid) ? (obj.sub || obj.user_id || obj.uid) : '').trim();
   } catch (_) {
@@ -125,22 +145,6 @@ function releaseLock(key) {
   } catch (_) {}
 }
 
-
-function base64ToBytes(b64) {
-  try {
-    if (typeof Buffer !== 'undefined' && Buffer.from) return Uint8Array.from(Buffer.from(b64, 'base64'));
-  } catch (_) {}
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
-
-function base64ToUtf8(b64) {
-  const bytes = base64ToBytes(b64);
-  return new TextDecoder().decode(bytes);
-}
-
 function sendJson(res, statusCode, body) {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json');
@@ -179,9 +183,6 @@ function isMissingColumn(resp, columnName) {
  * - Supports urlencoded forms as a fallback.
  */
 function readBody(req) {
-  // Cloudflare adapter: body is provided as req.bodyText
-  if (typeof req.bodyText === 'string') return Promise.resolve(req.bodyText);
-
   return new Promise((resolve, reject) => {
     try {
       if (req && typeof req.body !== 'undefined' && req.body !== null) {

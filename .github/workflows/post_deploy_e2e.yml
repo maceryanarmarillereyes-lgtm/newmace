@@ -1,0 +1,51 @@
+name: Post-deploy smoke + login (Playwright)
+
+on:
+  deployment_status:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.deployment_status.state == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+
+      - name: Install Playwright (Chromium)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run env smoke test
+        env:
+          CLOUDFLARE_URL: ${{ secrets.CLOUDFLARE_URL }}
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          EXPECTED_PROD_REF: ${{ secrets.EXPECTED_PROD_REF }}
+          EXPECTED_UAT_REF: ${{ secrets.EXPECTED_UAT_REF }}
+        run: npm run test:env
+
+      - name: Run login e2e test
+        env:
+          CLOUDFLARE_URL: ${{ secrets.CLOUDFLARE_URL }}
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          EXPECTED_PROD_REF: ${{ secrets.EXPECTED_PROD_REF }}
+          EXPECTED_UAT_REF: ${{ secrets.EXPECTED_UAT_REF }}
+          PROD_USER_EMAIL: ${{ secrets.PROD_USER_EMAIL }}
+          PROD_USER_PASSWORD: ${{ secrets.PROD_USER_PASSWORD }}
+          UAT_USER_EMAIL: ${{ secrets.UAT_USER_EMAIL }}
+          UAT_USER_PASSWORD: ${{ secrets.UAT_USER_PASSWORD }}
+        run: npm run test:login
+
+      - name: Build (sanity)
+        run: npm run build
+

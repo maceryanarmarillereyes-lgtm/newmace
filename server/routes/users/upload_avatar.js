@@ -1,21 +1,5 @@
 const { getUserFromJwt, getProfileForUserId, serviceFetch, serviceUpdate } = require('../../lib/supabase');
 
-
-function base64ToBytes(b64) {
-  try {
-    if (typeof Buffer !== 'undefined' && Buffer.from) return Uint8Array.from(base64ToBytes(b64));
-  } catch (_) {}
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
-
-function base64ToUtf8(b64) {
-  const bytes = base64ToBytes(b64);
-  return new TextDecoder().decode(bytes);
-}
-
 function sendJson(res, statusCode, body) {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json');
@@ -23,16 +7,38 @@ function sendJson(res, statusCode, body) {
 }
 
 function readBody(req) {
-  // Cloudflare adapter: body is provided as req.bodyText
-  if (typeof req.bodyText === 'string') return Promise.resolve(req.bodyText);
-
   return new Promise((resolve, reject) => {
+    try {
+      if (req && typeof req.body !== 'undefined' && req.body !== null) {
+        if (typeof req.body === 'object' && !Array.isArray(req.body)) return resolve(req.body);
+        if (typeof req.body === 'string') {
+          try { return resolve(req.body ? JSON.parse(req.body) : {}); } catch (e) { return reject(e); }
+        }
+      }
+    } catch (_) {}
+
     let data = '';
     req.on('data', (c) => { data += c; });
     req.on('end', () => {
       try { resolve(data ? JSON.parse(data) : {}); } catch (e) { reject(e); }
     });
   });
+}
+
+function base64ToBytes(b64) {
+  const raw = String(b64 || '').replace(/\s/g, '');
+  // Node (Vercel) path
+  try {
+    if (typeof Buffer !== 'undefined') {
+      return new Uint8Array(Buffer.from(raw, 'base64'));
+    }
+  } catch (_) {}
+
+  // Worker/Browser path
+  const bin = (typeof atob === 'function') ? atob(raw) : '';
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 function encodePath(p) {
