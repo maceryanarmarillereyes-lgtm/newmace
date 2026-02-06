@@ -15,10 +15,9 @@ function envBag() {
     return globalThis.__MUMS_ENV;
   }
 
-  // Node / Vercel
-  if (typeof process !== 'undefined' && process && process.env) {
-    return process.env;
-  }
+  // Node / Vercel (avoid bare `process` identifier to prevent ReferenceError in Workers)
+  const proc = typeof globalThis !== 'undefined' && globalThis ? globalThis.process : undefined;
+  if (proc && proc.env) return proc.env;
 
   // Fallback
   return {};
