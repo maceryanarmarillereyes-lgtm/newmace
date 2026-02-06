@@ -3515,7 +3515,7 @@ function route(){
           if(!ok) return;
           try{ Store.factoryReset && Store.factoryReset(); }catch(e){}
           alert('Reset complete. Reloading...');
-          location.href = 'login.html';
+          location.href = '/login';
         };
       }
 
@@ -3793,7 +3793,7 @@ async function boot(){
     UI.el('#logoutBtn').onclick = ()=>{
       try{ const u = Auth.getUser && Auth.getUser(); if(u && Store && Store.setOffline) Store.setOffline(u.id); }catch(_){ }
       Auth.logout();
-      window.location.href='./login.html';
+      window.location.href='/login';
     };
 
     try{ bindGlobalSearch(user); }catch(e){ console.error(e); }
