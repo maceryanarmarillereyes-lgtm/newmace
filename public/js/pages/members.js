@@ -2607,7 +2607,33 @@ container.innerHTML = `
     UI.openModal('memberSchedModal');
   }
 
-  function renderAll(){
+  function segStyle(b){
+  const team = Config.teamById(selectedTeamId);
+  if(!team) return { left:0, width:0, hours:0 };
+  const meta = UI.shiftMeta(team);
+  const total = meta.length || (9*60);
+  const s = UI.offsetFromShiftStart(team, b.start);
+  const e = UI.offsetFromShiftStart(team, b.end);
+  const left = (s/total)*100;
+  const width = ((e-s)/total)*100;
+  return { left, width, hours: Math.round(((e-s)/60)*10)/10 };
+}
+
+
+function legendDotEmoji(color){
+  const c = String(color||'').toLowerCase();
+  // common Tailwind/zinc palette / hex approximations
+  if(c.includes('emerald') || c.includes('green') || c == '#10b981' || c == '#22c55e') return '🟢';
+  if(c.includes('red') || c == '#ef4444' || c == '#f43f5e') return '🔴';
+  if(c.includes('amber') || c.includes('yellow') || c == '#f59e0b' || c == '#eab308') return '🟡';
+  if(c.includes('blue') || c == '#3b82f6' || c == '#60a5fa') return '🔵';
+  if(c.includes('violet') || c.includes('purple') || c == '#8b5cf6' || c == '#a78bfa') return '🟣';
+  if(c.includes('gray') || c.includes('grey') || c.includes('zinc') || c == '#71717a') return '⚪';
+  return '⚪';
+}
+
+
+function renderAll(){
     // Preserve selection across rerenders (avoid stale blocks when context changes).
     const ctxKey = `${selectedTeamId||''}|${weekStartISO||''}|${selectedDay||''}`;
     const ctxChanged = (wrap._lastSelectionCtxKey && wrap._lastSelectionCtxKey !== ctxKey);
