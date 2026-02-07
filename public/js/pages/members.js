@@ -103,30 +103,7 @@ window.Pages.members = function(root){
     if(l.includes('break')) return '#22d3ee';
     return '#64748b';
 
-  function legendDotEmoji(color){
-    const c = String(color||'').trim().toLowerCase();
-    const has = (s)=>c.includes(s);
-    if(has('emerald')||has('green')||has('#22c55e')||has('#10b981')||has('#16a34a')||has('#059669')) return '🟢';
-    if(has('red')||has('#ef4444')||has('#f43f5e')||has('#dc2626')||has('#b91c1c')) return '🔴';
-    if(has('orange')||has('#f59e0b')||has('#f97316')||has('#fb923c')) return '🟠';
-    if(has('yellow')||has('#eab308')) return '🟡';
-    if(has('blue')||has('#3b82f6')||has('#60a5fa')||has('#4aa3ff')) return '🔵';
-    if(has('purple')||has('#a855f7')||has('#7c3aed')) return '🟣';
-
-    // Hex fallback: choose dominant RGB channel.
-    const m = /^#?([0-9a-f]{6})$/i.exec(c);
-    if(m){
-      const hex = m[1];
-      const r = parseInt(hex.slice(0,2),16);
-      const g = parseInt(hex.slice(2,4),16);
-      const b = parseInt(hex.slice(4,6),16);
-      const max = Math.max(r,g,b);
-      if(max === r) return '🔴';
-      if(max === g) return '🟢';
-      if(max === b) return '🔵';
-    }
-    return '⚪';
-  }
+  
 
   }
 
@@ -1761,6 +1738,8 @@ container.innerHTML = `
   const selDeselectBtn = wrap.querySelector('#selDeselect');
 
   async function deleteSelectedBlocks(opts){
+    if (isWeekInPast(weekStartISO)) { notifyPastWeekLocked(); return; }
+
     const o = Object.assign({ confirm: true }, opts||{});
     if(!selMemberId || selIdx.size===0) return;
     const member = Store.getUsers().find(u=>u.id===selMemberId);
@@ -1800,6 +1779,8 @@ container.innerHTML = `
     renderAll();
   }
   async function clearAllBlocksForMemberDay(){
+    if (isWeekInPast(weekStartISO)) { notifyPastWeekLocked(); return; }
+
     // Bulk clear: if multiple members are selected via checkboxes, clear all of them.
     const ids = (selMemberIds && selMemberIds.size) ? Array.from(selMemberIds) : (selMemberId ? [selMemberId] : []);
     if(!ids.length) return;
@@ -2486,6 +2467,8 @@ container.innerHTML = `
   }
 
   function openEditModal(member){
+    if (isWeekInPast(weekStartISO)) { notifyPastWeekLocked(); return; }
+
     if(!member) return;
     if(guardScheduleEditLocked(selectedTeamId, selectedDay)) return;
     const modal = wrap.querySelector('#memberSchedModal');
@@ -2606,8 +2589,18 @@ container.innerHTML = `
     renderModal();
     UI.openModal('memberSchedModal');
   }
+function legendDotEmoji(color){
+  const c = String(color||'').toLowerCase();
+  if(c.includes('emerald') || c.includes('green') || c === '#10b981' || c === '#22c55e') return '🟢';
+  if(c.includes('red') || c === '#ef4444' || c === '#f43f5e') return '🔴';
+  if(c.includes('amber') || c.includes('yellow') || c === '#f59e0b' || c === '#eab308') return '🟡';
+  if(c.includes('blue') || c === '#3b82f6' || c === '#60a5fa') return '🔵';
+  if(c.includes('violet') || c.includes('purple') || c === '#8b5cf6' || c === '#a78bfa') return '🟣';
+  if(c.includes('gray') || c.includes('grey') || c.includes('zinc') || c === '#71717a') return '⚪';
+  return '⚪';
+}
 
-  function segStyle(b){
+function segStyle(b){
   const team = Config.teamById(selectedTeamId);
   if(!team) return { left:0, width:0, hours:0 };
   const meta = UI.shiftMeta(team);
@@ -2618,22 +2611,42 @@ container.innerHTML = `
   const width = ((e-s)/total)*100;
   return { left, width, hours: Math.round(((e-s)/60)*10)/10 };
 }
+function currentWeekStartISOManila(){
+  // Manila is UTC+8 with no DST. Compute using UTC math so browser timezone doesn't matter.
+  const now = new Date();
+  const utcMs = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const manila = new Date(utcMs + (8 * 60 * 60000));
+  // Use UTC getters to interpret the shifted timestamp as "Manila local"
+  const dow = manila.getUTCDay(); // 0=Sun..6=Sat
+  const daysSinceMonday = (dow + 6) % 7; // Monday => 0
+  manila.setUTCHours(0,0,0,0);
+  manila.setUTCDate(manila.getUTCDate() - daysSinceMonday);
+  return manila.toISOString().slice(0,10);
+}
 
+function isWeekInPast(weekISO){
+  const w = String(weekISO||'');
+  if(!w) return false;
+  const cur = currentWeekStartISOManila();
+  return w < cur;
+}
 
-function legendDotEmoji(color){
-  const c = String(color||'').toLowerCase();
-  // common Tailwind/zinc palette / hex approximations
-  if(c.includes('emerald') || c.includes('green') || c == '#10b981' || c == '#22c55e') return '🟢';
-  if(c.includes('red') || c == '#ef4444' || c == '#f43f5e') return '🔴';
-  if(c.includes('amber') || c.includes('yellow') || c == '#f59e0b' || c == '#eab308') return '🟡';
-  if(c.includes('blue') || c == '#3b82f6' || c == '#60a5fa') return '🔵';
-  if(c.includes('violet') || c.includes('purple') || c == '#8b5cf6' || c == '#a78bfa') return '🟣';
-  if(c.includes('gray') || c.includes('grey') || c.includes('zinc') || c == '#71717a') return '⚪';
-  return '⚪';
+function notifyPastWeekLocked(){
+  const msg = "Cannot modify schedules for past dates. Please switch the calendar to the current or future week.";
+  try{
+    if(window.UI && typeof UI.toast === 'function'){
+      UI.toast(msg, { type:'warn' });
+      return;
+    }
+  }catch(_){}
+  alert(msg);
 }
 
 
-function renderAll(){
+
+
+
+  function renderAll(){
     // Preserve selection across rerenders (avoid stale blocks when context changes).
     const ctxKey = `${selectedTeamId||''}|${weekStartISO||''}|${selectedDay||''}`;
     const ctxChanged = (wrap._lastSelectionCtxKey && wrap._lastSelectionCtxKey !== ctxKey);

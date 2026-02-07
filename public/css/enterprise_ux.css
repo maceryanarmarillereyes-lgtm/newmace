@@ -2686,3 +2686,63 @@ body.members-fullscreen-active {
 
 /* Paint role select: keep compact */
 .members-page #paintRole{min-width:220px}
+
+/* -------------------------------------------------------------------------- */
+/* Protocol v3 UI/UX Fixes: Fullscreen Clickability + Topbar Layout Polish     */
+/* -------------------------------------------------------------------------- */
+
+/* Ensure Members topbar sits above fullscreen content/overlays */
+.members-fullscreen-overlay .members-topbar,
+body.members-fullscreen-active .members-topbar,
+.members-page .members-topbar{
+  position: sticky;
+  top: 0;
+  z-index: 10060; /* above fullscreen overlay body layers */
+  pointer-events: auto;
+}
+
+/* Ensure the right-side action cluster stays clickable and well-aligned */
+.members-page .members-topbar-right{
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem; /* 12px */
+  flex-wrap: wrap;
+  pointer-events: auto;
+  z-index: 10061;
+}
+
+/* Prevent invisible/utility overlays from covering header controls */
+.members-page .week-warn{
+  pointer-events: none;
+}
+
+.members-page .modal-backdrop{
+  /* Backdrops should not block header controls unless a modal is intentionally open.
+     The modal container itself still blocks interaction beneath it when visible. */
+  pointer-events: none;
+}
+
+/* If a modal is open, the modal content should still be interactive */
+.members-page .modal,
+.members-page .modal *{
+  pointer-events: auto;
+}
+
+/* Small-screen polish: allow toolbar clusters to wrap without overlap */
+@media (max-width: 900px){
+  .members-page .members-topbar{
+    gap: 0.75rem;
+  }
+  .members-page .members-topbar-right{
+    gap: 0.5rem;
+  }
+}
+
+/* Very small screens: keep buttons reachable; reduce hint/secondary text crowding */
+@media (max-width: 640px){
+  .members-page .members-topbar-right{
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
