@@ -2529,3 +2529,32 @@ body.members-fullscreen-active {
   color:#a1a1aa;
 }
 .lock-badge .lock-ic{ color:#a1a1aa; }
+
+
+/* -------------------------------------------------------------------------
+   Minimal utility additions for Members Graph Summary
+   (Needed by renderGraphPanel -> #member-graph-container)
+--------------------------------------------------------------------------- */
+.p-4{ padding: 1rem; }
+.border-b{ border-bottom-width: 1px; border-bottom-style: solid; }
+.border-zinc-800\/50{ border-color: rgba(39,39,42,0.5); }
+
+.text-xs{ font-size: 0.75rem; line-height: 1rem; }
+.text-zinc-500{ color: #71717a; }
+.text-emerald-400{ color: #34d399; }
+
+.font-medium{ font-weight: 500; }
+.font-mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+.w-full{ width: 100%; }
+.h-full{ height: 100%; }
+.h-1\.5{ height: 0.375rem; }
+
+.rounded-full{ border-radius: 9999px; }
+.overflow-hidden{ overflow: hidden; }
+
+.bg-zinc-800{ background-color: #27272a; }
+.bg-emerald-500{ background-color: #10b981; }
+
+.transition-all{ transition-property: all; transition-timing-function: cubic-bezier(0.4,0,0.2,1); }
+.duration-500{ transition-duration: 500ms; }

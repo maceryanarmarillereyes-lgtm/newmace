@@ -664,6 +664,9 @@ function syncTaskSelection(taskId, opts){
         <div class="members-analytics-body inspector-panels">
           <div class="inspector-panel" id="inspAnalytics" role="tabpanel">
             <div class="small text-zinc-400" id="membersAnalyticsMeta">—</div>
+            <div class="p-4 border-b border-zinc-800/50">
+              <div id="member-graph-container"></div>
+            </div>
             <div class="small text-zinc-400 mt-3">Notes</div>
             <textarea class="input" id="enterpriseNotes" rows="6" placeholder="Notes for leads and audit…" aria-label="Enterprise notes"></textarea>
             <div class="small text-zinc-400 mt-3">Use the roster to jump to a member. Timeline blocks support paint-fill and multi-select. Coverage meter is heatmap-ready.</div>
@@ -1196,321 +1199,40 @@ function syncTaskSelection(taskId, opts){
     setEnabled(graphEnabled);
   })();
 
-  function renderGraphPanel(){
-    const panel = wrap.querySelector('#graphPanel');
-    if(!panel) return;
-
-    // Landscape orientation (sample layout)
-    panel.classList.add('gsp-landscape');
-
-    const body = panel.querySelector('#graphPanelBody');
-    const sub = panel.querySelector('#graphPanelSub');
-    const foot = panel.querySelector('#graphPanelFoot');
-
-    if(!graphEnabled){
-      panel.classList.add('hidden');
-      return;
-    }
-    panel.classList.remove('hidden');
-
-    const team = Config.teamById(selectedTeamId);
-    if(!team){
-      body.innerHTML = `<div class="small muted">No team selected.</div>`;
-      return;
+  function renderGraphPanel(data) {
+    // Target the specific container
+    const container = document.getElementById('member-graph-container');
+    // SAFETY CHECK: If container is missing (e.g., hidden tab), stop execution to prevent crash
+    if (!container) {
+        // console.warn('Graph container missing. Skipping render.');
+        return;
     }
 
-    const esc = UI.escapeHtml || ((s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'));
-
-    const cfg = (window.Store && Store.getTeamConfig) ? Store.getTeamConfig(team.id) : null;
-    const callRole = (cfg && cfg.coverageTaskId) ? String(cfg.coverageTaskId) : 'call_onqueue';
-
-    // Unified task list (Paint + Graph)
-    const taskOpts = getTeamTaskOptions(team.id);
-    const optIds = new Set(taskOpts.map(o=>String(o.id)));
-
-    // Paint dropdown is the source of truth; Graph Panel must follow.
-    let desiredTaskId = String(paint.role||'').trim();
-    if(!desiredTaskId || !optIds.has(desiredTaskId)){
-      desiredTaskId = optIds.has(String(callRole)) ? String(callRole) : (taskOpts[0] ? String(taskOpts[0].id) : String(callRole));
-    }
-    if(String(graphTaskFilterId||'') !== String(desiredTaskId) || String(paint.role||'') !== String(desiredTaskId)){
-      syncTaskSelection(desiredTaskId, { render:false, persist:true });
-    }
-
-    const meta = taskMeta(team.id, graphTaskFilterId);
-    const compareLabel = (meta && meta.label) ? meta.label : String(graphTaskFilterId||'');
-
-    const weekLong = (()=>{
-      try{
-        const d0 = new Date(`${weekStartISO}T00:00:00`);
-        const endISO = UI.addDaysISO(weekStartISO, 6);
-        const d1 = new Date(`${endISO}T00:00:00`);
-        const a = d0.toLocaleDateString('en-US', { month:'short', day:'2-digit', year:'numeric' });
-        const b = d1.toLocaleDateString('en-US', { month:'short', day:'2-digit', year:'numeric' });
-        return `${a} – ${b}`;
-      }catch(_){
-        return String(weekStartISO||'');
-      }
-    })();
-
-    if(sub){
-      const tLabel = (team && (team.label || team.name || team.key)) ? (team.label || team.name || team.key) : 'Team';
-      sub.textContent = `${tLabel} • Week ${weekLong} • Compare: ${compareLabel}`;
-    }
-    if(foot){
-      foot.textContent = 'Synced with Paint • Sorted by percentage (lowest at top, highest at bottom).';
-    }
-
-    const members = getMembersForView(selectedTeamId) || [];
-    if(!members.length){
-      body.innerHTML = `<div class="small muted">No members loaded for this team.</div>`;
-      return;
-    }
-
-    // Max-hours settings (stored per team)
-    const maxKey = `mums_gsp_max_hours_${team.id}`;
-    let maxMap = {};
-    try{ maxMap = JSON.parse(localStorage.getItem(maxKey) || '{}') || {}; }catch(_){ maxMap = {}; }
-
-    function taskLayout(taskId){
-      try{
-        if(window.GraphPanel && typeof GraphPanel.getTaskLayout === 'function'){
-          return GraphPanel.getTaskLayout(taskId, { callRole, meta });
+    // If caller didn't provide data, try to derive it from current view.
+    if (!Array.isArray(data)) {
+        try {
+            data = (typeof getMembersForView === 'function') ? (getMembersForView(selectedTeamId) || []) : [];
+        } catch (_) {
+            data = [];
         }
-      }catch(_){}
-      // Fallback layout
-      const c = (meta && meta.color) ? meta.color : fallbackColorForLabel(compareLabel);
-      return { cls:'gsp-task-generic', defaultMax: 20, barColor: c };
     }
 
-    function getMaxHoursForTask(taskId){
-      const k = String(taskId||'');
-      const v = Number(maxMap[k]);
-      if(Number.isFinite(v) && v > 0) return v;
-      const lay = taskLayout(taskId);
-      const d = Number(lay && lay.defaultMax ? lay.defaultMax : 20);
-      return (Number.isFinite(d) && d > 0) ? d : 20;
-    }
+    // Calculate Stats
+    const total = data.length;
+    const active = data.filter(m => String(m && m.status ? m.status : '').toLowerCase() === 'active').length;
+    const percentage = total > 0 ? (active / total) * 100 : 0;
 
-    function setMaxHoursForTask(taskId, val){
-      const k = String(taskId||'');
-      const n = Number(val);
-      if(!Number.isFinite(n) || n <= 0){
-        delete maxMap[k];
-      }else{
-        maxMap[k] = Math.round(n*10)/10;
-      }
-      try{ localStorage.setItem(maxKey, JSON.stringify(maxMap)); }catch(_){}
-    }
-
-    function blockMinutes(b){
-      try{
-        const s = UI.offsetFromShiftStart(team, b.start);
-        const e = UI.offsetFromShiftStart(team, b.end);
-        return Math.max(0, e - s);
-      }catch(_){ return 0; }
-    }
-
-    const shiftMin = (()=>{
-      try{
-        const sm = UI.shiftMeta(team);
-        return Math.max(60, Number(sm && sm.length ? sm.length : 540));
-      }catch(_){ return 540; }
-    })();
-
-    function computeTaskMinutesForMember(member, taskId){
-      const tid = String(taskId||'');
-      const byDay = new Array(7).fill(0);
-
-      if(tid === '__clear__'){
-        // Clear (empty) → unassigned minutes
-        let total = 0;
-        for(let d=0; d<7; d++){
-          const bl = normalizeBlocks(team, Store.getUserDayBlocks(member.id, d) || []);
-          let assigned = 0;
-          for(const b of (bl||[])) assigned += blockMinutes(b);
-          const unassigned = Math.max(0, shiftMin - assigned);
-          byDay[d] = unassigned;
-          total += unassigned;
-        }
-        return { totalMin: total, byDayMin: byDay };
-      }
-
-      const isMailbox = (tid === 'mailbox_manager');
-      const isCall = (tid === callRole || tid === 'call_onqueue' || tid === 'call_available');
-
-      let total = 0;
-      for(let d=0; d<7; d++){
-        const bl = normalizeBlocks(team, Store.getUserDayBlocks(member.id, d) || []);
-        let dayMin = 0;
-        for(const b of (bl||[])){
-          const mins = blockMinutes(b);
-          if(!mins) continue;
-          const r = String(b.role||'');
-          if(isMailbox){
-            if(r==='mailbox_manager' || r==='mailbox_call') dayMin += mins;
-          }else if(isCall){
-            if(r===callRole || r==='call_available' || r==='mailbox_call' || r==='call_onqueue') dayMin += mins;
-          }else{
-            if(r===tid) dayMin += mins;
-          }
-        }
-        byDay[d] = dayMin;
-        total += dayMin;
-      }
-      return { totalMin: total, byDayMin: byDay };
-    }
-
-    const maxH = getMaxHoursForTask(graphTaskFilterId);
-    const lay = taskLayout(graphTaskFilterId);
-
-    // Apply per-task styling class to the panel (mailbox/call/backoffice/etc.)
-    panel.classList.remove('gsp-task-mailbox','gsp-task-call','gsp-task-backoffice','gsp-task-generic');
-    if(lay && lay.cls) panel.classList.add(lay.cls);
-
-    const barColor = (lay && lay.barColor) ? lay.barColor : ((meta && meta.color) ? meta.color : fallbackColorForLabel(compareLabel));
-
-    const rows = members.map(m=>{
-      const res = computeTaskMinutesForMember(m, graphTaskFilterId);
-      const name = m.fullName || m.name || m.email || m.id;
-      const hours = (res.totalMin||0)/60;
-      const hoursRounded = Math.round(hours);
-
-      const pctRaw = maxH > 0 ? (hours / maxH) * 100 : 0;
-      const pct = Math.min(100, Math.max(0, pctRaw));
-
-      return {
-        id: m.id,
-        name,
-        hours,
-        hoursRounded,
-        pctRaw,
-        pct,
-        pctText: `${Math.round(pct)}%`
-      };
-    });
-
-    // Sort by percentage: lowest at top, highest at bottom (matches sample)
-    rows.sort((a,b)=>{
-      if(a.pctRaw !== b.pctRaw) return a.pctRaw - b.pctRaw;
-      return String(a.name||'').localeCompare(String(b.name||''));
-    });
-
-    const settingsHtml = `
-      <div class="gsp-settings-wrap">
-        <label class="gsp-settings-toggle" title="Show/hide Graph Panel settings"><input class="gsp-settings-checkbox" type="checkbox" id="gspSettingsToggle" ${graphSettingsOpen ? "checked" : ""} /><span class="gsp-switch" aria-hidden="true"></span><span class="gsp-settings-text">⚙️ Graph Panel Settings</span></label>
-        <div class="gsp-settings ${graphSettingsOpen ? '' : 'gsp-settings-hidden'}" id="gspSettings">
-          <div class="small muted mt-1">Set Max Hours per Task</div>
-          <div class="gsp-max-grid">
-            ${taskOpts
-              .filter(o=>String(o.id) !== '__clear__')
-              .map(o=>{
-                const tid = String(o.id);
-                const l = taskLayout(tid);
-                const defMax = getMaxHoursForTask(tid);
-                const label = (o.label || o.id);
-                const icon = o.icon || '';
-                return `
-                  <div class="gsp-max-item ${esc(l && l.cls ? l.cls : '')}">
-                    <div class="lbl">${esc(icon)} ${esc(label)}</div>
-                    <input class="input gsp-max" data-taskid="${esc(tid)}" type="number" min="1" step="1" value="${esc(defMax)}" aria-label="Max hours for ${esc(label)}"/>
-                  </div>
-                `;
-              }).join('')}
-          </div>
+    // Render Linear-Style Bar (Zinc/Emerald Theme)
+    container.innerHTML = `
+        <div class="flex items-center justify-between text-xs mb-2">
+            <span class="text-zinc-500 font-medium">Team Availability</span>
+            <span class="text-emerald-400 font-mono">${active}/${total} Online</span>
         </div>
-      </div>
+        <div class="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div class="h-full bg-emerald-500 transition-all duration-500" style="width: ${percentage}%"></div>
+        </div>
     `;
-
-    const controlHtml = `
-      <div class="gsp-controls">
-        <div class="gsp-field">
-          <label class="small muted" for="gspTask">Comparison</label>
-          <select class="input" id="gspTask" aria-label="Select task comparison">
-            ${taskOpts.map(o=>`<option value="${esc(o.id)}">${esc(o.icon||'')} ${esc(o.label||o.id)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="gsp-controls-hint small muted">Landscape • % based on max hours • Synced with Paint</div>
-      </div>
-    `;
-
-    const tableHtml = `
-      <div class="gsp-landscape-table ${esc(lay && lay.cls ? lay.cls : 'gsp-task-generic')}" style="--gsp-bar:${esc(barColor)}">
-        <div class="gsp-thead">
-          <div class="gsp-th gsp-th-name">Members</div>
-          <div class="gsp-th gsp-th-task">${esc(compareLabel)}</div>
-        </div>
-        <div class="gsp-tbody">
-          ${rows.map(r=>{
-            const title = `${compareLabel}: ${r.hours.toFixed(1)}h / ${maxH}h (${r.pctRaw.toFixed(1)}%)`;
-            const viz = (window.GraphPanel && typeof GraphPanel.renderProgressBarHTML === 'function')
-              ? GraphPanel.renderProgressBarHTML({ pct: r.pct, pctText: r.pctText, color: barColor, title })
-              : `<div class="gsp-progress" title="${esc(title)}"><div class="gsp-progress-track" style="--p:${r.pct.toFixed(2)};--c:${esc(barColor)}"><div class="gsp-progress-fill"></div><div class="gsp-progress-label">${esc(r.pctText)}</div></div></div>`;
-            const isHL = (String(selMemberId||'')===String(r.id)) || (selMemberIds && selMemberIds.has(String(r.id)));
-            const rowCls = `gsp-tr${isHL ? ' gsp-highlighted' : ''}`;
-            return `
-              <div class="${rowCls}" data-mid="${esc(r.id)}" role="button" tabindex="0" aria-label="${esc(r.name)} ${esc(compareLabel)} percentage">
-                <div class="gsp-td gsp-td-name">
-                  <span class="gsp-member">${esc(r.name)}</span>
-                  <span class="gsp-hours">(${esc(r.hoursRounded)}h)</span>
-                </div>
-                <div class="gsp-td gsp-td-bar">${viz}</div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-      </div>
-    `;
-
-    body.innerHTML = controlHtml + settingsHtml + tableHtml;
-
-    const taskSel = body.querySelector('#gspTask');
-    if(taskSel){
-      taskSel.value = String(graphTaskFilterId||'');
-      taskSel.addEventListener('change', ()=>{
-        const v = String(taskSel.value||'').trim();
-        if(!v) return;
-        syncTaskSelection(v, { render:true, persist:true });
-        syncTimelineToolbarUI();
-      });
-    }
-
-    // Analytics view selector removed (Phase 1-505)
-
-    const settingsToggle = body.querySelector('#gspSettingsToggle');
-    const settingsEl = body.querySelector('#gspSettings');
-    if(settingsToggle && settingsEl){
-      // Toggle switch (default hidden, persistent)
-      try{ settingsToggle.checked = !!graphSettingsOpen; }catch(_e){}
-      settingsToggle.addEventListener('change', ()=>{
-        graphSettingsOpen = !!settingsToggle.checked;
-        settingsEl.classList.toggle('gsp-settings-hidden', !graphSettingsOpen);
-        persistGraphPrefs();
-      });
-    }
-
-    body.querySelectorAll('.gsp-max').forEach(inp=>{
-      inp.addEventListener('change', ()=>{
-        const tid = inp.dataset.taskid;
-        setMaxHoursForTask(tid, inp.value);
-        renderGraphPanel();
-      });
-    });
-
-    body.querySelectorAll('.gsp-tr').forEach(rEl=>{
-      const id = rEl.dataset.mid;
-      const go = ()=>{
-        selMemberId = id;
-        if(selMemberIds) selMemberIds.clear();
-        applyMemberRowSelectionStyles();
-        const row = wrap.querySelector(`.members-row[data-id="${CSS.escape(id)}"]`);
-        if(row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        renderGraphPanel();
-      };
-      rEl.addEventListener('click', go);
-      rEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); go(); } });
-    });
-  }
+}
 
 
   // Smooth transitions when switching weeks/days
@@ -3077,7 +2799,11 @@ function syncTaskSelection(taskId, opts){
       applyMemberRowSelectionStyles();
     }
     // Copy / mirror / duplicate features removed for a cleaner Team Lead workflow.
-  }
+  
+
+    // Graph Summary (Inspector > Analytics): keep availability bar up to date
+    try{ renderGraphPanel(members); }catch(_e){}
+}
 
   // Drag-to-move / resize on timeline segments
   (function(){
