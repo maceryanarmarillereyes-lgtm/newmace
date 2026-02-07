@@ -235,11 +235,10 @@ function syncTaskSelection(taskId, opts){
   requestGraphRefresh._t = 0;
 
   function normalizeToMonday(iso){
-    // Snap selected ISO date to the START of the visible week (Sun–Sat) using calendar math (timezone-safe)
+    // Snap selected ISO date to the START of the visible week (Sun–Sat)
     const wd = UI.weekdayFromISO(String(iso||defaultWeekStartISO)); // 0=Sun..6=Sat
     if(wd==null) return defaultWeekStartISO;
-    const delta = -wd; // Sunday => 0, Monday => -1, ...
-    return UI.addDaysISO(String(iso||defaultWeekStartISO), delta);
+    return UI.addDaysISO(String(iso||defaultWeekStartISO), -wd);
   }
   weekStartISO = normalizeToMonday(weekStartISO);
 
@@ -304,43 +303,27 @@ function syncTaskSelection(taskId, opts){
   function renderDayTabs(){
     const tabs = wrap.querySelector('#dayTabs');
     if(!tabs) return;
-    const teamId = selectedTeamId;
-    const lock = getTeamLock(teamId);
-    const lockedMonFri = !!(lock && lock.lockedDays && [1,2,3,4,5].some(d=>lock.lockedDays[String(d)]));
-    tabs.innerHTML = UI.DAYS.map((d,i)=>{
-      const active = i===selectedDay ? 'active' : '';
-      const has = dayHasAnyBlocks(teamId, i);
-      const locked = isDayLocked(teamId, i);
-      const dot = has ? '<span class="dot"></span>' : '';
-      const lk = locked ? '<span class="lock" role="img" aria-label="Locked" title="Locked">🔒</span>' : '';
-      return `<button class="daytab ${active}" data-day="${i}" type="button">${UI.esc(d.slice(0,3))}${dot}${lk}</button>`;
-    }).join('');
-    tabs.querySelectorAll('button.daytab').forEach(b=>{
-      b.onclick = ()=>{
-        selectedDay = Number(b.dataset.day);
-        triggerSwap();
+
+    const parts = [];
+    for(let i=0;i<7;i++){
+      const iso = UI.addDaysISO(String(weekStartISO||defaultWeekStartISO), i);
+      const dd = Number(String(iso||'').split('-')[2] || 0);
+      const lab = `[${dd||''}] ${UI.DAYS[i]}`;
+      const on = (i===selectedDay) ? ' is-on' : '';
+      parts.push(`<button class="daytab${on}" type="button" data-day="${i}" aria-pressed="${i===selectedDay?'true':'false'}">${UI.esc(lab)}</button>`);
+    }
+    tabs.innerHTML = parts.join('');
+
+    tabs.querySelectorAll('.daytab').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const d = Number(btn.dataset.day||0);
+        if(!Number.isFinite(d)) return;
+        selectedDay = d;
+        localStorage.setItem('ums_selected_day', String(selectedDay));
         renderDayTabs();
         renderAll();
-      };
+      });
     });
-
-    const badge = wrap.querySelector('#lockBadge');
-    const unlockBtn = wrap.querySelector('#unlockSchedule');
-    const autoBtn = wrap.querySelector('#autoSchedule');
-    const previewBtn = wrap.querySelector('#previewAuto');
-    const autoSettingsBtn = wrap.querySelector('#autoSettings');
-    if(badge) badge.classList.toggle('hidden', !lockedMonFri);
-    // If the week is locked, require a fresh unlock action before any edits.
-    if(lockedMonFri) unlockTriggered = false;
-    const canUnlock = lockedMonFri && (isLead || isAdmin || isSuper);
-    if(unlockBtn) unlockBtn.classList.toggle('hidden', !canUnlock);
-    // When locked, prevent accidental re-apply until unlocked
-    const lockDisable = !!lockedMonFri;
-    if(autoBtn) autoBtn.disabled = lockDisable;
-    if(previewBtn) previewBtn.disabled = lockDisable;
-    if(autoSettingsBtn) autoSettingsBtn.disabled = lockDisable;
-
-    renderWeekWarning();
   }
 
   // 12-hour clock label (for ruler)
@@ -352,6 +335,20 @@ function syncTaskSelection(taskId, opts){
     const h12 = ((hh + 11) % 12) + 1;
     return `${h12}:${String(mm).padStart(2,'0')} ${ap}`;
   }
+
+function compactTimeLabel(hm){
+  // hm is "HH:MM". Return compact 12h label like "6A" / "12P".
+  try{
+    const mins = UI.parseHM(hm);
+    const hh = Math.floor(mins/60) % 24;
+    const ap = hh >= 12 ? 'P' : 'A';
+    const h12 = ((hh + 11) % 12) + 1;
+    return `${h12}${ap}`;
+  }catch(_){
+    return '';
+  }
+}
+
 
   // Multi-select state (current day only)
   let selMemberId = null;
@@ -533,14 +530,14 @@ function syncTaskSelection(taskId, opts){
 
   wrap.innerHTML = `
     <div class="members-topbar" role="banner" aria-label="Members header">
-      <!-- Zone 1: Left (Title + Team) -->
-      <div class="members-topbar-zone members-topbar-zone-left">
+      <!-- Left: Title + Team -->
+      <div class="members-topbar-left">
         <div class="members-title-stack">
           <div class="members-h1 tracking-tight">Members</div>
           <div class="members-sub text-zinc-400">Plan coverage by assigning time blocks (Sun–Sat). Timeline view shows the whole team shift.</div>
         </div>
 
-        <label class="members-field members-teamfield">
+        <label class="members-field members-teamctl">
           <span class="label text-zinc-400">Team</span>
           <select class="input" id="teamSelect" aria-label="Select team">
             ${Config.TEAMS.map(t=>`<option value="${t.id}">${UI.esc(t.label)}</option>`).join('')}
@@ -548,20 +545,19 @@ function syncTaskSelection(taskId, opts){
         </label>
       </div>
 
-      <!-- Zone 2: Center (Week Navigation) -->
-      <div class="members-topbar-zone members-topbar-zone-center" aria-label="Week navigation">
-        <div class="members-nav">
-          <button class="btn secondary" id="weekPrev" type="button" title="Previous week">‹ Prev</button>
-          <input class="input" id="weekSelect" type="date" value="${UI.esc(weekStartISO)}" aria-label="Week start date" />
-          <button class="btn secondary" id="weekNext" type="button" title="Next week">Next ›</button>
-          <button class="btn secondary" id="jumpToday" type="button" title="Jump to current week (Manila)">Current Week</button>
-          <button class="iconbtn" id="weekHelp" type="button" aria-label="Week selector help" title="Week help">ⓘ</button>
+      <!-- Center: Cohesive Week Navigation -->
+      <div class="members-topbar-center" aria-label="Week navigation">
+        <div class="members-navtool" role="group" aria-label="Week navigation tool">
+          <button class="navbtn" id="weekPrev" type="button" title="Previous week">‹ Prev</button>
+          <input class="navinput" id="weekSelect" type="date" value="${UI.esc(weekStartISO)}" aria-label="Week start date" />
+          <button class="navbtn" id="weekNext" type="button" title="Next week">Next ›</button>
+          <button class="navbtn navbtn-accent" id="jumpToday" type="button" title="Jump to current week (Manila)">Current Week</button>
         </div>
         <div id="weekWarn" class="week-warn hidden" aria-live="polite"></div>
       </div>
 
-      <!-- Zone 3: Right (Unified Actions) -->
-      <div class="members-topbar-zone members-topbar-zone-right" aria-label="Header actions">
+      <!-- Right: Primary Actions + Unified Settings -->
+      <div class="members-topbar-right" aria-label="Header actions">
         <button class="btn ghost" id="membersFullscreenBtn" type="button" aria-pressed="false" title="Toggle fullscreen overlay">⛶ Fullscreen</button>
 
         ${(isLead||isAdmin) ? `
@@ -584,7 +580,9 @@ function syncTaskSelection(taskId, opts){
         <div class="reports-dropdown members-settings-dropdown" id="membersSettingsDropdown" aria-label="Settings">
           <button class="btn ghost iconbtn" id="membersSettingsToggle" type="button" aria-haspopup="menu" aria-expanded="false" title="Settings">⚙️</button>
           <div class="reports-menu members-settings-menu" id="membersSettingsMenu" role="menu" aria-label="Settings Menu">
+            <button class="reports-item" id="coverageSettingsBtn" type="button" role="menuitem">Coverage Settings</button>
             <button class="reports-item" id="taskSettingsBtn" type="button" role="menuitem">Task Config (Max Hours)</button>
+            <div class="reports-sep" role="separator"></div>
             <button class="reports-item" id="autoSettings" type="button" role="menuitem">Auto Settings</button>
             <button class="reports-item" id="previewAuto" type="button" role="menuitem">Auto Preview</button>
             <div class="reports-sep" role="separator"></div>
@@ -647,7 +645,8 @@ function syncTaskSelection(taskId, opts){
           <div class="mtb-mid"></div>
 
           <div class="mtb-right">
-${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" type="button" title="Auto Assign for this week">Auto Assign</button>` : ``}
+            <button class="btn ghost icon" id="taskSettingsBtn" type="button" title="Task Settings (Max Hours)" aria-label="Task Settings">⚙️</button>
+            ${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" type="button" title="Auto Assign for this week">Auto Assign</button>` : ``}
           </div>
         </div>
 
@@ -1420,17 +1419,18 @@ container.innerHTML = `
 
   const jumpTodayBtn = wrap.querySelector('#jumpToday');
   if(jumpTodayBtn){
-    jumpTodayBtn.onclick = ()=>{
-      triggerSwap();
-      weekStartISO = currentWeekStartISO();
-      localStorage.setItem('ums_week_start_iso', weekStartISO);
-      if(weekSel) weekSel.value = weekStartISO;
-      // Also snap day tab to Manila "today"
-      selectedDay = getManilaDayIndex();
-      renderDayTabs();
-      renderAll();
-    };
-  }
+      try{
+        const startISO = currentWeekStartISOManila ? currentWeekStartISOManila() : currentWeekStartISO();
+        weekStartISO = startISO;
+        localStorage.setItem('ums_week_start_iso', weekStartISO);
+        const weekInp = wrap.querySelector('#weekSelect') || document.getElementById('weekSelect');
+        if(weekInp) weekInp.value = weekStartISO;
+        renderDayTabs();
+        renderAll();
+      }catch(e){
+        console.error('jumpToday failed:', e);
+      }
+    }
 
   // Paint mode (click + drag across hours) — still strictly 1-hour blocks
   // Option B: keep legend chips in the sticky timeline toolbar.
@@ -1766,8 +1766,6 @@ container.innerHTML = `
   const selDeselectBtn = wrap.querySelector('#selDeselect');
 
   async function deleteSelectedBlocks(opts){
-    if (isWeekInPast(weekStartISO)) { notifyPastWeekLocked(); return; }
-
     const o = Object.assign({ confirm: true }, opts||{});
     if(!selMemberId || selIdx.size===0) return;
     const member = Store.getUsers().find(u=>u.id===selMemberId);
@@ -1807,8 +1805,6 @@ container.innerHTML = `
     renderAll();
   }
   async function clearAllBlocksForMemberDay(){
-    if (isWeekInPast(weekStartISO)) { notifyPastWeekLocked(); return; }
-
     // Bulk clear: if multiple members are selected via checkboxes, clear all of them.
     const ids = (selMemberIds && selMemberIds.size) ? Array.from(selMemberIds) : (selMemberId ? [selMemberId] : []);
     if(!ids.length) return;
@@ -2026,6 +2022,20 @@ container.innerHTML = `
       renderAutoSettingsModal();
     };
   }
+  const coverageSettingsBtn = wrap.querySelector('#coverageSettingsBtn');
+  if(coverageSettingsBtn){
+    coverageSettingsBtn.addEventListener('click', ()=>{
+      try{
+        // Prefer CoverageMeter settings if available; fallback to Auto Settings modal.
+        if(window.Components && Components.CoverageMeter && typeof Components.CoverageMeter.openSettings === 'function'){
+          Components.CoverageMeter.openSettings();
+          return;
+        }
+      }catch(_e){}
+      if(autoSettingsBtn) autoSettingsBtn.click();
+    });
+  }
+
 
 
   // Auto scheduling (Mon–Fri) to balance responsibilities
@@ -2495,8 +2505,6 @@ container.innerHTML = `
   }
 
   function openEditModal(member){
-    if (isWeekInPast(weekStartISO)) { notifyPastWeekLocked(); return; }
-
     if(!member) return;
     if(guardScheduleEditLocked(selectedTeamId, selectedDay)) return;
     const modal = wrap.querySelector('#memberSchedModal');
@@ -2639,31 +2647,6 @@ function segStyle(b){
   const width = ((e-s)/total)*100;
   return { left, width, hours: Math.round(((e-s)/60)*10)/10 };
 }
-function currentWeekStartISOManila(){
-  // Use Manila-local date boundary and snap to the visible week start (Sun–Sat)
-  const todayISO = (UI && UI.manilaTodayISO) ? UI.manilaTodayISO() : new Date().toISOString().slice(0,10);
-  return normalizeToMonday(todayISO);
-}
-
-function isWeekInPast(weekISO){
-  const w = String(weekISO||'');
-  if(!w) return false;
-  const cur = currentWeekStartISOManila();
-  return w < cur;
-}
-
-function notifyPastWeekLocked(){
-  const msg = "Cannot modify schedules for past dates. Please switch the calendar to the current or future week.";
-  try{
-    if(window.UI && typeof UI.toast === 'function'){
-      UI.toast(msg, { type:'warn' });
-      return;
-    }
-  }catch(_){}
-  alert(msg);
-}
-
-
 
 
 
@@ -2940,6 +2923,7 @@ function notifyPastWeekLocked(){
 
           return `<div class="seg ${roleCls} ${b.selected?'is-selected':''} ${b.locked?'is-locked':''}" data-mid="${UI.esc(m.id)}" data-idx="${i}" data-role="${UI.esc(role)}" style="${styleAttr}" title="${UI.esc(b.taskLabel || b.roleLabel || role)} (${st.hours}h)">
             ${lockedIcon}
+            <span class="seg-time" aria-hidden="true">${UI.esc(compactTimeLabel(b.start))}</span>
             <span class="handle" aria-hidden="true"></span>
           </div>`;
         }).join('');

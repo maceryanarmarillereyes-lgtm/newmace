@@ -2688,165 +2688,166 @@ body.members-fullscreen-active {
 .members-page #paintRole{min-width:220px}
 
 /* -------------------------------------------------------------------------- */
-/* Protocol v3 UI/UX Fixes: Fullscreen Clickability + Topbar Layout Polish     */
+/* Protocol v3 Polish: Unified Nav, Day Tabs, Coverage Compact, Seg Labels     */
 /* -------------------------------------------------------------------------- */
 
-/* Ensure Members topbar sits above fullscreen content/overlays */
-.members-fullscreen-overlay .members-topbar,
-body.members-fullscreen-active .members-topbar,
-.members-page .members-topbar{
-  position: sticky;
-  top: 0;
-  z-index: 10060; /* above fullscreen overlay body layers */
-  pointer-events: auto;
-}
-
-/* Ensure the right-side action cluster stays clickable and well-aligned */
-.members-page .members-topbar-right{
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.75rem; /* 12px */
-  flex-wrap: wrap;
-  pointer-events: auto;
-  z-index: 10061;
-}
-
-/* Prevent invisible/utility overlays from covering header controls */
-.members-page .week-warn{
-  pointer-events: none;
-}
-
-.members-page .modal-backdrop{
-  /* Backdrops should not block header controls unless a modal is intentionally open.
-     The modal container itself still blocks interaction beneath it when visible. */
-  pointer-events: none;
-}
-
-/* If a modal is open, the modal content should still be interactive */
-.members-page .modal,
-.members-page .modal *{
-  pointer-events: auto;
-}
-
-/* Small-screen polish: allow toolbar clusters to wrap without overlap */
-@media (max-width: 900px){
-  .members-page .members-topbar{
-    gap: 0.75rem;
-  }
-  .members-page .members-topbar-right{
-    gap: 0.5rem;
-  }
-}
-
-/* Very small screens: keep buttons reachable; reduce hint/secondary text crowding */
-@media (max-width: 640px){
-  .members-page .members-topbar-right{
-    width: 100%;
-    justify-content: flex-start;
-  }
-}
-
-/* -------------------------------------------------------------------------- */
-/* Protocol v3 Final: Header 3-Zone Layout + Settings Menu + Modal Fixes       */
-/* -------------------------------------------------------------------------- */
-
-.members-page .members-topbar{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:16px;
-  flex-wrap:wrap;
-  width:100%;
-}
-
-.members-page .members-topbar-zone{
-  display:flex;
-  align-items:center;
-  gap:0.75rem; /* 12px */
-  min-width:0;
-}
-
-.members-page .members-topbar-zone-left{
-  flex: 1 1 320px;
-  justify-content:flex-start;
-}
-
-.members-page .members-topbar-zone-center{
-  flex: 0 1 560px;
-  justify-content:center;
-}
-
-.members-page .members-topbar-zone-right{
-  flex: 1 1 320px;
-  justify-content:flex-end;
-  gap:0.75rem; /* 12px */
-  flex-wrap:wrap;
-  pointer-events:auto;
-  z-index:10061;
-}
-
-.members-page .members-title-stack{min-width:0}
-.members-page .members-teamfield{min-width:220px}
-.members-page .members-nav{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:0.75rem;
-  flex-wrap:wrap;
-}
-.members-page #weekSelect{min-width:170px}
-.members-page #weekPrev,
-.members-page #weekNext,
-.members-page #jumpToday{
-  white-space:nowrap;
-}
-
-/* Settings dropdown: keep menu above header and aligned to the button */
-.members-page .members-settings-dropdown{
-  position:relative;
-}
-.members-page .members-settings-dropdown .reports-menu{
-  right:0;
-  left:auto;
-  z-index:11020;
-}
-
-/* Modal must be above sticky header */
-.members-page .modal{
-  z-index:11000;
-}
-.members-page .modal .panel{
-  max-height: 82vh;
-  overflow:hidden;
-}
-.members-page .modal .body{
-  max-height: 60vh;
-  overflow:auto;
-}
-
-/* Task Settings modal: robust alignment */
-.members-page .task-settings-grid{
+/* Unified week navigation tool (centered cohesive bar) */
+.members-page .members-topbar-center{
+  flex: 1 1 520px;
   display:flex;
   flex-direction:column;
-  gap:10px;
-}
-.members-page .ts-row{
-  display:grid;
-  grid-template-columns: minmax(0, 1fr) 120px;
   align-items:center;
-  gap:12px;
+  justify-content:center;
+  gap:6px;
+  min-width: 320px;
 }
-.members-page .ts-left{min-width:0}
-.members-page .ts-input{
-  width:120px;
-  text-align:right;
+.members-page .members-navtool{
+  display:flex;
+  align-items:stretch;
+  justify-content:center;
+  border:1px solid rgba(255,255,255,0.10);
+  background: rgba(24,24,27,0.65); /* zinc-900/65 */
+  border-radius: 10px;
+  overflow:hidden;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+}
+.members-page .members-navtool .navbtn{
+  appearance:none;
+  border:0;
+  background: transparent;
+  color: #e4e4e7; /* zinc-200 */
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  cursor:pointer;
+  line-height: 1;
+  display:flex;
+  align-items:center;
+}
+.members-page .members-navtool .navbtn + .navbtn,
+.members-page .members-navtool .navbtn + .navinput,
+.members-page .members-navtool .navinput + .navbtn{
+  border-left: 1px solid rgba(255,255,255,0.08);
+}
+.members-page .members-navtool .navbtn:hover{
+  background: rgba(255,255,255,0.06);
+}
+.members-page .members-navtool .navbtn:active{
+  background: rgba(255,255,255,0.10);
+}
+.members-page .members-navtool .navbtn-accent{
+  background: rgba(6,182,212,0.16);
+  color: #a5f3fc;
+}
+.members-page .members-navtool .navbtn-accent:hover{
+  background: rgba(6,182,212,0.22);
+}
+.members-page .members-navtool .navinput{
+  appearance:none;
+  border:0;
+  background: transparent;
+  color:#e4e4e7;
+  padding: 10px 12px;
+  font-size: 12px;
+  min-width: 190px;
+  line-height: 1;
+}
+.members-page .members-navtool .navinput::-webkit-calendar-picker-indicator{
+  opacity:0.6;
+}
+@media (max-width: 900px){
+  .members-page .members-topbar-center{ align-items:flex-start; }
+  .members-page .members-navtool{ justify-content:flex-start; }
 }
 
-/* Small screens: stack center nav and keep actions reachable */
-@media (max-width: 900px){
-  .members-page .members-topbar-zone-center{
-    flex: 1 1 100%;
-    justify-content:flex-start;
-  }
+/* Day tabs: [DD] Day labels + cyan active state with black text */
+.members-page .daytabs{
+  display:flex;
+  gap:8px;
+  padding: 10px 12px;
+  overflow:auto;
+}
+.members-page .daytabs .daytab{
+  appearance:none;
+  border:1px solid rgba(255,255,255,0.10);
+  background: rgba(24,24,27,0.55);
+  color:#e4e4e7;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  cursor:pointer;
+}
+.members-page .daytabs .daytab.is-on{
+  background: #06b6d4;
+  border-color: rgba(255,255,255,0.08);
+  color:#000;
+}
+.members-page .daytabs .daytab:hover{
+  background: rgba(255,255,255,0.08);
+}
+
+/* Coverage meter: compact cards + hide settings pencil in meter UI */
+.members-page #coverageMeter{
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.members-page #coverageMeter .cov-card,
+.members-page #coverageMeter .coverage-card,
+.members-page #coverageMeter .cov-hour{
+  padding: 8px 10px !important;
+  min-height: 54px !important;
+}
+.members-page #coverageMeter .cov-grid,
+.members-page #coverageMeter .coverage-grid{
+  gap: 8px !important;
+}
+.members-page #coverageMeter .cov-head,
+.members-page #coverageMeter .coverage-head{
+  padding: 8px 10px !important;
+}
+.members-page #coverageMeter .cov-edit,
+.members-page #coverageMeter .cov-pencil,
+.members-page #coverageMeter button[title*="Settings"],
+.members-page #coverageMeter button[aria-label*="Settings"]{
+  display:none !important;
+}
+
+/* Timeline ruler: slimmer/subtle (since blocks show embedded time labels) */
+.members-page .timeline-ruler{
+  height: 22px;
+  opacity: 0.75;
+}
+.members-page .timeline-ruler .ruler-track{
+  font-size: 11px;
+}
+
+/* Schedule blocks: embedded start time label */
+.members-page .seg{
+  position: absolute;
+}
+.members-page .seg .seg-time{
+  position:absolute;
+  left: 6px;
+  top: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: rgba(0,0,0,0.82); /* works well on bright task colors */
+  text-shadow: 0 1px 0 rgba(255,255,255,0.25);
+  pointer-events:none;
+  z-index: 2;
+}
+.members-page .seg.is-locked .seg-time{
+  color: rgba(0,0,0,0.72);
+}
+
+/* Settings dropdown + modals: stable in fullscreen */
+.members-page .members-settings-menu{
+  z-index: 12050;
+}
+.members-page .modal{
+  z-index: 12100;
 }
