@@ -102,6 +102,32 @@ window.Pages.members = function(root){
     if(l.includes('lunch')) return '#22d3ee';
     if(l.includes('break')) return '#22d3ee';
     return '#64748b';
+
+  function legendDotEmoji(color){
+    const c = String(color||'').trim().toLowerCase();
+    const has = (s)=>c.includes(s);
+    if(has('emerald')||has('green')||has('#22c55e')||has('#10b981')||has('#16a34a')||has('#059669')) return '🟢';
+    if(has('red')||has('#ef4444')||has('#f43f5e')||has('#dc2626')||has('#b91c1c')) return '🔴';
+    if(has('orange')||has('#f59e0b')||has('#f97316')||has('#fb923c')) return '🟠';
+    if(has('yellow')||has('#eab308')) return '🟡';
+    if(has('blue')||has('#3b82f6')||has('#60a5fa')||has('#4aa3ff')) return '🔵';
+    if(has('purple')||has('#a855f7')||has('#7c3aed')) return '🟣';
+
+    // Hex fallback: choose dominant RGB channel.
+    const m = /^#?([0-9a-f]{6})$/i.exec(c);
+    if(m){
+      const hex = m[1];
+      const r = parseInt(hex.slice(0,2),16);
+      const g = parseInt(hex.slice(2,4),16);
+      const b = parseInt(hex.slice(4,6),16);
+      const max = Math.max(r,g,b);
+      if(max === r) return '🔴';
+      if(max === g) return '🟢';
+      if(max === b) return '🔵';
+    }
+    return '⚪';
+  }
+
   }
 
   function _textColorForBg(hex){
@@ -412,8 +438,15 @@ function syncTaskSelection(taskId, opts){
       el.setAttribute('aria-selected', on ? 'true' : 'false');
     });
 
-    // Keep floating graph highlight in sync
-    if(graphEnabled) renderGraphPanel();
+    // Keep floating graph highlight in sync (stability: never crash selection)
+    if(graphEnabled){
+      try{ renderGraphPanel(); }
+      catch(_e){
+        graphEnabled = false;
+        try{ const t = wrap.querySelector('#graphToggle'); if(t) t.checked = false; }catch(__){}
+        try{ const p = wrap.querySelector('#graphPanel'); if(p) p.classList.add('hidden'); }catch(__){}
+      }
+    }
   }
 
   // Roster (Section 1) — click-to-select and jump to timeline row.
@@ -545,7 +578,7 @@ function syncTaskSelection(taskId, opts){
             <span class="label text-zinc-400">Week of (Mon)</span>
             <button class="iconbtn" id="weekHelp" type="button" aria-label="Week selector help" title="What does this do?">ⓘ</button>
             <input class="input" id="weekSelect" type="date" value="${UI.esc(weekStartISO)}" />
-            <button class="btn" id="jumpToday" type="button" title="Jump to Manila Today / This Week">Today</button>
+            <button class="btn secondary" id="jumpToday" type="button" title="Jump to Manila Today / This Week">Today</button>
           </div>
           <div id="weekWarn" class="week-warn hidden" aria-live="polite"></div>
         </div>
@@ -572,8 +605,8 @@ function syncTaskSelection(taskId, opts){
           <button class="btn primary" id="sendSchedule" type="button" title="Apply schedule changes and notify affected members">Apply</button>
 
           <div class="global-lock">
-            <button class="btn" id="autoSettings" type="button">Settings</button>
-            <button class="btn" id="previewAuto" type="button">Preview</button>
+            <button class="btn secondary" id="autoSettings" type="button">Settings</button>
+            <button class="btn secondary" id="previewAuto" type="button">Preview</button>
             <button class="btn primary" id="autoSchedule" type="button">Apply &amp; Lock</button>
             <span class="lock-badge hidden" id="lockBadge" aria-label="Locked" title="Locked">
               <span class="lock-ic" aria-hidden="true"></span>
@@ -629,19 +662,12 @@ function syncTaskSelection(taskId, opts){
             <div id="paintModeHint" class="hint text-zinc-400" aria-live="polite">Drag to create • Shift+Click multi-select • Shift+Drag box-select</div>
           </div>
 
-          <div class="mtb-mid">
-            <button class="btn ghost" id="legendToggle" type="button" aria-pressed="true" aria-controls="timelineLegend" title="Toggle legend chips">Legend</button>
-            <div class="timeline-legend" id="timelineLegend" aria-label="Timeline legend">
-              <span class="legend-item"><span class="legend-dot role-mailbox_manager"></span>Mailbox</span>
-              <span class="legend-item"><span class="legend-dot role-call_onqueue"></span>Call</span>
-              <span class="legend-item"><span class="legend-dot role-back_office"></span>Back Office</span>
-              <span class="legend-item"><span class="legend-dot role-mailbox_call"></span>Mailbox+Call</span>
-              <span class="legend-item"><span class="legend-dot role-lunch"></span>Lunch</span>
-              <span class="legend-item"><span class="legend-dot role-block"></span>Block</span>
-            </div>
-          </div>
+          <div class="mtb-mid"></div>
 
-          <div class="mtb-right"></div>
+          <div class="mtb-right">
+            <button class="btn ghost icon" id="taskSettingsBtn" type="button" title="Task Settings (Max Hours)" aria-label="Task Settings">⚙️</button>
+            ${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" type="button" title="Auto Assign for this week">Auto Assign</button>` : ``}
+          </div>
         </div>
 
         <div class="members-timeline-scroll" id="membersTimelineScroll">
@@ -657,8 +683,7 @@ function syncTaskSelection(taskId, opts){
       <div class="card members-inspector" id="membersAnalyticsRail">
         <div class="inspector-tabs" role="tablist" aria-label="Inspector tabs">
           <button class="tab is-on" type="button" data-tab="analytics" role="tab" aria-selected="true" aria-controls="inspAnalytics">Analytics</button>
-          <button class="tab" type="button" data-tab="legend" role="tab" aria-selected="false" aria-controls="inspLegend">Legend</button>
-          <button class="tab" type="button" data-tab="guide" role="tab" aria-selected="false" aria-controls="inspGuide">Guide</button>
+<button class="tab" type="button" data-tab="guide" role="tab" aria-selected="false" aria-controls="inspGuide">Guide</button>
         </div>
 
         <div class="members-analytics-body inspector-panels">
@@ -671,11 +696,6 @@ function syncTaskSelection(taskId, opts){
             <textarea class="input" id="enterpriseNotes" rows="6" placeholder="Notes for leads and audit…" aria-label="Enterprise notes"></textarea>
             <div class="small text-zinc-400 mt-3">Use the roster to jump to a member. Timeline blocks support paint-fill and multi-select. Coverage meter is heatmap-ready.</div>
           </div>
-
-          <div class="inspector-panel hidden" id="inspLegend" role="tabpanel">
-            <div class="legend-vert" id="inspectorLegendList" aria-label="Legend list"></div>
-          </div>
-
           <div class="inspector-panel hidden" id="inspGuide" role="tabpanel">
             <div class="guide small text-zinc-400">
               <div class="guide-line"><b>Paint</b>: click &amp; drag across hours.</div>
@@ -740,7 +760,25 @@ function syncTaskSelection(taskId, opts){
       </div>
     </div>
 
-    <div id="graphPanel" class="graph-status-panel gsp-floating gsp-float-anchor gsp-resizable hidden" role="dialog" aria-label="Graphical task status">
+    <div class="modal modal-blur" id="taskSettingsModal" role="dialog" aria-label="Task Settings">
+      <div class="panel">
+        <div class="head">
+          <div>
+            <div class="announce-title" id="taskSettingsTitle">Task Settings</div>
+            <div class="small" id="taskSettingsSub">Set Max Hours per Task (per team)</div>
+          </div>
+          <button class="btn ghost" type="button" id="taskSettingsClose">✕</button>
+        </div>
+        <div class="body" id="taskSettingsBody"></div>
+        <div class="foot task-settings-foot">
+          <button class="btn" type="button" id="taskSettingsCancel">Cancel</button>
+          <button class="btn primary" type="button" id="taskSettingsSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="graphPanel"
+ class="graph-status-panel gsp-floating gsp-float-anchor gsp-resizable hidden" role="dialog" aria-label="Graphical task status">
       <div class="gsp-head" id="graphPanelHead">
         <div>
           <div class="gsp-title">Graphical Task Status</div>
@@ -1116,7 +1154,14 @@ function syncTaskSelection(taskId, opts){
         applyPanelState();
         // Ensure the panel always reflects the current Paint selection when opened.
         syncTaskSelection(paint.role, { render:false, persist:true });
-        renderGraphPanel();
+        try{
+        requestAnimationFrame(()=>{
+          try{ renderGraphPanel(); }
+          catch(_e){ try{ setEnabled(false); }catch(__){} }
+        });
+      }catch(_e){
+        try{ renderGraphPanel(); }catch(__){ try{ setEnabled(false); }catch(___){} }
+      }
       }
       saveGraphState();
     }
@@ -1190,7 +1235,7 @@ function syncTaskSelection(taskId, opts){
       if(!k) return;
       const ks = String(k);
       if(ks === '*' || ks.includes('schedule') || ks.includes('task') || ks.includes('team')){
-        renderGraphPanel();
+        try{ renderGraphPanel(); }catch(_e){ try{ setEnabled(false); }catch(__){} }
       }
     };
     window.addEventListener('mums:store', wrap._members_graph_store_listener);
@@ -1199,7 +1244,292 @@ function syncTaskSelection(taskId, opts){
     setEnabled(graphEnabled);
   })();
 
-  function renderGraphPanel(data) {
+  function renderGraphPanel(){
+    // Stability: Graph panel may not exist yet (or may be removed in some views).
+    const panel = wrap.querySelector('#graphPanel');
+    const toggle = wrap.querySelector('#graphToggle');
+    if(!panel || !toggle){
+      graphEnabled = false;
+      try{ if(toggle) toggle.checked = false; }catch(_e){}
+      return;
+    }
+
+    // Landscape orientation (sample layout)
+    panel.classList.add('gsp-landscape');
+
+    const body = panel.querySelector('#graphBody') || panel.querySelector('#graphPanelBody');
+    const sub = panel.querySelector('#graphPanelSub');
+    const foot = panel.querySelector('#graphPanelFoot');
+
+    if(!body){
+      graphEnabled = false;
+      try{ toggle.checked = false; }catch(_e){}
+      panel.classList.add('hidden');
+      return;
+    }
+
+    if(!graphEnabled){
+      try{ toggle.checked = false; }catch(_e){}
+      panel.classList.add('hidden');
+      return;
+    }
+    panel.classList.remove('hidden');
+
+    const team = Config.teamById(selectedTeamId);
+    if(!team){
+      body.innerHTML = `<div class="small muted">No team selected.</div>`;
+      return;
+    }
+
+    const esc = UI.escapeHtml || ((s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'));
+
+    const cfg = (window.Store && Store.getTeamConfig) ? Store.getTeamConfig(team.id) : null;
+    const callRole = (cfg && cfg.coverageTaskId) ? String(cfg.coverageTaskId) : 'call_onqueue';
+
+    // Unified task list (Paint + Graph)
+    const taskOpts = getTeamTaskOptions(team.id);
+    const optIds = new Set(taskOpts.map(o=>String(o.id)));
+
+    // Paint dropdown is the source of truth; Graph Panel must follow.
+    let desiredTaskId = String(paint.role||'').trim();
+    if(!desiredTaskId || !optIds.has(desiredTaskId)){
+      desiredTaskId = optIds.has(String(callRole)) ? String(callRole) : (taskOpts[0] ? String(taskOpts[0].id) : String(callRole));
+    }
+    if(String(graphTaskFilterId||'') !== String(desiredTaskId) || String(paint.role||'') !== String(desiredTaskId)){
+      syncTaskSelection(desiredTaskId, { render:false, persist:true });
+    }
+
+    const meta = taskMeta(team.id, graphTaskFilterId);
+    const compareLabel = (meta && meta.label) ? meta.label : String(graphTaskFilterId||'');
+
+    const weekLong = (()=>{
+      try{
+        const d0 = new Date(`${weekStartISO}T00:00:00`);
+        const endISO = UI.addDaysISO(weekStartISO, 6);
+        const d1 = new Date(`${endISO}T00:00:00`);
+        const a = d0.toLocaleDateString('en-US', { month:'short', day:'2-digit', year:'numeric' });
+        const b = d1.toLocaleDateString('en-US', { month:'short', day:'2-digit', year:'numeric' });
+        return `${a} – ${b}`;
+      }catch(_){
+        return String(weekStartISO||'');
+      }
+    })();
+
+    if(sub){
+      const tLabel = (team && (team.label || team.name || team.key)) ? (team.label || team.name || team.key) : 'Team';
+      sub.textContent = `${tLabel} • Week ${weekLong} • Compare: ${compareLabel}`;
+    }
+    if(foot){
+      foot.textContent = 'Synced with Paint • Sorted by percentage (lowest at top, highest at bottom).';
+    }
+
+    const members = getMembersForView(selectedTeamId) || [];
+    if(!members.length){
+      body.innerHTML = `<div class="small muted">No members loaded for this team.</div>`;
+      return;
+    }
+
+    // Max-hours settings (stored per team)
+    const maxKey = `mums_gsp_max_hours_${team.id}`;
+    let maxMap = {};
+    try{ maxMap = JSON.parse(localStorage.getItem(maxKey) || '{}') || {}; }catch(_){ maxMap = {}; }
+
+    function taskLayout(taskId){
+      try{
+        if(window.GraphPanel && typeof GraphPanel.getTaskLayout === 'function'){
+          return GraphPanel.getTaskLayout(taskId, { callRole, meta });
+        }
+      }catch(_){}
+      // Fallback layout
+      const c = (meta && meta.color) ? meta.color : fallbackColorForLabel(compareLabel);
+      return { cls:'gsp-task-generic', defaultMax: 20, barColor: c };
+    }
+
+    function getMaxHoursForTask(taskId){
+      const k = String(taskId||'');
+      const v = Number(maxMap[k]);
+      if(Number.isFinite(v) && v > 0) return v;
+      const lay = taskLayout(taskId);
+      const d = Number(lay && lay.defaultMax ? lay.defaultMax : 20);
+      return (Number.isFinite(d) && d > 0) ? d : 20;
+    }
+
+    function setMaxHoursForTask(taskId, val){
+      const k = String(taskId||'');
+      const n = Number(val);
+      if(!Number.isFinite(n) || n <= 0){
+        delete maxMap[k];
+      }else{
+        maxMap[k] = Math.round(n*10)/10;
+      }
+      try{ localStorage.setItem(maxKey, JSON.stringify(maxMap)); }catch(_){}
+    }
+
+    function blockMinutes(b){
+      try{
+        const s = UI.offsetFromShiftStart(team, b.start);
+        const e = UI.offsetFromShiftStart(team, b.end);
+        return Math.max(0, e - s);
+      }catch(_){ return 0; }
+    }
+
+    const shiftMin = (()=>{
+      try{
+        const sm = UI.shiftMeta(team);
+        return Math.max(60, Number(sm && sm.length ? sm.length : 540));
+      }catch(_){ return 540; }
+    })();
+
+    function computeTaskMinutesForMember(member, taskId){
+      const tid = String(taskId||'');
+      const byDay = new Array(7).fill(0);
+
+      if(tid === '__clear__'){
+        // Clear (empty) → unassigned minutes
+        let total = 0;
+        for(let d=0; d<7; d++){
+          const bl = normalizeBlocks(team, Store.getUserDayBlocks(member.id, d) || []);
+          let assigned = 0;
+          for(const b of (bl||[])) assigned += blockMinutes(b);
+          const unassigned = Math.max(0, shiftMin - assigned);
+          byDay[d] = unassigned;
+          total += unassigned;
+        }
+        return { totalMin: total, byDayMin: byDay };
+      }
+
+      const isMailbox = (tid === 'mailbox_manager');
+      const isCall = (tid === callRole || tid === 'call_onqueue' || tid === 'call_available');
+
+      let total = 0;
+      for(let d=0; d<7; d++){
+        const bl = normalizeBlocks(team, Store.getUserDayBlocks(member.id, d) || []);
+        let dayMin = 0;
+        for(const b of (bl||[])){
+          const mins = blockMinutes(b);
+          if(!mins) continue;
+          const r = String(b.role||'');
+          if(isMailbox){
+            if(r==='mailbox_manager' || r==='mailbox_call') dayMin += mins;
+          }else if(isCall){
+            if(r===callRole || r==='call_available' || r==='mailbox_call' || r==='call_onqueue') dayMin += mins;
+          }else{
+            if(r===tid) dayMin += mins;
+          }
+        }
+        byDay[d] = dayMin;
+        total += dayMin;
+      }
+      return { totalMin: total, byDayMin: byDay };
+    }
+
+    const maxH = getMaxHoursForTask(graphTaskFilterId);
+    const lay = taskLayout(graphTaskFilterId);
+
+    // Apply per-task styling class to the panel (mailbox/call/backoffice/etc.)
+    panel.classList.remove('gsp-task-mailbox','gsp-task-call','gsp-task-backoffice','gsp-task-generic');
+    if(lay && lay.cls) panel.classList.add(lay.cls);
+
+    const barColor = (lay && lay.barColor) ? lay.barColor : ((meta && meta.color) ? meta.color : fallbackColorForLabel(compareLabel));
+
+    const rows = members.map(m=>{
+      const res = computeTaskMinutesForMember(m, graphTaskFilterId);
+      const name = m.fullName || m.name || m.email || m.id;
+      const hours = (res.totalMin||0)/60;
+      const hoursRounded = Math.round(hours);
+
+      const pctRaw = maxH > 0 ? (hours / maxH) * 100 : 0;
+      const pct = Math.min(100, Math.max(0, pctRaw));
+
+      return {
+        id: m.id,
+        name,
+        hours,
+        hoursRounded,
+        pctRaw,
+        pct,
+        pctText: `${Math.round(pct)}%`
+      };
+    });
+
+    // Sort by percentage: lowest at top, highest at bottom (matches sample)
+    rows.sort((a,b)=>{
+      if(a.pctRaw !== b.pctRaw) return a.pctRaw - b.pctRaw;
+      return String(a.name||'').localeCompare(String(b.name||''));
+    });
+
+    const controlHtml = `
+      <div class="gsp-controls">
+        <div class="gsp-field">
+          <label class="small muted" for="gspTask">Comparison</label>
+          <select class="input" id="gspTask" aria-label="Select task comparison">
+            ${taskOpts.map(o=>`<option value="${esc(o.id)}">${esc(o.icon||'')} ${esc(o.label||o.id)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="gsp-controls-hint small muted">Landscape • % based on max hours • Synced with Paint</div>
+      </div>
+    `;
+
+    const tableHtml = `
+      <div class="gsp-landscape-table ${esc(lay && lay.cls ? lay.cls : 'gsp-task-generic')}" style="--gsp-bar:${esc(barColor)}">
+        <div class="gsp-thead">
+          <div class="gsp-th gsp-th-name">Members</div>
+          <div class="gsp-th gsp-th-task">${esc(compareLabel)}</div>
+        </div>
+        <div class="gsp-tbody">
+          ${rows.map(r=>{
+            const title = `${compareLabel}: ${r.hours.toFixed(1)}h / ${maxH}h (${r.pctRaw.toFixed(1)}%)`;
+            const viz = (window.GraphPanel && typeof GraphPanel.renderProgressBarHTML === 'function')
+              ? GraphPanel.renderProgressBarHTML({ pct: r.pct, pctText: r.pctText, color: barColor, title })
+              : `<div class="gsp-progress" title="${esc(title)}"><div class="gsp-progress-track" style="--p:${r.pct.toFixed(2)};--c:${esc(barColor)}"><div class="gsp-progress-fill"></div><div class="gsp-progress-label">${esc(r.pctText)}</div></div></div>`;
+            const isHL = (String(selMemberId||'')===String(r.id)) || (selMemberIds && selMemberIds.has(String(r.id)));
+            const rowCls = `gsp-tr${isHL ? ' gsp-highlighted' : ''}`;
+            return `
+              <div class="${rowCls}" data-mid="${esc(r.id)}" role="button" tabindex="0" aria-label="${esc(r.name)} ${esc(compareLabel)} percentage">
+                <div class="gsp-td gsp-td-name">
+                  <span class="gsp-member">${esc(r.name)}</span>
+                  <span class="gsp-hours">(${esc(r.hoursRounded)}h)</span>
+                </div>
+                <div class="gsp-td gsp-td-bar">${viz}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+
+    body.innerHTML = controlHtml + tableHtml;
+
+    const taskSel = body.querySelector('#gspTask');
+    if(taskSel){
+      taskSel.value = String(graphTaskFilterId||'');
+      taskSel.addEventListener('change', ()=>{
+        const v = String(taskSel.value||'').trim();
+        if(!v) return;
+        syncTaskSelection(v, { render:true, persist:true });
+        syncTimelineToolbarUI();
+      });
+    }
+
+    // Analytics view selector removed (Phase 1-505)
+
+
+    body.querySelectorAll('.gsp-tr').forEach(rEl=>{
+      const id = rEl.dataset.mid;
+      const go = ()=>{
+        selMemberId = id;
+        if(selMemberIds) selMemberIds.clear();
+        applyMemberRowSelectionStyles();
+        const row = wrap.querySelector(`.members-row[data-id="${CSS.escape(id)}"]`);
+        if(row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        renderGraphPanel();
+      };
+      rEl.addEventListener('click', go);
+      rEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); go(); } });
+    });
+  }
+
+  function renderMemberGraphPanel(data) {
     // Target the specific container
     const container = document.getElementById('member-graph-container');
     // SAFETY CHECK: If container is missing (e.g., hidden tab), stop execution to prevent crash
@@ -1233,6 +1563,7 @@ function syncTaskSelection(taskId, opts){
         </div>
     `;
 }
+
 
 
   // Smooth transitions when switching weeks/days
@@ -1358,16 +1689,16 @@ function syncTaskSelection(taskId, opts){
     const selToggle = wrap.querySelector('#selectionToggle');
     const delBtn = wrap.querySelector('#deleteSelected');
     const legacyDelBtn = wrap.querySelector('#selDeselect');
-    const legendToggle = wrap.querySelector('#legendToggle');
-    const legend = wrap.querySelector('#timelineLegend');
 
     // Populate role dropdown when team changes (single source of truth).
     if(roleSel){
       const teamKey = String(selectedTeamId||'');
       if(roleSel.dataset.teamKey !== teamKey){
         const opts = getTeamTaskOptions(selectedTeamId).map(o=>{
-          const icon = o.icon ? (UI.esc(o.icon) + ' ') : '';
-          return `<option value="${UI.esc(o.id)}">${icon}${UI.esc(o.label||o.id)}</option>`;
+          const meta = taskMeta(selectedTeamId, o.id) || {};
+          const dot = legendDotEmoji(meta.color || meta.bg || meta.background || '');
+          const label = UI.esc(o.label||o.id);
+          return `<option value="${UI.esc(o.id)}">${UI.esc(dot)} ${label}</option>`;
         }).join('');
         roleSel.innerHTML = opts;
         roleSel.dataset.teamKey = teamKey;
@@ -1421,25 +1752,12 @@ function syncTaskSelection(taskId, opts){
       }
     }
     if(legacyDelBtn) legacyDelBtn.disabled = !canDeleteSelected;
-
-    if(legendToggle && legend){
-      const isHidden = wrap.classList.contains('legend-hidden');
-      legendToggle.setAttribute('aria-pressed', isHidden ? 'false' : 'true');
-      if(!legendToggle.dataset.bound){
-        legendToggle.dataset.bound = '1';
-        legendToggle.onclick = ()=>{
-          wrap.classList.toggle('legend-hidden');
-          syncTimelineToolbarUI();
-        };
-      }
-    }
   }
 
   function wireInspectorTabs(){
     const tabs = Array.from(wrap.querySelectorAll('.inspector-tabs .tab'));
     const panels = {
       analytics: wrap.querySelector('#inspAnalytics'),
-      legend: wrap.querySelector('#inspLegend'),
       guide: wrap.querySelector('#inspGuide')
     };
     const setActive = (key)=>{
@@ -1461,29 +1779,233 @@ function syncTaskSelection(taskId, opts){
     setActive('analytics');
   }
 
-  function renderInspectorLegend(){
-    const host = wrap.querySelector('#inspectorLegendList');
-    if(!host) return;
-    const opts = getTeamTaskOptions(selectedTeamId);
-    host.innerHTML = opts.map(o=>{
-      const roleCls = 'role-' + String(o.id||'block').replace(/[^a-z0-9_-]/gi,'_');
-      const sub = o.description ? `<span class="l-sub">${UI.esc(o.description)}</span>` : '';
-      return `
-        <div class="legend-row">
-          <span class="l-left">
-            <span class="legend-dot ${roleCls}"></span>
-            <span class="l-name">${UI.esc(o.label||o.id)}</span>
-          </span>
-          ${sub}
-        </div>
-      `;
-    }).join('');
+  // ---------------------------------------------------------------------
+  // Task Settings Modal (Max Hours per Task, saved locally per team)
+  // ---------------------------------------------------------------------
+  function _taskMaxHoursKey(teamId){
+    return `mums_gsp_max_hours_${String(teamId||'')}`;
+  }
+  function loadTaskMaxHoursMap(teamId){
+    try{
+      const raw = localStorage.getItem(_taskMaxHoursKey(teamId));
+      if(!raw) return {};
+      const obj = JSON.parse(raw);
+      return (obj && typeof obj === 'object') ? obj : {};
+    }catch(_e){
+      return {};
+    }
+  }
+  function saveTaskMaxHoursMap(teamId, map){
+    try{
+      localStorage.setItem(_taskMaxHoursKey(teamId), JSON.stringify(map || {}));
+    }catch(_e){ /* ignore */ }
+  }
+  function defaultMaxHoursForTask(teamId, taskId){
+    try{
+      const opts = getTeamTaskOptions(teamId) || [];
+      const o = opts.find(x=>String(x.id)===String(taskId));
+      const label = String((o && (o.label||o.id)) || taskId || '');
+      if(window.GraphPanel && GraphPanel.getTaskLayout){
+        const layout = GraphPanel.getTaskLayout(label);
+        if(layout && Number.isFinite(layout.maxHours)) return layout.maxHours;
+      }
+      if(label.toLowerCase().includes('mailbox')) return 24;
+      if(label.toLowerCase().includes('call')) return 24;
+      if(label.toLowerCase().includes('back')) return 16;
+      if(label.toLowerCase().includes('lunch')) return 8;
+    }catch(_e){ /* ignore */ }
+    return 20;
   }
 
-  // Initial sync for toolbar controls and legend.
+  function wireTaskSettingsModal(){
+    const openBtn = wrap.querySelector('#taskSettingsBtn');
+    const modal = wrap.querySelector('#taskSettingsModal');
+    const body = wrap.querySelector('#taskSettingsBody');
+    const closeBtn = wrap.querySelector('#taskSettingsClose');
+    const cancelBtn = wrap.querySelector('#taskSettingsCancel');
+    const saveBtn = wrap.querySelector('#taskSettingsSave');
+
+    if(!openBtn || !modal || !body) return;
+
+    let draft = null;
+    let originEl = null;
+
+    const close = ()=>{
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden','true');
+      draft = null;
+      try{ window.removeEventListener('keydown', onKey, true); }catch(_e){}
+      // Restore focus for enterprise accessibility
+      try{
+        const t = originEl || openBtn;
+        if(t && typeof t.focus === 'function') t.focus();
+      }catch(_e){}
+      originEl = null;
+    };
+
+    const getFocusable = ()=>{
+      const sel = [
+        'button',
+        '[href]',
+        'input',
+        'select',
+        'textarea',
+        '[tabindex]:not([tabindex="-1"])'
+      ].join(',');
+      const els = Array.from(modal.querySelectorAll(sel));
+      return els.filter(el=>{
+        if(!el) return false;
+        if(el.disabled) return false;
+        // ignore hidden
+        const style = window.getComputedStyle(el);
+        if(style && (style.display === 'none' || style.visibility === 'hidden')) return false;
+        // offsetParent null for display:none (except fixed); allow if still in modal
+        if(el.offsetParent === null && !modal.contains(el)) return false;
+        return true;
+      });
+    };
+
+    const onKey = (e)=>{
+      if(e.key === 'Escape'){
+        e.preventDefault();
+        close();
+        return;
+      }
+      // Focus trap (Tab/Shift+Tab)
+      if(e.key === 'Tab'){
+        const items = getFocusable();
+        if(!items.length){
+          e.preventDefault();
+          return;
+        }
+        const first = items[0];
+        const last = items[items.length - 1];
+        const active = document.activeElement;
+
+        if(e.shiftKey){
+          if(active === first || !modal.contains(active)){
+            e.preventDefault();
+            last.focus();
+          }
+        }else{
+          if(active === last){
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+
+    const open = ()=>{
+      const team = Config.teamById(selectedTeamId);
+      if(!team) return;
+      originEl = document.activeElement;
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden','false');
+
+      const opts = (getTeamTaskOptions(team.id) || []).filter(o=>o && o.id && String(o.id) !== '__clear__');
+      const map = loadTaskMaxHoursMap(team.id);
+      draft = Object.assign({}, map);
+
+      const rows = opts.map(o=>{
+        const meta = taskMeta(team.id, o.id) || {};
+        const label = meta.label || o.label || o.id;
+        const color = meta.color || fallbackColorForLabel(label);
+        const cur = Number(draft[String(o.id)]);
+        const value = (Number.isFinite(cur) && cur > 0) ? cur : defaultMaxHoursForTask(team.id, o.id);
+
+        return `
+          <div class="ts-row">
+            <div class="ts-left">
+              <span class="ts-dot" style="background:${UI.esc(color)}"></span>
+              <div class="ts-name">${UI.esc(label)}</div>
+            </div>
+            <input class="input ts-input" data-taskid="${UI.esc(o.id)}" type="number" min="1" step="1" value="${UI.esc(String(value))}" aria-label="Max hours for ${UI.esc(label)}" />
+          </div>
+        `;
+      }).join('');
+
+      body.innerHTML = `
+        <div class="task-settings-grid">
+          ${rows || '<div class="small text-zinc-400">No tasks found for this team.</div>'}
+        </div>
+        <div class="small text-zinc-400 mt-3">Saved locally per team. Changes update progress bars and graph tools.</div>
+      `;
+
+      body.querySelectorAll('.ts-input').forEach(inp=>{
+        inp.addEventListener('input', ()=>{
+          const tid = String(inp.getAttribute('data-taskid')||'').trim();
+          const v = Number(inp.value);
+          if(!tid) return;
+          if(Number.isFinite(v) && v > 0) draft[tid] = Math.round(v*10)/10;
+          else delete draft[tid];
+        });
+      });
+
+      // Focus first field
+      const first = body.querySelector('.ts-input');
+      if(first) first.focus();
+
+      try{ window.addEventListener('keydown', onKey, true); }catch(_e){}
+    };
+
+    // Open
+    if(!openBtn.dataset.bound){
+      openBtn.dataset.bound = '1';
+      openBtn.addEventListener('click', open);
+    }
+
+    // Close buttons
+    const bindClose = (b)=>{
+      if(!b || b.dataset.bound) return;
+      b.dataset.bound = '1';
+      b.addEventListener('click', close);
+    };
+    bindClose(closeBtn);
+    bindClose(cancelBtn);
+
+    // Save
+    if(saveBtn && !saveBtn.dataset.bound){
+      saveBtn.dataset.bound = '1';
+      saveBtn.addEventListener('click', ()=>{
+        const team = Config.teamById(selectedTeamId);
+        if(!team) return close();
+        saveTaskMaxHoursMap(team.id, draft || {});
+        // Rerender UI that depends on max-hours
+        try{ renderAll(); }catch(_e){}
+        try{ if(graphEnabled) renderGraphPanel(); }catch(_e){}
+        close();
+      });
+    }
+
+    // Backdrop click closes
+    if(!modal.dataset.bound){
+      modal.dataset.bound = '1';
+      modal.addEventListener('mousedown', (e)=>{
+        if(e.target === modal) close();
+      });
+    }
+  }
+
+  function wireAutoAssignBtn(){
+    const btn = wrap.querySelector('#autoAssignBtn');
+    if(!btn || btn.dataset.bound) return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', ()=>{
+      const auto = wrap.querySelector('#autoSchedule');
+      if(auto) auto.click();
+    });
+  }
+
+
+  
+
+  // Initial sync for toolbar controls.
   syncTimelineToolbarUI();
   wireInspectorTabs();
-  renderInspectorLegend();
+  wireTaskSettingsModal();
+  wireAutoAssignBtn();
+
 
 
   // Selection tools
@@ -2802,7 +3324,7 @@ function syncTaskSelection(taskId, opts){
   
 
     // Graph Summary (Inspector > Analytics): keep availability bar up to date
-    try{ renderGraphPanel(members); }catch(_e){}
+    try{ renderMemberGraphPanel(members); }catch(_e){}
 }
 
   // Drag-to-move / resize on timeline segments
