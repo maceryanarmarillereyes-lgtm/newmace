@@ -235,10 +235,10 @@ function syncTaskSelection(taskId, opts){
   requestGraphRefresh._t = 0;
 
   function normalizeToMonday(iso){
-    // Snap selected ISO date to Monday of that week using calendar math (timezone-safe)
-    const wd = UI.weekdayFromISO(String(iso||defaultWeekStartISO));
+    // Snap selected ISO date to the START of the visible week (Sun–Sat) using calendar math (timezone-safe)
+    const wd = UI.weekdayFromISO(String(iso||defaultWeekStartISO)); // 0=Sun..6=Sat
     if(wd==null) return defaultWeekStartISO;
-    const delta = (wd===0) ? -6 : (1 - wd);
+    const delta = -wd; // Sunday => 0, Monday => -1, ...
     return UI.addDaysISO(String(iso||defaultWeekStartISO), delta);
   }
   weekStartISO = normalizeToMonday(weekStartISO);
@@ -532,70 +532,75 @@ function syncTaskSelection(taskId, opts){
   wrap.className = 'members-page bg-zinc-950 text-zinc-100 font-sans';
 
   wrap.innerHTML = `
-    <div class="members-topbar">
-      <div class="members-topbar-left">
-        <div class="members-h1 tracking-tight">Members</div>
-        <div class="members-sub text-zinc-400">Plan coverage by assigning time blocks (Sun–Sat). Timeline view shows the whole team shift.</div>
-      </div>
+    <div class="members-topbar" role="banner" aria-label="Members header">
+      <!-- Zone 1: Left (Title + Team) -->
+      <div class="members-topbar-zone members-topbar-zone-left">
+        <div class="members-title-stack">
+          <div class="members-h1 tracking-tight">Members</div>
+          <div class="members-sub text-zinc-400">Plan coverage by assigning time blocks (Sun–Sat). Timeline view shows the whole team shift.</div>
+        </div>
 
-      <div class="members-topbar-right" aria-label="Members header controls">
-        <button class="btn ghost" id="membersFullscreenBtn" type="button" aria-pressed="false" title="Toggle fullscreen overlay">⛶ Fullscreen</button>
-
-        ${isLead ? '' : `
-        <label class="members-field">
+        <label class="members-field members-teamfield">
           <span class="label text-zinc-400">Team</span>
-          <select class="input" id="teamSelect">
+          <select class="input" id="teamSelect" aria-label="Select team">
             ${Config.TEAMS.map(t=>`<option value="${t.id}">${UI.esc(t.label)}</option>`).join('')}
           </select>
         </label>
-        `}
+      </div>
 
-        <div class="members-weekctl">
-          <div class="members-weekctl-row">
-            <span class="label text-zinc-400">Week of (Mon)</span>
-            <button class="iconbtn" id="weekHelp" type="button" aria-label="Week selector help" title="What does this do?">ⓘ</button>
-            <input class="input" id="weekSelect" type="date" value="${UI.esc(weekStartISO)}" />
-            <button class="btn secondary" id="jumpToday" type="button" title="Jump to Manila Today / This Week">Today</button>
-          </div>
-          <div id="weekWarn" class="week-warn hidden" aria-live="polite"></div>
+      <!-- Zone 2: Center (Week Navigation) -->
+      <div class="members-topbar-zone members-topbar-zone-center" aria-label="Week navigation">
+        <div class="members-nav">
+          <button class="btn secondary" id="weekPrev" type="button" title="Previous week">‹ Prev</button>
+          <input class="input" id="weekSelect" type="date" value="${UI.esc(weekStartISO)}" aria-label="Week start date" />
+          <button class="btn secondary" id="weekNext" type="button" title="Next week">Next ›</button>
+          <button class="btn secondary" id="jumpToday" type="button" title="Jump to current week (Manila)">Current Week</button>
+          <button class="iconbtn" id="weekHelp" type="button" aria-label="Week selector help" title="Week help">ⓘ</button>
         </div>
+        <div id="weekWarn" class="week-warn hidden" aria-live="polite"></div>
+      </div>
+
+      <!-- Zone 3: Right (Unified Actions) -->
+      <div class="members-topbar-zone members-topbar-zone-right" aria-label="Header actions">
+        <button class="btn ghost" id="membersFullscreenBtn" type="button" aria-pressed="false" title="Toggle fullscreen overlay">⛶ Fullscreen</button>
 
         ${(isLead||isAdmin) ? `
-        <div class="members-global-actions" aria-label="Global actions">
-          <div class="reports-dropdown" id="reportsDropdown" aria-label="Reports">
-            <button class="btn ghost reports-toggle" id="reportsToggle" type="button" aria-haspopup="menu" aria-expanded="false">Reports</button>
-            <div class="reports-menu" id="reportsMenu" role="menu" aria-label="Reports Menu">
-              <button class="reports-item" id="exportSchedule" type="button" role="menuitem">Export Schedule CSV</button>
-              <button class="reports-item" id="exportWorkload" type="button" role="menuitem">Export Workload CSV</button>
-              <button class="reports-item" id="viewAudit" type="button" role="menuitem">View Audit History</button>
-              <button class="reports-item" id="viewAcks" type="button" role="menuitem">View Acknowledgements</button>
-              <button class="reports-item" id="viewHealthTrend" type="button" role="menuitem">View Health Trend Weekly</button>
-            </div>
-          </div>
+        <label class="switch" title="Show a floating, live-updating task status panel">
+          <input type="checkbox" id="graphToggle" aria-label="Show graphical task status" />
+          <span class="switch-ui"></span>
+          <span class="switch-tx">Graph</span>
+        </label>
 
-          <label class="switch" title="Show a floating, live-updating task status panel">
-            <input type="checkbox" id="graphToggle" aria-label="Show graphical task status" />
-            <span class="switch-ui"></span>
-            <span class="switch-tx">Graph</span>
-          </label>
+        <button class="btn primary" id="sendSchedule" type="button" title="Apply schedule changes and notify affected members">Apply</button>
 
-          <button class="btn primary" id="sendSchedule" type="button" title="Apply schedule changes and notify affected members">Apply</button>
+        <div class="global-lock" aria-label="Auto scheduling actions">
+          <button class="btn primary" id="autoSchedule" type="button">Apply &amp; Lock</button>
+          <span class="lock-badge hidden" id="lockBadge" aria-label="Locked" title="Locked">
+            <span class="lock-ic" aria-hidden="true"></span>
+          </span>
+          <button class="btn danger hidden" id="unlockSchedule" type="button">Unlock</button>
+        </div>
 
-          <div class="global-lock">
-            <button class="btn secondary" id="autoSettings" type="button">Settings</button>
-            <button class="btn secondary" id="previewAuto" type="button">Preview</button>
-            <button class="btn primary" id="autoSchedule" type="button">Apply &amp; Lock</button>
-            <span class="lock-badge hidden" id="lockBadge" aria-label="Locked" title="Locked">
-              <span class="lock-ic" aria-hidden="true"></span>
-            </span>
-            <button class="btn danger hidden" id="unlockSchedule" type="button">Unlock</button>
+        <div class="reports-dropdown members-settings-dropdown" id="membersSettingsDropdown" aria-label="Settings">
+          <button class="btn ghost iconbtn" id="membersSettingsToggle" type="button" aria-haspopup="menu" aria-expanded="false" title="Settings">⚙️</button>
+          <div class="reports-menu members-settings-menu" id="membersSettingsMenu" role="menu" aria-label="Settings Menu">
+            <button class="reports-item" id="taskSettingsBtn" type="button" role="menuitem">Task Config (Max Hours)</button>
+            <button class="reports-item" id="autoSettings" type="button" role="menuitem">Auto Settings</button>
+            <button class="reports-item" id="previewAuto" type="button" role="menuitem">Auto Preview</button>
+            <div class="reports-sep" role="separator"></div>
+            <button class="reports-item" id="exportSchedule" type="button" role="menuitem">Export Schedule CSV</button>
+            <button class="reports-item" id="exportWorkload" type="button" role="menuitem">Export Workload CSV</button>
+            <div class="reports-sep" role="separator"></div>
+            <button class="reports-item" id="viewAudit" type="button" role="menuitem">View Audit History</button>
+            <button class="reports-item" id="viewAcks" type="button" role="menuitem">View Acknowledgements</button>
+            <button class="reports-item" id="viewHealthTrend" type="button" role="menuitem">View Health Trend Weekly</button>
           </div>
         </div>
         ` : ''}
       </div>
     </div>
 
-    <div class="daytabs" id="dayTabs"></div>
+<div class="daytabs" id="dayTabs"></div>
 
     <div class="members-enterprise-grid" id="membersEnterpriseGrid">
       <div class="card members-roster" id="membersRosterPanel">
@@ -642,8 +647,7 @@ function syncTaskSelection(taskId, opts){
           <div class="mtb-mid"></div>
 
           <div class="mtb-right">
-            <button class="btn ghost icon" id="taskSettingsBtn" type="button" title="Task Settings (Max Hours)" aria-label="Task Settings">⚙️</button>
-            ${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" type="button" title="Auto Assign for this week">Auto Assign</button>` : ``}
+${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" type="button" title="Auto Assign for this week">Auto Assign</button>` : ``}
           </div>
         </div>
 
@@ -964,10 +968,10 @@ function syncTaskSelection(taskId, opts){
       }
 
       // 3) Reports dropdown
-      const dd = wrap.querySelector('#reportsDropdown');
+      const dd = wrap.querySelector('#membersSettingsDropdown');
       if(dd && dd.classList.contains('open')){
         dd.classList.remove('open');
-        const t = wrap.querySelector('#reportsToggle');
+        const t = wrap.querySelector('#membersSettingsToggle');
         if(t) t.setAttribute('aria-expanded','false');
         return true;
       }
@@ -1019,9 +1023,9 @@ function syncTaskSelection(taskId, opts){
 
   // REPORTS dropdown (hover-open + click toggle)
   (function initReportsDropdown(){
-    const dd = wrap.querySelector('#reportsDropdown');
-    const btn = wrap.querySelector('#reportsToggle');
-    const menu = wrap.querySelector('#reportsMenu');
+    const dd = wrap.querySelector('#membersSettingsDropdown');
+    const btn = wrap.querySelector('#membersSettingsToggle');
+    const menu = wrap.querySelector('#membersSettingsMenu');
     if(!dd || !btn || !menu) return;
 
     const setOpen = (on)=>{
@@ -1384,6 +1388,30 @@ container.innerHTML = `
       renderAll();
     };
   }
+  const weekPrevBtn = wrap.querySelector('#weekPrev');
+  if(weekPrevBtn){
+    weekPrevBtn.onclick = ()=>{
+      triggerSwap();
+      weekStartISO = UI.addDaysISO(String(weekStartISO||defaultWeekStartISO), -7);
+      localStorage.setItem('ums_week_start_iso', weekStartISO);
+      if(weekSel) weekSel.value = weekStartISO;
+      renderDayTabs();
+      renderAll();
+    };
+  }
+
+  const weekNextBtn = wrap.querySelector('#weekNext');
+  if(weekNextBtn){
+    weekNextBtn.onclick = ()=>{
+      triggerSwap();
+      weekStartISO = UI.addDaysISO(String(weekStartISO||defaultWeekStartISO), +7);
+      localStorage.setItem('ums_week_start_iso', weekStartISO);
+      if(weekSel) weekSel.value = weekStartISO;
+      renderDayTabs();
+      renderAll();
+    };
+  }
+
 
   const weekHelpBtn = wrap.querySelector('#weekHelp');
   if(weekHelpBtn){
@@ -2612,16 +2640,9 @@ function segStyle(b){
   return { left, width, hours: Math.round(((e-s)/60)*10)/10 };
 }
 function currentWeekStartISOManila(){
-  // Manila is UTC+8 with no DST. Compute using UTC math so browser timezone doesn't matter.
-  const now = new Date();
-  const utcMs = now.getTime() + (now.getTimezoneOffset() * 60000);
-  const manila = new Date(utcMs + (8 * 60 * 60000));
-  // Use UTC getters to interpret the shifted timestamp as "Manila local"
-  const dow = manila.getUTCDay(); // 0=Sun..6=Sat
-  const daysSinceMonday = (dow + 6) % 7; // Monday => 0
-  manila.setUTCHours(0,0,0,0);
-  manila.setUTCDate(manila.getUTCDate() - daysSinceMonday);
-  return manila.toISOString().slice(0,10);
+  // Use Manila-local date boundary and snap to the visible week start (Sun–Sat)
+  const todayISO = (UI && UI.manilaTodayISO) ? UI.manilaTodayISO() : new Date().toISOString().slice(0,10);
+  return normalizeToMonday(todayISO);
 }
 
 function isWeekInPast(weekISO){
@@ -3789,7 +3810,7 @@ function notifyPastWeekLocked(){
   const sendBtn = wrap.querySelector('#sendSchedule');
   const viewAcksBtn = wrap.querySelector('#viewAcks');
   const viewAuditBtn = wrap.querySelector('#viewAudit');
-  const viewTrendBtn = wrap.querySelector('#viewTrend');
+  const viewTrendBtn = wrap.querySelector('#viewHealthTrend') || wrap.querySelector('#viewTrend');
   const ackClose = wrap.querySelector('#ackClose');
   if(ackClose) ackClose.onclick = ()=>UI.closeModal('ackModal');
   const auditClose = wrap.querySelector('#auditClose');

@@ -2746,3 +2746,107 @@ body.members-fullscreen-active .members-topbar,
     justify-content: flex-start;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Protocol v3 Final: Header 3-Zone Layout + Settings Menu + Modal Fixes       */
+/* -------------------------------------------------------------------------- */
+
+.members-page .members-topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+  width:100%;
+}
+
+.members-page .members-topbar-zone{
+  display:flex;
+  align-items:center;
+  gap:0.75rem; /* 12px */
+  min-width:0;
+}
+
+.members-page .members-topbar-zone-left{
+  flex: 1 1 320px;
+  justify-content:flex-start;
+}
+
+.members-page .members-topbar-zone-center{
+  flex: 0 1 560px;
+  justify-content:center;
+}
+
+.members-page .members-topbar-zone-right{
+  flex: 1 1 320px;
+  justify-content:flex-end;
+  gap:0.75rem; /* 12px */
+  flex-wrap:wrap;
+  pointer-events:auto;
+  z-index:10061;
+}
+
+.members-page .members-title-stack{min-width:0}
+.members-page .members-teamfield{min-width:220px}
+.members-page .members-nav{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:0.75rem;
+  flex-wrap:wrap;
+}
+.members-page #weekSelect{min-width:170px}
+.members-page #weekPrev,
+.members-page #weekNext,
+.members-page #jumpToday{
+  white-space:nowrap;
+}
+
+/* Settings dropdown: keep menu above header and aligned to the button */
+.members-page .members-settings-dropdown{
+  position:relative;
+}
+.members-page .members-settings-dropdown .reports-menu{
+  right:0;
+  left:auto;
+  z-index:11020;
+}
+
+/* Modal must be above sticky header */
+.members-page .modal{
+  z-index:11000;
+}
+.members-page .modal .panel{
+  max-height: 82vh;
+  overflow:hidden;
+}
+.members-page .modal .body{
+  max-height: 60vh;
+  overflow:auto;
+}
+
+/* Task Settings modal: robust alignment */
+.members-page .task-settings-grid{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.members-page .ts-row{
+  display:grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  align-items:center;
+  gap:12px;
+}
+.members-page .ts-left{min-width:0}
+.members-page .ts-input{
+  width:120px;
+  text-align:right;
+}
+
+/* Small screens: stack center nav and keep actions reachable */
+@media (max-width: 900px){
+  .members-page .members-topbar-zone-center{
+    flex: 1 1 100%;
+    justify-content:flex-start;
+  }
+}
