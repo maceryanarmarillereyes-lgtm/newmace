@@ -1,130 +1,70 @@
-# QA_REPORT — Enterprise Fullscreen Members (Option A, Dark Glass)
+# QA_REPORT — Phase-1-602 Members Fullscreen Fix
 
-**Phase bundle:** Phase-1-601.zip  
-**Branch:** feature/members-enterprise-fullscreen  
-**Date:** 2026-02-07 (Asia/Manila)  
-**Theme:** Force dark glass mode with dim glass background (Option 1)  
-**Scope:** Members page fullscreen overlay + enterprise 3-column layout
+Generated: 2026-02-07 11:29:40
 
-## What changed (high level)
+This report contains:
+1) **Static validations executed in this environment**
+2) **Manual smoke-test checklist to run locally** (Chrome/Edge/Firefox)
 
-- Members page can enter a **fixed fullscreen overlay** via **#membersFullscreenBtn** using the Fullscreen API.
-- Overlay locks body scroll, hides global nav/topbars, and enables **focus trap**.
-- Enterprise layout: **Section 1 Team Roster**, **Section 2 Timeline Tasks**, **Section 3 Analytics + Controls** with resizable splitters.
-- Defensive DOM bindings for analytics/report controls (guarded so missing elements don't throw).
-- Fixed bug: removed duplicate `root.replaceChildren(wrap);`.
-
-## Static checks completed in this environment
-
-- `node --check public/js/pages/members.js` → ✅ **No syntax errors**
-- Verified required IDs exist in Members markup:
-  - ✅ `#membersFullscreenBtn`, `#membersRosterList`, `#membersSplitLeft`, `#membersSplitRight`
-  - ✅ Reports IDs: `#exportSchedule`, `#exportWorkload`, `#viewAudit`, `#viewAcks`, `#viewHealthTrend` (fallback to `#viewTrend` supported)
-
-> Note: True browser interaction testing (Chrome/Edge/Firefox) must be run on a workstation. The checklists below are the **manual smoke tests to execute** plus the **expected results**.
+> Important: This environment cannot run an interactive browser session for the full UI.
+> The items marked **MANUAL** must be verified locally before marking the PR “Ready”.
 
 ---
 
-## Manual smoke tests (acceptance checklist)
+## 1) Static validations (executed here)
 
-### Fullscreen overlay behavior
-1. Navigate to **Members** page.
-2. Click **Fullscreen** button (⛶ Fullscreen).
-
-**Expected**
-- Overlay covers entire viewport (100vw × 100vh).
-- Global nav/topbar/right panels are hidden while overlay is active.
-- Body scroll is locked while overlay is active.
-
-3. Press **ESC**.
-
-**Expected**
-- Exits fullscreen/overlay mode reliably.
-- Body scroll restores.
-- Keyboard focus returns to **#membersFullscreenBtn**.
-
-### Roster → timeline behavior
-1. In **Team Roster**, click a member.
-
-**Expected**
-- Roster item highlights.
-- Corresponding timeline row highlights (`.members-row.m-selected`).
-- Timeline scrolls the selected row into view (smooth scroll when supported).
-
-2. Use roster search input.
-
-**Expected**
-- List filters by name/username/email without throwing.
-- Active/Inactive chips filter roster correctly.
-
-### Splitters (draggable + keyboard)
-1. Drag the left splitter to resize roster panel.
-2. Drag the right splitter to resize analytics panel.
-
-**Expected**
-- Panels resize smoothly.
-- Widths persist after refresh via localStorage.
-
-3. Focus a splitter (Tab) and press ArrowLeft/ArrowRight (Shift for larger step).
-
-**Expected**
-- Width changes by step size and persists.
-
-### Reports / analytics controls (guarded)
-Click each of the following (when visible/permitted):
-- Export Schedule
-- Export Workload
-- View Audit
-- View Acks
-- View Health Trend
-
-**Expected**
-- No uncaught exceptions if any control is missing.
-- Actions execute for permitted roles; restricted roles show the app’s existing guard behavior.
-
-### Coverage meter + heatmap readiness
-- Confirm Coverage Meter is visible and remains readable at 100% viewport.
-- Confirm timeline overlays remain aligned and usable at full width.
+### Code integrity checks
+- [PASS] Only one `root.replaceChildren(wrap)` call exists in `public/js/pages/members.js`
+- [PASS] `renderPaintBar()` removed; `syncTimelineToolbarUI()` exists and is called
+- [PASS] Toolbar required IDs exist in enterprise template:
+  - `#paintToggle`, `#paintRole`, `#selectionToggle`, `#deleteSelected`, `#paintModeHint`
+  - `#timelineLegend`, `#legendToggle`
+  - `#reportsDropdown`, `#exportSchedule`, `#exportWorkload`, `#viewAudit`, `#viewAcks`, `#viewTrend`
+  - `#graphToggle`, `#sendSchedule`
+- [PASS] `selectMemberFromRoster(id)` exists; roster click delegates to it
+- [PASS] ESC handler calls `closeOpenUiFirst()` before exiting overlay and uses robust visibility detection (`.open` OR computed visibility)
+- [PASS] CSS includes:
+  - `body.members-fullscreen-active { overflow:hidden; }` (page scroll lock)
+  - panel-level `overflow-y:auto` (roster/timeline/analytics)
+  - sticky headers and toolbar with z-index policy
+  - heatmap overlay `pointer-events:none`
 
 ---
 
-## Cross-browser smoke checklist (to run)
+## 2) Manual QA checklist (run locally)
 
-Run the **Fullscreen overlay behavior** and **Roster → timeline** tests on:
-- Chrome (latest stable)
-- Edge (latest stable)
-- Firefox (latest stable)
+### Functional
+- [ ] Paint toolbar visible and functional in fullscreen; paint across multiple hours works.
+- [ ] Reports / Show Graphical Task Status / Apply Changes appear in Section 2 toolbar and function.
+- [ ] Roster and timeline panels scroll vertically to reveal all members and rows.
+- [ ] Splitters drag and keyboard resize; widths persist in localStorage.
+- [ ] No console errors when opening fullscreen or interacting with toolbar.
 
-**Notes to watch**
-- Fullscreen API permission prompts (some browsers require user gesture — already satisfied by click handler).
-- `scrollIntoView({behavior:'smooth'})` fallback (code falls back to non-smooth on older engines).
+### Layout
+- [ ] No shattered/detached elements; panels align with 16px padding.
+- [ ] Sticky headers remain visible while scrolling.
+- [ ] Overlays do not block interactions; heatmap overlays are non-interactive (`pointer-events:none`).
+
+### Accessibility
+- [ ] ARIA labels present for toolbar controls and roster/list.
+- [ ] Focus trap works in overlay; ESC restores focus to fullscreen toggle.
+- [ ] Keyboard navigation covers roster → toolbar → grid → analytics.
+
+### Cross‑browser
+- [ ] Chrome: fullscreen enter/exit, paint, scroll, splitters, reports.
+- [ ] Edge: fullscreen enter/exit, paint, scroll, splitters, reports.
+- [ ] Firefox: overlay mode works (Fullscreen API may vary), paint, scroll, splitters, reports.
+
+### Post‑deploy verification (Cloudflare/Vercel)
+- [ ] `/members` loads without console errors.
+- [ ] Enter/Exit fullscreen overlay works; nav/topbars hidden only during overlay.
+- [ ] Exports work for permitted roles; audit entries visible.
 
 ---
 
-## Accessibility checks (to run)
-
-### Keyboard navigation
-- Tab order reaches:
-  - Fullscreen button → day tabs → roster search → roster filters → roster items → splitters → analytics controls
-- Splitters are keyboard-resizable (role="separator", tabindex=0).
-
-### Focus management
-- When overlay is active:
-  - Focus trap keeps tab focus inside `.members-page.members-fullscreen`
-  - ESC exits and returns focus to fullscreen toggle
-
-### ARIA/labels
-- `#membersFullscreenBtn` has `aria-label` and `aria-pressed`
-- Splitters have `role="separator"` + `aria-label` + `aria-orientation`
-- Roster list has `role="listbox"` and items have `role="option"` + `aria-selected`
-
----
-
-## Post-deploy verification checklist (after Cloudflare/Vercel deploy)
-
-- Members page loads with no console errors.
-- Fullscreen overlay works (toggle + ESC).
-- Body scroll lock + restore behaves correctly.
-- Roster select → scroll works.
-- Splitter widths persist after refresh.
-- Reports/exports work for permitted roles.
+## Expected results summary (for PR description)
+When the manual checks pass, summarize in 1 paragraph:
+- Paint toolbar is visible in fullscreen and pinned to Section 2
+- Panels scroll independently while body is locked
+- ESC closes open UI layers before exiting overlay
+- No console errors and layout is stable in Chrome/Edge/Firefox

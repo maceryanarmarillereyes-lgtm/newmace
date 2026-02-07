@@ -1,56 +1,47 @@
-# DIFF_SUMMARY — Members Enterprise Fullscreen (Phase-1-601)
+# DIFF_SUMMARY — Members fullscreen enterprise fix (Phase-1-602)
 
-## public/js/pages/members.js
+Baseline compared: `mums_deployable_phase1_600_cf_fix14_login_mime_assets_v1.zip`  
+Generated: 2026-02-07 11:29:40
 
-### Enterprise fullscreen shell (Option A)
-- Adds **#membersFullscreenBtn** toggle wired to the **Fullscreen API**.
-- Overlay behavior:
-  - Fixed overlay via `.members-fullscreen` class
-  - Body scroll lock and restore
-  - ESC exits overlay and returns focus to the toggle
-  - Focus trap while overlay is active
+## Files changed
+- `public/js/pages/members.js`
+- `public/css/enterprise_ux.css`
+- `untouchables/members/members.js` (governance copy)
+- `untouchables/members/enterprise_ux.css` (governance copy)
+- `.phase_counter` (set to 602)
+- `artifacts/members_fullscreen_refs/*.png` (annotated references)
+- `QA_REPORT.md`, `PR_TEMPLATE.md`, `ROLLBACK.md` (PR bundle docs)
 
-### Enterprise layout (3-column grid)
-- Adds structural wrappers:
-  - `#membersEnterpriseBody` (grid container)
-  - `#membersRosterPanel`, `#membersTimelinePanel`, `#membersAnalyticsPanel`
-- Adds splitters:
-  - `#membersSplitLeft`, `#membersSplitRight`
-  - Drag + keyboard resize; widths persist via localStorage keys:
-    - `mums_members_split_left_px_v1`
-    - `mums_members_split_right_px_v1`
+## `public/js/pages/members.js` — change ranges (current file)
+**Changed/added ranges:** L358-L372, L391-L529, L546-L647, L707-L963, L1431-L1437, L1587-L1681, L2529-L2548, L2560-L2582, L2937-L2982, L3005-L3010
 
-### Roster ↔ timeline behavior
-- Roster render function `renderRosterPanel(...)`:
-  - Search + Active/Inactive filters
-  - Selected state highlight
-- Roster click selects member and scrolls timeline row into view.
+### Key changes
+- Enterprise fullscreen overlay shell (Option A) with dark glass mode:
+  - fullscreen toggle + focus restore + body scroll lock (`body.members-fullscreen-active`)
+  - ESC policy: closes modals/dropdowns first, then exits overlay (robust visibility checks)
+- Section 2 sticky toolbar (`#membersTimelineToolbar`) now contains:
+  - Paint / Selection / Delete controls (preserved IDs)
+  - **Legend chips inside toolbar (Option B)**
+  - Reports dropdown + Graph toggle + Apply Changes (preserved IDs)
+- `renderPaintBar()` removed; replaced with `syncTimelineToolbarUI()` (single source of truth for toolbar state + bindings)
+- Roster selection restore:
+  - `renderAll()` builds `rosterVM[]`, calls `renderRoster()`, and restores selection/scroll safely
+  - stale block selections are filtered to existing segments only (prevents invalid indices)
+- Removed duplicated DOM replacement calls: only **one** `root.replaceChildren(wrap);` remains.
 
-### Defensive bindings / stability fixes
-- Guards report/analytics button bindings to avoid uncaught exceptions:
-  - `#exportSchedule`, `#exportWorkload`, `#viewAudit`, `#viewAcks`, `#viewHealthTrend` (fallback to `#viewTrend`)
-- Fixes duplicate DOM replace bug:
-  - Removes duplicate `root.replaceChildren(wrap);`
+## `public/css/enterprise_ux.css` — change ranges (current file)
+**Changed/added ranges:** L1842-L2052
 
-### Cleanup hooks
-- Extends page cleanup to run enterprise overlay cleanups without breaking baseline listeners.
+### Key changes
+- Added **Members enterprise fullscreen overlay** block:
+  - `position:fixed; inset:0; z-index:9999;` with dim dark glass background
+  - internal panels use `min-height:0` + `overflow-y:auto` to restore vertical scrolling
+  - sticky headers/toolbars with required z-index stacking
+- Enforced z-index policy + heatmap overlay pointer policy:
+  - blocks: 10
+  - heatmap overlays: 20 + `pointer-events:none`
+  - sticky toolbar/headers: 30
+  - dropdowns/tooltips: 40
 
----
-
-## public/css/enterprise_ux.css
-
-### Dark glass fullscreen overlay
-- `.members-page.members-fullscreen` becomes:
-  - `position: fixed; inset: 0; width: 100vw; height: 100vh;`
-  - Dim glass background + blur
-  - High z-index
-- `body.members-fullscreen-active` hides global nav/topbars and locks scrolling.
-
-### Enterprise layout + panels
-- 3-column grid sizing with CSS vars:
-  - `--members-left`, `--members-right`
-- Glass panel styling, hover/active/focus-visible states
-- Splitter styling (visible separator bar + focus ring)
-
-### Heatmap-ready hooks
-- Coverage meter + timeline background/overlay styles tuned for high-contrast dark mode.
+## Notes
+- The "normal state" screenshot is a **reference-based mockup** (global nav/topbar overlays were added for illustration).

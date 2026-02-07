@@ -342,11 +342,6 @@ function syncTaskSelection(taskId, opts){
   let selMemberIds = new Set(); // selected members (for bulk actions)
   let selIdx = new Set(); // indices for selMemberId
 
-  // Enterprise roster panel state (search/filter)
-  let rosterQuery = '';
-  let rosterFilter = 'all';
-  let _lastRosterCtx = null; // { team, members, isoDate }
-
   // Clipboard feature removed (copy/paste disabled)
   let lastCursor = null; // { memberId, offsetMin }
 
@@ -363,6 +358,7 @@ function syncTaskSelection(taskId, opts){
     const badge = wrap.querySelector('#selBadge');
     const clr = wrap.querySelector('#selClear');
     const desel = wrap.querySelector('#selDeselect');
+    const del = wrap.querySelector('#deleteSelected');
     const count = selIdx.size;
     if(badge) badge.textContent = `${count} selected`;
     // Clear All should work even if no blocks are selected, as long as a member is selected.
@@ -370,6 +366,7 @@ function syncTaskSelection(taskId, opts){
     const canDeleteSelected = !!selMemberId && count>0;
     if(clr) clr.disabled = !canClear;
     if(desel) desel.disabled = !canDeleteSelected;
+    if(del) del.disabled = !canDeleteSelected;
   }
 
   function applySelectionStyles(){
@@ -394,100 +391,139 @@ function syncTaskSelection(taskId, opts){
       if(cb) cb.checked = !!(selMemberIds && selMemberIds.has(id));
     });
 
+    // Keep roster highlight in sync
+    wrap.querySelectorAll('.roster-item').forEach(el=>{
+      const id = el.getAttribute('data-id');
+      const on = (selMemberIds && selMemberIds.has(id)) || (!!selMemberId && selMemberId===id);
+      el.classList.toggle('selected', !!on);
+      el.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+
     // Keep floating graph highlight in sync
     if(graphEnabled) renderGraphPanel();
   }
 
-  
-  // Enterprise roster rendering (left panel)
-  // - Applies search + active/inactive filters
-  // - Highlights selected member
-  // - Safe: no-ops if roster panel not present
-  function renderRosterPanel(team, members, isoDate){
-    try{
-      const list = wrap && wrap.querySelector ? wrap.querySelector('#membersRosterList') : null;
-      const metaEl = wrap && wrap.querySelector ? wrap.querySelector('#membersRosterMeta') : null;
-      if(!list) return;
+  // Roster (Section 1) — click-to-select and jump to timeline row.
+  let rosterFilter = 'all'; // all | active | inactive
+  let rosterQuery = '';
 
-      const tLabel = (team && (team.label || team.name || team.key)) ? (team.label || team.name || team.key) : 'Team';
-      const iso = String(isoDate || '');
-
-      const q = String(rosterQuery || '').trim().toLowerCase();
-      const filt = String(rosterFilter || 'all');
-
-      const statusFor = (m)=>{
-        const leave = (Store && Store.getLeave) ? Store.getLeave(m.id, iso) : null;
-        const rest = isRestDay(m.teamId, m.id, iso);
-        const inactive = !!leave || !!rest;
-        return { inactive, leave, rest };
-      };
-
-      const dispName = (m)=> (m.fullName || m.name || m.username || m.email || m.id || '').toString();
-      const dispSub = (m)=> (m.username || m.email || '').toString();
-
-      const enriched = (members||[]).map(m=>{
-        const st = statusFor(m);
-        return { m, st, name: dispName(m), sub: dispSub(m) };
-      });
-
-      const activeCount = enriched.reduce((a,x)=>a + (x.st.inactive ? 0 : 1), 0);
-      if(metaEl){
-        metaEl.textContent = `${tLabel} • ${activeCount}/${enriched.length} active • ${UI.DAYS[selectedDay]} ${iso}`;
-      }
-
-      const filtered = enriched.filter(x=>{
-        const hay = (x.name + ' ' + x.sub).toLowerCase();
-        if(q && !hay.includes(q)) return false;
-        if(filt === 'active' && x.st.inactive) return false;
-        if(filt === 'inactive' && !x.st.inactive) return false;
-        return true;
-      });
-
-      list.innerHTML = filtered.map(x=>{
-        const m = x.m;
-        const { inactive, leave, rest } = x.st;
-        const selected = !!selMemberId && String(selMemberId) === String(m.id);
-        const pill = leave ? 'LEAVE' : (rest ? 'REST' : 'ACTIVE');
-        const pillCls = leave ? 'pill leave' : (rest ? 'pill rest' : 'pill active');
-
-        return `
-          <button type="button"
-            class="roster-item ${selected ? 'selected' : ''} ${inactive ? 'inactive' : ''}"
-            data-id="${UI.esc(m.id)}"
-            role="option"
-            aria-selected="${selected ? 'true' : 'false'}"
-            title="${UI.esc(x.name)}">
-            <div class="ri-left">
-              <div class="ri-name">${UI.esc(x.name)}</div>
-              <div class="ri-sub small muted">${UI.esc(x.sub)}</div>
-            </div>
-            <div class="ri-right">
-              <span class="${pillCls}">${UI.esc(pill)}</span>
-            </div>
-          </button>
-        `;
-      }).join('') || `<div class="small muted" style="padding:10px 6px">No members match.</div>`;
-
-    }catch(e){ try{ console.error(e); }catch(_e){} }
+  function isElementVisible(el){
+    if(!el) return false;
+    const cs = getComputedStyle(el);
+    return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
   }
 
-const wrap = document.createElement('div');
+  function renderRoster(members){
+    const list = wrap.querySelector('#membersRosterList');
+    const meta = wrap.querySelector('#membersRosterMeta');
+    if(!list) return;
+
+    const q = String(rosterQuery||'').trim().toLowerCase();
+    const filtered = (members||[]).filter(m=>{
+      const isInactive = !!m._isInactive;
+      if(rosterFilter === 'active' && isInactive) return false;
+      if(rosterFilter === 'inactive' && !isInactive) return false;
+      if(q){
+        const hay = `${m.name||''} ${m.username||''} ${m.email||''}`.toLowerCase();
+        if(!hay.includes(q)) return false;
+      }
+      return true;
+    });
+
+    const activeCount = (members||[]).filter(m=>!m._isInactive).length;
+    const total = (members||[]).length;
+    if(meta) meta.textContent = `${activeCount}/${total} active`;
+
+    list.innerHTML = filtered.map(m=>{
+      const status = m._isInactive ? (m._inactiveText||'Inactive') : 'ACTIVE';
+      const pillClass = m._isInactive ? 'inactive' : 'active';
+      const isSelected = ((!!selMemberId && selMemberId===m.id) || (selMemberIds && selMemberIds.has(m.id)));
+      return `
+        <button class="roster-item ${isSelected?'selected':''}" type="button" data-id="${UI.esc(m.id)}" role="option" aria-selected="${isSelected?'true':'false'}">
+          <div class="ri-left">
+            <div class="ri-name">${UI.esc(m.name||m.username)}</div>
+            <div class="ri-sub muted">${UI.esc(m.username||'')}</div>
+          </div>
+          <span class="status-pill ${pillClass}">${UI.esc(status)}</span>
+        </button>
+      `;
+    }).join('');
+
+    // Bind clicks (defensive + delegated).
+    if(!list.dataset.bound){
+      list.dataset.bound = '1';
+      list.addEventListener('click', (e)=>{
+        const btn = e.target.closest('.roster-item');
+        if(!btn || !list.contains(btn)) return;
+        const id = btn.getAttribute('data-id');
+        if(!id) return;
+        selectMemberFromRoster(id);
+      });
+    }
+  }
+
+  function selectMemberFromRoster(id, opts){
+    const o = Object.assign({ scroll:true, preserveSelection:false, preserveBlocks:false }, opts||{});
+    if(!id) return;
+
+    // Avoid stale selection: if the member row doesn't exist in the current render, clear selection safely.
+    const row = wrap.querySelector(`.members-row[data-id="${CSS.escape(id)}"]`);
+    if(!row){
+      selMemberId = null;
+      selIdx = new Set();
+      selMemberIds = new Set();
+      updateSelectionUI();
+      applySelectionStyles();
+      applyMemberRowSelectionStyles();
+      return;
+    }
+
+    selMemberId = id;
+
+    // Roster click is a single-target action: unless preserving selection (renderAll restore), reset multi-select state.
+    if(!o.preserveSelection){
+      selMemberIds = new Set();
+      selIdx = new Set();
+    }else if(!o.preserveBlocks){
+      // Preserve member selection but drop block selection when requested.
+      selIdx = new Set();
+    }
+
+    updateSelectionUI();
+    applySelectionStyles();
+    applyMemberRowSelectionStyles();
+
+    // Scroll selected row into view inside the timeline scroll container.
+    if(o.scroll){
+      try{
+        const sc = wrap.querySelector('#membersTimelineScroll');
+        if(sc){
+          const r = row.getBoundingClientRect();
+          const c = sc.getBoundingClientRect();
+          const inView = r.top >= c.top && r.bottom <= c.bottom;
+          if(!inView) row.scrollIntoView({ block:'center', behavior:'smooth' });
+        }else{
+          row.scrollIntoView({ block:'center', behavior:'smooth' });
+        }
+      }catch(_){
+        try{ row.scrollIntoView(); }catch(__){}
+      }
+    }
+  }
+
+  const wrap = document.createElement('div');
   // Add a page-level class so enterprise UX rules can reliably anchor / compress layout.
   wrap.className = 'grid members-page';
   wrap.style.gap = '12px';
 
-  // Page-level cleanup hooks (extend existing cleanup without breaking baseline logic)
-  const pageCleanups = [];
-
   wrap.innerHTML = `
-
     <div class="members-topbar">
       <div class="members-topbar-left">
         <div class="h1">Members</div>
         <div class="muted">Plan coverage by assigning time blocks (Sun–Sat). Timeline view shows the whole team shift.</div>
       </div>
       <div class="members-topbar-right" aria-label="Members header controls">
-        <button class="btn" id="membersFullscreenBtn" type="button" aria-label="Toggle fullscreen overlay" aria-pressed="false" title="Fullscreen overlay (Esc to exit)">⛶ Fullscreen</button>
+        <button class="btn ghost" id="membersFullscreenBtn" type="button" aria-pressed="false" title="Toggle fullscreen overlay">⛶ Fullscreen</button>
         ${isLead ? '' : `
         <label class="small members-teamctl">
           <span class="muted">Team</span>
@@ -510,132 +546,102 @@ const wrap = document.createElement('div');
 
     <div class="daytabs" id="dayTabs"></div>
 
-    <!-- Enterprise fullscreen layout: 3 columns + splitters -->
-    <div class="members-enterprise-body" id="membersEnterpriseBody" aria-label="Members enterprise layout">
-      <!-- Section 1: Team Roster -->
-      <aside class="members-panel members-roster" id="membersRosterPanel" aria-label="Team roster">
-        <div class="panel-head">
-          <div>
-            <div class="panel-title">Team Roster</div>
-            <div class="panel-sub small muted" id="membersRosterMeta">—</div>
+    
+    <div class="members-enterprise-grid" id="membersEnterpriseGrid">
+      <div class="card members-roster" id="membersRosterPanel">
+        <div class="members-roster-header">
+          <div class="members-roster-title">
+            <div class="h2">Team Roster</div>
+            <div class="small muted" id="membersRosterMeta">—</div>
           </div>
-          <div class="panel-actions">
-            <button class="btn ghost small" id="membersRosterJumpSelected" type="button" aria-label="Scroll to selected member" title="Scroll to selected member">↧</button>
-          </div>
-        </div>
-        <div class="roster-controls">
-          <div class="roster-search" role="search">
-            <span class="roster-search-ico" aria-hidden="true">🔎</span>
-            <input class="input" id="membersRosterSearch" type="text" placeholder="Search roster…" autocomplete="off" aria-label="Search team roster" />
-          </div>
-          <div class="roster-filters" role="group" aria-label="Roster filters">
-            <button class="chip active" data-filter="all" type="button" aria-pressed="true">All</button>
-            <button class="chip" data-filter="active" type="button" aria-pressed="false">Active</button>
-            <button class="chip" data-filter="inactive" type="button" aria-pressed="false">Inactive</button>
-          </div>
-        </div>
-        <div class="roster-list" id="membersRosterList" role="listbox" aria-label="Roster list"></div>
-      </aside>
-
-      <div class="members-splitter" id="membersSplitLeft" role="separator" tabindex="0" aria-label="Resize Team Roster panel" aria-orientation="vertical"></div>
-
-      <!-- Section 2: Timeline Tasks -->
-      <section class="members-panel members-timeline" id="membersTimelinePanel" aria-label="Timeline tasks">
-        <div class="panel-head">
-          <div>
-            <div class="panel-title">Timeline Tasks</div>
-            <div class="panel-sub small muted" id="membersTimelineMeta">—</div>
-          </div>
-          <div class="panel-actions">
-            <div class="small muted" id="membersTimelineHint">Drag to create • Shift+Click multi-select • Delete removes selected</div>
-          </div>
-        </div>
-
-        <div class="card sched-swap members-schedule-card" id="schedulePane" style="padding:12px">
-          <div class="timeline-legend">
-            <span class="legend-item"><span class="legend-dot role-mailbox_manager"></span>Mailbox Manager</span>
-            <span class="legend-item"><span class="legend-dot role-call_onqueue"></span>Call Available</span>
-            <span class="legend-item"><span class="legend-dot role-back_office"></span>Back Office</span>
-            <span class="legend-item"><span class="legend-dot role-mailbox_call"></span>Mailbox + Call</span>
-            <span class="legend-item"><span class="legend-dot role-lunch"></span>Lunch</span>
-            <span class="legend-item"><span class="legend-dot role-block"></span>Block</span>
-          </div>
-
-          <div class="sched-toolbar">
-            <div class="left">
-              <span class="badge" id="selBadge">0 selected</span>
-              <span class="small muted">Tip: Assignments are <b>strictly 1-hour blocks</b> (no minutes). Drag empty space to create. Use <b>Paint</b> (click & drag across hours) to fill multiple hours fast. Shift+Click blocks to multi-select. Shift+Drag on empty space to box-select.</span>
+          <div class="members-roster-tools">
+            <input class="input" id="membersRosterSearch" type="search" placeholder="Search roster…" aria-label="Search roster" />
+            <div class="roster-filters" role="group" aria-label="Roster filters">
+              <button class="chip is-on" type="button" id="rosterFilterAll" data-filter="all">All</button>
+              <button class="chip" type="button" id="rosterFilterActive" data-filter="active">Active</button>
+              <button class="chip" type="button" id="rosterFilterInactive" data-filter="inactive">Inactive</button>
             </div>
-            <div class="right">
-              <div class="paintbar" id="paintBar"></div>
-              ${(isLead||isAdmin) ? '<div class="toolgroup"><button class="btn" id="autoSettings" type="button">Auto Settings</button><button class="btn" id="previewAuto" type="button">Preview</button><button class="btn primary" id="autoSchedule" type="button">Apply & Lock</button><span class="lock-badge" id="lockBadge" style="display:none">🔒 Locked</span><button class="btn danger" id="unlockSchedule" type="button" style="display:none">Unlock</button></div>' : ''}
-              <div class="toolgroup">
-                <button class="btn danger" id="selClear" type="button" disabled title="Clear ALL blocks for this member/day">🧹 Clear All</button>
-                <button class="btn ghost" id="selDeselect" type="button" disabled title="Delete selected blocks (or press Delete)">🗑 Delete Selected</button>
+          </div>
+        </div>
+        <div class="members-roster-list" id="membersRosterList" role="listbox" aria-label="Roster members"></div>
+      </div>
+
+      <div class="members-splitter" id="membersSplitLeft" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize roster panel"></div>
+
+      <div class="card members-timeline sched-swap" id="schedulePane">
+        <div id="membersTimelineToolbar" class="members-timeline-toolbar" role="toolbar" aria-label="Timeline controls">
+          <div class="mtb-left">
+            <button class="btn ghost" id="paintToggle" type="button" aria-pressed="false" title="Paint mode: click & drag across hours">🖌 Paint</button>
+            <select class="input" id="paintRole" aria-label="Paint role" title="Role to paint"></select>
+            <button class="btn ghost" id="selectionToggle" type="button" aria-pressed="false" title="Selection mode">Selection</button>
+            <button class="btn ghost danger" id="deleteSelected" type="button" disabled title="Delete selected blocks (or press Delete)">🗑 Delete</button>
+
+            <button class="btn danger" id="selClear" type="button" disabled title="Clear ALL blocks for this member/day">🧹 Clear All</button>
+            <!-- Legacy ID retained for baseline handlers -->
+            <button class="btn ghost" id="selDeselect" type="button" style="display:none" aria-hidden="true" tabindex="-1">Delete</button>
+
+            <span class="badge" id="selBadge">0 selected</span>
+            <div id="paintModeHint" class="hint" aria-live="polite">Drag to create • Shift+Click multi-select • Shift+Drag box-select</div>
+          </div>
+
+          <div class="mtb-mid">
+            <button class="btn ghost" id="legendToggle" type="button" aria-pressed="true" aria-controls="timelineLegend" title="Toggle legend chips">Legend</button>
+            <div class="timeline-legend" id="timelineLegend" aria-label="Timeline legend">
+              <span class="legend-item"><span class="legend-dot role-mailbox_manager"></span>Mailbox Manager</span>
+              <span class="legend-item"><span class="legend-dot role-call_onqueue"></span>Call Available</span>
+              <span class="legend-item"><span class="legend-dot role-back_office"></span>Back Office</span>
+              <span class="legend-item"><span class="legend-dot role-mailbox_call"></span>Mailbox + Call</span>
+              <span class="legend-item"><span class="legend-dot role-lunch"></span>Lunch</span>
+              <span class="legend-item"><span class="legend-dot role-block"></span>Block</span>
+            </div>
+          </div>
+
+          ${(isLead||isAdmin) ? `
+          <div class="mtb-right" aria-label="Reports and actions">
+            <div class="reports-dropdown" id="reportsDropdown" aria-label="Reports">
+              <button class="btn ghost reports-toggle" id="reportsToggle" type="button" aria-haspopup="menu" aria-expanded="false">📊 REPORTS</button>
+              <div class="reports-menu" id="reportsMenu" role="menu" aria-label="Reports Menu">
+                <button class="reports-item" id="exportSchedule" type="button" role="menuitem">Export Schedule CSV</button>
+                <button class="reports-item" id="exportWorkload" type="button" role="menuitem">Export Workload CSV</button>
+                <button class="reports-item" id="viewAudit" type="button" role="menuitem">View Audit History</button>
+                <button class="reports-item" id="viewAcks" type="button" role="menuitem">View Acknowledgements</button>
+                <button class="reports-item" id="viewHealthTrend" type="button" role="menuitem">View Health Trend Weekly</button>
               </div>
             </div>
+            <label class="graph-toggle" title="Show a floating, live-updating task status panel">
+              <input type="checkbox" id="graphToggle" />
+              <span>Show Graphical Task Status</span>
+            </label>
+            <button class="btn primary" id="sendSchedule" type="button" title="Apply schedule changes and notify affected members">Apply Changes</button>
           </div>
+          ` : '<div class="mtb-right"></div>'}
+        </div>
 
+        <div class="members-timeline-scroll" id="membersTimelineScroll">
+          <div class="members-tip small muted">Tip: Assignments are <b>strictly 1-hour blocks</b> (no minutes). Drag empty space to create. Use <b>Paint</b> (click & drag across hours) to fill multiple hours fast.</div>
           <div id="coverageMeter" class="coverage-panel" style="margin-top:10px"></div>
-
           <div class="timeline-ruler" id="ruler"></div>
-
           <div class="members-table" id="membersTable"></div>
         </div>
-      </section>
+      </div>
 
-      <div class="members-splitter" id="membersSplitRight" role="separator" tabindex="0" aria-label="Resize Analytics panel" aria-orientation="vertical"></div>
+      <div class="members-splitter" id="membersSplitRight" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize analytics panel"></div>
 
-      <!-- Section 3: Analytics + Controls -->
-      <aside class="members-panel members-analytics" id="membersAnalyticsPanel" aria-label="Analytics and controls">
-        <div class="panel-head">
-          <div>
-            <div class="panel-title">Analytics + Controls</div>
-            <div class="panel-sub small muted" id="membersAnalyticsMeta">Reports • Audit • Exports</div>
-          </div>
-          <div class="panel-actions">
-            <button class="btn ghost small" id="membersAnalyticsJumpSelected" type="button" aria-label="Scroll to selected member" title="Scroll to selected member">↧</button>
-          </div>
+      <div class="card members-analytics-rail" id="membersAnalyticsRail">
+        <div class="members-analytics-header">
+          <div class="h2">Analytics + Controls</div>
+          <div class="small muted" id="membersAnalyticsMeta">—</div>
         </div>
-
+        ${(isLead||isAdmin) ? '<div class="toolgroup members-auto-actions"><button class="btn" id="autoSettings" type="button">Auto Settings</button><button class="btn" id="previewAuto" type="button">Preview</button><button class="btn primary" id="autoSchedule" type="button">Apply & Lock</button><span class="lock-badge" id="lockBadge" style="display:none">🔒 Locked</span><button class="btn danger" id="unlockSchedule" type="button" style="display:none">Unlock</button></div>' : ''}
         <div class="members-analytics-body">
-          ${(isLead||isAdmin) ? `
-          <div class="members-analytics-block" aria-label="Reports and scheduling controls">
-            <div class="sched-float-actions enterprise-rail" aria-label="Member scheduling actions">
-              <div class="reports-dropdown" id="reportsDropdown" aria-label="Reports">
-                <button class="btn ghost reports-toggle" id="reportsToggle" type="button" aria-haspopup="menu" aria-expanded="false">📊 REPORTS</button>
-                <div class="reports-menu" id="reportsMenu" role="menu" aria-label="Reports Menu">
-                  <button class="reports-item" id="exportSchedule" type="button" role="menuitem">Export Schedule CSV</button>
-                  <button class="reports-item" id="exportWorkload" type="button" role="menuitem">Export Workload CSV</button>
-                  <button class="reports-item" id="viewAudit" type="button" role="menuitem">View Audit History</button>
-                  <button class="reports-item" id="viewAcks" type="button" role="menuitem">View Acknowledgements</button>
-                  <button class="reports-item" id="viewHealthTrend" type="button" role="menuitem">View Health Trend Weekly</button>
-                </div>
-              </div>
-              <label class="graph-toggle" title="Show a floating, live-updating task status panel">
-                <input type="checkbox" id="graphToggle" />
-                <span>Show Graphical Task Status</span>
-              </label>
-              <button class="btn primary" id="sendSchedule" type="button" title="Apply schedule changes and notify affected members">Apply Changes</button>
-            </div>
-          </div>
-          ` : `
-          <div class="members-analytics-block">
-            <div class="small muted">Reports are available to Team Leads and Admins.</div>
-          </div>
-          `}
-
-          <div class="members-analytics-block">
-            <div class="small muted">Enterprise Notes</div>
-            <div class="small" style="margin-top:8px;line-height:1.5">
-              Use the roster to jump to a member. Timeline blocks support paint-fill and multi-select. Coverage meter is heatmap-ready for 100% viewport.
-            </div>
-          </div>
+          <div class="small muted" style="margin-top:6px">Enterprise Notes</div>
+          <textarea class="input" id="enterpriseNotes" rows="6" placeholder="Notes for leads and audit…" aria-label="Enterprise notes"></textarea>
+          <div class="small muted" style="margin-top:12px">Use the roster to jump to a member. Timeline blocks support paint-fill and multi-select. Coverage meter is heatmap-ready for 100% viewport.</div>
         </div>
-      </aside>
+      </div>
     </div>
 
-    <div class="modal" id="memberSchedModal">
+<div class="modal" id="memberSchedModal">
       <div class="panel">
         <div class="head">
           <div>
@@ -701,306 +707,257 @@ const wrap = document.createElement('div');
     </div>
   `;
 
-  root.replaceChildren(wrap);
+  // Enterprise shell wiring (fullscreen, splitters, roster filters, ESC policy).
+  function initEnterpriseMembersShell(){
+    // Restore persisted splitter widths.
+    const leftDefault = 280;
+    const rightDefault = 320;
+    const leftKey = 'mums_members_left_w';
+    const rightKey = 'mums_members_right_w';
 
-  // Enterprise fullscreen overlay + enterprise layout wiring (Option A)
-  (function initEnterpriseMembersShell(){
-    const BODY_CLASS = 'members-fullscreen-active';
+    const grid = wrap.querySelector('#membersEnterpriseGrid');
+    if(grid){
+      const leftW = parseInt(localStorage.getItem(leftKey)||'', 10);
+      const rightW = parseInt(localStorage.getItem(rightKey)||'', 10);
+      if(Number.isFinite(leftW) && leftW>=220 && leftW<=520) grid.style.setProperty('--members-left', `${leftW}px`);
+      if(Number.isFinite(rightW) && rightW>=260 && rightW<=520) grid.style.setProperty('--members-right', `${rightW}px`);
+    }
+
+    // Fullscreen overlay toggle (Option A) + focus restore.
     const fsBtn = wrap.querySelector('#membersFullscreenBtn');
-    const rosterJumpBtn = wrap.querySelector('#membersRosterJumpSelected');
-    const analyticsJumpBtn = wrap.querySelector('#membersAnalyticsJumpSelected');
+    let fsOrigin = null;
 
-    let overlayActive = false;
-    let originFocusEl = null;
-    let prevBodyOverflow = '';
-
-    function focusableEls(){
-      try{
-        return Array.from(wrap.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
-          .filter(el=>!el.hasAttribute('disabled') && el.getAttribute('aria-hidden')!=='true' && (el.offsetParent!==null || el===document.activeElement));
-      }catch(_e){ return []; }
+    function setFsBtn(on){
+      if(!fsBtn) return;
+      fsBtn.textContent = on ? '✕ Exit Fullscreen' : '⛶ Fullscreen';
+      fsBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
 
-    let trapEnabled = false;
-    function handleTabTrap(ev){
-      if(!trapEnabled) return;
-      const els = focusableEls();
-      if(!els.length) return;
-      const first = els[0];
-      const last = els[els.length-1];
-      if(ev.shiftKey && document.activeElement === first){
-        ev.preventDefault();
-        try{ last.focus(); }catch(_e){}
-      }else if(!ev.shiftKey && document.activeElement === last){
-        ev.preventDefault();
-        try{ first.focus(); }catch(_e){}
+    function enterOverlay(){
+      fsOrigin = document.activeElement;
+      document.body.classList.add('members-fullscreen-active');
+      wrap.classList.add('members-fullscreen-overlay');
+      setFsBtn(true);
+
+      // Try Fullscreen API, but keep overlay behavior even if denied.
+      if(document.fullscreenElement !== wrap && wrap.requestFullscreen){
+        try{ wrap.requestFullscreen(); }catch{}
       }
+
+      // Focus first meaningful control.
+      const first = wrap.querySelector('#paintToggle') || wrap.querySelector('#membersRosterSearch') || fsBtn;
+      if(first) first.focus({ preventScroll:true });
     }
 
-    function lockBodyScroll(on){
-      const b = document.body;
-      if(!b) return;
-      if(on){
-        prevBodyOverflow = b.style.overflow || '';
-        b.style.overflow = 'hidden';
-        b.classList.add(BODY_CLASS);
-      }else{
-        b.style.overflow = prevBodyOverflow;
-        b.classList.remove(BODY_CLASS);
-      }
-    }
-
-    function setOverlay(on, opts={}){
-      overlayActive = !!on;
-      wrap.classList.toggle('members-fullscreen', overlayActive);
-      wrap.classList.toggle('members-resizing', false);
-      trapEnabled = overlayActive;
-
-      if(overlayActive){
-        lockBodyScroll(true);
-        if(fsBtn){
-          fsBtn.textContent = '⤫ Exit Fullscreen';
-          try{ fsBtn.setAttribute('aria-pressed','true'); }catch(_e){}
-        }
-      }else{
-        // Always attempt to exit browser fullscreen (if supported)
-        try{ if(document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); }catch(_e){}
-
-        lockBodyScroll(false);
-        if(fsBtn){
-          fsBtn.textContent = '⛶ Fullscreen';
-          try{ fsBtn.setAttribute('aria-pressed','false'); }catch(_e){}
-        }
-
-        const ret = opts.returnFocusEl || fsBtn || originFocusEl;
-        try{ ret && ret.focus && ret.focus(); }catch(_e){}
-      }
-    }
-
-    async function enterOverlay(){
-      originFocusEl = document.activeElement;
-      setOverlay(true);
-      // Fullscreen API (best-effort)
-      try{
-        if(!document.fullscreenElement && wrap.requestFullscreen) await wrap.requestFullscreen();
-      }catch(_e){}
-    }
     function exitOverlay(){
-      // Always return focus to the fullscreen toggle for reliable keyboard flow.
-      setOverlay(false, { returnFocusEl: fsBtn });
-    }
+      document.body.classList.remove('members-fullscreen-active');
+      wrap.classList.remove('members-fullscreen-overlay');
+      setFsBtn(false);
 
-    function onFsToggle(ev){
-      if(ev) ev.preventDefault();
-      if(overlayActive) exitOverlay();
-      else enterOverlay();
-    }
-
-    if(fsBtn){
-      fsBtn.addEventListener('click', onFsToggle);
-      pageCleanups.push(()=>{ try{ fsBtn.removeEventListener('click', onFsToggle); }catch(_e){} });
-    }
-
-    const onKey = (ev)=>{
-      if(ev.key === 'Escape' && overlayActive){
-        ev.preventDefault();
-        exitOverlay();
-        return;
+      if(document.fullscreenElement && document.exitFullscreen){
+        try{ document.exitFullscreen(); }catch{}
       }
-      if(ev.key === 'Tab' && overlayActive) handleTabTrap(ev);
-    };
-    window.addEventListener('keydown', onKey);
-    pageCleanups.push(()=>window.removeEventListener('keydown', onKey));
 
-    const onFsChange = ()=>{
-      // If fullscreen exits via browser UI, keep overlay visible but update button state when needed.
-      if(overlayActive && !document.fullscreenElement){
-        // no-op: overlay remains until user exits or presses ESC
+      if(fsOrigin && fsOrigin.focus){
+        try{ fsOrigin.focus({ preventScroll:true }); }catch{ try{ fsOrigin.focus(); }catch{} }
       }
-    };
-    document.addEventListener('fullscreenchange', onFsChange);
-    pageCleanups.push(()=>document.removeEventListener('fullscreenchange', onFsChange));
-
-    function jumpSelected(){
-      if(!selMemberId) return;
-      const row = wrap.querySelector(`.members-row[data-id="${CSS.escape(selMemberId)}"]`);
-      if(row){
-        try{ row.scrollIntoView({ behavior:'smooth', block:'center' }); }catch(_e){ row.scrollIntoView(); }
-      }
+      fsOrigin = null;
     }
-    if(rosterJumpBtn) rosterJumpBtn.addEventListener('click', jumpSelected);
-    if(analyticsJumpBtn) analyticsJumpBtn.addEventListener('click', jumpSelected);
-    pageCleanups.push(()=>{
-      try{ rosterJumpBtn && rosterJumpBtn.removeEventListener('click', jumpSelected); }catch(_e){}
-      try{ analyticsJumpBtn && analyticsJumpBtn.removeEventListener('click', jumpSelected); }catch(_e){}
+
+    function isOverlayActive(){
+      return document.body.classList.contains('members-fullscreen-active') || wrap.classList.contains('members-fullscreen-overlay') || document.fullscreenElement===wrap;
+    }
+
+    if(fsBtn && !fsBtn.dataset.bound){
+      fsBtn.dataset.bound = '1';
+      fsBtn.onclick = ()=>{
+        if(isOverlayActive()) exitOverlay();
+        else enterOverlay();
+      };
+      setFsBtn(isOverlayActive());
+    }
+
+    document.addEventListener('fullscreenchange', ()=>{
+      // Keep UI state consistent when ESC exits native fullscreen.
+      if(document.fullscreenElement !== wrap && wrap.classList.contains('members-fullscreen-overlay')){
+        // Overlay can remain, but we treat it as active until user exits.
+        // No-op; explicit exitOverlay will clear both.
+      }
+      setFsBtn(isOverlayActive());
     });
 
-    // Splitters (drag + keyboard)
-    const splitL = wrap.querySelector('#membersSplitLeft');
-    const splitR = wrap.querySelector('#membersSplitRight');
-    const LEFT_KEY = 'mums_members_split_left_px_v1';
-    const RIGHT_KEY = 'mums_members_split_right_px_v1';
+    // Splitter drag + keyboard resize.
+    function wireSplitter(splitEl, which){
+      if(!splitEl || splitEl.dataset.bound) return;
+      splitEl.dataset.bound = '1';
 
-    let leftW = parseInt((localStorage.getItem(LEFT_KEY) || '320'), 10);
-    let rightW = parseInt((localStorage.getItem(RIGHT_KEY) || '360'), 10);
-    if(!Number.isFinite(leftW) || leftW < 240) leftW = 320;
-    if(!Number.isFinite(rightW) || rightW < 280) rightW = 360;
+      const min = which==='left' ? 220 : 260;
+      const max = which==='left' ? 520 : 520;
+      const key = which==='left' ? leftKey : rightKey;
+      const varName = which==='left' ? '--members-left' : '--members-right';
 
-    function clamp(){
-      leftW = Math.max(240, Math.min(560, leftW));
-      rightW = Math.max(280, Math.min(620, rightW));
-      const w = window.innerWidth || 1400;
-      const minCenter = 560;
-      const maxTotalSide = Math.max(0, w - minCenter - 40);
-      if(maxTotalSide > 0 && (leftW + rightW) > maxTotalSide){
-        let over = (leftW + rightW) - maxTotalSide;
-        const canReduceR = Math.max(0, rightW - 280);
-        const rRed = Math.min(over, canReduceR);
-        rightW -= rRed;
-        over -= rRed;
-        if(over > 0){
-          leftW -= Math.min(over, Math.max(0, leftW - 240));
-        }
+      function getCurrent(){
+        const v = (grid ? getComputedStyle(grid).getPropertyValue(varName) : '').trim();
+        const n = parseInt(v.replace('px',''), 10);
+        return Number.isFinite(n) ? n : (which==='left' ? leftDefault : rightDefault);
       }
-    }
+      function setCurrent(n){
+        if(!grid) return;
+        const clamped = Math.max(min, Math.min(max, n));
+        grid.style.setProperty(varName, `${clamped}px`);
+        localStorage.setItem(key, String(clamped));
+        splitEl.setAttribute('aria-valuemin', String(min));
+        splitEl.setAttribute('aria-valuemax', String(max));
+        splitEl.setAttribute('aria-valuenow', String(clamped));
+      }
 
-    function apply(){
-      clamp();
-      wrap.style.setProperty('--members-left', `${Math.round(leftW)}px`);
-      wrap.style.setProperty('--members-right', `${Math.round(rightW)}px`);
-    }
-    apply();
+      setCurrent(getCurrent());
 
-    const onResize = ()=>apply();
-    window.addEventListener('resize', onResize);
-    pageCleanups.push(()=>window.removeEventListener('resize', onResize));
-
-    function persist(){
-      try{
-        localStorage.setItem(LEFT_KEY, String(Math.round(leftW)));
-        localStorage.setItem(RIGHT_KEY, String(Math.round(rightW)));
-      }catch(_e){}
-    }
-
-    function bindSplitter(el, side){
-      if(!el) return;
+      let dragging = false;
       let startX = 0;
-      let startLeft = 0;
-      let startRight = 0;
+      let startW = 0;
 
-      const onMove = (ev)=>{
-        const dx = (ev.clientX - startX);
-        if(side === 'left'){
-          leftW = startLeft + dx;
-        }else{
-          // moving right shrinks right panel
-          rightW = startRight - dx;
+      splitEl.addEventListener('pointerdown', (e)=>{
+        dragging = true;
+        startX = e.clientX;
+        startW = getCurrent();
+        splitEl.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      });
+
+      splitEl.addEventListener('pointermove', (e)=>{
+        if(!dragging) return;
+        const dx = e.clientX - startX;
+        const next = which==='left' ? (startW + dx) : (startW - dx);
+        setCurrent(next);
+        e.preventDefault();
+      });
+
+      splitEl.addEventListener('pointerup', (e)=>{
+        dragging = false;
+        try{ splitEl.releasePointerCapture(e.pointerId); }catch{}
+      });
+      splitEl.addEventListener('pointercancel', ()=>{ dragging=false; });
+
+      splitEl.addEventListener('keydown', (e)=>{
+        const step = e.shiftKey ? 24 : 8;
+        if(e.key === 'ArrowLeft'){
+          const n = which==='left' ? getCurrent()-step : getCurrent()+step;
+          setCurrent(n); e.preventDefault();
+        }else if(e.key === 'ArrowRight'){
+          const n = which==='left' ? getCurrent()+step : getCurrent()-step;
+          setCurrent(n); e.preventDefault();
         }
-        wrap.classList.add('members-resizing');
-        apply();
-      };
-
-      const onUp = ()=>{
-        wrap.classList.remove('members-resizing');
-        window.removeEventListener('pointermove', onMove);
-        persist();
-      };
-
-      const onDown = (ev)=>{
-        try{ el.setPointerCapture && el.setPointerCapture(ev.pointerId); }catch(_e){}
-        startX = ev.clientX;
-        startLeft = leftW;
-        startRight = rightW;
-        window.addEventListener('pointermove', onMove);
-        window.addEventListener('pointerup', onUp, { once:true });
-      };
-
-      const onKey = (ev)=>{
-        if(ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
-        ev.preventDefault();
-        const step = ev.shiftKey ? 24 : 12;
-        if(side === 'left'){
-          if(ev.key === 'ArrowLeft') leftW -= step;
-          if(ev.key === 'ArrowRight') leftW += step;
-        }else{
-          if(ev.key === 'ArrowLeft') rightW -= step;
-          if(ev.key === 'ArrowRight') rightW += step;
-        }
-        apply();
-        persist();
-      };
-
-      el.addEventListener('pointerdown', onDown);
-      el.addEventListener('keydown', onKey);
-      pageCleanups.push(()=>{
-        try{ el.removeEventListener('pointerdown', onDown); }catch(_e){}
-        try{ el.removeEventListener('keydown', onKey); }catch(_e){}
-        try{ window.removeEventListener('pointermove', onMove); }catch(_e){}
       });
     }
 
-    bindSplitter(splitL, 'left');
-    bindSplitter(splitR, 'right');
+    wireSplitter(wrap.querySelector('#membersSplitLeft'), 'left');
+    wireSplitter(wrap.querySelector('#membersSplitRight'), 'right');
 
-    // Roster controls (search/filter)
-    const rosterSearch = wrap.querySelector('#membersRosterSearch');
-    const rosterFilters = wrap.querySelector('.roster-filters');
+    // Roster search + filter chips
+    const search = wrap.querySelector('#membersRosterSearch');
+    const filterWrap = wrap.querySelector('.roster-filters');
+    if(search && !search.dataset.bound){
+      search.dataset.bound='1';
+      search.addEventListener('input', ()=>{
+        rosterQuery = String(search.value||'');
+        if(Array.isArray(wrap._lastRosterMembers)) renderRoster(wrap._lastRosterMembers);
+      });
+    }
+    if(filterWrap && !filterWrap.dataset.bound){
+      filterWrap.dataset.bound='1';
+      filterWrap.addEventListener('click', (e)=>{
+        const btn = e.target.closest('.chip');
+        if(!btn || !filterWrap.contains(btn)) return;
+        rosterFilter = btn.getAttribute('data-filter') || 'all';
+        filterWrap.querySelectorAll('.chip').forEach(c=>c.classList.toggle('is-on', c===btn));
+        if(Array.isArray(wrap._lastRosterMembers)) renderRoster(wrap._lastRosterMembers);
+      });
+    }
 
-    function refreshRosterOnly(){
-      try{
-        if(_lastRosterCtx && typeof renderRosterPanel === 'function'){
-          renderRosterPanel(_lastRosterCtx.team, _lastRosterCtx.members, _lastRosterCtx.isoDate);
+    // Focus trap + ESC policy: close open modals/dropdowns first, then exit overlay.
+    function getFocusable(root){
+      const sel = [
+        'a[href]:not([tabindex="-1"])',
+        'button:not([disabled]):not([tabindex="-1"])',
+        'input:not([disabled]):not([tabindex="-1"])',
+        'select:not([disabled]):not([tabindex="-1"])',
+        'textarea:not([disabled]):not([tabindex="-1"])',
+        '[tabindex]:not([tabindex="-1"])'
+      ].join(',');
+      return Array.from(root.querySelectorAll(sel)).filter(el=>isElementVisible(el));
+    }
+
+    function closeOpenUiFirst(){
+      // 1) Any open modal
+      const openModal = Array.from(wrap.querySelectorAll('.modal')).find(m => (m.classList.contains('open') || isElementVisible(m)) && isElementVisible(m));
+      if(openModal){
+        const closeBtn = openModal.querySelector('[data-close], .modal-close, .btn-close, button[aria-label="Close"]');
+        if(closeBtn) closeBtn.click();
+        else openModal.classList.remove('open');
+        return true;
+      }
+
+      // 2) Role picker popover
+      const rp = wrap.querySelector('.role-picker');
+      if(rp && isElementVisible(rp)){
+        rp.remove();
+        return true;
+      }
+
+      // 3) Reports dropdown
+      const dd = wrap.querySelector('#reportsDropdown');
+      if(dd && dd.classList.contains('open')){
+        dd.classList.remove('open');
+        const t = wrap.querySelector('#reportsToggle');
+        if(t) t.setAttribute('aria-expanded','false');
+        return true;
+      }
+
+      return false;
+    }
+
+    function onGlobalKeydown(e){
+      // Only trap when overlay is active
+      if(!isOverlayActive()) return;
+
+      if(e.key === 'Tab'){
+        const focusables = getFocusable(wrap);
+        if(focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length-1];
+        if(e.shiftKey && document.activeElement === first){
+          last.focus(); e.preventDefault();
+        }else if(!e.shiftKey && document.activeElement === last){
+          first.focus(); e.preventDefault();
         }
-      }catch(_e){}
+        return;
+      }
+
+      if(e.key === 'Escape'){
+        if(closeOpenUiFirst()){
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        exitOverlay();
+        e.preventDefault();
+        e.stopPropagation();
+      }
     }
 
-    const onRosterSearch = (ev)=>{
-      rosterQuery = String(ev.target.value || '').trim().toLowerCase();
-      refreshRosterOnly();
-    };
-    if(rosterSearch){
-      rosterSearch.addEventListener('input', onRosterSearch);
-      pageCleanups.push(()=>{ try{ rosterSearch.removeEventListener('input', onRosterSearch); }catch(_e){} });
+    if(!wrap._enterpriseKeydown){
+      wrap._enterpriseKeydown = onGlobalKeydown;
+      window.addEventListener('keydown', onGlobalKeydown, true);
+      root._cleanup = root._cleanup || [];
+      root._cleanup.push(()=>window.removeEventListener('keydown', onGlobalKeydown, true));
     }
+  }
 
-    const onRosterFilter = (ev)=>{
-      const btn = ev.target.closest('button[data-filter]');
-      if(!btn) return;
-      rosterFilter = String(btn.dataset.filter || 'all');
-      try{
-        rosterFilters.querySelectorAll('button[data-filter]').forEach(b=>{
-          const on = String(b.dataset.filter) === rosterFilter;
-          b.classList.toggle('active', on);
-          b.setAttribute('aria-pressed', on ? 'true' : 'false');
-        });
-      }catch(_e){}
-      refreshRosterOnly();
-    };
-    if(rosterFilters){
-      rosterFilters.addEventListener('click', onRosterFilter);
-      pageCleanups.push(()=>{ try{ rosterFilters.removeEventListener('click', onRosterFilter); }catch(_e){} });
-    }
 
-    // Roster click-to-select + scroll to timeline row
-    const rosterList = wrap.querySelector('#membersRosterList');
-    const onRosterClick = (ev)=>{
-      const it = ev.target.closest('.roster-item');
-      if(!it) return;
-      const id = it.dataset.id;
-      if(!id) return;
-      selMemberId = id;
-      selMemberIds = new Set([id]);
-      selIdx = new Set();
-      updateSelectionUI();
-      applySelectionStyles();
-      applyMemberRowSelectionStyles();
-      jumpSelected();
-    };
-    if(rosterList){
-      rosterList.addEventListener('click', onRosterClick);
-      pageCleanups.push(()=>{ try{ rosterList.removeEventListener('click', onRosterClick); }catch(_e){} });
-    }
-  })();
+  root.replaceChildren(wrap);
+
+  initEnterpriseMembersShell();
 
   // REPORTS dropdown (hover-open + click toggle)
   (function initReportsDropdown(){
@@ -1028,11 +985,9 @@ const wrap = document.createElement('div');
     dd.addEventListener('focusout', ()=>{ setTimeout(()=>{ if(!hasFocus()) setOpen(false); }, 0); });
 
     // Close on outside click
-    const onDocClick = (e)=>{
+    document.addEventListener('click', (e)=>{
       if(!dd.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('click', onDocClick);
-    try{ pageCleanups && pageCleanups.push(()=>document.removeEventListener('click', onDocClick)); }catch(_e){}
+    });
 
     // Close after selecting an item
     menu.querySelectorAll('button').forEach(b=>{
@@ -1476,7 +1431,7 @@ const wrap = document.createElement('div');
         const v = String(taskSel.value||'').trim();
         if(!v) return;
         syncTaskSelection(v, { render:true, persist:true });
-        renderPaintBar();
+        syncTimelineToolbarUI();
       });
     }
 
@@ -1632,40 +1587,95 @@ const wrap = document.createElement('div');
   }
 
   // Paint mode (click + drag across hours) — still strictly 1-hour blocks
+  // Option B: keep legend chips in the sticky timeline toolbar.
+  let selectionMode = false;
 
-  function renderPaintBar(){
-    const el = wrap.querySelector('#paintBar');
-    if(!el) return;
-    const opts = getTeamTaskOptions(selectedTeamId).map(o=>{
-      const icon = o.icon ? (UI.esc(o.icon) + ' ') : '';
-      return `<option value="${UI.esc(o.id)}">${icon}${UI.esc(o.label||o.id)}</option>`;
-    }).join('');
-    el.innerHTML = `
-      <div class="paintbar-inner ${paint.enabled?'on':''}">
-        <button class="btn ${paint.enabled?'primary':''}" type="button" id="paintToggle" title="Paint mode: click & drag across hours">🖌 Paint</button>
-        <select class="input" id="paintRole" title="Role to paint" style="min-width:170px">
-          ${opts}
-        </select>
-      </div>
-    `;
-    const t = el.querySelector('#paintToggle');
-    const sel = el.querySelector('#paintRole');
-    if(sel) sel.value = paint.role;
-    if(t) t.onclick = ()=>{
-      paint.enabled = !paint.enabled;
-      wrap.classList.toggle('paint-enabled', paint.enabled);
-      renderPaintBar();
-    };
-    if(sel) sel.onchange = ()=>{
-      const v = String(sel.value||'').trim();
-      if(!v) return;
-      // Paint dropdown directly drives Graph Panel task comparison.
-      syncTaskSelection(v, { render:true, persist:true });
-    };
+  function syncTimelineToolbarUI(){
+    const paintBtn = wrap.querySelector('#paintToggle');
+    const roleSel = wrap.querySelector('#paintRole');
+    const selToggle = wrap.querySelector('#selectionToggle');
+    const delBtn = wrap.querySelector('#deleteSelected');
+    const legacyDelBtn = wrap.querySelector('#selDeselect');
+    const legendToggle = wrap.querySelector('#legendToggle');
+    const legend = wrap.querySelector('#timelineLegend');
+
+    // Populate role dropdown when team changes (single source of truth).
+    if(roleSel){
+      const teamKey = String(selectedTeamId||'');
+      if(roleSel.dataset.teamKey !== teamKey){
+        const opts = getTeamTaskOptions(selectedTeamId).map(o=>{
+          const icon = o.icon ? (UI.esc(o.icon) + ' ') : '';
+          return `<option value="${UI.esc(o.id)}">${icon}${UI.esc(o.label||o.id)}</option>`;
+        }).join('');
+        roleSel.innerHTML = opts;
+        roleSel.dataset.teamKey = teamKey;
+      }
+      roleSel.value = paint.role;
+      if(!roleSel.dataset.bound){
+        roleSel.dataset.bound = '1';
+        roleSel.onchange = ()=>{
+          const v = String(roleSel.value||'').trim();
+          if(!v) return;
+          paint.role = v;
+          // Paint dropdown directly drives Graph Panel task comparison.
+          syncTaskSelection(v, { render:true, persist:true });
+        };
+      }
+    }
+
+    if(paintBtn){
+      paintBtn.setAttribute('aria-pressed', paint.enabled ? 'true' : 'false');
+      paintBtn.classList.toggle('primary', !!paint.enabled);
+      if(!paintBtn.dataset.bound){
+        paintBtn.dataset.bound = '1';
+        paintBtn.onclick = ()=>{
+          paint.enabled = !paint.enabled;
+          wrap.classList.toggle('paint-enabled', paint.enabled);
+          syncTimelineToolbarUI();
+        };
+      }
+    }
     wrap.classList.toggle('paint-enabled', paint.enabled);
+
+    if(selToggle){
+      selToggle.setAttribute('aria-pressed', selectionMode ? 'true' : 'false');
+      selToggle.classList.toggle('primary', !!selectionMode);
+      if(!selToggle.dataset.bound){
+        selToggle.dataset.bound = '1';
+        selToggle.onclick = ()=>{
+          selectionMode = !selectionMode;
+          wrap.classList.toggle('selection-mode', selectionMode);
+          syncTimelineToolbarUI();
+        };
+      }
+    }
+
+    const canDeleteSelected = !!selMemberId && selIdx.size>0;
+    if(delBtn){
+      delBtn.disabled = !canDeleteSelected;
+      if(!delBtn.dataset.bound){
+        delBtn.dataset.bound = '1';
+        delBtn.onclick = ()=>deleteSelectedBlocks({ confirm: true });
+      }
+    }
+    if(legacyDelBtn) legacyDelBtn.disabled = !canDeleteSelected;
+
+    if(legendToggle && legend){
+      const isHidden = wrap.classList.contains('legend-hidden');
+      legendToggle.setAttribute('aria-pressed', isHidden ? 'false' : 'true');
+      if(!legendToggle.dataset.bound){
+        legendToggle.dataset.bound = '1';
+        legendToggle.onclick = ()=>{
+          wrap.classList.toggle('legend-hidden');
+          syncTimelineToolbarUI();
+        };
+      }
+    }
   }
 
-  renderPaintBar();
+  // Initial sync for toolbar controls and legend.
+  syncTimelineToolbarUI();
+
 
   // Selection tools
   const selClearBtn = wrap.querySelector('#selClear');
@@ -2519,7 +2529,20 @@ const wrap = document.createElement('div');
   }
 
   function renderAll(){
-    clearSelection();
+    // Preserve selection across rerenders (avoid stale blocks when context changes).
+    const ctxKey = `${selectedTeamId||''}|${weekStartISO||''}|${selectedDay||''}`;
+    const ctxChanged = (wrap._lastSelectionCtxKey && wrap._lastSelectionCtxKey !== ctxKey);
+    wrap._lastSelectionCtxKey = ctxKey;
+
+    const prevSelMemberId = selMemberId;
+    const prevSelIdx = new Set(selIdx);
+    const prevSelMemberIds = new Set(selMemberIds);
+
+    if(ctxChanged){
+      // Keep member selection (if possible) but drop block selection.
+      selIdx = new Set();
+      selMemberIds = new Set();
+    }
     renderWeekWarning();
     const team = Config.teamById(selectedTeamId);
     // Sort: active members always at the top. Inactive (rest/leave) go below.
@@ -2538,21 +2561,22 @@ const wrap = document.createElement('div');
         return String(a.name||a.username).localeCompare(String(b.name||b.username));
       });
 
-
-    // Keep roster panel in sync with the sorted members list
-    try{
-      _lastRosterCtx = { team, members, isoDate: isoDateForSort };
-      if(typeof renderRosterPanel === 'function') renderRosterPanel(team, members, isoDateForSort);
-
-      const tlMeta = wrap.querySelector('#membersTimelineMeta');
-      if(tlMeta){
-        tlMeta.textContent = `${UI.DAYS[selectedDay]} ${isoDateForSort} • ${members.length} member${members.length===1?'':'s'}`;
+    // Build roster view-model (rosterVM) for Section 1 and keep it available for filter/search UI.
+    const currentMemberIds = new Set(members.map(u=>u.id));
+    const rosterVM = members.map(u=>{
+      const leave = (Store.getLeave ? Store.getLeave(u.id, isoDateForSort) : null);
+      const rest = isRestDay(u.teamId, u.id, isoDateForSort);
+      const isInactive = !!leave || !!rest;
+      let inactiveText = '';
+      if(leave){
+        inactiveText = leave.label || leave.type || 'On Leave';
+      }else if(rest){
+        inactiveText = 'Rest Day';
       }
-      const anMeta = wrap.querySelector('#membersAnalyticsMeta');
-      if(anMeta){
-        anMeta.textContent = `Week of ${weekStartISO} • Selected day: ${UI.DAYS[selectedDay]}`;
-      }
-    }catch(_e){}
+      return Object.assign({}, u, { _isInactive: isInactive, _inactiveText: inactiveText });
+    });
+    wrap._lastRosterMembers = rosterVM;
+    renderRoster(rosterVM);
 
     const table = wrap.querySelector('#membersTable');
 
@@ -2913,6 +2937,46 @@ const wrap = document.createElement('div');
       });
     });
 
+
+
+    // Restore selection state across renderAll() (without stale selections).
+    // - Keep member selections if still present in currentMemberIds.
+    // - Filter block selections to only those segments that still exist.
+    if(!ctxChanged){
+      selMemberId = (prevSelMemberId && currentMemberIds.has(prevSelMemberId)) ? prevSelMemberId : null;
+      selMemberIds = new Set(Array.from(prevSelMemberIds).filter(id=>currentMemberIds.has(id)));
+
+      if(selMemberId){
+        const row = wrap.querySelector(`.members-row[data-id="${CSS.escape(selMemberId)}"]`);
+        if(row && prevSelIdx && prevSelIdx.size){
+          const nextIdx = new Set();
+          prevSelIdx.forEach(i=>{ if(row.querySelector(`.seg[data-idx="${i}"]`)) nextIdx.add(i); });
+          selIdx = nextIdx;
+        }else{
+          selIdx = new Set();
+        }
+
+        // Restore scroll context only if the selected row is off-screen.
+        try{
+          const sc = wrap.querySelector('#membersTimelineScroll');
+          const r = row ? row.getBoundingClientRect() : null;
+          const c = sc ? sc.getBoundingClientRect() : null;
+          const inView = (r && c) ? (r.top >= c.top && r.bottom <= c.bottom) : true;
+          selectMemberFromRoster(selMemberId, { preserveSelection:true, preserveBlocks:true, scroll: !inView });
+        }catch(_){
+          try{ selectMemberFromRoster(selMemberId, { preserveSelection:true, preserveBlocks:true, scroll:false }); }catch(__){}
+        }
+      }else{
+        selIdx = new Set();
+        updateSelectionUI();
+        applySelectionStyles();
+        applyMemberRowSelectionStyles();
+      }
+    }else{
+      updateSelectionUI();
+      applySelectionStyles();
+      applyMemberRowSelectionStyles();
+    }
     // Copy / mirror / duplicate features removed for a cleaner Team Lead workflow.
   }
 
@@ -2941,7 +3005,6 @@ const wrap = document.createElement('div');
         updateSelectionUI();
         applySelectionStyles();
         applyMemberRowSelectionStyles();
-    applyMemberRowSelectionStyles();
       });
     }
 
@@ -3585,20 +3648,14 @@ const wrap = document.createElement('div');
   };
   // Use capture to ensure Delete works instantly even if other handlers exist.
   document.addEventListener('keydown', onDeleteKey, true);
-  // Cleanup when leaving page (extend existing cleanup hooks)
-  const _prevCleanup = root._cleanup;
-  root._cleanup = ()=>{
-    try{ if(typeof _prevCleanup === 'function') _prevCleanup(); }catch(_e){}
-    try{ (pageCleanups||[]).forEach(fn=>{ try{ fn && fn(); }catch(_e){} }); }catch(_e){}
-    try{ window.removeEventListener('keydown', onKeydown); }catch(_e){}
-    try{ document.removeEventListener('keydown', onDeleteKey, true); }catch(_e){}
-  };
+  // Cleanup when leaving page
+  root._cleanup = ()=>{ window.removeEventListener('keydown', onKeydown); document.removeEventListener('keydown', onDeleteKey, true); };
 
   // Send schedule update notifications (Team Lead/Admin)
   const sendBtn = wrap.querySelector('#sendSchedule');
   const viewAcksBtn = wrap.querySelector('#viewAcks');
   const viewAuditBtn = wrap.querySelector('#viewAudit');
-  const viewTrendBtn = wrap.querySelector('#viewHealthTrend') || wrap.querySelector('#viewTrend');
+  const viewTrendBtn = wrap.querySelector('#viewTrend');
   const ackClose = wrap.querySelector('#ackClose');
   if(ackClose) ackClose.onclick = ()=>UI.closeModal('ackModal');
   const auditClose = wrap.querySelector('#auditClose');
@@ -3941,8 +3998,7 @@ const wrap = document.createElement('div');
   }
 
   // Exports
-  const exportScheduleBtn = wrap.querySelector('#exportSchedule');
-  if(exportScheduleBtn) exportScheduleBtn.onclick = ()=>{
+  wrap.querySelector('#exportSchedule').onclick = ()=>{
     const members = getMembersForView(selectedTeamId);
     const rows = [["Team","Day","User","Role","Start","End"]];
     for(const m of members){
@@ -3954,8 +4010,7 @@ const wrap = document.createElement('div');
     }
     UI.downloadCSV('team_schedules.csv', rows);
   };
-  const exportWorkloadBtn = wrap.querySelector('#exportWorkload');
-  if(exportWorkloadBtn) exportWorkloadBtn.onclick = ()=>{
+  wrap.querySelector('#exportWorkload').onclick = ()=>{
     const members = getMembersForView(selectedTeamId);
     const weekStartMs = UI.manilaWeekStartMondayMs();
     const cases = Store.getCases();

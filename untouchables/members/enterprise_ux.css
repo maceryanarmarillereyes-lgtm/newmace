@@ -1843,302 +1843,210 @@ body[data-mode="light"] .progress-tooltip{color:#555;}
 .members-page .sched-toolbar .left{gap:8px}
 .members-page .coverage-panel{margin-top:8px !important}
 
-/* ---------------------------------------------------------------------
-   Members Enterprise Fullscreen Overlay (Option A)
-   Force Dark Glass Mode + Dim Glass Background (Option 1)
-   Visual baseline reference (commit message):
-   - Section 1 = Team Roster
-   - Section 2 = Timeline Tasks
-   - Section 3 = Analytics + Controls
-   --------------------------------------------------------------------- */
+/* =====================================================================
+   MEMBERS — ENTERPRISE FULLSCREEN OVERLAY (Option A + Dark Glass Mode)
+   ===================================================================== */
 
-/* Scroll lock while the overlay is active */
-body.members-fullscreen-active{overflow:hidden !important;}
-
-/* Hide global nav/topbars entirely under Option A */
-body.members-fullscreen-active .topbar,
-body.members-fullscreen-active .side,
-body.members-fullscreen-active .right,
-body.members-fullscreen-active #quickLinksBar,
-body.members-fullscreen-active .sidebar-toggle-overlay{
-  display:none !important;
+body.members-fullscreen-active {
+  overflow: hidden; /* lock page scroll (panels retain their own scrolling) */
 }
 
-/* Fullscreen overlay container */
-.members-page.members-fullscreen{
-  position:fixed;
-  inset:0;
-  width:100vw;
-  height:100vh;
-  padding:16px;
-  z-index:9999;
-  display:flex;
-  flex-direction:column;
-  gap:12px;
-
-  /* Dim glass background */
-  background: rgba(6, 10, 18, 0.72);
-  backdrop-filter: blur(16px) saturate(1.15);
-  -webkit-backdrop-filter: blur(16px) saturate(1.15);
-  box-shadow: 0 0 0 1px rgba(148,163,184,0.08) inset;
-
-  color-scheme: dark;
-
-  /* Local theme tokens (scoped to overlay) */
-  --text: rgba(243,244,246,0.92);
-  --muted: rgba(203,213,225,0.70);
-  --border: rgba(148,163,184,0.18);
-  --card: rgba(17,24,39,0.60);
-  --card2: rgba(17,24,39,0.46);
-  --accent: rgba(96,165,250,0.95);
-}
-
-.members-page.members-fullscreen::before{
-  content:"";
-  position:fixed;
-  inset:0;
-  pointer-events:none;
+.members-fullscreen-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   background:
-    radial-gradient(1200px 800px at 60% 10%, rgba(96,165,250,0.12), transparent 60%),
-    radial-gradient(900px 700px at 10% 90%, rgba(34,197,94,0.10), transparent 65%),
-    linear-gradient(180deg, rgba(0,0,0,0.16), rgba(0,0,0,0.50));
+    radial-gradient(1200px 800px at 18% 0%, rgba(90, 170, 255, 0.12), transparent 60%),
+    radial-gradient(1000px 700px at 82% 8%, rgba(120, 255, 210, 0.08), transparent 55%),
+    linear-gradient(180deg, rgba(4, 7, 12, 0.92) 0%, rgba(4, 7, 12, 0.88) 45%, rgba(4, 7, 12, 0.94) 100%);
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
 }
 
-.members-page.members-fullscreen > *{position:relative; z-index:1;}
-
-/* Header chrome inside overlay */
-.members-page.members-fullscreen .members-topbar{
-  background: rgba(17,24,39,0.50);
-  border:1px solid var(--border);
-  border-radius:18px;
-  padding:14px;
-}
-.members-page.members-fullscreen .members-topbar .h1{color:var(--text);}
-.members-page.members-fullscreen .members-topbar .muted{color:var(--muted);}
-
-/* Normalize controls in overlay */
-.members-page.members-fullscreen .btn,
-.members-page.members-fullscreen .iconbtn,
-.members-page.members-fullscreen .chip,
-.members-page.members-fullscreen .input{
-  border-color: var(--border);
-}
-.members-page.members-fullscreen .btn{background: rgba(255,255,255,0.06); color: var(--text);}
-.members-page.members-fullscreen .btn:hover{background: rgba(255,255,255,0.10);}
-.members-page.members-fullscreen .btn.ghost{background: rgba(255,255,255,0.05);}
-
-.members-page.members-fullscreen .input{
-  background: rgba(17,24,39,0.45);
-  color: var(--text);
-}
-.members-page.members-fullscreen .input::placeholder{color: rgba(203,213,225,0.55);}
-
-.members-page.members-fullscreen .chip{background: rgba(255,255,255,0.06); color: var(--text);}
-.members-page.members-fullscreen .chip.active,
-.members-page.members-fullscreen .chip[aria-pressed="true"]{
-  background: rgba(96,165,250,0.18);
-  border-color: rgba(96,165,250,0.35);
+.members-fullscreen-overlay .members-topbar,
+.members-fullscreen-overlay .daytabs {
+  flex: 0 0 auto;
 }
 
-/* Enterprise 3-column body layout (works both normal + fullscreen; fullscreen simply gets more room) */
-.members-page .members-enterprise-body{
-  min-height:720px;
-  min-height:min(720px, 70vh);
-  display:grid;
-  grid-template-columns: var(--members-left, 320px) 10px 1fr 10px var(--members-right, 360px);
-  gap:0;
-  align-items:stretch;
+.members-fullscreen-overlay .members-enterprise-grid {
+  --members-gap: 16px;
+  --members-left: 280px;
+  --members-right: 320px;
+
+  flex: 1 1 auto;
+  min-height: 0;
+
+  display: grid;
+  grid-template-columns: var(--members-left) 10px 1fr 10px var(--members-right);
+  grid-template-rows: 1fr;
+  gap: 0;
+
+  height: 100%;
+  padding: var(--members-gap);
+  box-sizing: border-box;
 }
 
-.members-page.members-fullscreen .members-enterprise-body{
-  flex:1 1 auto;
-  min-height:0;
+/* Panels */
+.members-fullscreen-overlay .card {
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(10, 16, 26, 0.60);
+  box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
 }
 
-/* Glass panels */
-.members-page .members-panel{
-  min-height:0;
-  overflow:hidden;
-  background: rgba(17,24,39,0.50);
-  border:1px solid var(--border);
-  border-radius:18px;
-  box-shadow: 0 18px 60px rgba(0,0,0,0.35);
-  display:flex;
-  flex-direction:column;
+.members-fullscreen-overlay .members-roster,
+.members-fullscreen-overlay .members-timeline,
+.members-fullscreen-overlay .members-analytics-rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* enables internal scrolling */
+  overflow: hidden; /* scrolling happens on child containers */
 }
 
-.members-page .members-panel .panel-head{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
-  gap:12px;
-  padding:14px 14px 10px;
-  border-bottom:1px solid rgba(148,163,184,0.12);
+/* Sticky headers / toolbars */
+.members-fullscreen-overlay .members-roster-header {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background: rgba(10, 16, 26, 0.70);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
 }
 
-.members-page .members-panel .panel-title{font-weight:900; letter-spacing:0.02em; color: var(--text);}
-.members-page .members-panel .panel-sub{color: var(--muted);}
-.members-page .members-panel .panel-actions{display:flex; gap:8px; align-items:center;}
-
-/* Roster */
-.members-page .members-roster .roster-controls{
-  padding:12px 14px;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  border-bottom:1px solid rgba(148,163,184,0.10);
+.members-fullscreen-overlay .members-timeline-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(10, 16, 26, 0.68);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  margin: 10px 10px 0 10px;
+  backdrop-filter: blur(12px) saturate(135%);
+  -webkit-backdrop-filter: blur(12px) saturate(135%);
 }
 
-.members-page .members-roster .roster-list{
-  padding:10px 10px 12px;
-  overflow:auto;
+.members-fullscreen-overlay .members-analytics-header {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background: rgba(10, 16, 26, 0.70);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
 }
 
-.members-page .roster-search{position:relative; display:flex; align-items:center; gap:8px;}
-.members-page .roster-search-ico{position:absolute; left:10px; opacity:.7;}
-.members-page .members-roster .roster-search .input{padding-left:34px;}
-
-.members-page .roster-filters{display:flex; gap:8px; flex-wrap:wrap;}
-
-.members-page .roster-item{
-  width:100%;
-  border:1px solid rgba(148,163,184,0.14);
-  background: rgba(255,255,255,0.03);
-  color: var(--text);
-  border-radius:14px;
-  padding:10px 10px;
-  margin-bottom:8px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  text-align:left;
-  cursor:pointer;
-  transition: transform .08s ease, background .12s ease, border-color .12s ease;
+/* Panel scrolling */
+.members-fullscreen-overlay .members-roster-list {
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: 8px;
 }
 
-.members-page .roster-item:hover{
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(96,165,250,0.30);
-  transform: translateY(-1px);
+.members-fullscreen-overlay .members-timeline-scroll {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 10px;
 }
 
-.members-page .roster-item.selected{
-  border-color: rgba(96,165,250,0.55);
-  box-shadow: 0 0 0 4px rgba(96,165,250,0.14);
+.members-fullscreen-overlay .members-analytics-body {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0 14px 14px;
 }
-
-.members-page .roster-item:focus-visible{
-  outline:none;
-  box-shadow: 0 0 0 4px rgba(96,165,250,0.22);
-  border-color: rgba(96,165,250,0.55);
-}
-
-.members-page .roster-item.inactive{opacity:0.78;}
-.members-page .roster-item .ri-name{font-weight:900;}
-.members-page .roster-item .ri-sub{margin-top:2px;}
-
-.members-page .roster-item .pill{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  font-size:11px;
-  font-weight:900;
-  letter-spacing:0.06em;
-  padding:6px 10px;
-  border-radius:999px;
-  border:1px solid rgba(148,163,184,0.16);
-  background: rgba(255,255,255,0.04);
-  color: rgba(243,244,246,0.92);
-}
-
-.members-page .roster-item .pill.active{border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.12);}
-.members-page .roster-item .pill.rest{border-color: rgba(249,115,22,0.40); background: rgba(249,115,22,0.12);}
-.members-page .roster-item .pill.leave{border-color: rgba(239,68,68,0.40); background: rgba(239,68,68,0.12);}
 
 /* Splitters */
-.members-page .members-splitter{
-  position:relative;
-  width:10px;
+.members-fullscreen-overlay .members-splitter {
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.30);
   cursor: col-resize;
-  outline:none;
 }
 
-.members-page .members-splitter::after{
-  content:"";
-  position:absolute;
-  top:10px;
-  bottom:10px;
-  left:50%;
-  width:2px;
-  transform:translateX(-50%);
-  border-radius:999px;
-  background: rgba(148,163,184,0.22);
+.members-fullscreen-overlay .members-splitter:hover {
+  background: rgba(255,255,255,0.10);
 }
 
-.members-page .members-splitter:hover::after{background: rgba(96,165,250,0.55);}
-
-.members-page .members-splitter:focus-visible::after{
-  background: rgba(96,165,250,0.75);
-  box-shadow: 0 0 0 4px rgba(96,165,250,0.18);
+.members-fullscreen-overlay .members-splitter:focus {
+  outline: 2px solid rgba(120, 190, 255, 0.55);
+  outline-offset: 2px;
 }
 
-.members-page.members-fullscreen.members-resizing .members-panel{user-select:none;}
-
-/* Timeline panel: heatmap-ready hooks */
-.members-page .members-timeline #schedulePane{
-  background: rgba(17,24,39,0.40);
-  border:1px solid rgba(148,163,184,0.14);
+/* Timeline legend chips (Option B) */
+.members-fullscreen-overlay .timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
-.members-page .members-timeline .coverage-panel{
-  background: rgba(255,255,255,0.03);
-  border:1px solid rgba(148,163,184,0.12);
-  border-radius:16px;
-  padding:12px;
+.members-fullscreen-overlay .legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.07);
 }
 
-.members-page .members-timeline .coverage-meter .cm-col{
-  border-color: rgba(148,163,184,0.14);
-  background: rgba(255,255,255,0.02);
-}
-.members-page .members-timeline .coverage-meter .cm-col.ok{background: rgba(34,197,94,0.08);}
-.members-page .members-timeline .coverage-meter .cm-col.bad{background: rgba(239,68,68,0.08);}
-
-/* Optional heatmap overlay layer (reserved hook) */
-.members-page .timeline .heatmap-layer{
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  opacity:.45;
-  mix-blend-mode:screen;
+.members-fullscreen-overlay .legend-item:hover {
+  background: rgba(255,255,255,0.09);
 }
 
-/* Analytics panel */
-.members-page .members-analytics .panel-body{
-  padding:12px 14px 14px;
-  overflow:auto;
+/* Z-index policy (local to overlay) */
+.members-fullscreen-overlay .members-row,
+.members-fullscreen-overlay .timeline {
+  position: relative;
+  z-index: 10;
 }
 
-/* Day tabs in dark glass */
-.members-page.members-fullscreen .daytabs{
-  background: rgba(17,24,39,0.45);
-  border:1px solid rgba(148,163,184,0.14);
-  border-radius:18px;
-  padding:8px;
+.members-fullscreen-overlay .seg {
+  position: absolute;
+  z-index: 10;
 }
 
-.members-page.members-fullscreen .daytabs .daytab{
+.members-fullscreen-overlay .timeline-heatmap,
+.members-fullscreen-overlay .timeline-overlay,
+.members-fullscreen-overlay .heatmap-overlay,
+.members-fullscreen-overlay .coverage-panel .heatmap-overlay,
+.members-fullscreen-overlay .coverage-panel .timeline-heatmap {
+  z-index: 20;
+  pointer-events: none;
+}
+
+.members-fullscreen-overlay .tooltip,
+.members-fullscreen-overlay .dropdown-menu,
+.members-fullscreen-overlay .reports-menu {
+  z-index: 40;
+}
+
+/* Coverage meter + heatmap ready */
+.members-fullscreen-overlay .coverage-panel {
+  border-radius: 14px;
   background: rgba(255,255,255,0.04);
-  border-color: rgba(148,163,184,0.14);
-  color: rgba(243,244,246,0.88);
+  border: 1px solid rgba(255,255,255,0.06);
 }
 
-.members-page.members-fullscreen .daytabs .daytab.active{
-  background: rgba(96,165,250,0.18);
-  border-color: rgba(96,165,250,0.35);
-  color: rgba(243,244,246,0.95);
+.members-fullscreen-overlay .coverage-panel .bar,
+.members-fullscreen-overlay .coverage-panel .cell {
+  transition: transform 120ms ease, filter 120ms ease;
 }
 
-/* Keep modals above overlay panels */
-.members-page.members-fullscreen .modal{z-index:10020;}
+.members-fullscreen-overlay .coverage-panel .bar:hover,
+.members-fullscreen-overlay .coverage-panel .cell:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+/* Focus / accessibility */
+.members-fullscreen-overlay :focus-visible {
+  outline: 2px solid rgba(120, 190, 255, 0.55);
+  outline-offset: 2px;
+}
