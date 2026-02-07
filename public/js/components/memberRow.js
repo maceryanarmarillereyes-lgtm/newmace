@@ -92,7 +92,7 @@
                 ${segsHtml}
                 ${isInactive ? `<div class="timeline-overlay">${esc(inactiveText)}</div>`:''}
               </div>
-                ${dayLocked ? `<div class="locked-below" aria-label="Locked day"><span class="lk-ic">🔒</span><span class="lk-tx">LOCKED</span></div>`:''}
+                ${dayLocked ? `<div class="locked-below" aria-label="Locked day" title="Locked"><span class="lock-ic" aria-hidden="true"></span></div>`:''}
               </div>
             </div>
 
@@ -102,8 +102,7 @@
             </div>
           </div>
         `;      }catch(e){
-        console.error('MemberRow.render error', e);
-        return '';
+                return '';
       }
     }
   };

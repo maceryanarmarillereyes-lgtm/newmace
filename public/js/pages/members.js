@@ -104,6 +104,19 @@ window.Pages.members = function(root){
     return '#64748b';
   }
 
+  function _textColorForBg(hex){
+    const h = String(hex||'').trim();
+    const m = /^#?([0-9a-f]{6})$/i.exec(h);
+    if(!m) return '#e5e7eb';
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16) & 255;
+    const g = (n >> 8) & 255;
+    const b = n & 255;
+    const yiq = ((r*299)+(g*587)+(b*114))/1000;
+    return yiq >= 140 ? '#0b0f14' : '#f4f4f5';
+  }
+
+
 
   // Team filter
   let selectedTeamId = isLead ? me.teamId : (Config.TEAMS[0] && Config.TEAMS[0].id);
@@ -296,7 +309,7 @@ function syncTaskSelection(taskId, opts){
       const has = dayHasAnyBlocks(teamId, i);
       const locked = isDayLocked(teamId, i);
       const dot = has ? '<span class="dot"></span>' : '';
-      const lk = locked ? '<span class="lock">🔒</span>' : '';
+      const lk = locked ? '<span class="lock" role="img" aria-label="Locked" title="Locked">🔒</span>' : '';
       return `<button class="daytab ${active}" data-day="${i}" type="button">${UI.esc(d.slice(0,3))}${dot}${lk}</button>`;
     }).join('');
     tabs.querySelectorAll('button.daytab').forEach(b=>{
@@ -313,11 +326,11 @@ function syncTaskSelection(taskId, opts){
     const autoBtn = wrap.querySelector('#autoSchedule');
     const previewBtn = wrap.querySelector('#previewAuto');
     const autoSettingsBtn = wrap.querySelector('#autoSettings');
-    if(badge) badge.style.display = lockedMonFri ? '' : 'none';
+    if(badge) badge.classList.toggle('hidden', !lockedMonFri);
     // If the week is locked, require a fresh unlock action before any edits.
     if(lockedMonFri) unlockTriggered = false;
     const canUnlock = lockedMonFri && (isLead || isAdmin || isSuper);
-    if(unlockBtn) unlockBtn.style.display = canUnlock ? '' : 'none';
+    if(unlockBtn) unlockBtn.classList.toggle('hidden', !canUnlock);
     // When locked, prevent accidental re-apply until unlocked
     const lockDisable = !!lockedMonFri;
     if(autoBtn) autoBtn.disabled = lockDisable;
@@ -414,52 +427,45 @@ function syncTaskSelection(taskId, opts){
   }
 
   function renderRoster(members){
+    if (!Array.isArray(members)) members = [];
     const list = wrap.querySelector('#membersRosterList');
     const meta = wrap.querySelector('#membersRosterMeta');
-    if(!list) return;
+    if (!list) return;
 
-    const q = String(rosterQuery||'').trim().toLowerCase();
-    const filtered = (members||[]).filter(m=>{
-      const isInactive = !!m._isInactive;
-      if(rosterFilter === 'active' && isInactive) return false;
-      if(rosterFilter === 'inactive' && !isInactive) return false;
-      if(q){
-        const hay = `${m.name||''} ${m.username||''} ${m.email||''}`.toLowerCase();
-        if(!hay.includes(q)) return false;
-      }
+    const q = String(rosterQuery || '').trim().toLowerCase();
+    const f = String(rosterFilter || 'all');
+
+    const filtered = members.filter(m => {
+      const name = String(m.name || '');
+      if (q && !name.toLowerCase().includes(q)) return false;
+      if (f === 'active') return !m._isInactive;
+      if (f === 'inactive') return !!m._isInactive;
       return true;
     });
 
-    const activeCount = (members||[]).filter(m=>!m._isInactive).length;
-    const total = (members||[]).length;
-    if(meta) meta.textContent = `${activeCount}/${total} active`;
+    if (meta) meta.textContent = `${filtered.length} of ${members.length}`;
 
-    list.innerHTML = filtered.map(m=>{
-      const status = m._isInactive ? (m._inactiveText||'Inactive') : 'ACTIVE';
-      const pillClass = m._isInactive ? 'inactive' : 'active';
-      const isSelected = ((!!selMemberId && selMemberId===m.id) || (selMemberIds && selMemberIds.has(m.id)));
+    if (!filtered.length) {
+      list.innerHTML = `<div class="empty-state">No members found</div>`;
+      return;
+    }
+
+    const sel = window.selMemberId;
+    list.innerHTML = filtered.map(m => {
+      const selected = sel && String(sel) === String(m.id);
+      const statusClass = m._isInactive ? 'status-inactive' : 'status-active';
+      const statusLabel = m._isInactive ? 'Inactive' : 'Active';
+      const right = m._isInactive ? `<span class="roster-right text-zinc-400">Inactive</span>` : '';
       return `
-        <button class="roster-item ${isSelected?'selected':''}" type="button" data-id="${UI.esc(m.id)}" role="option" aria-selected="${isSelected?'true':'false'}">
-          <div class="ri-left">
-            <div class="ri-name">${UI.esc(m.name||m.username)}</div>
-            <div class="ri-sub muted">${UI.esc(m.username||'')}</div>
-          </div>
-          <span class="status-pill ${pillClass}">${UI.esc(status)}</span>
+        <button class="roster-item ${selected?'selected':''}" role="option" aria-selected="${selected?'true':'false'}" data-id="${UI.esc(m.id)}">
+          <span class="roster-left">
+            <span class="status-dot ${statusClass}" aria-label="${statusLabel}" title="${statusLabel}"></span>
+            <span class="roster-name">${UI.esc(m.name)}</span>
+          </span>
+          ${right}
         </button>
       `;
     }).join('');
-
-    // Bind clicks (defensive + delegated).
-    if(!list.dataset.bound){
-      list.dataset.bound = '1';
-      list.addEventListener('click', (e)=>{
-        const btn = e.target.closest('.roster-item');
-        if(!btn || !list.contains(btn)) return;
-        const id = btn.getAttribute('data-id');
-        if(!id) return;
-        selectMemberFromRoster(id);
-      });
-    }
   }
 
   function selectMemberFromRoster(id, opts){
@@ -512,57 +518,96 @@ function syncTaskSelection(taskId, opts){
   }
 
   const wrap = document.createElement('div');
-  // Add a page-level class so enterprise UX rules can reliably anchor / compress layout.
-  wrap.className = 'grid members-page';
-  wrap.style.gap = '12px';
+  wrap.id = 'membersAppWrap';
+  wrap.className = 'members-page bg-zinc-950 text-zinc-100 font-sans';
 
   wrap.innerHTML = `
     <div class="members-topbar">
       <div class="members-topbar-left">
-        <div class="h1">Members</div>
-        <div class="muted">Plan coverage by assigning time blocks (Sun–Sat). Timeline view shows the whole team shift.</div>
+        <div class="members-h1 tracking-tight">Members</div>
+        <div class="members-sub text-zinc-400">Plan coverage by assigning time blocks (Sun–Sat). Timeline view shows the whole team shift.</div>
       </div>
+
       <div class="members-topbar-right" aria-label="Members header controls">
         <button class="btn ghost" id="membersFullscreenBtn" type="button" aria-pressed="false" title="Toggle fullscreen overlay">⛶ Fullscreen</button>
+
         ${isLead ? '' : `
-        <label class="small members-teamctl">
-          <span class="muted">Team</span>
+        <label class="members-field">
+          <span class="label text-zinc-400">Team</span>
           <select class="input" id="teamSelect">
             ${Config.TEAMS.map(t=>`<option value="${t.id}">${UI.esc(t.label)}</option>`).join('')}
           </select>
         </label>
         `}
-        <div class="weekctl">
-          <div class="small weekctl-row">
-            <span class="muted">Week of (Mon)</span>
+
+        <div class="members-weekctl">
+          <div class="members-weekctl-row">
+            <span class="label text-zinc-400">Week of (Mon)</span>
             <button class="iconbtn" id="weekHelp" type="button" aria-label="Week selector help" title="What does this do?">ⓘ</button>
             <input class="input" id="weekSelect" type="date" value="${UI.esc(weekStartISO)}" />
-            <button class="btn" id="jumpToday" type="button" title="Jump to Manila Today / This Week">📅 Today</button>
+            <button class="btn" id="jumpToday" type="button" title="Jump to Manila Today / This Week">Today</button>
           </div>
-          <div id="weekWarn" class="week-warn" style="display:none"></div>
+          <div id="weekWarn" class="week-warn hidden" aria-live="polite"></div>
         </div>
+
+        ${(isLead||isAdmin) ? `
+        <div class="members-global-actions" aria-label="Global actions">
+          <div class="reports-dropdown" id="reportsDropdown" aria-label="Reports">
+            <button class="btn ghost reports-toggle" id="reportsToggle" type="button" aria-haspopup="menu" aria-expanded="false">Reports</button>
+            <div class="reports-menu" id="reportsMenu" role="menu" aria-label="Reports Menu">
+              <button class="reports-item" id="exportSchedule" type="button" role="menuitem">Export Schedule CSV</button>
+              <button class="reports-item" id="exportWorkload" type="button" role="menuitem">Export Workload CSV</button>
+              <button class="reports-item" id="viewAudit" type="button" role="menuitem">View Audit History</button>
+              <button class="reports-item" id="viewAcks" type="button" role="menuitem">View Acknowledgements</button>
+              <button class="reports-item" id="viewHealthTrend" type="button" role="menuitem">View Health Trend Weekly</button>
+            </div>
+          </div>
+
+          <label class="switch" title="Show a floating, live-updating task status panel">
+            <input type="checkbox" id="graphToggle" aria-label="Show graphical task status" />
+            <span class="switch-ui"></span>
+            <span class="switch-tx">Graph</span>
+          </label>
+
+          <button class="btn primary" id="sendSchedule" type="button" title="Apply schedule changes and notify affected members">Apply</button>
+
+          <div class="global-lock">
+            <button class="btn" id="autoSettings" type="button">Settings</button>
+            <button class="btn" id="previewAuto" type="button">Preview</button>
+            <button class="btn primary" id="autoSchedule" type="button">Apply &amp; Lock</button>
+            <span class="lock-badge hidden" id="lockBadge" aria-label="Locked" title="Locked">
+              <span class="lock-ic" aria-hidden="true"></span>
+            </span>
+            <button class="btn danger hidden" id="unlockSchedule" type="button">Unlock</button>
+          </div>
+        </div>
+        ` : ''}
       </div>
     </div>
 
     <div class="daytabs" id="dayTabs"></div>
 
-    
     <div class="members-enterprise-grid" id="membersEnterpriseGrid">
       <div class="card members-roster" id="membersRosterPanel">
         <div class="members-roster-header">
           <div class="members-roster-title">
-            <div class="h2">Team Roster</div>
-            <div class="small muted" id="membersRosterMeta">—</div>
+            <div class="h2 tracking-tight">Team Roster</div>
+            <div class="small text-zinc-400" id="membersRosterMeta">—</div>
           </div>
+
           <div class="members-roster-tools">
-            <input class="input" id="membersRosterSearch" type="search" placeholder="Search roster…" aria-label="Search roster" />
-            <div class="roster-filters" role="group" aria-label="Roster filters">
-              <button class="chip is-on" type="button" id="rosterFilterAll" data-filter="all">All</button>
-              <button class="chip" type="button" id="rosterFilterActive" data-filter="active">Active</button>
-              <button class="chip" type="button" id="rosterFilterInactive" data-filter="inactive">Inactive</button>
+            <div class="roster-searchbar" role="search">
+              <span class="search-ic" aria-hidden="true"></span>
+              <input class="input roster-search" id="membersRosterSearch" type="search" placeholder="Search roster…" aria-label="Search roster" />
+              <select class="input roster-filter" id="membersRosterFilter" aria-label="Roster filter">
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
             </div>
           </div>
         </div>
+
         <div class="members-roster-list" id="membersRosterList" role="listbox" aria-label="Roster members"></div>
       </div>
 
@@ -571,77 +616,76 @@ function syncTaskSelection(taskId, opts){
       <div class="card members-timeline sched-swap" id="schedulePane">
         <div id="membersTimelineToolbar" class="members-timeline-toolbar" role="toolbar" aria-label="Timeline controls">
           <div class="mtb-left">
-            <button class="btn ghost" id="paintToggle" type="button" aria-pressed="false" title="Paint mode: click & drag across hours">🖌 Paint</button>
+            <button class="btn ghost" id="paintToggle" type="button" aria-pressed="false" title="Paint mode: click &amp; drag across hours">Paint</button>
             <select class="input" id="paintRole" aria-label="Paint role" title="Role to paint"></select>
-            <button class="btn ghost" id="selectionToggle" type="button" aria-pressed="false" title="Selection mode">Selection</button>
-            <button class="btn ghost danger" id="deleteSelected" type="button" disabled title="Delete selected blocks (or press Delete)">🗑 Delete</button>
 
-            <button class="btn danger" id="selClear" type="button" disabled title="Clear ALL blocks for this member/day">🧹 Clear All</button>
-            <!-- Legacy ID retained for baseline handlers -->
-            <button class="btn ghost" id="selDeselect" type="button" style="display:none" aria-hidden="true" tabindex="-1">Delete</button>
+            <button class="btn ghost" id="selectionToggle" type="button" aria-pressed="false" title="Selection mode">Select</button>
+            <button class="btn ghost danger" id="deleteSelected" type="button" disabled title="Delete selected blocks (or press Delete)" aria-label="Delete selected">Delete</button>
 
-            <span class="badge" id="selBadge">0 selected</span>
-            <div id="paintModeHint" class="hint" aria-live="polite">Drag to create • Shift+Click multi-select • Shift+Drag box-select</div>
+            <button class="btn danger" id="selClear" type="button" disabled title="Clear ALL blocks for this member/day">Clear</button>
+            <button class="btn ghost hidden" id="selDeselect" type="button" aria-hidden="true" tabindex="-1">Delete</button>
+
+            <span class="badge" id="selBadge">0</span>
+            <div id="paintModeHint" class="hint text-zinc-400" aria-live="polite">Drag to create • Shift+Click multi-select • Shift+Drag box-select</div>
           </div>
 
           <div class="mtb-mid">
             <button class="btn ghost" id="legendToggle" type="button" aria-pressed="true" aria-controls="timelineLegend" title="Toggle legend chips">Legend</button>
             <div class="timeline-legend" id="timelineLegend" aria-label="Timeline legend">
-              <span class="legend-item"><span class="legend-dot role-mailbox_manager"></span>Mailbox Manager</span>
-              <span class="legend-item"><span class="legend-dot role-call_onqueue"></span>Call Available</span>
+              <span class="legend-item"><span class="legend-dot role-mailbox_manager"></span>Mailbox</span>
+              <span class="legend-item"><span class="legend-dot role-call_onqueue"></span>Call</span>
               <span class="legend-item"><span class="legend-dot role-back_office"></span>Back Office</span>
-              <span class="legend-item"><span class="legend-dot role-mailbox_call"></span>Mailbox + Call</span>
+              <span class="legend-item"><span class="legend-dot role-mailbox_call"></span>Mailbox+Call</span>
               <span class="legend-item"><span class="legend-dot role-lunch"></span>Lunch</span>
               <span class="legend-item"><span class="legend-dot role-block"></span>Block</span>
             </div>
           </div>
 
-          ${(isLead||isAdmin) ? `
-          <div class="mtb-right" aria-label="Reports and actions">
-            <div class="reports-dropdown" id="reportsDropdown" aria-label="Reports">
-              <button class="btn ghost reports-toggle" id="reportsToggle" type="button" aria-haspopup="menu" aria-expanded="false">📊 REPORTS</button>
-              <div class="reports-menu" id="reportsMenu" role="menu" aria-label="Reports Menu">
-                <button class="reports-item" id="exportSchedule" type="button" role="menuitem">Export Schedule CSV</button>
-                <button class="reports-item" id="exportWorkload" type="button" role="menuitem">Export Workload CSV</button>
-                <button class="reports-item" id="viewAudit" type="button" role="menuitem">View Audit History</button>
-                <button class="reports-item" id="viewAcks" type="button" role="menuitem">View Acknowledgements</button>
-                <button class="reports-item" id="viewHealthTrend" type="button" role="menuitem">View Health Trend Weekly</button>
-              </div>
-            </div>
-            <label class="graph-toggle" title="Show a floating, live-updating task status panel">
-              <input type="checkbox" id="graphToggle" />
-              <span>Show Graphical Task Status</span>
-            </label>
-            <button class="btn primary" id="sendSchedule" type="button" title="Apply schedule changes and notify affected members">Apply Changes</button>
-          </div>
-          ` : '<div class="mtb-right"></div>'}
+          <div class="mtb-right"></div>
         </div>
 
         <div class="members-timeline-scroll" id="membersTimelineScroll">
-          <div class="members-tip small muted">Tip: Assignments are <b>strictly 1-hour blocks</b> (no minutes). Drag empty space to create. Use <b>Paint</b> (click & drag across hours) to fill multiple hours fast.</div>
-          <div id="coverageMeter" class="coverage-panel" style="margin-top:10px"></div>
+          <div id="coverageMeter" class="coverage-panel coverage-sticky"></div>
+          <div class="members-tip small text-zinc-400">Tip: Assignments are <b>strictly 1-hour blocks</b>. Drag empty space to create. Use <b>Paint</b> to fill multiple hours quickly.</div>
           <div class="timeline-ruler" id="ruler"></div>
           <div class="members-table" id="membersTable"></div>
         </div>
       </div>
 
-      <div class="members-splitter" id="membersSplitRight" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize analytics panel"></div>
+      <div class="members-splitter" id="membersSplitRight" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize inspector panel"></div>
 
-      <div class="card members-analytics-rail" id="membersAnalyticsRail">
-        <div class="members-analytics-header">
-          <div class="h2">Analytics + Controls</div>
-          <div class="small muted" id="membersAnalyticsMeta">—</div>
+      <div class="card members-inspector" id="membersAnalyticsRail">
+        <div class="inspector-tabs" role="tablist" aria-label="Inspector tabs">
+          <button class="tab is-on" type="button" data-tab="analytics" role="tab" aria-selected="true" aria-controls="inspAnalytics">Analytics</button>
+          <button class="tab" type="button" data-tab="legend" role="tab" aria-selected="false" aria-controls="inspLegend">Legend</button>
+          <button class="tab" type="button" data-tab="guide" role="tab" aria-selected="false" aria-controls="inspGuide">Guide</button>
         </div>
-        ${(isLead||isAdmin) ? '<div class="toolgroup members-auto-actions"><button class="btn" id="autoSettings" type="button">Auto Settings</button><button class="btn" id="previewAuto" type="button">Preview</button><button class="btn primary" id="autoSchedule" type="button">Apply & Lock</button><span class="lock-badge" id="lockBadge" style="display:none">🔒 Locked</span><button class="btn danger" id="unlockSchedule" type="button" style="display:none">Unlock</button></div>' : ''}
-        <div class="members-analytics-body">
-          <div class="small muted" style="margin-top:6px">Enterprise Notes</div>
-          <textarea class="input" id="enterpriseNotes" rows="6" placeholder="Notes for leads and audit…" aria-label="Enterprise notes"></textarea>
-          <div class="small muted" style="margin-top:12px">Use the roster to jump to a member. Timeline blocks support paint-fill and multi-select. Coverage meter is heatmap-ready for 100% viewport.</div>
+
+        <div class="members-analytics-body inspector-panels">
+          <div class="inspector-panel" id="inspAnalytics" role="tabpanel">
+            <div class="small text-zinc-400" id="membersAnalyticsMeta">—</div>
+            <div class="small text-zinc-400 mt-3">Notes</div>
+            <textarea class="input" id="enterpriseNotes" rows="6" placeholder="Notes for leads and audit…" aria-label="Enterprise notes"></textarea>
+            <div class="small text-zinc-400 mt-3">Use the roster to jump to a member. Timeline blocks support paint-fill and multi-select. Coverage meter is heatmap-ready.</div>
+          </div>
+
+          <div class="inspector-panel hidden" id="inspLegend" role="tabpanel">
+            <div class="legend-vert" id="inspectorLegendList" aria-label="Legend list"></div>
+          </div>
+
+          <div class="inspector-panel hidden" id="inspGuide" role="tabpanel">
+            <div class="guide small text-zinc-400">
+              <div class="guide-line"><b>Paint</b>: click &amp; drag across hours.</div>
+              <div class="guide-line"><b>Select</b>: Shift+Click to multi-select blocks.</div>
+              <div class="guide-line"><b>Delete</b>: Delete selected blocks.</div>
+              <div class="guide-line"><b>Resize</b>: Drag splitters or use Arrow keys while focused.</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-<div class="modal" id="memberSchedModal">
+    <div class="modal" id="memberSchedModal">
       <div class="panel">
         <div class="head">
           <div>
@@ -693,17 +737,15 @@ function syncTaskSelection(taskId, opts){
       </div>
     </div>
 
-    <!-- Floating graphical task status panel (Team Lead) -->
-    <div id="graphPanel" class="graph-status-panel gsp-floating gsp-float-anchor gsp-resizable" style="display:none" role="dialog" aria-label="Graphical task status">
+    <div id="graphPanel" class="graph-status-panel gsp-floating gsp-float-anchor gsp-resizable hidden" role="dialog" aria-label="Graphical task status">
       <div class="gsp-head" id="graphPanelHead">
         <div>
           <div class="gsp-title">Graphical Task Status</div>
-          <div class="gsp-sub" id="graphPanelSub">—</div>
+          <div class="small text-zinc-400">Live view of assignments</div>
         </div>
-        <button class="iconbtn flat" id="graphClose" type="button" aria-label="Close">✕</button>
+        <button class="iconbtn" id="graphClose" type="button" title="Close">✕</button>
       </div>
-      <div class="gsp-body" id="graphPanelBody"></div>
-      <div class="gsp-foot small muted" id="graphPanelFoot">Tip: Drag the header to move. Drag edges/corners to resize. Settings are hidden by default.</div>
+      <div class="gsp-body" id="graphBody"></div>
     </div>
   `;
 
@@ -853,25 +895,23 @@ function syncTaskSelection(taskId, opts){
 
     wireSplitter(wrap.querySelector('#membersSplitLeft'), 'left');
     wireSplitter(wrap.querySelector('#membersSplitRight'), 'right');
-
-    // Roster search + filter chips
     const search = wrap.querySelector('#membersRosterSearch');
-    const filterWrap = wrap.querySelector('.roster-filters');
-    if(search && !search.dataset.bound){
-      search.dataset.bound='1';
-      search.addEventListener('input', ()=>{
-        rosterQuery = String(search.value||'');
-        if(Array.isArray(wrap._lastRosterMembers)) renderRoster(wrap._lastRosterMembers);
+    const filterSel = wrap.querySelector('#membersRosterFilter');
+
+    if (filterSel && !filterSel.dataset.bound) {
+      filterSel.dataset.bound = '1';
+      filterSel.value = rosterFilter;
+      filterSel.addEventListener('change', () => {
+        rosterFilter = String(filterSel.value || 'all');
+        if (Array.isArray(wrap._lastRosterMembers)) renderRoster(wrap._lastRosterMembers);
       });
     }
-    if(filterWrap && !filterWrap.dataset.bound){
-      filterWrap.dataset.bound='1';
-      filterWrap.addEventListener('click', (e)=>{
-        const btn = e.target.closest('.chip');
-        if(!btn || !filterWrap.contains(btn)) return;
-        rosterFilter = btn.getAttribute('data-filter') || 'all';
-        filterWrap.querySelectorAll('.chip').forEach(c=>c.classList.toggle('is-on', c===btn));
-        if(Array.isArray(wrap._lastRosterMembers)) renderRoster(wrap._lastRosterMembers);
+
+    if (search && !search.dataset.bound) {
+      search.dataset.bound = '1';
+      search.addEventListener('input', () => {
+        rosterQuery = String(search.value || '');
+        if (Array.isArray(wrap._lastRosterMembers)) renderRoster(wrap._lastRosterMembers);
       });
     }
 
@@ -1068,7 +1108,7 @@ function syncTaskSelection(taskId, opts){
     function setEnabled(on){
       graphEnabled = !!on;
       toggle.checked = graphEnabled;
-      panel.style.display = graphEnabled ? '' : 'none';
+      panel.classList.toggle('hidden', !graphEnabled);
       if(graphEnabled){
         applyPanelState();
         // Ensure the panel always reflects the current Paint selection when opened.
@@ -1168,10 +1208,10 @@ function syncTaskSelection(taskId, opts){
     const foot = panel.querySelector('#graphPanelFoot');
 
     if(!graphEnabled){
-      panel.style.display = 'none';
+      panel.classList.add('hidden');
       return;
     }
-    panel.style.display = '';
+    panel.classList.remove('hidden');
 
     const team = Config.teamById(selectedTeamId);
     if(!team){
@@ -1360,7 +1400,7 @@ function syncTaskSelection(taskId, opts){
       <div class="gsp-settings-wrap">
         <label class="gsp-settings-toggle" title="Show/hide Graph Panel settings"><input class="gsp-settings-checkbox" type="checkbox" id="gspSettingsToggle" ${graphSettingsOpen ? "checked" : ""} /><span class="gsp-switch" aria-hidden="true"></span><span class="gsp-settings-text">⚙️ Graph Panel Settings</span></label>
         <div class="gsp-settings ${graphSettingsOpen ? '' : 'gsp-settings-hidden'}" id="gspSettings">
-          <div class="small muted" style="margin-top:2px">Set Max Hours per Task</div>
+          <div class="small muted mt-1">Set Max Hours per Task</div>
           <div class="gsp-max-grid">
             ${taskOpts
               .filter(o=>String(o.id) !== '__clear__')
@@ -1491,7 +1531,7 @@ function syncTaskSelection(taskId, opts){
     pop.className = 'popover';
     pop.innerHTML = `
       <div class="pop-title">Week Selector</div>
-      <div class="small" style="line-height:1.4">
+      <div class="small leading-snug">
         Controls which <b>week</b> you are viewing, editing, sending, and locking.<br/>
         Rest Days, Leaves, Coverage Meter, and Notifications depend on the selected week.
       </div>
@@ -1539,11 +1579,11 @@ function syncTaskSelection(taskId, opts){
     }
 
     if(!html){
-      warn.style.display = 'none';
-      warn.className = 'week-warn';
+      warn.className = 'week-warn hidden';
+      warn.innerHTML = '';
       return;
     }
-    warn.style.display = '';
+    warn.classList.remove('hidden');
     warn.className = `week-warn ${cls}`;
     warn.innerHTML = html;
   }
@@ -1673,8 +1713,55 @@ function syncTaskSelection(taskId, opts){
     }
   }
 
+  function wireInspectorTabs(){
+    const tabs = Array.from(wrap.querySelectorAll('.inspector-tabs .tab'));
+    const panels = {
+      analytics: wrap.querySelector('#inspAnalytics'),
+      legend: wrap.querySelector('#inspLegend'),
+      guide: wrap.querySelector('#inspGuide')
+    };
+    const setActive = (key)=>{
+      tabs.forEach(t=>{
+        const on = t.dataset.tab === key;
+        t.classList.toggle('is-on', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      Object.entries(panels).forEach(([k,p])=>{
+        if(!p) return;
+        p.classList.toggle('hidden', k !== key);
+      });
+    };
+    tabs.forEach(t=>{
+      if(t.dataset.bound) return;
+      t.dataset.bound = '1';
+      t.addEventListener('click', ()=>setActive(String(t.dataset.tab||'analytics')));
+    });
+    setActive('analytics');
+  }
+
+  function renderInspectorLegend(){
+    const host = wrap.querySelector('#inspectorLegendList');
+    if(!host) return;
+    const opts = getTeamTaskOptions(selectedTeamId);
+    host.innerHTML = opts.map(o=>{
+      const roleCls = 'role-' + String(o.id||'block').replace(/[^a-z0-9_-]/gi,'_');
+      const sub = o.description ? `<span class="l-sub">${UI.esc(o.description)}</span>` : '';
+      return `
+        <div class="legend-row">
+          <span class="l-left">
+            <span class="legend-dot ${roleCls}"></span>
+            <span class="l-name">${UI.esc(o.label||o.id)}</span>
+          </span>
+          ${sub}
+        </div>
+      `;
+    }).join('');
+  }
+
   // Initial sync for toolbar controls and legend.
   syncTimelineToolbarUI();
+  wireInspectorTabs();
+  renderInspectorLegend();
 
 
   // Selection tools
@@ -1827,7 +1914,7 @@ function syncTaskSelection(taskId, opts){
           <button class="btn ghost" type="button" id="asClose">✕</button>
         </div>
 
-        <div class="body" style="display:grid;gap:10px">
+        <div class="body grid gap-3">
           <div class="grid2">
             <div>
               <label class="small">Team</label>
@@ -1866,13 +1953,13 @@ function syncTaskSelection(taskId, opts){
               <label class="small">Lunch max overlap (members at same time)</label>
               <input class="input" id="asLunchOverlap" type="number" min="1" max="5" value="${s.lunchOverlapMax}" />
             </div>
-            <div class="small muted" style="align-self:end">
+            <div class="small muted self-end">
               <div><b>1-hour grid only</b> (no minutes). Drag/paint assigns whole hours.</div>
               <div>Coverage is evaluated per-hour grid.</div>
             </div>
           </div>
 
-          <div class="row" style="justify-content:flex-end;gap:10px;margin-top:6px">
+          <div class="row justify-end gap-3 mt-2">
             <button class="btn" type="button" id="asCancel">Cancel</button>
             <button class="btn primary" type="button" id="asSave" ${canEditThisTeam?'':'disabled'}>Save Settings</button>
           </div>
@@ -2033,7 +2120,7 @@ function syncTaskSelection(taskId, opts){
     modal.className = 'modal';
     modal.id = 'autoPreviewModal';
     modal.innerHTML = `
-      <div class="panel" style="max-width:980px">
+      <div class="panel max-w-5xl">
         <div class="head">
           <div>
             <div class="announce-title">Preview Auto Schedule</div>
@@ -2041,17 +2128,17 @@ function syncTaskSelection(taskId, opts){
           </div>
           <button class="btn ghost" type="button" id="apClose">✕</button>
         </div>
-        <div class="body" style="display:grid;gap:12px">
+        <div class="body grid gap-3">
           <div class="daytabs" id="apTabs">
             ${['Mon','Tue','Wed','Thu','Fri'].map((t,i)=>`<button class="daytab ${i===0?'active':''}" data-day="${i+1}" type="button">${t}</button>`).join('')}
           </div>
           <div class="coverage-wrap">
-            <div class="small muted" style="margin-bottom:6px">Coverage meter shows per-hour minimum counts (stricter). Mailbox should be 1 active; Call should be ≥ ${s.callMinPerHour} active.</div>
+            <div class="small muted mb-2">Coverage meter shows per-hour minimum counts (stricter). Mailbox should be 1 active; Call should be ≥ ${s.callMinPerHour} active.</div>
             <div id="apMeter"></div>
           </div>
-          <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <div class="row justify-between items-center flex-wrap gap-3">
             <div class="small muted">Lunch window: ${UI.esc(s.lunchStart)}–${UI.esc(s.lunchEnd)} (max overlap ${s.lunchOverlapMax}); Back Office max ${s.backOfficeMaxHoursPerMember} hrs/member/day</div>
-            <div class="row" style="gap:10px">
+            <div class="row gap-3">
               <button class="btn" type="button" id="apCancel">Cancel</button>
               <button class="btn primary" type="button" id="apApply">Approve & Lock Mon–Fri</button>
             </div>
@@ -2074,7 +2161,7 @@ function syncTaskSelection(taskId, opts){
       const totalCount = cov.length || 1;
       const pctOk = Math.round((okCount/totalCount)*100);
       meter.innerHTML = `
-        <div class="coverage-head" style="margin-bottom:8px">
+        <div class="coverage-head mb-2">
           <div>
             <div class="coverage-title">Coverage Meter</div>
             <div class="coverage-sub">Mailbox target: <b>1</b>/hr • Call target: <b>≥ ${targetCall}</b>/hr • Values are per-hour <b>minimum</b>.</div>
@@ -2441,18 +2528,18 @@ function syncTaskSelection(taskId, opts){
     function renderModal(){
       const list = normalizeBlocks(team, Store.getUserDayBlocks(member.id, selectedDay), { locked: isScheduleEditLocked(selectedTeamId, selectedDay) });
       body.innerHTML = `
-        <div class="muted small" style="margin-bottom:8px">Blocks must be inside the shift window, must not overlap, and must be aligned to the hour (<b>:00</b>) in 1-hour increments.</div>
+        <div class="muted small mb-2">Blocks must be inside the shift window, must not overlap, and must be aligned to the hour (<b>:00</b>) in 1-hour increments.</div>
         <div class="ms-grid" id="msGrid">
           ${list.map(rowHtml).join('')}
         </div>
-        <div class="row" style="gap:10px;justify-content:space-between;flex-wrap:wrap;margin-top:12px">
+        <div class="row gap-3 justify-between flex-wrap mt-3">
           <button class="btn" type="button" id="msAdd">Add Block</button>
-          <div class="row" style="gap:8px;flex-wrap:wrap">
+          <div class="row gap-2 flex-wrap">
             <button class="btn" type="button" id="msCancel">Cancel</button>
             <button class="btn primary" type="button" id="msSave">Save</button>
           </div>
         </div>
-        <div class="err" id="msErr" style="display:none;margin-top:10px"></div>
+        <div class="err hidden mt-3" id="msErr"></div>
       `;
 
       const grid = body.querySelector('#msGrid');
@@ -2638,7 +2725,7 @@ function syncTaskSelection(taskId, opts){
         }else{
           covEl.textContent = '';
         }
-      }catch(e){ console.error(e); }
+      }catch(e){ }
     }
 
     const ticks = [];
@@ -2781,17 +2868,29 @@ function syncTaskSelection(taskId, opts){
 
       const blocks = normalizeBlocks(team, Store.getUserDayBlocks(m.id, selectedDay), { locked: dayLockedForGrid && !unlockTriggered });
       const segs = (blocks||[]).map((b,i)=>{
-        const st = UI.blockToStyle(team, b);
-        const role = b.role || 'block';
-        const title = `${blockLabel(role)} ${b.start}–${b.end}`;
-        const sRole = Config.scheduleById(role);
-        const icon = sRole ? (sRole.icon||'') : '🧩';
-        return `<div class="seg${b.locked ? " is-locked" : ""}" data-idx="${i}" data-role="${UI.esc(role)}" style="left:${st.left}%;width:${st.width}%";${(()=>{ try{ const c=(window.Store&&Store.getTeamTaskColor)?Store.getTeamTaskColor(team.id, role):null; if(!c) return ""; const tc=_textColorForBg(c); return "background:"+c+";color:"+tc; }catch(_){return "";} })()} title="${UI.esc(title)}">
-          <span>${UI.esc(icon)}</span>
-          <div class="handle l"></div>
-          <div class="handle r"></div>
-        </div>`;
-      }).join('');
+          const st = segStyle(b);
+          const role = (b.role || b.task || 'block');
+          const roleCls = 'role-' + String(role).replace(/[^a-z0-9_-]/gi,'_');
+
+          const segCssVars = (() => {
+            try{
+              const raw = b.bg || b.color || '';
+              if (!raw) return '';
+              const tc = _textColorForBg(raw);
+              return `--seg-raw:${raw};--seg-fg:${tc};`;
+            }catch(_){
+              return '';
+            }
+          })();
+
+          const styleAttr = `left:${st.left}%;width:${st.width}%;${segCssVars}`;
+          const lockedIcon = b.locked ? `<span class="seg-lock" aria-label="Locked" title="Locked"><span class="lock-ic" aria-hidden="true"></span></span>` : '';
+
+          return `<div class="seg ${roleCls} ${b.selected?'is-selected':''} ${b.locked?'is-locked':''}" data-mid="${UI.esc(m.id)}" data-idx="${i}" data-role="${UI.esc(role)}" style="${styleAttr}" title="${UI.esc(b.taskLabel || b.roleLabel || role)} (${st.hours}h)">
+            ${lockedIcon}
+            <span class="handle" aria-hidden="true"></span>
+          </div>`;
+        }).join('');
       const teamClass = `team-${m.teamId}`;
       const rowClass = isInactive ? 'inactive' : '';
       // Render row via component module (preferred).
@@ -2815,7 +2914,7 @@ function syncTaskSelection(taskId, opts){
             dayLocked: dayLockedForGrid
           });
         }
-      }catch(e){ console.error(e); }
+      }catch(e){ }
 
       return `
         <div class="members-row ${rowClass}" data-id="${UI.esc(m.id)}" data-inactive="${isInactive?'1':'0'}" data-iso="${UI.esc(isoDate)}">
@@ -2840,7 +2939,7 @@ function syncTaskSelection(taskId, opts){
               ${ticks.join('')}
               ${segs}
               ${isInactive ? `<div class="timeline-overlay">${UI.esc(inactiveText)}</div>`:''}
-              ${dayLockedForGrid ? `<div class="locked-ind" aria-label="Locked"><div class="lk-ic">🔒</div><div class="lk-tx">LOCKED</div></div>`:''}
+              ${dayLockedForGrid ? `<div class="locked-below" aria-label="Locked day" title="Locked"><span class="lock-ic" aria-hidden="true"></span></div>`:''}
             </div>
           </div>
           <div class="member-actions">
@@ -2928,7 +3027,7 @@ function syncTaskSelection(taskId, opts){
             addAudit('LEAVE_CLEAR', userId, u ? (u.name||u.username) : null, `Date ${iso}`);
           }
         }catch(e){
-          console.error('Leave toggle failed', e);
+
           UI.toast && UI.toast('Unable to update leave. Please refresh and try again.');
         }
         clearSelection();
@@ -3116,7 +3215,7 @@ function syncTaskSelection(taskId, opts){
         Store.setUserDayBlocks(member.id, member.teamId, selectedDay, updated);
     requestGraphRefresh();
       }catch(e){
-        console.error('trimRoleOutsideTouched error', e);
+
       }
     }
 
@@ -3191,13 +3290,13 @@ function syncTaskSelection(taskId, opts){
       }).join('');
       rolePicker.innerHTML = `
         <div class="row">
-          <div class="small" style="font-weight:800">Choose role</div>
+          <div class="small font-extrabold">Choose role</div>
           <button class="btn ghost" type="button" data-act="close">✕</button>
         </div>
-        <div style="margin-top:8px">
+        <div class="mt-2">
           <select class="input" id="rpSel">${roleOptions}</select>
           <div class="quick" id="rpQuick"></div>
-          <div class="row" style="margin-top:10px;justify-content:flex-end">
+          <div class="row mt-3 justify-end">
             <button class="btn primary" type="button" data-act="apply">Apply</button>
           </div>
         </div>
@@ -3463,7 +3562,7 @@ function syncTaskSelection(taskId, opts){
         drag.seg.style.width = width + '%';
         drag.seg.title = `${blockLabel(drag.blocks[drag.idx].role)} ${UI.offsetToHM(drag.team,s)}–${UI.offsetToHM(drag.team,e2)}`;
         drag._s = s; drag._e = e2;
-        }catch(err){ console.error('RAF update error', err); }
+        }catch(err){ }
       });
     });
 
@@ -3692,14 +3791,14 @@ function syncTaskSelection(taskId, opts){
     const members = getMembersForView(selectedTeamId).filter(u=>u.role===Config.ROLES.MEMBER);
     const rows = members.map(m=>{
       const ts = notif.acks && notif.acks[m.id] ? new Date(notif.acks[m.id]).toLocaleString('en-US', { timeZone: Config.TZ }) : null;
-      return `<div style="display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid rgba(255,255,255,.10);border-radius:14px;background:rgba(255,255,255,.02);margin-bottom:8px">
-        <div><div style="font-weight:800">${UI.esc(m.name||m.username)}</div><div class="small muted">${UI.esc(m.username||'')}</div></div>
-        <div class="small" style="text-align:right">
-          ${ts ? `<span class="badge" style="color:var(--text)">✅ Acked</span><div class="small muted" style="margin-top:4px">${UI.esc(ts)}</div>` : `<span class="badge">⏳ Pending</span>`}
+      return `<div class="ack-card">
+        <div><div class="font-extrabold">${UI.esc(m.name||m.username)}</div><div class="small muted">${UI.esc(m.username||'')}</div></div>
+        <div class="small text-right">
+          ${ts ? `<span class="badge badge-ok">✅ Acked</span><div class="small muted mt-1">${UI.esc(ts)}</div>` : `<span class="badge">⏳ Pending</span>`}
         </div>
       </div>`;
     }).join('');
-    body.innerHTML = `<div class="small muted" style="margin-bottom:10px">${UI.esc(notif.title||'Schedule Updated')} • Sent ${new Date(notif.ts).toLocaleString('en-US', { timeZone: Config.TZ })}</div>${rows || '<div class="muted">No members found.</div>'}`;
+    body.innerHTML = `<div class="small muted mb-3">${UI.esc(notif.title||'Schedule Updated')} • Sent ${new Date(notif.ts).toLocaleString('en-US', { timeZone: Config.TZ })}</div>${rows || '<div class="muted">No members found.</div>'}`;
   }
 
   function latestTeamNotif(){
@@ -3722,11 +3821,11 @@ function syncTaskSelection(taskId, opts){
     body.innerHTML = entries.map(e=>{
       const ts = new Date(e.ts).toLocaleString('en-US', { timeZone: Config.TZ });
       const who = UI.esc(e.actorName||'');
-      const tgt = e.targetName ? ` • <span class="small" style="font-weight:800">${UI.esc(e.targetName)}</span>` : '';
-      const det = e.detail ? `<div class="small muted" style="margin-top:4px;white-space:pre-wrap">${UI.esc(e.detail)}</div>` : '';
+      const tgt = e.targetName ? ` • <span class="small font-extrabold">${UI.esc(e.targetName)}</span>` : '';
+      const det = e.detail ? `<div class="small muted mt-1 whitespace-pre-wrap">${UI.esc(e.detail)}</div>` : '';
       return `<div class="audit-row">
         <div class="audit-left">
-          <div style="font-weight:900">${UI.esc(e.action||'EVENT')}${tgt}</div>
+          <div class="font-black">${UI.esc(e.action||'EVENT')}${tgt}</div>
           <div class="small muted">${who}</div>
           ${det}
         </div>
@@ -3780,7 +3879,7 @@ function syncTaskSelection(taskId, opts){
     const poly = points.map((p,i)=>`${pad + i*xStep},${y(p.avg)}`).join(' ');
     body.innerHTML = `
       <div class="trend-card">
-        <div class="small muted" style="margin-bottom:10px">Average Health (Mon–Fri). Lower values usually indicate coverage gaps caused by Rest Days or Leaves.</div>
+        <div class="small muted mb-3">Average Health (Mon–Fri). Lower values usually indicate coverage gaps caused by Rest Days or Leaves.</div>
         <svg class="trend-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Health trend">
           <polyline points="${poly}" fill="none" stroke="currentColor" stroke-width="2" opacity="0.95" />
           ${points.map((p,i)=>`<circle cx="${pad + i*xStep}" cy="${y(p.avg)}" r="3" fill="currentColor" opacity="0.95" />`).join('')}
@@ -3790,9 +3889,9 @@ function syncTaskSelection(taskId, opts){
           ${points.map(p=>{
             return `<div class="trend-item">
               <div class="small muted">Week of</div>
-              <div style="font-weight:900">${UI.esc(p.ws)}</div>
-              <div class="badge" style="margin-top:6px;color:var(--text)">${UI.esc(p.avg)}%</div>
-              <div class="small muted" style="margin-top:6px">Mon–Fri: ${p.pcts.join('% / ')}%</div>
+              <div class="font-black">${UI.esc(p.ws)}</div>
+              <div class="badge badge-ok mt-2">${UI.esc(p.avg)}%</div>
+              <div class="small muted mt-2">Mon–Fri: ${p.pcts.join('% / ')}%</div>
             </div>`;
           }).join('')}
         </div>
@@ -4037,10 +4136,10 @@ function syncTaskSelection(taskId, opts){
   renderDayTabs();
   renderAll();
   })().catch((e)=>{
-    try{ console.error(e); }catch(_){ }
+    try{ }catch(_){ }
     try{
       const msg = (e && (e.stack || e.message || e)) ? String(e.stack || e.message || e) : 'Unknown error';
-      root.innerHTML = '<div class="h1">Members</div><div class="muted" style="white-space:pre-wrap">'+(UI&&UI.esc?UI.esc(msg):msg)+'</div>';
+      root.innerHTML = '<div class="h1">Members</div><div class="muted whitespace-pre-wrap">'+(UI&&UI.esc?UI.esc(msg):msg)+'</div>';
     }catch(_){ }
   });
 };
