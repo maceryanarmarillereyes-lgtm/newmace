@@ -651,6 +651,43 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   min-width:140px;
   font-weight:900;
 }
+.notification-popout .notif-count{
+  min-width:28px;
+  height:28px;
+  border-radius:999px;
+  background:rgba(56,189,248,.18);
+  color:rgba(226,232,240,.95);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-size:12px;
+  font-weight:900;
+  padding:0 8px;
+}
+.notification-popout .notif-item{
+  padding:10px 12px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(10,16,26,.45);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.02);
+}
+.notification-popout .notif-item + .notif-item{
+  margin-top:10px;
+}
+.notification-popout .notif-item-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.notification-popout .notif-item-title{
+  font-weight:800;
+  color:rgba(248,250,252,.95);
+}
+.notification-popout .notif-item-body{
+  margin-top:8px;
+  white-space:pre-wrap;
+}
 
 /* ------------------------------------------------------------------
    My Schedule — Enterprise Weekly/Daily/Team Calendar (13126-09)
@@ -1898,7 +1935,7 @@ body[data-mode="light"] .progress-tooltip{color:#555;}
 .members-page .member-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}
 .members-page .leave-actions{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
 .members-page .leave-field{display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(148,163,184,.9)}
-.members-page .leave-label{font-weight:600;letter-spacing:.01em}
+.members-page .leave-label{font-weight:600;letter-spacing:.01em;display:inline-flex;visibility:visible;opacity:1}
 .members-page .leave-select{height:28px;padding:0 8px;border-radius:10px;font-size:12px;min-width:150px}
 
 /* Members overlay background compression (~20%): reduce vertical density in key controls */
