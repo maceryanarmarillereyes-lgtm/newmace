@@ -1,16 +1,48 @@
-/* MUMS Enterprise UX Kit (Protocol v3 Final Polish) */
+/* MUMS Enterprise UX Kit (Protocol v3 Final Polish - HOTFIX) */
 
-/* 1. Settings Menu Fix (Prevent "patong-patong") */
-.members-settings-menu {
-  display: flex;
+:root{
+  --ux-radius: 18px;
+  --ux-radius-sm: 12px;
+  --ux-shadow: 0 14px 40px rgba(0,0,0,.20);
+  --ux-shadow-soft: 0 10px 26px rgba(0,0,0,.14);
+  --shift-morning: #e0f7fa; 
+  --shift-mid: #fff3e0; 
+  --shift-night: #ede7f6; 
+  --ux-focus: 0 0 0 3px rgba(99,102,241,.45);
+}
+
+/* 1. FIXED SETTINGS MENU (The "Sabog" Fix) */
+/* Container must be relative so the menu floats relative to it */
+.members-page .members-settings-dropdown {
+  position: relative;
+  z-index: 12050;
+}
+
+/* The Menu itself: Hidden by default, Floating (Absolute) */
+.members-page .members-settings-menu {
+  display: none; /* HIDE BY DEFAULT */
+  position: absolute; /* FLOAT above content */
+  top: 100%; 
+  right: 0;
+  margin-top: 8px;
   flex-direction: column;
   gap: 4px;
   padding: 6px;
   min-width: 240px;
   background: rgba(24,24,27,0.95);
   backdrop-filter: blur(12px);
-  z-index: 11020 !important;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0,0,0,.45);
+  z-index: 12050 !important;
 }
+
+/* Only SHOW when hovered or opened */
+.members-page .members-settings-dropdown:hover .members-settings-menu,
+.members-page .members-settings-dropdown.open .members-settings-menu {
+  display: flex; /* Reveal as Flexbox */
+}
+
 .reports-item {
   width: 100%;
   text-align: left;
@@ -22,6 +54,14 @@
   line-height: 1.4;
   white-space: normal;
   border-radius: 6px;
+  color: rgba(255,255,255,.92);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.reports-item:hover {
+  background: rgba(79,139,255,.10);
+  border-color: rgba(79,139,255,.22);
 }
 .reports-sep {
   height: 1px;
@@ -29,8 +69,84 @@
   margin: 4px 0;
 }
 
-/* 2. Schedule Blocks: Centered Time Labels */
+/* 2. HEADER & NAVIGATION (Unified Command Center) */
+.members-page .members-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  width: 100%;
+  position: sticky;
+  top: 0;
+  z-index: 10060;
+  background: rgba(24,24,27,0.85); /* Slightly opaque background */
+  backdrop-filter: blur(12px);
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.members-page .members-topbar-zone {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.members-page .members-topbar-zone-left {
+  flex: 1 1 300px;
+  justify-content: flex-start;
+}
+.members-page .members-topbar-zone-center {
+  flex: 0 1 auto;
+  justify-content: center;
+}
+.members-page .members-topbar-zone-right {
+  flex: 1 1 300px;
+  justify-content: flex-end;
+}
+
+/* Unified Navigation Tool */
+.members-page .members-navtool {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.4);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.members-page .members-navtool .navbtn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #e4e4e7;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  border-right: 1px solid rgba(255,255,255,0.08);
+}
+.members-page .members-navtool .navbtn:last-child {
+  border-right: none;
+}
+.members-page .members-navtool .navbtn:hover {
+  background: rgba(255,255,255,0.08);
+}
+.members-page .members-navtool .navinput {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 13px;
+  width: 140px;
+  text-align: center;
+  border-right: 1px solid rgba(255,255,255,0.08);
+  outline: none;
+}
+
+/* 3. SCHEDULE BLOCKS (Centered Time) */
 .seg {
+  position: absolute;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -38,17 +154,19 @@
   border-radius: 6px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
   z-index: 10;
+  overflow: hidden;
 }
-.seg-time {
-  position: static;
+.seg .seg-time {
+  position: relative; /* Centered by flex parent */
+  left: auto; top: auto;
   font-size: 11px;
   letter-spacing: 0.02em;
-  color: rgba(255,255,255,0.9);
-  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  color: rgba(255,255,255,0.95);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
   pointer-events: none;
 }
 
-/* 3. Compact Member Rows (High Density) */
+/* 4. COMPACT ROWS */
 .members-row.compact {
   padding: 4px 8px !important;
   gap: 8px !important;
@@ -56,8 +174,6 @@
   align-items: center;
   min-height: 48px;
 }
-
-/* Member Meta Column Layout */
 .members-meta {
   display: flex;
   flex-direction: column;
@@ -65,33 +181,11 @@
   min-width: 0;
   gap: 2px;
 }
-.m-top-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
 .m-name {
   font-size: 12px;
   font-weight: 700;
   color: #e4e4e7;
 }
-.status-pill {
-  font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.1);
-}
-
-/* Progress Bar Row */
-.m-bar-row {
-  width: 100%;
-}
-.progress-track {
-  height: 4px;
-  background: rgba(255,255,255,0.06);
-}
-
-/* Stats Row (One Line) */
 .m-stat-row {
   display: flex;
   align-items: center;
@@ -101,43 +195,23 @@
   line-height: 1;
 }
 
-/* 4. Paint Toolbar Polish */
-.members-timeline-toolbar {
-  padding: 6px 10px;
-  background: rgba(24,24,27,0.85);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  min-height: 42px;
-}
-.mtb-left {
-  gap: 8px;
-}
-/* Unified Paint/Select Buttons */
-.btn.ghost {
-  border: 1px solid transparent;
-  color: #a1a1aa;
-}
-.btn.ghost:hover {
-  background: rgba(255,255,255,0.05);
-  color: #fff;
-}
-.btn.ghost.primary { /* Active state */
-  background: rgba(6,182,212,0.15); /* Cyan tint */
-  color: #67e8f9;
-  border-color: rgba(6,182,212,0.3);
-}
-
-/* 5. Coverage Meter Cleanup */
-/* Hide the specific edit button inside coverage meter if it exists */
+/* 5. CLEANUP & HIDING */
 #coverageMeter .cov-edit, 
 #coverageMeter button[aria-label="Edit"] {
   display: none !important;
 }
+.members-page .modal {
+  z-index: 13000 !important; /* Higher than menu */
+}
 
-/* 6. Day Tabs Polish */
+/* Day Tabs Polish */
 .daytab {
   font-family: monospace; 
   font-weight: 700;
   transition: all 0.2s;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.03);
 }
 .daytab.is-on {
   background: #06b6d4; /* Cyan */
