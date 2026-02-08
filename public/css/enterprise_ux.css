@@ -1880,9 +1880,16 @@ body.members-fullscreen-active {
 .members-fullscreen-overlay .daytabs {
   flex: 0 0 auto;
 }
+.members-fullscreen-overlay .members-topbar{
+  padding:10px 12px;
+  gap:12px;
+}
+.members-fullscreen-overlay .members-topbar-zone-right{
+  gap:10px;
+}
 
 .members-fullscreen-overlay .members-enterprise-grid {
-  --members-gap: 16px;
+  --members-gap: 12px;
   --members-left: 280px;
   --members-right: 320px;
 
@@ -2145,6 +2152,18 @@ body:not(.members-fullscreen-active) #membersSplitRight,
 body:not(.members-fullscreen-active) #membersAnalyticsRail{
   display:none;
 }
+body:not(.members-fullscreen-active) .members-topbar{
+  padding:10px 12px;
+  gap:12px;
+}
+body:not(.members-fullscreen-active) .members-topbar-zone-right{
+  gap:10px;
+}
+body:not(.members-fullscreen-active) .members-timeline-toolbar .hint,
+body:not(.members-fullscreen-active) .members-tip{
+  display:none;
+}
+.members-page .week-warn{ margin-top:6px; }
 .members-fullscreen-overlay #membersAnalyticsRail{
   display:flex;
 }
@@ -2191,6 +2210,17 @@ body:not(.members-fullscreen-active) #membersAnalyticsRail{
 .members-page .input:focus{
   border-color: rgba(59,130,246,0.6);
   box-shadow: 0 0 0 4px rgba(59,130,246,0.15);
+}
+.members-page #paintRole{
+  --paint-dot-color: transparent;
+  padding-left: 26px;
+  background-image: radial-gradient(circle at 8px center, var(--paint-dot-color, transparent) 0 5px, transparent 6px);
+  background-repeat: no-repeat;
+  background-position: 6px center;
+  background-size: 18px 100%;
+}
+.members-page #paintRole option{
+  padding-left: 26px;
 }
 
 .btn{

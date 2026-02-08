@@ -109,12 +109,13 @@ window.Pages.members = function(root){
     if(!c) return '';
     const safe = UI.esc(c);
     return [
-      'background-image: radial-gradient(circle at 10px center, ',
+      'background-image: radial-gradient(circle at 8px center, ',
       safe,
       ' 0 5px, transparent 6px)',
       '; background-repeat: no-repeat;',
       ' background-position: 6px center;',
-      ' padding-left: 24px;'
+      ' background-size: 18px 100%;',
+      ' padding-left: 26px;'
     ].join('');
   }
 
@@ -1468,6 +1469,18 @@ container.innerHTML = `
   // Option B: keep legend chips in the sticky timeline toolbar.
   let selectionMode = false;
 
+  function syncPaintRoleSwatch(roleSel){
+    if(!roleSel) return;
+    const meta = taskMeta(selectedTeamId, roleSel.value) || {};
+    const label = meta.label || roleSel.value || '';
+    const color = meta.color || meta.bg || meta.background || fallbackColorForLabel(label);
+    if(color){
+      roleSel.style.setProperty('--paint-dot-color', color);
+    }else{
+      roleSel.style.removeProperty('--paint-dot-color');
+    }
+  }
+
   function syncTimelineToolbarUI(){
     const paintBtn = wrap.querySelector('#paintToggle');
     const roleSel = wrap.querySelector('#paintRole');
@@ -1491,6 +1504,7 @@ container.innerHTML = `
         roleSel.dataset.teamKey = teamKey;
       }
       roleSel.value = paint.role;
+      syncPaintRoleSwatch(roleSel);
       if(!roleSel.dataset.bound){
         roleSel.dataset.bound = '1';
         roleSel.onchange = ()=>{
@@ -1499,6 +1513,7 @@ container.innerHTML = `
           paint.role = v;
           // Paint dropdown directly drives Graph Panel task comparison.
           syncTaskSelection(v, { render:true, persist:true });
+          syncPaintRoleSwatch(roleSel);
         };
       }
     }
@@ -4103,40 +4118,65 @@ function notifyPastWeekLocked(){
         return changes;
       };
 
-      const buildMessage = (changes)=>{
-        if(!changes || !changes.length){
-          return 'Schedule Updated.';
+      const buildScheduleLines = (snap)=>{
+        const days = (snap && snap.days) ? snap.days : {};
+        const lines = [];
+        for(let d=0; d<7; d++){
+          const iso = isoForDay(d);
+          const blocks = Array.isArray(days[String(d)]) ? days[String(d)].slice() : [];
+          const label = (UI && UI.DAYS && UI.DAYS[d]) ? UI.DAYS[d] : `Day ${d+1}`;
+          if(!blocks.length){
+            lines.push(`• ${label} (${iso}): No assignments.`);
+            continue;
+          }
+          blocks.sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
+          const desc = blocks.map(b=>`${blockLabel(b.role)} (${b.start}-${b.end})`).join(', ');
+          lines.push(`• ${label} (${iso}): ${desc}`);
         }
-        const first = changes[0];
-        const dateLong = formatLongDate(first.iso);
-        let primary = null;
-        let action = '';
-        if(first.added && first.added.length){
-          primary = first.added[0];
-          action = 'added';
-        }else if(first.removed && first.removed.length){
-          primary = first.removed[0];
-          action = 'removed';
+        return lines;
+      };
+
+      const buildMessage = (changes, snap)=>{
+        const summaryDate = formatLongDate(weekStartISO);
+        let summary = `Schedule Assigned for week of ${summaryDate}.`;
+        if(changes && changes.length){
+          const first = changes[0];
+          const dateLong = formatLongDate(first.iso);
+          let primary = null;
+          let action = '';
+          if(first.added && first.added.length){
+            primary = first.added[0];
+            action = 'added';
+          }else if(first.removed && first.removed.length){
+            primary = first.removed[0];
+            action = 'removed';
+          }
+          const label = primary ? blockLabel(primary.role) : 'Changes';
+          const extra = Math.max(0, changes.reduce((a,c)=>a+((c.added||[]).length+(c.removed||[]).length),0) - 1);
+          const extraTxt = extra ? ` (and ${extra} more change${extra===1?'':'s'})` : '';
+          summary = `Schedule Updated: ${label} ${action || 'updated'} on ${dateLong}.${extraTxt}`;
         }
-        const label = primary ? blockLabel(primary.role) : 'Changes';
-        const tRange = primary ? ` (${primary.start}-${primary.end})` : '';
-        const extra = Math.max(0, changes.reduce((a,c)=>a+((c.added||[]).length+(c.removed||[]).length),0) - 1);
-        const extraTxt = extra ? ` (and ${extra} more change${extra===1?'':'s'})` : '';
-        const summary = `Schedule Updated: ${label} ${action || 'updated'} on ${dateLong}.${extraTxt}`;
 
         const lines = [summary];
-        const details = [];
-        for(const ch of changes.slice(0, 4)){
-          const dLong = formatLongDate(ch.iso);
-          for(const a of (ch.added||[]).slice(0, 4)){
-            details.push(`• Added: ${blockLabel(a.role)} (${a.start}-${a.end}) — ${dLong}`);
+        if(changes && changes.length){
+          const details = [];
+          for(const ch of changes.slice(0, 4)){
+            const dLong = formatLongDate(ch.iso);
+            for(const a of (ch.added||[]).slice(0, 4)){
+              details.push(`• Added: ${blockLabel(a.role)} (${a.start}-${a.end}) — ${dLong}`);
+            }
+            for(const r of (ch.removed||[]).slice(0, 4)){
+              details.push(`• Removed: ${blockLabel(r.role)} (${r.start}-${r.end}) — ${dLong}`);
+            }
           }
-          for(const r of (ch.removed||[]).slice(0, 4)){
-            details.push(`• Removed: ${blockLabel(r.role)} (${r.start}-${r.end}) — ${dLong}`);
+          if(details.length){
+            lines.push('', 'Changes:', ...details);
           }
         }
-        if(details.length){
-          lines.push('', 'Details:', ...details);
+
+        const scheduleLines = buildScheduleLines(snap);
+        if(scheduleLines.length){
+          lines.push('', 'Schedule details:', ...scheduleLines);
         }
         lines.push('', 'Please acknowledge.');
         return lines.join('\n');
@@ -4155,20 +4195,15 @@ function notifyPastWeekLocked(){
         snapshots[m.id] = curSnap;
 
         const prevHash = prevHashes[m.id];
-        if(prevHash && String(prevHash) === String(curHash)) continue; // unchanged
-
         const changes = diffSnap(prevSnapshots[m.id], curSnap);
-        if(!changes.length && prevHash) continue; // same content but no diff (guard)
-
         recipients.push(m.id);
-        userMessages[m.id] = buildMessage(changes);
-        for(const ch of changes){ affectedDates.add(ch.iso); }
+        userMessages[m.id] = buildMessage(changes, curSnap);
+        if(changes.length){
+          for(const ch of changes){ affectedDates.add(ch.iso); }
+        }
       }
 
-      if(!recipients.length){
-        UI.toast('No member schedule changes detected for this week. Nothing to send.', 'info');
-        return;
-      }
+      if(!recipients.length) return;
 
       const notif = {
         id: (crypto && crypto.randomUUID) ? crypto.randomUUID() : ('n-'+Date.now()+Math.random().toString(16).slice(2)),
