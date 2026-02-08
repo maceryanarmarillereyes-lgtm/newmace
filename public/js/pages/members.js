@@ -1341,11 +1341,29 @@ container.innerHTML = `
   }
 
   function renderWeekWarning(){
-    const warn = wrap.querySelector('#weekWarn');
-    if(!warn) return;
-    const nowWeek = currentWeekStartISO();
     const lock = getTeamLock(selectedTeamId);
     const lockedMonFri = !!(lock && lock.lockedDays && [1,2,3,4,5].some(d=>lock.lockedDays[String(d)]));
+
+    // Header controls (lead/admin only; may not exist for read-only roles)
+    const unlockBtn = wrap.querySelector('#unlockSchedule');
+    const lockBadge = wrap.querySelector('#lockBadge');
+    const autoBtn = wrap.querySelector('#autoSchedule');
+
+    // Toggle visibility based on lock state
+    if(lockedMonFri){
+      if(unlockBtn) unlockBtn.classList.remove('hidden');
+      if(lockBadge) lockBadge.classList.remove('hidden');
+      if(autoBtn) autoBtn.classList.add('hidden');
+    }else{
+      if(unlockBtn) unlockBtn.classList.add('hidden');
+      if(lockBadge) lockBadge.classList.add('hidden');
+      if(autoBtn) autoBtn.classList.remove('hidden');
+    }
+
+    const warn = wrap.querySelector('#weekWarn');
+    if(!warn) return;
+
+    const nowWeek = currentWeekStartISO();
     const isPast = String(weekStartISO) < String(nowWeek);
     const isFuture = String(weekStartISO) > String(nowWeek);
 

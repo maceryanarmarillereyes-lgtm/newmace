@@ -3321,3 +3321,47 @@ body.members-fullscreen-active .members-timeline-toolbar{
 .members-page #coverageMeter{ z-index:10800 !important; }
 .members-page .modal{ z-index:99999 !important; }
 .members-page .modal-backdrop{ z-index:99998 !important; }
+
+
+/* =======================================================================
+   Protocol v8: UI Refinement & Logic Hardening
+   - Move padding from schedule card to scroll container so toolbar is flush
+   - Constrain dropdown widths so paint select doesn’t stretch full row
+   ======================================================================= */
+
+/* 1) Padding migration: make toolbar flush to card edges */
+.members-page #schedulePane{
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+}
+.members-page .members-timeline-scroll{
+  padding: 12px !important;
+}
+.members-page #schedulePane .members-timeline-toolbar{
+  margin: 0 !important;
+  border-top-left-radius: var(--ux-radius, 18px);
+  border-top-right-radius: var(--ux-radius, 18px);
+}
+
+/* 2) Dropdown sizing: prevent paint dropdown from expanding too wide */
+.members-page .members-timeline-toolbar select.input{
+  width: auto !important;
+  min-width: 140px;
+  max-width: 400px;
+  flex: 0 0 auto;
+}
+
+/* 3) Ensure select controls don’t collapse too small elsewhere */
+.members-page .members-topbar select.input{
+  min-width: 160px;
+}
+.members-page .members-roster select.input{
+  min-width: 90px;
+}
+
+/* 4) Fullscreen scroll padding: keep comfortable spacing under sticky bars */
+.members-fullscreen-overlay .members-timeline-scroll{
+  padding-top: 12px !important;
+}
+
