@@ -3364,3 +3364,120 @@ body.members-fullscreen-active .members-timeline-toolbar{
   padding-top: 12px !important;
 }
 
+
+/* ========================================================================== */
+/* Protocol v11: Fullscreen Flush Alignment & Interaction Fix                  */
+/* ========================================================================== */
+
+/* 1) Header must stay visible + clickable in fullscreen */
+body.members-fullscreen-active .members-topbar{
+  display: flex !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 11000 !important; /* above fullscreen overlay content */
+  pointer-events: auto !important;
+  width: 100% !important;
+  border-radius: 0 !important;
+  border-top: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+
+/* 2) Paint Bar: remove inset margin + force flush width in fullscreen */
+.members-fullscreen-overlay .members-timeline-toolbar,
+body.members-fullscreen-active .members-timeline-toolbar{
+  top: 58px !important;           /* align directly under header */
+  margin: 0 !important;           /* removes the fullscreen gap */
+  width: 100% !important;
+  border-radius: 0 !important;    /* strict rectangular corners */
+  border-left: 0 !important;
+  border-right: 0 !important;
+  z-index: 10900 !important;
+  pointer-events: auto !important;
+}
+
+/* 3) Defensive: ensure the fullscreen overlay wrapper never blocks clicks */
+.members-fullscreen-overlay{
+  pointer-events: none !important;
+}
+.members-fullscreen-overlay > *{
+  pointer-events: auto !important;
+}
+
+/* ========================================================================== */
+/* Protocol v11: Fullscreen Flush Alignment & Interaction Fix                  */
+/* ========================================================================== */
+
+/* 1) Header must stay visible + clickable in fullscreen */
+body.members-fullscreen-active .members-topbar{
+  display: flex !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 11000 !important;
+  pointer-events: auto !important;
+  width: 100% !important;
+  border-radius: 0 !important;
+  border-top: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+
+/* 2) Paint bar must be flush + clickable in fullscreen */
+.members-fullscreen-overlay .members-timeline-toolbar,
+body.members-fullscreen-active .members-timeline-toolbar{
+  top: 58px !important;
+  margin: 0 !important;
+  width: 100% !important;
+  border-radius: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  z-index: 10900 !important;
+  pointer-events: auto !important;
+}
+
+/* 3) Prevent transparent fullscreen overlay container from blocking clicks */
+.members-fullscreen-overlay{
+  pointer-events: none !important;
+}
+.members-fullscreen-overlay > *{
+  pointer-events: auto !important;
+}
+
+/* ========================================================================== */
+/* Protocol v11: Fullscreen Flush Alignment & Interaction Fix                  */
+/* ========================================================================== */
+
+/* 1) Header must stay visible + clickable in fullscreen */
+body.members-fullscreen-active .members-topbar{
+  display: flex !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 11000 !important;
+  pointer-events: auto !important;
+  width: 100% !important;
+  border-radius: 0 !important;
+  border-top: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+
+/* 2) Toolbar must be flush + clickable in fullscreen */
+.members-fullscreen-overlay .members-timeline-toolbar,
+body.members-fullscreen-active .members-timeline-toolbar{
+  top: 58px !important;        /* aligns under header */
+  margin: 0 !important;        /* removes fullscreen gap */
+  width: 100% !important;
+  border-radius: 0 !important; /* square corners */
+  border-left: 0 !important;
+  border-right: 0 !important;
+  z-index: 10900 !important;
+  pointer-events: auto !important;
+}
+
+/* 3) Ensure overlay container never blocks clicks */
+.members-fullscreen-overlay{
+  pointer-events: none !important;
+}
+.members-fullscreen-overlay > *{
+  pointer-events: auto !important;
+}
