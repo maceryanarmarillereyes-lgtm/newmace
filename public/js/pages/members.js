@@ -3148,17 +3148,8 @@ function notifyPastWeekLocked(){
         if(!row) return;
         const userId = row.dataset.id;
         const iso = row.dataset.iso || isoForDay(selectedDay);
-        const cur = Store.getLeave ? Store.getLeave(userId, iso) : null;
         const want = String(sel.value||'').toUpperCase();
         const next = want || null;
-        if(cur && !next){
-          const label = ({SICK:'Sick Leave',EMERGENCY:'Emergency Leave',VACATION:'Vacation Leave',HOLIDAY:'Holiday Leave'}[cur.type] || 'Leave');
-          const ok = await UI.confirm({ title:'Remove Status', message:`Remove ${label} status for this member on ${iso}?`, okText:'Remove', danger:true });
-          if(!ok){
-            sel.value = cur.type || '';
-            return;
-          }
-        }
         try{
           Store.setLeave(userId, iso, next, { setBy: me.id, setByName: me.name||me.username });
           if(next){
@@ -4237,12 +4228,13 @@ function notifyPastWeekLocked(){
         return lines.join('\n');
       };
 
-      const recipients = [];
+      const recipients = new Set();
       const userMessages = {};
       const userSummaries = {};
       const snapshotHashes = {};
       const snapshots = {};
       const affectedDates = new Set();
+      let hasAnyChanges = false;
 
       const hasAssignments = (snap)=>{
         const days = (snap && snap.days) ? snap.days : {};
@@ -4257,21 +4249,33 @@ function notifyPastWeekLocked(){
 
         const prevHash = prevHashes[m.id];
         const changes = diffSnap(prevSnapshots[m.id], curSnap);
-        recipients.push(m.id);
         userMessages[m.id] = buildMessage(changes, curSnap);
         userSummaries[m.id] = buildSummaryForUser(curSnap, changes);
         const assigned = hasAssignments(curSnap);
         if(assigned || changes.length){
-          recipients.push(m.id);
-          userMessages[m.id] = buildMessage(changes, curSnap);
+          recipients.add(m.id);
         }
         if(changes.length){
+          hasAnyChanges = true;
           for(const ch of changes){ affectedDates.add(ch.iso); }
         }
       }
 
-      if(!recipients.length){
+      const recipientList = Array.from(recipients);
+      if(!recipientList.length){
         alert('No members have assigned schedules to notify for this week.');
+        return;
+      }
+
+      const buildSnapshotDigest = (hashes, ids)=>{
+        const keys = (ids && ids.length) ? ids.slice().sort() : Object.keys(hashes||{}).sort();
+        const rows = keys.map(k=>`${k}:${String(hashes[k]||'')}`);
+        const raw = rows.join('|');
+        return Store._hash ? Store._hash(raw) : raw;
+      };
+      const snapshotDigest = buildSnapshotDigest(snapshotHashes, recipientList);
+      if(prev && prev.weekStartISO === weekStartISO && String(prev.snapshotDigest||'') === String(snapshotDigest)){
+        UI.toast('No new schedule updates to notify. All members already have the latest schedule.', 'info');
         return;
       }
 
@@ -4284,12 +4288,14 @@ function notifyPastWeekLocked(){
         fromName: me.name||me.username,
         title: 'Schedule Updated',
         body: `Schedule updates were applied for week of ${weekStartISO}. Please acknowledge.`,
-        recipients,
+        recipients: recipientList,
         acks: {},
         userMessages,
         userSummaries,
         snapshotHashes,
-        snapshots
+        snapshots,
+        snapshotDigest,
+        hasAnyChanges
       };
 
       Store.addNotif(notif);
