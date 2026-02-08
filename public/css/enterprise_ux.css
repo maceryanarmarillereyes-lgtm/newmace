@@ -2224,6 +2224,9 @@ body:not(.members-fullscreen-active) .members-enterprise-grid{
 }
 .members-page #paintRole option{
   padding-left: 26px;
+  background-repeat: no-repeat;
+  background-position: 6px center;
+  background-size: 18px 100%;
 }
 
 .btn{
@@ -3600,4 +3603,58 @@ body.members-fullscreen-active .members-analytics-rail *{
 .members-fullscreen-overlay .card{
   background: rgba(10, 16, 26, 0.72);
   box-shadow: 0 12px 28px rgba(0,0,0,0.3);
+}
+
+/* ========================================================================== */
+/* Protocol v13: Members Overlay Stack + Compact Layout                        */
+/* ========================================================================== */
+.members-page .modal,
+.members-page .confirm-modal{
+  z-index: 14000 !important;
+}
+.members-page .modal-backdrop{
+  z-index: 13900 !important;
+}
+.members-page .members-settings-menu,
+.members-page .reports-menu,
+.members-page .dropdown-menu{
+  z-index: 13500 !important;
+}
+.members-fullscreen-overlay{
+  z-index: 12000 !important;
+}
+.members-fullscreen-overlay .members-topbar{
+  z-index: 12500 !important;
+}
+.members-fullscreen-overlay .members-timeline-toolbar{
+  z-index: 12400 !important;
+}
+
+.members-page .members-topbar{
+  padding: 10px 12px;
+}
+.members-roster-header{
+  gap: 8px;
+  padding: 10px 12px 8px;
+}
+.roster-searchbar{
+  padding: 6px 8px;
+}
+.roster-item{
+  padding: 8px 10px;
+}
+.members-timeline-toolbar{
+  padding: 8px 10px;
+}
+.members-timeline-scroll{
+  padding: 8px 10px;
+}
+.coverage-panel{
+  padding: 8px 10px;
+}
+.timeline-ruler{
+  margin-top: 8px;
+}
+.members-row + .members-row{
+  margin-top: 8px;
 }

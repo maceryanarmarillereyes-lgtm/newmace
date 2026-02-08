@@ -95,13 +95,22 @@ window.Pages.members = function(root){
   }
 
   function fallbackColorForLabel(label){
-    const l = String(label||'').toLowerCase();
-    if(l.includes('mailbox')) return '#4aa3ff';
-    if(l.includes('call')) return '#2ecc71';
-    if(l.includes('back')) return '#ffa21a';
-    if(l.includes('lunch')) return '#22d3ee';
-    if(l.includes('break')) return '#22d3ee';
-    if(l.includes('block')) return '#ff4d4f';
+    const l = String(label||'').toLowerCase().trim();
+    const palette = {
+      'mailbox manager': '#4aa3ff',
+      'back office': '#ffa21a',
+      'call available': '#2ecc71',
+      'lunch': '#22d3ee',
+      'break': '#22d3ee',
+      'block': '#ff4d4f'
+    };
+    if(palette[l]) return palette[l];
+    if(l.includes('mailbox')) return palette['mailbox manager'];
+    if(l.includes('back')) return palette['back office'];
+    if(l.includes('call')) return palette['call available'];
+    if(l.includes('lunch')) return palette.lunch;
+    if(l.includes('break')) return palette.break;
+    if(l.includes('block')) return palette.block;
     return '#64748b';
   }
 
@@ -4189,6 +4198,11 @@ function notifyPastWeekLocked(){
       const snapshots = {};
       const affectedDates = new Set();
 
+      const hasAssignments = (snap)=>{
+        const days = (snap && snap.days) ? snap.days : {};
+        return Object.values(days).some(dayBlocks => Array.isArray(dayBlocks) && dayBlocks.length);
+      };
+
       for(const m of members){
         const curSnap = snapForUser(m.id);
         const curHash = (Store._hash ? Store._hash(JSON.stringify(curSnap)) : String(Date.now()));
@@ -4197,14 +4211,20 @@ function notifyPastWeekLocked(){
 
         const prevHash = prevHashes[m.id];
         const changes = diffSnap(prevSnapshots[m.id], curSnap);
-        recipients.push(m.id);
-        userMessages[m.id] = buildMessage(changes, curSnap);
+        const assigned = hasAssignments(curSnap);
+        if(assigned || changes.length){
+          recipients.push(m.id);
+          userMessages[m.id] = buildMessage(changes, curSnap);
+        }
         if(changes.length){
           for(const ch of changes){ affectedDates.add(ch.iso); }
         }
       }
 
-      if(!recipients.length) return;
+      if(!recipients.length){
+        alert('No members have assigned schedules to notify for this week.');
+        return;
+      }
 
       const notif = {
         id: (crypto && crypto.randomUUID) ? crypto.randomUUID() : ('n-'+Date.now()+Math.random().toString(16).slice(2)),
