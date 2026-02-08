@@ -3464,8 +3464,8 @@ body.members-fullscreen-active .members-topbar{
 /* 2) Toolbar must be flush + clickable in fullscreen */
 .members-fullscreen-overlay .members-timeline-toolbar,
 body.members-fullscreen-active .members-timeline-toolbar{
-  top: 58px !important;        /* aligns under header */
-  margin: 0 !important;        /* removes fullscreen gap */
+  top: 0 !important;        /* flush to the card edge */
+  margin: 0 !important;     /* removes fullscreen gap */
   width: 100% !important;
   border-radius: 0 !important; /* square corners */
   border-left: 0 !important;
@@ -3476,8 +3476,5 @@ body.members-fullscreen-active .members-timeline-toolbar{
 
 /* 3) Ensure overlay container never blocks clicks */
 .members-fullscreen-overlay{
-  pointer-events: none !important;
-}
-.members-fullscreen-overlay > *{
   pointer-events: auto !important;
 }
