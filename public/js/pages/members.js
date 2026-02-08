@@ -302,48 +302,39 @@ function syncTaskSelection(taskId, opts){
   }
 
   function renderDayTabs(){
-    const tabs = wrap.querySelector('#dayTabs');
-    if(!tabs) return;
-    const teamId = selectedTeamId;
-    const lock = getTeamLock(teamId);
-    const lockedMonFri = !!(lock && lock.lockedDays && [1,2,3,4,5].some(d=>lock.lockedDays[String(d)]));
-    tabs.innerHTML = UI.DAYS.map((d,i)=>{
-      const active = i===selectedDay ? 'active' : '';
-      const has = dayHasAnyBlocks(teamId, i);
-      const locked = isDayLocked(teamId, i);
-      const dot = has ? '<span class="dot"></span>' : '';
-      const lk = locked ? '<span class="lock" role="img" aria-label="Locked" title="Locked">🔒</span>' : '';
-      return `<button class="daytab ${active}" data-day="${i}" type="button">${UI.esc(d.slice(0,3))}${dot}${lk}</button>`;
-    }).join('');
-    tabs.querySelectorAll('button.daytab').forEach(b=>{
-      b.onclick = ()=>{
-        selectedDay = Number(b.dataset.day);
-        triggerSwap();
-        renderDayTabs();
-        renderAll();
-      };
-    });
+  const tabs = document.getElementById('dayTabs');
+  if(!tabs) return;
 
-    const badge = wrap.querySelector('#lockBadge');
-    const unlockBtn = wrap.querySelector('#unlockSchedule');
-    const autoBtn = wrap.querySelector('#autoSchedule');
-    const previewBtn = wrap.querySelector('#previewAuto');
-    const autoSettingsBtn = wrap.querySelector('#autoSettings');
-    const coverageSettingsBtn = wrap.querySelector('#coverageSettingsBtn');
-    if(badge) badge.classList.toggle('hidden', !lockedMonFri);
-    // If the week is locked, require a fresh unlock action before any edits.
-    if(lockedMonFri) unlockTriggered = false;
-    const canUnlock = lockedMonFri && (isLead || isAdmin || isSuper);
-    if(unlockBtn) unlockBtn.classList.toggle('hidden', !canUnlock);
-    // When locked, prevent accidental re-apply until unlocked
-    const lockDisable = !!lockedMonFri;
-    if(autoBtn) autoBtn.disabled = lockDisable;
-    if(previewBtn) previewBtn.disabled = lockDisable;
-    if(autoSettingsBtn) autoSettingsBtn.disabled = lockDisable;
-    if(coverageSettingsBtn) coverageSettingsBtn.disabled = lockDisable;
+  const teamId = selectedTeamId;
+  tabs.innerHTML = UI.DAYS.map((d,i)=>{
+    const active = (i===selectedDay) ? 'is-on' : '';
+    const iso = isoForDay(i);
+    const dd = Number(String(iso||'').slice(8,10)) || 0;
+    const label = `[${dd}] ${String(d||'').slice(0,3)}`;
 
-    renderWeekWarning();
-  }
+    const has = dayHasAnyBlocks(teamId, i);
+    const dot = has ? '<span class="tab-dot" title="Has blocks"></span>' : '';
+    const locked = isDayLocked(teamId, i);
+    const lockIcon = locked ? '<span class="tab-lock" title="Locked">🔒</span>' : '';
+
+    return `<button class="daytab ${active}" data-day="${i}" type="button">${UI.esc(label)}${dot}${lockIcon}</button>`;
+  }).join('');
+
+  tabs.querySelectorAll('.daytab').forEach(b=>{
+    b.onclick = ()=>{
+      selectedDay = Number(b.dataset.day);
+      triggerSwap();
+      renderDayTabs();
+      renderAll();
+    };
+  });
+
+  const weekInp = document.getElementById('weekSelect');
+  if(weekInp && weekInp.value !== weekStartISO) weekInp.value = weekStartISO;
+
+  renderWeekWarning();
+}
+
 
   // 12-hour clock label (for ruler)
   function to12h(hm){
@@ -355,13 +346,12 @@ function syncTaskSelection(taskId, opts){
     return `${h12}:${String(mm).padStart(2,'0')} ${ap}`;
   }
 function compactTimeLabel(hm){
-  try{
-    const mins = UI.parseHM(hm);
-    const hh = Math.floor(mins/60) % 24;
-    const ap = hh >= 12 ? 'P' : 'A';
-    const h12 = ((hh + 11) % 12) + 1;
-    return `${h12}${ap}`;
-  }catch(_e){
+  const mins = UI.parseHM(hm);
+  const hh = Math.floor(mins/60) % 24;
+  const ap = hh >= 12 ? 'PM' : 'AM';
+  const h12 = ((hh + 11) % 12) + 1;
+  return `${h12}-${ap}`;
+}catch(_e){
     return '';
   }
 }
@@ -554,12 +544,7 @@ function compactTimeLabel(hm){
           <div class="members-sub text-zinc-400">Plan coverage by assigning time blocks (Sun–Sat). Timeline view shows the whole team shift.</div>
         </div>
 
-        <label class="members-field members-teamfield">
-          <span class="label text-zinc-400">Team</span>
-          <select class="input" id="teamSelect" aria-label="Select team">
-            ${Config.TEAMS.map(t=>`<option value="${t.id}">${UI.esc(t.label)}</option>`).join('')}
-          </select>
-        </label>
+        
       </div>
 
       <!-- Zone 2: Center (Week Navigation) -->
@@ -575,6 +560,13 @@ function compactTimeLabel(hm){
 
       <!-- Zone 3: Right (Unified Actions) -->
       <div class="members-topbar-zone members-topbar-zone-right" aria-label="Header actions">
+        <label class="members-field members-teamfield">
+          <span class="label text-zinc-400">Team</span>
+          <select class="input" id="teamSelect" aria-label="Select team">
+            ${Config.TEAMS.map(t=>`<option value="${t.id}">${UI.esc(t.label)}</option>`).join('')}
+          </select>
+        </label>
+
         <button class="btn ghost" id="membersFullscreenBtn" type="button" aria-pressed="false" title="Toggle fullscreen overlay">⛶ Fullscreen</button>
 
         ${(isLead||isAdmin) ? `
@@ -3005,9 +2997,8 @@ function notifyPastWeekLocked(){
               <div class="progress-track">
                 <div class="progress-bar ${UI.esc(prog.cls||'progress-green')}" style="width:${Math.max(0, Math.min(100, Number(prog.pct)||0))}%"></div>
               </div>
-              <span class="progress-text">${UI.esc(prog.pctText||'')}</span>
-              <div class="progress-tooltip">${UI.esc(prog.taskHoursTooltip||'')}</div>
-            </div>
+              <span class="progress-text" title="${UI.esc(prog.taskHoursTooltip||'')}">${UI.esc(((prog.taskHoursTooltip||'') ? (prog.taskHoursTooltip + ' • ') : '') + (prog.pctText||''))}</span>
+</div>
           </div>
           <div>
             <div class="member-task-stats" aria-label="Weekly workload">Mailbox: ${ws.mailboxH}h • Back Office: ${ws.backOfficeH}h • Call: ${ws.callAvailableH}h • Cases: ${ws.caseAssigned}</div>

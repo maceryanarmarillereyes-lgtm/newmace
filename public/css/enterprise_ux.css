@@ -3093,3 +3093,189 @@ body.members-fullscreen-active .members-topbar,
 @media (max-width: 520px){
   .members-page .members-navtool{ overflow-x: auto; }
 }
+
+
+
+/* ───────────────────────────────────────────────────────────
+   MUMS Members — Protocol v4 (Enterprise Overhaul) Overrides
+   ─────────────────────────────────────────────────────────── */
+
+/* Header: 3-zone layout (Title | Week Nav | Team + Actions) */
+.members-page .members-topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:nowrap;
+  width:100%;
+  position:sticky;
+  top:0;
+  z-index:10060;
+  background:rgba(24,24,27,0.85);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(255,255,255,0.08);
+  overflow:visible; /* allow dropdowns */
+}
+.members-page .members-topbar-zone{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-width:0;
+  overflow:visible;
+}
+.members-page .members-topbar-zone-left{ flex:0 0 auto; }
+.members-page .members-topbar-zone-center{ flex:1 1 auto; justify-content:center; }
+.members-page .members-topbar-zone-right{
+  flex:0 0 auto;
+  justify-content:flex-end;
+  flex-wrap:nowrap;
+}
+
+/* Reduce left title footprint so right controls don't get pushed off (>=1280px laptops) */
+.members-page .members-title-stack{ min-width:0; max-width:320px; }
+@media (max-width: 1400px){
+  .members-page .members-title-stack .members-sub{ display:none; }
+}
+
+/* Team dropdown sizing inside right zone */
+.members-page .members-teamfield{ min-width:180px; }
+.members-page .members-teamfield select{
+  max-width:220px;
+  min-width:180px;
+}
+
+/* Center: unified nav */
+.members-page .members-navtool{
+  display:flex;
+  align-items:stretch;
+  border:1px solid rgba(255,255,255,0.12);
+  background:rgba(0,0,0,0.40);
+  border-radius:10px;
+  overflow:hidden;
+}
+.members-page .members-navtool .navbtn,
+.members-page .members-navtool .navinput{
+  border:0;
+  background:transparent;
+  color:#e4e4e7;
+  padding:8px 12px;
+  font-weight:700;
+  font-size:13px;
+  white-space:nowrap;
+}
+.members-page .members-navtool .navinput{
+  color:#fff;
+  width:140px;
+  text-align:center;
+  border-left:1px solid rgba(255,255,255,0.08);
+  border-right:1px solid rgba(255,255,255,0.08);
+}
+.members-page .members-navtool .navbtn:hover{ background:rgba(255,255,255,0.08); }
+.members-page .members-navtool .navbtn-accent{ color:#67e8f9 !important; }
+
+/* Responsive: allow wrap under 1280px */
+@media (max-width: 1279px){
+  .members-page .members-topbar{ flex-wrap:wrap; }
+  .members-page .members-topbar-zone-center{ order:3; width:100%; }
+  .members-page .members-topbar-zone-right{ order:2; width:100%; justify-content:flex-end; flex-wrap:wrap; }
+}
+
+/* Paint Toolbar: command strip at top of schedule card */
+.members-page .members-timeline-toolbar{
+  position:sticky;
+  top:58px; /* sits under the sticky topbar */
+  z-index:10120;
+  margin:0;
+  border-radius:16px 16px 0 0;
+  background:rgba(20,20,23,0.95);
+  border:1px solid rgba(255,255,255,0.10);
+  border-bottom:1px solid rgba(255,255,255,0.08);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+}
+.members-page .members-timeline-toolbar .mtb-left{ gap:10px; }
+.members-page .members-timeline-toolbar select.input{ min-width:220px; }
+
+/* Coverage meter: sticky directly below paint bar */
+.members-page #coverageMeter.coverage-sticky{
+  position:sticky;
+  top:0;
+  z-index:10110;
+  background:rgba(10,16,26,0.88);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid rgba(255,255,255,0.08);
+}
+
+/* Day tabs: [DD] Day */
+.members-page .daytabs{
+  display:flex;
+  gap:6px;
+  padding:8px 12px;
+  overflow-x:auto;
+}
+.members-page .daytab{
+  appearance:none;
+  background:rgba(255,255,255,0.03);
+  border:1px solid rgba(255,255,255,0.10);
+  border-radius:8px;
+  padding:6px 12px;
+  color:#a1a1aa;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight:800;
+  font-size:12px;
+  cursor:pointer;
+  transition:all .18s ease;
+}
+.members-page .daytab:hover{ background:rgba(255,255,255,0.08); }
+.members-page .daytab.is-on{
+  background:#06b6d4;
+  color:#000;
+  border-color:#06b6d4;
+  box-shadow:0 0 15px rgba(6,182,212,0.35);
+}
+
+/* Blocks: centered time label + slightly transparent to show grid lines */
+.members-page .seg{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  opacity:0.9;
+}
+.members-page .seg .seg-time{
+  font-size:11px;
+  letter-spacing:0.02em;
+  text-align:center;
+  white-space:nowrap;
+}
+
+/* Compact rows: remove extra stats line + merge hours & percent in one line */
+.members-page .member-task-stats{ display:none !important; }
+.members-page .members-row{
+  padding:6px 10px;
+}
+.members-page .members-row .members-meta{
+  gap:4px;
+}
+.members-page .members-row .member-name{
+  font-size:13px;
+  line-height:1.15;
+}
+.members-page .members-row .member-progress{
+  margin-top:2px;
+}
+.members-page .members-row .progress-text{
+  font-size:10px;
+  line-height:1.1;
+  color:rgba(229,231,235,0.88);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* Cleanup: hide coverage edit pencil if present */
+#coverageMeter .cov-edit,
+#coverageMeter button[aria-label="Edit"]{ display:none !important; }
+
+/* Modals above everything */
+.members-page .modal{ z-index:13000 !important; }
+.members-page .modal-backdrop{ z-index:12900 !important; }
