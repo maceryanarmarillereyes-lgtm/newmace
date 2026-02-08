@@ -3301,16 +3301,15 @@ body.members-fullscreen-active .members-timeline-toolbar{
 .members-page .grid-ghost-label{
   position:absolute;
   top:50%;
-  left:0;
-  transform:translate(-50%,-50%);
+  transform:translateY(-50%);
   font-size:10px;
   font-weight:900;
-  letter-spacing:0.02em;
   color:rgba(255,255,255,0.06);
   pointer-events:none;
-  user-select:none;
   z-index:0;
-  white-space:nowrap;
+  width:40px;
+  text-align:center;
+  user-select:none;
 }
 
 /* 4) Z-index harmonization (ordering, not absolute values) */
