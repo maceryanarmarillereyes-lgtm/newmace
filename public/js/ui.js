@@ -1484,6 +1484,7 @@ toast(message, variant){
         'back office': '#ffa21a',
         'call available': '#2ecc71',
         'lunch': '#22d3ee',
+        'block': '#ff4d4f',
       };
       const taskColorByLabel = (label)=>{
         const s = String(label||'').trim().toLowerCase();
@@ -1492,6 +1493,7 @@ toast(message, variant){
         if(s.includes('back')) return TASK_PALETTE['back office'];
         if(s.includes('call')) return TASK_PALETTE['call available'];
         if(s.includes('lunch')) return TASK_PALETTE['lunch'];
+        if(s.includes('block')) return TASK_PALETTE['block'];
         return '';
       };
 
