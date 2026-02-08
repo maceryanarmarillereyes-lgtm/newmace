@@ -4146,6 +4146,43 @@ function notifyPastWeekLocked(){
         return lines;
       };
 
+      const formatSummaryDate = (iso)=>{
+        try{
+          return new Date(String(iso||'')+'T00:00:00Z').toLocaleDateString('en-US', {
+            month:'long', day:'2-digit', year:'numeric', timeZone: Config.TZ
+          });
+        }catch(_){ return String(iso||''); }
+      };
+
+      const pickSummaryDayIndex = (days, changes)=>{
+        const hasBlocks = (idx)=> Array.isArray(days[String(idx)]) && days[String(idx)].length;
+        let dayIdx = (changes && changes.length) ? Number(changes[0].dayIndex) : Number(selectedDay||0);
+        if(!(dayIdx>=0 && dayIdx<7)) dayIdx = 0;
+        if(hasBlocks(dayIdx)) return dayIdx;
+        for(let d=0; d<7; d++){
+          if(hasBlocks(d)) return d;
+        }
+        return dayIdx;
+      };
+
+      const buildSummaryForUser = (snap, changes)=>{
+        const days = (snap && snap.days) ? snap.days : {};
+        const dayIdx = pickSummaryDayIndex(days, changes);
+        const iso = isoForDay(dayIdx);
+        const blocks = Array.isArray(days[String(dayIdx)]) ? days[String(dayIdx)].slice() : [];
+        blocks.sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
+        return {
+          iso,
+          dateLabel: formatSummaryDate(iso),
+          items: blocks.map(b=>({
+            role:String(b.role||''),
+            label:blockLabel(b.role),
+            start:String(b.start||''),
+            end:String(b.end||'')
+          }))
+        };
+      };
+
       const buildMessage = (changes, snap)=>{
         const summaryDate = formatLongDate(weekStartISO);
         let summary = `Schedule Assigned for week of ${summaryDate}.`;
@@ -4194,6 +4231,7 @@ function notifyPastWeekLocked(){
 
       const recipients = [];
       const userMessages = {};
+      const userSummaries = {};
       const snapshotHashes = {};
       const snapshots = {};
       const affectedDates = new Set();
@@ -4211,6 +4249,9 @@ function notifyPastWeekLocked(){
 
         const prevHash = prevHashes[m.id];
         const changes = diffSnap(prevSnapshots[m.id], curSnap);
+        recipients.push(m.id);
+        userMessages[m.id] = buildMessage(changes, curSnap);
+        userSummaries[m.id] = buildSummaryForUser(curSnap, changes);
         const assigned = hasAssignments(curSnap);
         if(assigned || changes.length){
           recipients.push(m.id);
@@ -4238,6 +4279,7 @@ function notifyPastWeekLocked(){
         recipients,
         acks: {},
         userMessages,
+        userSummaries,
         snapshotHashes,
         snapshots
       };
