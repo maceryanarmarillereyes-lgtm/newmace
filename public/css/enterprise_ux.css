@@ -3479,6 +3479,16 @@ body.members-fullscreen-active .members-timeline-toolbar{
   pointer-events: auto !important;
 }
 
+/* 3b) Keep fullscreen toolbar and header controls clickable */
+body.members-fullscreen-active .members-topbar,
+body.members-fullscreen-active .members-topbar *,
+body.members-fullscreen-active .members-timeline-toolbar,
+body.members-fullscreen-active .members-timeline-toolbar *,
+body.members-fullscreen-active .members-analytics-rail,
+body.members-fullscreen-active .members-analytics-rail *{
+  pointer-events: auto !important;
+}
+
 /* 4) Remove fullscreen-only padding that pushes the paint bar down */
 .members-fullscreen-overlay .members-enterprise-grid{
   padding-top: 0 !important;

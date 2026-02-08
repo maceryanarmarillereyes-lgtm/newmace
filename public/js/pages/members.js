@@ -102,9 +102,20 @@ window.Pages.members = function(root){
     if(l.includes('lunch')) return '#22d3ee';
     if(l.includes('break')) return '#22d3ee';
     return '#64748b';
+  }
 
-  
-
+  function paintOptionStyle(color){
+    const c = String(color||'').trim();
+    if(!c) return '';
+    const safe = UI.esc(c);
+    return [
+      'background-image: radial-gradient(circle at 10px center, ',
+      safe,
+      ' 0 5px, transparent 6px)',
+      '; background-repeat: no-repeat;',
+      ' background-position: 6px center;',
+      ' padding-left: 24px;'
+    ].join('');
   }
 
   function _textColorForBg(hex){
@@ -1469,9 +1480,11 @@ container.innerHTML = `
       if(roleSel.dataset.teamKey !== teamKey){
         const opts = getTeamTaskOptions(selectedTeamId).map(o=>{
           const meta = taskMeta(selectedTeamId, o.id) || {};
-          const dot = legendDotEmoji(meta.color || meta.bg || meta.background || '');
-          const label = UI.esc(o.label||o.id);
-          return `<option value="${UI.esc(o.id)}">${UI.esc(dot)} ${label}</option>`;
+          const label = meta.label || o.label || o.id;
+          const color = meta.color || meta.bg || meta.background || fallbackColorForLabel(label);
+          const style = paintOptionStyle(color);
+          const styleAttr = style ? ` style="${style}"` : '';
+          return `<option value="${UI.esc(o.id)}"${styleAttr}>${UI.esc(label)}</option>`;
         }).join('');
         roleSel.innerHTML = opts;
         roleSel.dataset.teamKey = teamKey;
@@ -2645,17 +2658,6 @@ container.innerHTML = `
     renderModal();
     UI.openModal('memberSchedModal');
   }
-function legendDotEmoji(color){
-  const c = String(color||'').toLowerCase();
-  if(c.includes('emerald') || c.includes('green') || c === '#10b981' || c === '#22c55e') return '🟢';
-  if(c.includes('red') || c === '#ef4444' || c === '#f43f5e') return '🔴';
-  if(c.includes('amber') || c.includes('yellow') || c === '#f59e0b' || c === '#eab308') return '🟡';
-  if(c.includes('blue') || c === '#3b82f6' || c === '#60a5fa') return '🔵';
-  if(c.includes('violet') || c.includes('purple') || c === '#8b5cf6' || c === '#a78bfa') return '🟣';
-  if(c.includes('gray') || c.includes('grey') || c.includes('zinc') || c === '#71717a') return '⚪';
-  return '⚪';
-}
-
 function segStyle(b){
   const team = Config.teamById(selectedTeamId);
   if(!team) return { left:0, width:0, hours:0 };
