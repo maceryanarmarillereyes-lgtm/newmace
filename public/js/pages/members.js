@@ -3151,7 +3151,26 @@ function notifyPastWeekLocked(){
         const want = String(sel.value||'').toUpperCase();
         const next = want || null;
         try{
-          Store.setLeave(userId, iso, next, { setBy: me.id, setByName: me.name||me.username });
+          const existingLeave = Store.getLeave ? Store.getLeave(userId, iso) : null;
+          const member = Store.getUsers().find(x=>x.id===userId);
+          let backupBlocks = existingLeave && Array.isArray(existingLeave.backupBlocks) ? existingLeave.backupBlocks : null;
+          let backupTeamId = existingLeave && existingLeave.backupTeamId ? existingLeave.backupTeamId : (member && member.teamId) ? member.teamId : null;
+
+          if(next){
+            if(!backupBlocks){
+              backupBlocks = Store.getUserDayBlocks(userId, selectedDay).slice();
+            }
+            Store.setUserDayBlocks(userId, backupTeamId, selectedDay, []);
+          } else if(existingLeave && Array.isArray(existingLeave.backupBlocks)){
+            Store.setUserDayBlocks(userId, backupTeamId, selectedDay, existingLeave.backupBlocks);
+          }
+
+          const leaveMeta = { setBy: me.id, setByName: me.name||me.username };
+          if(next && backupBlocks){
+            leaveMeta.backupBlocks = backupBlocks;
+            leaveMeta.backupTeamId = backupTeamId;
+          }
+          Store.setLeave(userId, iso, next, leaveMeta);
           if(next){
             Store.addLog({ ts: Date.now(), teamId: selectedTeamId, actorId: me.id, actorName: me.name||me.username, action: 'LEAVE_SET', targetId: userId, msg: `${me.name||me.username} set ${want.toLowerCase()} leave`, detail: `Date ${iso}` });
             const u = Store.getUsers().find(x=>x.id===userId);
