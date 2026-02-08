@@ -1724,7 +1724,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   flex-direction:column;
   align-items:center;
   gap:2px;
-  margin-top:4px;
+  margin-top:2px;
   min-width:0;
   max-width:100%;
   width:100%;
@@ -1750,29 +1750,37 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   max-width:100%;
 }
 .progress-text{
-  display:block;
-  width:100%;
+  display:inline-flex;
+  width:auto;
   font-size:inherit;
   color:rgba(255,255,255,.70);
   text-align:right;
 }
-.progress-tooltip{
-  display:block;
+.progress-meta{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
   width:100%;
-  text-align:center;
+  gap:8px;
+  font-size:10px;
+  line-height:1.1;
+}
+.progress-tooltip{
+  display:inline-flex;
+  width:auto;
+  text-align:left;
   font-size:inherit; /* same as .progress-text */
   color:rgba(255,255,255,.65);
-  margin-top:2px;
-  opacity:.86;
-  transform:translateY(1px);
-  transition:opacity .16s ease, transform .16s ease;
+  margin-top:0;
+  opacity:.9;
+  transform:none;
+  transition:opacity .16s ease;
   pointer-events:none;
 }
 
 .member-progress:hover .progress-tooltip,
 .member-progress:focus-within .progress-tooltip{
   opacity:1;
-  transform:translateY(0);
 }
 @media (prefers-reduced-motion: reduce){
   .progress-tooltip{transition:none;transform:none;}
@@ -1825,7 +1833,7 @@ body[data-mode="light"] .progress-tooltip{color:#555;}
 .members-page #schedulePane{padding:10px !important}
 .members-page .members-wrap{gap:10px !important}
 .members-page .members-table{display:flex;flex-direction:column;gap:8px}
-.members-page .members-row{padding:5px 8px !important;gap:10px !important;grid-template-columns:240px 1fr 190px !important;border-radius:14px}
+.members-page .members-row{padding:4px 8px !important;gap:8px !important;grid-template-columns:240px 1fr 190px !important;border-radius:14px}
 .members-page .timeline-ruler{grid-template-columns:240px 1fr 190px !important;gap:10px !important;height:18px !important;margin-bottom:6px !important}
 .members-page .timeline-ruler .ruler-track{height:18px !important}
 .members-page .timeline-ruler .mark{font-size:10px !important}
@@ -2128,6 +2136,17 @@ body.members-fullscreen-active {
   padding:14px 0 0;
   align-items:stretch;
   height: calc(100vh - 92px);
+}
+
+body:not(.members-fullscreen-active) .members-enterprise-grid{
+  grid-template-columns: minmax(240px,18%) 10px minmax(640px,82%);
+}
+body:not(.members-fullscreen-active) #membersSplitRight,
+body:not(.members-fullscreen-active) #membersAnalyticsRail{
+  display:none;
+}
+.members-fullscreen-overlay #membersAnalyticsRail{
+  display:flex;
 }
 
 @media (max-width: 1100px){
@@ -3053,9 +3072,29 @@ body.members-fullscreen-active .members-topbar,
   z-index: 1;
   font-size: 11px;
   letter-spacing: 0.02em;
-  color: rgba(255,255,255,0.95);
+  color: var(--seg-fg, rgba(255,255,255,0.95));
   text-shadow: 0 1px 2px rgba(0,0,0,0.6);
   pointer-events: none;
+}
+.members-page .seg .seg-time-stack{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:stretch;
+  justify-content:center;
+  z-index:1;
+  pointer-events:none;
+}
+.members-page .seg .seg-time-stack .seg-time{
+  flex:1 1 0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-left:1px solid rgba(255,255,255,0.18);
+  padding:0 4px;
+}
+.members-page .seg .seg-time-stack .seg-time:first-child{
+  border-left:0;
 }
 .members-page .seg .handle{
   z-index: 0;
@@ -3255,10 +3294,10 @@ body.members-fullscreen-active .members-topbar,
 /* Compact rows: remove extra stats line + merge hours & percent in one line */
 .members-page .member-task-stats{ display:none !important; }
 .members-page .members-row{
-  padding:6px 10px;
+  padding:4px 8px;
 }
 .members-page .members-row .members-meta{
-  gap:4px;
+  gap:3px;
 }
 .members-page .members-row .member-name{
   font-size:13px;
@@ -3266,6 +3305,12 @@ body.members-fullscreen-active .members-topbar,
 }
 .members-page .members-row .member-progress{
   margin-top:2px;
+}
+.members-page .members-row .progress-meta{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
 }
 .members-page .members-row .progress-text{
   font-size:10px;
@@ -3281,6 +3326,7 @@ body.members-fullscreen-active .members-topbar,
 /* Modals above everything */
 .members-page .modal{ z-index:13000 !important; }
 .members-page .modal-backdrop{ z-index:12900 !important; }
+.members-page .confirm-modal{ z-index:14050 !important; }
 
 /* === Protocol v7: Fix Fullscreen Navigation & Grid Visibility === */
 
@@ -3320,6 +3366,7 @@ body.members-fullscreen-active .members-timeline-toolbar{
 .members-page #coverageMeter{ z-index:10800 !important; }
 .members-page .modal{ z-index:99999 !important; }
 .members-page .modal-backdrop{ z-index:99998 !important; }
+.members-page .confirm-modal{ z-index:100050 !important; }
 
 
 /* =======================================================================

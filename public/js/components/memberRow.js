@@ -51,8 +51,10 @@
             <div class="progress-track">
               <div class="progress-bar ${esc(progCls)}" style="width:${progPct}%"></div>
             </div>
-            <span class="progress-text">${esc(progText)}</span>
-            <div class="progress-tooltip">${esc(taskHoursTooltip)}</div>
+            <div class="progress-meta">
+              <span class="progress-tooltip">${esc(taskHoursTooltip)}</span>
+              <span class="progress-text">${esc(progText)}</span>
+            </div>
           </div>
         `;
 
