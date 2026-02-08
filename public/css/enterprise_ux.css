@@ -2312,6 +2312,7 @@ body.members-fullscreen-active {
   position: sticky;
   top:0;
   z-index:30;
+  overflow: visible;
   background: rgba(24,24,27,0.5);
   backdrop-filter: blur(10px);
 }
@@ -3186,6 +3187,7 @@ body.members-fullscreen-active .members-topbar,
   position:sticky;
   top:58px; /* sits under the sticky topbar */
   z-index:10120;
+  overflow: visible;
   margin:0;
   border-radius:16px 16px 0 0;
   background:rgba(20,20,23,0.95);

@@ -337,24 +337,19 @@ function syncTaskSelection(taskId, opts){
 
 
   // 12-hour clock label (for ruler)
+  // Protocol v4.1: compact label format (e.g., "6-AM")
   function to12h(hm){
     const mins = UI.parseHM(hm);
     const hh = Math.floor(mins/60) % 24;
-    const mm = mins % 60;
     const ap = hh >= 12 ? 'PM' : 'AM';
     const h12 = ((hh + 11) % 12) + 1;
-    return `${h12}:${String(mm).padStart(2,'0')} ${ap}`;
+    return `${h12}-${ap}`;
   }
-function compactTimeLabel(hm){
-  const mins = UI.parseHM(hm);
-  const hh = Math.floor(mins/60) % 24;
-  const ap = hh >= 12 ? 'PM' : 'AM';
-  const h12 = ((hh + 11) % 12) + 1;
-  return `${h12}-${ap}`;
-}catch(_e){
-    return '';
+
+  // FIX: prevent orphaned catch (was breaking Members page load)
+  function compactTimeLabel(hm){
+    return to12h(hm);
   }
-}
 
 
   // Multi-select state (current day only)
