@@ -2791,10 +2791,18 @@ function notifyPastWeekLocked(){
     }
 
     const ticks = [];
+    const ghostMarks = [];
     for(let off=0; off<=meta.length; off+=60){
       const pct = (off/meta.length)*100;
       ticks.push(`<div class="tick" style="left:${pct}%"></div>`);
     }
+    for(let off=0; off<meta.length; off+=60){
+      const pct = (off/meta.length)*100;
+      const hm = UI.offsetToHM(team, off);
+      const label = compactTimeLabel(hm);
+      ghostMarks.push(`<div class="grid-ghost-label" style="left:${pct}%">${UI.esc(label)}</div>`);
+    }
+    const timelineBgHtml = ticks.join('') + ghostMarks.join('');
 
     const weekStartMs = UI.manilaWeekStartMondayMs();
     const cases = Store.getCases();
@@ -2968,7 +2976,7 @@ function notifyPastWeekLocked(){
             isoDate: isoDate,
             weeklyStats: ws,
             progress: prog,
-            ticksHtml: ticks.join(''),
+            ticksHtml: timelineBgHtml,
             segsHtml: segs,
             isInactive: isInactive,
             inactiveText: inactiveText,
@@ -2998,7 +3006,7 @@ function notifyPastWeekLocked(){
           <div>
             <div class="member-task-stats" aria-label="Weekly workload">Mailbox: ${ws.mailboxH}h • Back Office: ${ws.backOfficeH}h • Call: ${ws.callAvailableH}h • Cases: ${ws.caseAssigned}</div>
             <div class="timeline" data-team="${UI.esc(team.id)}">
-              ${ticks.join('')}
+              ${timelineBgHtml}
               ${segs}
               ${isInactive ? `<div class="timeline-overlay">${UI.esc(inactiveText)}</div>`:''}
               ${dayLockedForGrid ? `<div class="locked-below" aria-label="Locked day" title="Locked"><span class="lock-ic" aria-hidden="true"></span></div>`:''}

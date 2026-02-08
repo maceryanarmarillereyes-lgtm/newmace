@@ -3282,77 +3282,42 @@ body.members-fullscreen-active .members-topbar,
 .members-page .modal{ z-index:13000 !important; }
 .members-page .modal-backdrop{ z-index:12900 !important; }
 
-/* =====================================================================
-   Protocol v6: Enterprise Overlay & Z-Index Harmonization
-   ---------------------------------------------------------------------
-   Objective:
-   - Fix overlapping/patong-patong via a strict z-index hierarchy.
-   - Ensure fullscreen mode hides the standard header and pins the
-     paint/command strip flush to the top edge.
-   - Darken command strip backgrounds for improved contrast under overlays.
-   ===================================================================== */
+/* === Protocol v7: Fix Fullscreen Navigation & Grid Visibility === */
 
-/* === Z-INDEX HIERARCHY (Strict) ===
-   1) Modals/Alerts: 99,999
-   2) Dropdown Menus: 1,000
-   3) Sticky Headers: 100
-   4) Sticky Toolbars: 90
-   5) Standard Content: 1
-*/
-
-/* Sticky header (Members page) */
-.members-page .members-topbar{ z-index: 100 !important; }
-
-/* Sticky paint/command strip */
-.members-page .members-timeline-toolbar{ z-index: 90 !important; }
-
-/* Coverage sticky panel (below command strip) */
-.members-page #coverageMeter,
-.members-page .coverage-sticky{ z-index: 80 !important; }
-
-/* Dropdowns / menus */
-.members-page .members-settings-dropdown,
-.members-page .reports-dropdown{ z-index: 1000 !important; }
-
-.members-page .members-settings-menu,
-.members-page .reports-menu,
-.members-page .dropdown-menu,
-.members-page .menu,
-.members-page .popover{ z-index: 1001 !important; }
-
-/* Modals (absolute top within app visuals) */
-.members-page .modal{ z-index: 99999 !important; }
-.members-page .modal-backdrop,
-.members-page .modal-blur{ z-index: 99998 !important; }
-
-/* --- Fullscreen Layout Check / Polish --- */
+/* 1) Fullscreen header must remain visible for date navigation & Exit button */
 body.members-fullscreen-active .members-topbar{
-  display: none !important;
+  display:flex !important;
 }
 
-/* In fullscreen, pin the paint bar to the top edge (no margins) */
-.members-fullscreen-overlay .members-timeline-toolbar,
-body.members-fullscreen-active .members-timeline-toolbar,
-.members-fullscreen-overlay #membersTimelineToolbar{
-  top: 0 !important;
-  margin: 0 !important;
-  border-radius: 0 !important;
-  border-top: none !important;
-}
-
-/* Ensure scroll area doesn't re-introduce top padding in fullscreen */
-.members-fullscreen-overlay .members-timeline-scroll,
-body.members-fullscreen-active .members-timeline-scroll{
-  padding-top: 0 !important;
-}
-
-/* --- Visual Contrast: Darker command strip --- */
-.members-page .members-timeline-toolbar{
-  background: rgba(15,15,20,0.98) !important;
-  border-bottom: 1px solid rgba(255,255,255,0.08) !important;
-}
-
-.members-fullscreen-overlay .members-timeline-toolbar,
+/* 2) Paint toolbar must sit UNDER the sticky header in fullscreen */
 body.members-fullscreen-active .members-timeline-toolbar{
-  background: rgba(10,10,12,0.98) !important;
+  top:58px !important;
 }
+.members-fullscreen-overlay .members-timeline-toolbar{
+  top:58px !important;
+}
+
+/* 3) Ghost time labels (behind schedule blocks, visible in empty grid) */
+.members-page .grid-ghost-label{
+  position:absolute;
+  top:50%;
+  left:0;
+  transform:translate(-50%,-50%);
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:0.02em;
+  color:rgba(255,255,255,0.06);
+  pointer-events:none;
+  user-select:none;
+  z-index:0;
+  white-space:nowrap;
+}
+
+/* 4) Z-index harmonization (ordering, not absolute values) */
+.members-page .members-settings-dropdown{ z-index:12000 !important; }
+.members-page .members-settings-menu{ z-index:12050 !important; }
+.members-page .members-topbar{ z-index:11000 !important; }
+.members-page .members-timeline-toolbar{ z-index:10900 !important; }
+.members-page #coverageMeter{ z-index:10800 !important; }
+.members-page .modal{ z-index:99999 !important; }
+.members-page .modal-backdrop{ z-index:99998 !important; }
