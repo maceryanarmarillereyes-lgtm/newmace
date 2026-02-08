@@ -329,6 +329,7 @@ function syncTaskSelection(taskId, opts){
     const autoBtn = wrap.querySelector('#autoSchedule');
     const previewBtn = wrap.querySelector('#previewAuto');
     const autoSettingsBtn = wrap.querySelector('#autoSettings');
+    const coverageSettingsBtn = wrap.querySelector('#coverageSettingsBtn');
     if(badge) badge.classList.toggle('hidden', !lockedMonFri);
     // If the week is locked, require a fresh unlock action before any edits.
     if(lockedMonFri) unlockTriggered = false;
@@ -339,6 +340,7 @@ function syncTaskSelection(taskId, opts){
     if(autoBtn) autoBtn.disabled = lockDisable;
     if(previewBtn) previewBtn.disabled = lockDisable;
     if(autoSettingsBtn) autoSettingsBtn.disabled = lockDisable;
+    if(coverageSettingsBtn) coverageSettingsBtn.disabled = lockDisable;
 
     renderWeekWarning();
   }
@@ -352,6 +354,18 @@ function syncTaskSelection(taskId, opts){
     const h12 = ((hh + 11) % 12) + 1;
     return `${h12}:${String(mm).padStart(2,'0')} ${ap}`;
   }
+function compactTimeLabel(hm){
+  try{
+    const mins = UI.parseHM(hm);
+    const hh = Math.floor(mins/60) % 24;
+    const ap = hh >= 12 ? 'P' : 'A';
+    const h12 = ((hh + 11) % 12) + 1;
+    return `${h12}${ap}`;
+  }catch(_e){
+    return '';
+  }
+}
+
 
   // Multi-select state (current day only)
   let selMemberId = null;
@@ -550,14 +564,13 @@ function syncTaskSelection(taskId, opts){
 
       <!-- Zone 2: Center (Week Navigation) -->
       <div class="members-topbar-zone members-topbar-zone-center" aria-label="Week navigation">
-        <div class="members-nav">
-          <button class="btn secondary" id="weekPrev" type="button" title="Previous week">‹ Prev</button>
-          <input class="input" id="weekSelect" type="date" value="${UI.esc(weekStartISO)}" aria-label="Week start date" />
-          <button class="btn secondary" id="weekNext" type="button" title="Next week">Next ›</button>
-          <button class="btn secondary" id="jumpToday" type="button" title="Jump to current week (Manila)">Current Week</button>
-          <button class="iconbtn" id="weekHelp" type="button" aria-label="Week selector help" title="Week help">ⓘ</button>
-        </div>
-        <div id="weekWarn" class="week-warn hidden" aria-live="polite"></div>
+        <div class="members-navtool">
+  <button class="navbtn" id="weekPrev" type="button" title="Previous week">‹ Prev</button>
+  <input class="navinput" id="weekSelect" type="date" value="${UI.esc(weekStartISO)}" aria-label="Week start date" />
+  <button class="navbtn" id="weekNext" type="button" title="Next week">Next ›</button>
+  <button class="navbtn navbtn-accent" id="jumpToday" type="button" title="Current Week">Current Week</button>
+</div>
+<div id="weekWarn" class="week-warn hidden" aria-live="polite"></div>
       </div>
 
       <!-- Zone 3: Right (Unified Actions) -->
@@ -584,7 +597,9 @@ function syncTaskSelection(taskId, opts){
         <div class="reports-dropdown members-settings-dropdown" id="membersSettingsDropdown" aria-label="Settings">
           <button class="btn ghost iconbtn" id="membersSettingsToggle" type="button" aria-haspopup="menu" aria-expanded="false" title="Settings">⚙️</button>
           <div class="reports-menu members-settings-menu" id="membersSettingsMenu" role="menu" aria-label="Settings Menu">
+            <button class="reports-item" id="coverageSettingsBtn" type="button" role="menuitem">Coverage Settings</button>
             <button class="reports-item" id="taskSettingsBtn" type="button" role="menuitem">Task Config (Max Hours)</button>
+            <div class="reports-sep" role="separator"></div>
             <button class="reports-item" id="autoSettings" type="button" role="menuitem">Auto Settings</button>
             <button class="reports-item" id="previewAuto" type="button" role="menuitem">Auto Preview</button>
             <div class="reports-sep" role="separator"></div>
@@ -2019,6 +2034,14 @@ container.innerHTML = `
   }
 
 
+  const coverageSettingsBtn = wrap.querySelector('#coverageSettingsBtn');
+  if(coverageSettingsBtn){
+    coverageSettingsBtn.onclick = ()=>{
+      renderAutoSettingsModal();
+    };
+  }
+
+
   const autoSettingsBtn = wrap.querySelector('#autoSettings');
   if(autoSettingsBtn){
     autoSettingsBtn.onclick = ()=>{
@@ -2940,6 +2963,7 @@ function notifyPastWeekLocked(){
 
           return `<div class="seg ${roleCls} ${b.selected?'is-selected':''} ${b.locked?'is-locked':''}" data-mid="${UI.esc(m.id)}" data-idx="${i}" data-role="${UI.esc(role)}" style="${styleAttr}" title="${UI.esc(b.taskLabel || b.roleLabel || role)} (${st.hours}h)">
             ${lockedIcon}
+            <span class="seg-time">${UI.esc(compactTimeLabel(b.start))}</span>
             <span class="handle" aria-hidden="true"></span>
           </div>`;
         }).join('');

@@ -2850,3 +2850,246 @@ body.members-fullscreen-active .members-topbar,
     justify-content:flex-start;
   }
 }
+
+
+/* =======================================================================
+   MUMS Enterprise UX Kit (Protocol v3 - Command Center Polish v2.1)
+   (Appended overrides to preserve existing Enterprise UX rules)
+   ======================================================================= */
+
+:root{
+  --ux-radius: 18px;
+  --ux-radius-sm: 12px;
+  --ux-shadow: 0 14px 40px rgba(0,0,0,.20);
+  --ux-shadow-soft: 0 10px 26px rgba(0,0,0,.14);
+  --shift-morning: #e0f7fa;
+  --shift-mid: #fff3e0;
+  --shift-night: #ede7f6;
+  --ux-focus: 0 0 0 3px rgba(99,102,241,.45);
+}
+
+/* --- 1. CRITICAL LAYOUT FIX: Settings Menu --- */
+.members-page .members-settings-dropdown{
+  position: relative;
+  z-index: 11020;
+}
+
+/* The Menu itself: Absolute positioning to FLOAT above content */
+.members-page .members-settings-menu{
+  display: none; /* HIDE BY DEFAULT - Fixes "Sabog" issue */
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  min-width: 240px;
+  background: rgba(24,24,27,0.95); /* High opacity background */
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0,0,0,.55);
+  z-index: 12050 !important; /* Extremely high z-index */
+}
+
+/* Show menu on HOVER or when class OPEN is added */
+.members-page .members-settings-dropdown:hover .members-settings-menu,
+.members-page .members-settings-dropdown.open .members-settings-menu{
+  display: flex;
+}
+
+.reports-item{
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  height: auto;
+  line-height: 1.4;
+  white-space: normal;
+  border-radius: 6px;
+  color: rgba(255,255,255,.92);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.reports-item:hover{
+  background: rgba(79,139,255,.10);
+  border-color: rgba(79,139,255,.22);
+}
+.reports-sep{
+  height: 1px;
+  background: rgba(255,255,255,0.1);
+  margin: 4px 0;
+}
+
+/* --- 2. HEADER: 3-Zone Command Center --- */
+.members-page .members-topbar{
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* Spaced out zones */
+  gap: 16px;
+  flex-wrap: nowrap; /* Prevent wrapping on decent screens */
+  width: 100%;
+  position: sticky;
+  top: 0;
+  z-index: 10060;
+  background: rgba(24,24,27,0.85);
+  backdrop-filter: blur(12px);
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+/* Zones */
+.members-page .members-topbar-zone{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.members-page .members-topbar-zone-left{
+  flex: 0 1 300px;
+  justify-content: flex-start;
+}
+.members-page .members-topbar-zone-center{
+  flex: 1 1 auto;
+  justify-content: center; /* Center the Nav Bar */
+}
+.members-page .members-topbar-zone-right{
+  flex: 0 1 auto; /* Allow growth if needed, but keep compact */
+  justify-content: flex-end;
+}
+
+/* Unified Navigation Bar (Segmented Control Style) */
+.members-page .members-navtool{
+  display: flex;
+  align-items: stretch;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.4);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.members-page .members-navtool .navbtn{
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #e4e4e7;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  border-right: 1px solid rgba(255,255,255,0.08);
+  white-space: nowrap;
+}
+.members-page .members-navtool .navbtn:last-child{
+  border-right: none;
+}
+.members-page .members-navtool .navbtn:hover{
+  background: rgba(255,255,255,0.08);
+}
+.members-page .members-navtool .navinput{
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 13px;
+  width: 140px;
+  text-align: center;
+  border-right: 1px solid rgba(255,255,255,0.08);
+  outline: none;
+}
+/* Cyan Accent for 'Current Week' */
+.navbtn-accent{
+  color: #67e8f9 !important; /* Cyan-300 */
+}
+
+/* --- 3. DAY TABS (Cyan Active State) --- */
+.daytabs{
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  overflow-x: auto;
+}
+.daytab{
+  appearance: none;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 6px 12px;
+  color: #a1a1aa;
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.daytab:hover{
+  background: rgba(255,255,255,0.08);
+}
+.daytab.is-on{
+  background: #06b6d4; /* Cyan-500 */
+  color: #000; /* Black text for contrast */
+  border-color: #06b6d4;
+  box-shadow: 0 0 15px rgba(6,182,212,0.4);
+}
+
+/* --- 4. SCHEDULE BLOCKS (Centered Time & Rounded) --- */
+.members-page .seg{
+  display: flex;           /* Flexbox for centering */
+  align-items: center;     /* Vertical Center */
+  justify-content: center; /* Horizontal Center */
+  font-weight: 800;
+  border-radius: 6px;      /* Rounded Corners */
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  z-index: 10;
+  overflow: hidden;
+}
+.members-page .seg .seg-time{
+  position: relative;
+  z-index: 1;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: rgba(255,255,255,0.95);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  pointer-events: none;
+}
+.members-page .seg .handle{
+  z-index: 0;
+}
+
+/* --- 6. CLEANUP --- */
+/* Hide coverage meter edit pencil */
+#coverageMeter .cov-edit,
+#coverageMeter button[aria-label="Edit"]{
+  display: none !important;
+}
+/* Ensure Modals are above everything */
+.members-page .modal{
+  z-index: 13000 !important;
+}
+.members-page .modal-backdrop{
+  z-index: 12900 !important;
+}
+
+/* Base styles for utility classes used in HTML */
+.btn{ cursor: pointer; }
+.hidden{ display: none !important; }
+
+/* --- Responsiveness guardrails for 3-zone header --- */
+@media (max-width: 900px){
+  .members-page .members-topbar{ flex-wrap: wrap; }
+  .members-page .members-topbar-zone-left,
+  .members-page .members-topbar-zone-center,
+  .members-page .members-topbar-zone-right{
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+  .members-page .members-topbar-zone{ flex-wrap: wrap; }
+  .members-page .members-navtool{ width: 100%; }
+}
+@media (max-width: 520px){
+  .members-page .members-navtool{ overflow-x: auto; }
+}
