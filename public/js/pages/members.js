@@ -257,10 +257,10 @@ function syncTaskSelection(taskId, opts){
   requestGraphRefresh._t = 0;
 
   function normalizeToMonday(iso){
-    // Snap selected ISO date to the START of the visible week (Sun–Sat) using calendar math (timezone-safe)
+    // Snap selected ISO date to the START of the visible week (Mon–Sun) using calendar math (timezone-safe)
     const wd = UI.weekdayFromISO(String(iso||defaultWeekStartISO)); // 0=Sun..6=Sat
     if(wd==null) return defaultWeekStartISO;
-    const delta = -wd; // Sunday => 0, Monday => -1, ...
+    const delta = (wd===0) ? -6 : (1 - wd); // Sunday => -6, Monday => 0, ...
     return UI.addDaysISO(String(iso||defaultWeekStartISO), delta);
   }
   weekStartISO = normalizeToMonday(weekStartISO);
@@ -3083,10 +3083,16 @@ function notifyPastWeekLocked(){
             ` : '<span class="small muted">View</span>'}
             ${canEditTarget(m) ? `
               <div class="leave-actions" aria-label="Leave actions">
-                <button class="btn ghost tiny leavebtn ${leave && leave.type==='SICK'?'active':''}" data-act="leave" data-leave="SICK" type="button" title="Sick Leave (SL)">SL</button>
-                <button class="btn ghost tiny leavebtn ${leave && leave.type==='EMERGENCY'?'active':''}" data-act="leave" data-leave="EMERGENCY" type="button" title="Emergency Leave (EL)">EL</button>
-                <button class="btn ghost tiny leavebtn ${leave && leave.type==='VACATION'?'active':''}" data-act="leave" data-leave="VACATION" type="button" title="Vacation Leave (VL)">VL</button>
-                <button class="btn ghost tiny leavebtn ${leave && leave.type==='HOLIDAY'?'active':''}" data-act="leave" data-leave="HOLIDAY" type="button" title="Holiday Leave (HL)">HL</button>
+                <label class="leave-field">
+                  <span class="leave-label">Leave:</span>
+                  <select class="input leave-select" data-act="leave" aria-label="Leave status">
+                    <option value="" ${leave ? '' : 'selected'}>None</option>
+                    <option value="SICK" ${leave && leave.type==='SICK'?'selected':''}>Sick Leave (SL)</option>
+                    <option value="VACATION" ${leave && leave.type==='VACATION'?'selected':''}>Vacation Leave (VL)</option>
+                    <option value="EMERGENCY" ${leave && leave.type==='EMERGENCY'?'selected':''}>Emergency Leave (EL)</option>
+                    <option value="HOLIDAY" ${leave && leave.type==='HOLIDAY'?'selected':''}>Holiday Leave (HL)</option>
+                  </select>
+                </label>
               </div>
             `:''}
           </div>
@@ -3135,20 +3141,23 @@ function notifyPastWeekLocked(){
       });
     });
 
-    // Leave toggles (per date) — applies immediately.
-    table.querySelectorAll('button[data-act="leave"]').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        const row = btn.closest('.members-row');
+    // Leave selection (per date) — applies immediately.
+    table.querySelectorAll('select[data-act="leave"]').forEach(sel=>{
+      sel.addEventListener('change', async ()=>{
+        const row = sel.closest('.members-row');
         if(!row) return;
         const userId = row.dataset.id;
         const iso = row.dataset.iso || isoForDay(selectedDay);
         const cur = Store.getLeave ? Store.getLeave(userId, iso) : null;
-        const want = String(btn.dataset.leave||'').toUpperCase();
-        let next = (cur && cur.type===want) ? null : want;
-        if(cur && cur.type===want){
-          const label = ({SICK:'Sick Leave',EMERGENCY:'Emergency Leave',VACATION:'Vacation Leave',HOLIDAY:'Holiday Leave'}[want] || 'Leave');
+        const want = String(sel.value||'').toUpperCase();
+        const next = want || null;
+        if(cur && !next){
+          const label = ({SICK:'Sick Leave',EMERGENCY:'Emergency Leave',VACATION:'Vacation Leave',HOLIDAY:'Holiday Leave'}[cur.type] || 'Leave');
           const ok = await UI.confirm({ title:'Remove Status', message:`Remove ${label} status for this member on ${iso}?`, okText:'Remove', danger:true });
-          if(!ok) return;
+          if(!ok){
+            sel.value = cur.type || '';
+            return;
+          }
         }
         try{
           Store.setLeave(userId, iso, next, { setBy: me.id, setByName: me.name||me.username });
@@ -3162,11 +3171,10 @@ function notifyPastWeekLocked(){
             addAudit('LEAVE_CLEAR', userId, u ? (u.name||u.username) : null, `Date ${iso}`);
           }
         }catch(e){
-
           UI.toast && UI.toast('Unable to update leave. Please refresh and try again.');
         }
         clearSelection();
-        // Re-render the whole page section so leave buttons + sorting update immediately.
+        // Re-render the whole page section so leave dropdown + sorting update immediately.
         renderAll();
       });
     });
