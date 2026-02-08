@@ -1487,7 +1487,23 @@ toast(message, variant){
         'lunch': '#22d3ee',
         'block': '#ff4d4f',
       };
-      const taskColorByLabel = (label)=>{
+      const getTeamTasks = ()=>{
+        try{
+          if(window.Store && Store.getTeamTasks && user.teamId != null) return Store.getTeamTasks(user.teamId) || [];
+        }catch(_){ }
+        return [];
+      };
+      const taskColorByLabel = (label, taskId)=>{
+        const tasks = getTeamTasks();
+        const id = String(taskId||'').trim();
+        const lbl = String(label||'').trim();
+        const hit = tasks.find(t=>{
+          if(!t) return false;
+          const tid = String(t.id||t.taskId||'').trim();
+          const tlabel = String(t.label||t.name||'').trim();
+          return (id && tid && tid === id) || (lbl && tlabel && tlabel.toLowerCase() === lbl.toLowerCase());
+        });
+        if(hit && hit.color) return hit.color;
         const s = String(label||'').trim().toLowerCase();
         if(TASK_PALETTE[s]) return TASK_PALETTE[s];
         if(s.includes('mailbox')) return TASK_PALETTE['mailbox manager'];
@@ -1511,7 +1527,7 @@ toast(message, variant){
         const dateLabel = summary.dateLabel || summary.iso || '';
         const rows = (summary.items||[]).map(item=>{
           const label = item.label || item.role || '';
-          const c = taskColorByLabel(label);
+          const c = taskColorByLabel(label, item.role);
           return `
             <div class="notif-task-row">
               <span class="notif-task-bullet" style="--task-color:${esc(c)}"></span>
@@ -1618,6 +1634,13 @@ toast(message, variant){
         if(ev.key=== 'ums_schedule_notifs' || ev.key=== 'mums_schedule_notifs') ping();
       };
       window.addEventListener('storage', onStorage);
+      const onStore = (ev)=>{
+        try{
+          const key = ev && ev.detail ? String(ev.detail.key||'') : '';
+          if(key === 'ums_schedule_notifs' || key === 'mums_schedule_notifs') ping();
+        }catch(_){ }
+      };
+      window.addEventListener('mums:store', onStore);
 
       if(channel){
         channel.onmessage = ()=>ping();
@@ -1630,6 +1653,7 @@ toast(message, variant){
       return ()=>{
         try{ clearInterval(timer); }catch(e){}
         try{ window.removeEventListener('storage', onStorage); }catch(e){}
+        try{ window.removeEventListener('mums:store', onStore); }catch(e){}
         try{ channel && channel.close(); }catch(e){}
       };
     },

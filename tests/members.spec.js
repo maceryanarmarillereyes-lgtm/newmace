@@ -148,12 +148,28 @@ test('Members schedule notification popout', async ({ page }) => {
   const bulletColors = await page.$$eval('.notif-task-bullet', (els) =>
     els.map((el) => getComputedStyle(el).backgroundColor)
   );
-  expect(bulletColors).toEqual([
-    'rgb(74, 163, 255)',
-    'rgb(46, 204, 113)',
-    'rgb(34, 211, 238)',
-    'rgb(255, 162, 26)'
-  ]);
+  const expectedColors = await page.evaluate(() => {
+    const user = window.Auth && window.Auth.getUser ? window.Auth.getUser() : null;
+    const tasks = (window.Store && user) ? (Store.getTeamTasks(user.teamId) || []) : [];
+    const colorByLabel = (label) => {
+      const lbl = String(label || '').trim().toLowerCase();
+      const hit = tasks.find((t) => String(t.label || t.name || '').trim().toLowerCase() === lbl);
+      return (hit && hit.color) ? hit.color : '#64748b';
+    };
+    const toRgb = (hex) => {
+      const m = String(hex || '').match(/^#?([0-9a-f]{6})$/i);
+      if (!m) return 'rgb(100, 116, 139)';
+      const n = parseInt(m[1], 16);
+      const r = (n >> 16) & 255;
+      const g = (n >> 8) & 255;
+      const b = n & 255;
+      return `rgb(${r}, ${g}, ${b})`;
+    };
+    return ['Mailbox Manager', 'Call Available', 'Lunch', 'Back Office'].map((label) =>
+      toRgb(colorByLabel(label))
+    );
+  });
+  expect(bulletColors).toEqual(expectedColors);
 
   const zIndex = await page.evaluate(() => {
     const modalEl = document.getElementById('schedNotifModal');
