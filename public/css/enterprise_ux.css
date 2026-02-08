@@ -1868,12 +1868,9 @@ body.members-fullscreen-active {
   display: flex;
   flex-direction: column;
   gap: 0;
-  background:
-    radial-gradient(1200px 800px at 18% 0%, rgba(90, 170, 255, 0.12), transparent 60%),
-    radial-gradient(1000px 700px at 82% 8%, rgba(120, 255, 210, 0.08), transparent 55%),
-    linear-gradient(180deg, rgba(4, 7, 12, 0.92) 0%, rgba(4, 7, 12, 0.88) 45%, rgba(4, 7, 12, 0.94) 100%);
-  backdrop-filter: blur(18px) saturate(130%);
-  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  background: linear-gradient(180deg, rgba(5, 8, 14, 0.96) 0%, rgba(6, 10, 18, 0.92) 45%, rgba(5, 8, 14, 0.96) 100%);
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
 }
 
 .members-fullscreen-overlay .members-topbar,
@@ -2162,6 +2159,12 @@ body:not(.members-fullscreen-active) .members-topbar-zone-right{
 body:not(.members-fullscreen-active) .members-timeline-toolbar .hint,
 body:not(.members-fullscreen-active) .members-tip{
   display:none;
+}
+body:not(.members-fullscreen-active) .members-sub{
+  display:none;
+}
+body:not(.members-fullscreen-active) .members-enterprise-grid{
+  padding-top: 8px;
 }
 .members-page .week-warn{ margin-top:6px; }
 .members-fullscreen-overlay #membersAnalyticsRail{
@@ -3572,4 +3575,29 @@ body.members-fullscreen-active .members-analytics-rail *{
 }
 .members-fullscreen-overlay #schedulePane{
   padding: 0 !important;
+}
+
+/* ========================================================================== */
+/* Protocol v12: Members Overlay Cleanup + Button Visibility                  */
+/* ========================================================================== */
+.members-fullscreen-overlay{
+  pointer-events: auto !important;
+}
+.members-fullscreen-overlay .members-topbar,
+.members-fullscreen-overlay .members-topbar *{
+  pointer-events: auto !important;
+}
+.members-fullscreen-overlay .members-timeline-toolbar,
+.members-fullscreen-overlay .members-timeline-toolbar *{
+  pointer-events: auto !important;
+}
+.members-fullscreen-overlay .members-topbar{
+  z-index: 12000 !important;
+}
+.members-fullscreen-overlay .members-timeline-toolbar{
+  z-index: 11900 !important;
+}
+.members-fullscreen-overlay .card{
+  background: rgba(10, 16, 26, 0.72);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.3);
 }

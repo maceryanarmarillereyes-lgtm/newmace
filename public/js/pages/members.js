@@ -101,6 +101,7 @@ window.Pages.members = function(root){
     if(l.includes('back')) return '#ffa21a';
     if(l.includes('lunch')) return '#22d3ee';
     if(l.includes('break')) return '#22d3ee';
+    if(l.includes('block')) return '#ff4d4f';
     return '#64748b';
   }
 
