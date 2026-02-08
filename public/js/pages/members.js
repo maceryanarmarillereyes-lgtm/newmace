@@ -401,8 +401,9 @@ function syncTaskSelection(taskId, opts){
     const row = wrap.querySelector(`.members-row[data-id="${CSS.escape(selMemberId)}"]`);
     if(!row) return;
     selIdx.forEach(i=>{
-      const seg = row.querySelector(`.seg[data-idx="${i}"]`);
-      if(seg) seg.classList.add('selected');
+      const segs = row.querySelectorAll(`.seg[data-idx="${i}"]`);
+      if(!segs.length) return;
+      segs.forEach(seg=>seg.classList.add('selected'));
     });
   }
 
@@ -2669,6 +2670,20 @@ function segStyle(b){
   const width = ((e-s)/total)*100;
   return { left, width, hours: Math.round(((e-s)/60)*10)/10 };
 }
+function buildSegTimeLabels(team, start, end){
+  const labels = [];
+  const step = GRID_STEP_MIN;
+  const s = UI.offsetFromShiftStart(team, start);
+  const e = UI.offsetFromShiftStart(team, end);
+  if(!Number.isFinite(s) || !Number.isFinite(e) || e <= s){
+    return `<span class="seg-time-stack"><span class="seg-time">${UI.esc(compactTimeLabel(start))}</span></span>`;
+  }
+  for(let off=s; off<e; off+=step){
+    const hm = UI.offsetToHM(team, off);
+    labels.push(`<span class="seg-time">${UI.esc(compactTimeLabel(hm))}</span>`);
+  }
+  return `<span class="seg-time-stack">${labels.join('')}</span>`;
+}
 function currentWeekStartISOManila(){
   // Use Manila-local date boundary and snap to the visible week start (Sun–Sat)
   const todayISO = (UI && UI.manilaTodayISO) ? UI.manilaTodayISO() : new Date().toISOString().slice(0,10);
@@ -2975,10 +2990,12 @@ function notifyPastWeekLocked(){
 
           const styleAttr = `left:${st.left}%;width:${st.width}%;${segCssVars}`;
           const lockedIcon = b.locked ? `<span class="seg-lock" aria-label="Locked" title="Locked"><span class="lock-ic" aria-hidden="true"></span></span>` : '';
+          const timeLabels = buildSegTimeLabels(team, b.start, b.end);
+          const roleLabel = blockLabel(role);
 
-          return `<div class="seg ${roleCls} ${b.selected?'is-selected':''} ${b.locked?'is-locked':''}" data-mid="${UI.esc(m.id)}" data-idx="${i}" data-role="${UI.esc(role)}" style="${styleAttr}" title="${UI.esc(b.taskLabel || b.roleLabel || role)} (${st.hours}h)">
+          return `<div class="seg ${roleCls} ${b.selected?'is-selected':''} ${b.locked?'is-locked':''}" data-mid="${UI.esc(m.id)}" data-idx="${i}" data-role="${UI.esc(role)}" style="${styleAttr}" title="${UI.esc(roleLabel)} (${st.hours}h)">
             ${lockedIcon}
-            <span class="seg-time">${UI.esc(compactTimeLabel(b.start))}</span>
+            ${timeLabels}
             <span class="handle" aria-hidden="true"></span>
           </div>`;
         }).join('');
@@ -3020,7 +3037,10 @@ function notifyPastWeekLocked(){
               <div class="progress-track">
                 <div class="progress-bar ${UI.esc(prog.cls||'progress-green')}" style="width:${Math.max(0, Math.min(100, Number(prog.pct)||0))}%"></div>
               </div>
-              <span class="progress-text" title="${UI.esc(prog.taskHoursTooltip||'')}">${UI.esc(((prog.taskHoursTooltip||'') ? (prog.taskHoursTooltip + ' • ') : '') + (prog.pctText||''))}</span>
+              <div class="progress-meta">
+                <span class="progress-tooltip">${UI.esc(prog.taskHoursTooltip||'')}</span>
+                <span class="progress-text">${UI.esc(prog.pctText||'')}</span>
+              </div>
 </div>
           </div>
           <div>

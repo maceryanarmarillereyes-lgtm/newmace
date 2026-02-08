@@ -24,8 +24,32 @@ test('Members paint dropdown + fullscreen controls', async ({ page }) => {
   await expect(page.locator('#membersAppWrap')).toBeVisible({ timeout: 20000 });
 
   const fullscreenBtn = page.locator('#membersFullscreenBtn');
+  const analyticsRail = page.locator('#membersAnalyticsRail');
+  await expect(analyticsRail).toBeHidden();
+
+  const segCount = await page.locator('.timeline .seg').count();
+  expect(segCount).toBeGreaterThan(0);
+  const segsHaveLabels = await page.$$eval('.timeline .seg', segs =>
+    segs.every(seg => seg.querySelectorAll('.seg-time').length > 0)
+  );
+  expect(segsHaveLabels).toBeTruthy();
+
+  const progressMeta = page.locator('.member-progress .progress-meta').first();
+  await expect(progressMeta).toBeVisible();
+  const progressAligned = await progressMeta.evaluate((meta) => {
+    const tooltip = meta.querySelector('.progress-tooltip');
+    const text = meta.querySelector('.progress-text');
+    if (!tooltip || !text) return false;
+    const a = tooltip.getBoundingClientRect();
+    const b = text.getBoundingClientRect();
+    const centerDiff = Math.abs((a.top + a.height / 2) - (b.top + b.height / 2));
+    return centerDiff <= 2;
+  });
+  expect(progressAligned).toBeTruthy();
+
   await fullscreenBtn.click();
   await expect(page.locator('body')).toHaveClass(/members-fullscreen-active/);
+  await expect(analyticsRail).toBeVisible();
 
   const paintToggle = page.locator('#paintToggle');
   await paintToggle.click();
@@ -46,4 +70,5 @@ test('Members paint dropdown + fullscreen controls', async ({ page }) => {
 
   await fullscreenBtn.click();
   await expect(page.locator('body')).not.toHaveClass(/members-fullscreen-active/);
+  await expect(analyticsRail).toBeHidden();
 });
