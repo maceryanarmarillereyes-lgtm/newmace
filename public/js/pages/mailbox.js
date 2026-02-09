@@ -255,11 +255,20 @@ function _mbxMemberSortKey(u){
       const nextDow = (startDow + 1) % 7;
       const dows = [startDow, nextDow];
 
-      const bucketSegs = _mbxToSegments(Number(bucket.startMin)||0, Number(bucket.endMin)||0);
+      const bucketStartMin = Number(bucket.startMin)||0;
       const all = (Store.getUsers ? Store.getUsers() : []) || [];
-      const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
+      const candidates = all
+        .filter(u=>u && u.teamId===teamId && u.status==='active')
+        .slice()
+        .sort((a,b)=>{
+          const an = String(a?.name||a?.username||'').toLowerCase();
+          const bn = String(b?.name||b?.username||'').toLowerCase();
+          if(an && bn && an !== bn) return an.localeCompare(bn);
+          return String(a?.id||'').localeCompare(String(b?.id||''));
+        });
 
       const roleOrder = ['mailbox_manager','mailbox_call'];
+      const matches = [];
       for(const role of roleOrder){
         for(const u of candidates){
           for(const di of dows){
@@ -269,11 +278,28 @@ function _mbxMemberSortKey(u){
               const s = (UI.parseHM ? UI.parseHM(b.start) : _mbxParseHM(b.start));
               const e = (UI.parseHM ? UI.parseHM(b.end) : _mbxParseHM(b.end));
               if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
-              const blockSegs = _mbxToSegments(s, e);
-              if(_mbxSegmentsOverlap(bucketSegs, blockSegs)) return String(u.name||u.username||'—');
+              if(!_mbxBlockHit(bucketStartMin, s, e)) continue;
+              matches.push({
+                role,
+                roleIdx: roleOrder.indexOf(role),
+                startMin: s,
+                name: String(u.name||u.username||'—'),
+                id: String(u.id||'')
+              });
             }
           }
         }
+      }
+      if(matches.length){
+        matches.sort((a,b)=>{
+          if(a.roleIdx !== b.roleIdx) return a.roleIdx - b.roleIdx;
+          if(a.startMin !== b.startMin) return a.startMin - b.startMin;
+          const an = a.name.toLowerCase();
+          const bn = b.name.toLowerCase();
+          if(an && bn && an !== bn) return an.localeCompare(bn);
+          return a.id.localeCompare(b.id);
+        });
+        return matches[0].name || '—';
       }
     }catch(_){}
     return '—';
@@ -290,12 +316,15 @@ function _mbxMemberSortKey(u){
     }catch(_){ return false; }
   }
 
-    function canAssignNow(){
+  function canAssignNow(opts){
     try{
       if(isPrivilegedRole(me)) return true;
-      const duty = getDuty();
-      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
-      return eligibleForMailboxManager(me, { teamId: duty?.current?.id, dutyTeam: duty?.current, nowParts });
+      const duty = opts?.duty || getDuty();
+      const nowParts = opts?.nowParts || (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+      const teamId = duty?.current?.id || me.teamId;
+      if(eligibleForMailboxManager(me, { teamId, dutyTeam: duty?.current, nowParts })) return true;
+      // Fallback: rely on schedule blocks even if duty window metadata drifts.
+      return eligibleForMailboxManager(me, { teamId, nowParts });
     }catch(_){
       return false;
     }
@@ -475,7 +504,7 @@ function _mbxMemberSortKey(u){
 
     const duty = getDuty();
     const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
-    isManager = eligibleForMailboxManager(me, { teamId: duty.current.id, dutyTeam: duty.current, nowParts });
+    isManager = canAssignNow({ duty, nowParts });
     const mbxMgrName = _mbxFindOnDutyMailboxManagerName(duty.current.id, duty.current, nowParts, table, activeBucketId);
 
 
@@ -670,24 +699,11 @@ root.innerHTML = `
       return 7;
     }
     function getBucketManagerName(bucket){
-      // 1) Scheduled mailbox manager for this bucket (authoritative)
+      // Scheduled mailbox manager for this bucket (authoritative).
       try{
         const scheduled = _mbxFindScheduledManagerForBucket(table, bucket);
         if(scheduled && scheduled !== '—') return String(scheduled);
       }catch(_){ }
-
-      // 2) Persisted explicit map (from assignment actors)
-      try{
-        const bm = table && table.meta && table.meta.bucketManagers;
-        if(bm && bm[bucket.id] && bm[bucket.id].name) return String(bm[bucket.id].name);
-      }catch(_){ }
-
-      // 3) Most recent assignment actor within bucket
-      try{
-        const a = (table.assignments||[]).find(x=>x.bucketId===bucket.id && (x.actorName||''));
-        if(a && a.actorName) return String(a.actorName);
-      }catch(_){ }
-
       return '—';
     }
 
