@@ -94,6 +94,25 @@
     return SYNC_KEYS.indexOf(key) !== -1;
   }
 
+  const MEMBER_PUSH_KEYS = new Set([
+    'mums_attendance',
+    'mums_mailbox_state',
+    'ums_cases'
+  ]);
+
+  function canPushKey(key){
+    try{
+      if (!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled())) return false;
+      if (!(CloudAuth.accessToken && CloudAuth.accessToken())) return false;
+      const u = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
+      const role = String(u.role || 'MEMBER');
+      if (role === 'MEMBER' && !MEMBER_PUSH_KEYS.has(String(key||''))) return false;
+      return true;
+    }catch(_){
+      return false;
+    }
+  }
+
   
   // ----------------------
   // Offline-first push queue (all SYNC_KEYS)
@@ -496,6 +515,7 @@ function applyRemoteKey(key, value){
 
   async function cloudPush(key, value, removedIds, op){
     try {
+      if(!canPushKey(key)) return;
       const body = { key, value, removedIds: removedIds || [], op: op || 'set', clientId, ts: Date.now() };
       const out = await cloudFetch('/api/sync/push', {
         method: 'POST',
@@ -534,6 +554,7 @@ function applyRemoteKey(key, value){
 
     // Cloud
     if (!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled())) return;
+    if (!canPushKey(key)) return;
 
     // Debounce per key
     if (pushTimers.has(key)) clearTimeout(pushTimers.get(key));
@@ -553,6 +574,7 @@ function applyRemoteKey(key, value){
 
       // If realtime isn't healthy, queue the change and let reconnect/flush handle it.
       if (cloudMode !== 'realtime') {
+        if (!canPushKey(key)) return;
         enqueue(key, value, removedIds, op, 'not_realtime', cloudMode);
         try { connectCloudMandatory(); } catch(_){}
         return;
