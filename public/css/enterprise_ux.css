@@ -584,6 +584,15 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   border-radius:20px;
   box-shadow:0 22px 60px rgba(0,0,0,.50);
 }
+#schedNotifModal{
+  z-index:14050;
+}
+.notification-popout .notif-member{
+  font-weight:900;
+  font-size:14px;
+  color:rgba(244,244,245,1);
+  margin-bottom:4px;
+}
 .notification-popout .announce-title{
   font-weight:950;
   letter-spacing:.01em;
@@ -593,9 +602,91 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   font-size:13px;
   line-height:1.35;
 }
+.notification-popout .notif-intro{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-bottom:8px;
+}
+.notification-popout .notif-summary{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-top:8px;
+  padding-top:8px;
+  border-top:1px solid rgba(255,255,255,.10);
+}
+.notification-popout .notif-date{
+  font-size:12px;
+  font-weight:800;
+  color:rgba(226,232,240,.95);
+}
+.notification-popout .notif-task-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:12.5px;
+}
+.notification-popout .notif-task-bullet{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background:var(--task-color, rgba(255,255,255,.6));
+  box-shadow:0 0 0 3px rgba(255,255,255,.06);
+  flex:0 0 auto;
+}
+.notification-popout .notif-task-time{
+  font-weight:700;
+  color:rgba(226,232,240,.92);
+}
+.notification-popout .notif-task-eq{
+  opacity:.6;
+}
+.notification-popout .notif-task-label{
+  font-weight:700;
+  color:rgba(244,244,245,.95);
+}
 .notification-popout .foot .btn{
   min-width:140px;
   font-weight:900;
+}
+.notification-popout .notif-count{
+  min-width:28px;
+  height:28px;
+  border-radius:999px;
+  background:rgba(56,189,248,.18);
+  color:rgba(226,232,240,.95);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-size:12px;
+  font-weight:900;
+  padding:0 8px;
+}
+.notification-popout .notif-item{
+  padding:10px 12px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(10,16,26,.45);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.02);
+}
+.notification-popout .notif-item + .notif-item{
+  margin-top:10px;
+}
+.notification-popout .notif-item-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.notification-popout .notif-item-title{
+  font-weight:800;
+  color:rgba(248,250,252,.95);
+}
+.notification-popout .notif-item-body{
+  margin-top:8px;
+  white-space:pre-wrap;
 }
 
 /* ------------------------------------------------------------------
@@ -1724,7 +1815,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   flex-direction:column;
   align-items:center;
   gap:2px;
-  margin-top:4px;
+  margin-top:2px;
   min-width:0;
   max-width:100%;
   width:100%;
@@ -1750,29 +1841,37 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   max-width:100%;
 }
 .progress-text{
-  display:block;
-  width:100%;
+  display:inline-flex;
+  width:auto;
   font-size:inherit;
   color:rgba(255,255,255,.70);
   text-align:right;
 }
-.progress-tooltip{
-  display:block;
+.progress-meta{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
   width:100%;
-  text-align:center;
+  gap:8px;
+  font-size:10px;
+  line-height:1.1;
+}
+.progress-tooltip{
+  display:inline-flex;
+  width:auto;
+  text-align:left;
   font-size:inherit; /* same as .progress-text */
   color:rgba(255,255,255,.65);
-  margin-top:2px;
-  opacity:.86;
-  transform:translateY(1px);
-  transition:opacity .16s ease, transform .16s ease;
+  margin-top:0;
+  opacity:.9;
+  transform:none;
+  transition:opacity .16s ease;
   pointer-events:none;
 }
 
 .member-progress:hover .progress-tooltip,
 .member-progress:focus-within .progress-tooltip{
   opacity:1;
-  transform:translateY(0);
 }
 @media (prefers-reduced-motion: reduce){
   .progress-tooltip{transition:none;transform:none;}
@@ -1825,17 +1924,28 @@ body[data-mode="light"] .progress-tooltip{color:#555;}
 .members-page #schedulePane{padding:10px !important}
 .members-page .members-wrap{gap:10px !important}
 .members-page .members-table{display:flex;flex-direction:column;gap:8px}
-.members-page .members-row{padding:5px 8px !important;gap:10px !important;grid-template-columns:240px 1fr 190px !important;border-radius:14px}
-.members-page .timeline-ruler{grid-template-columns:240px 1fr 190px !important;gap:10px !important;height:18px !important;margin-bottom:6px !important}
+.members-page .members-row{display:grid !important;padding:8px 15px !important;gap:12px !important;grid-template-columns:240px 1fr 220px !important;grid-template-areas:"meta timeline actions" !important;align-items:center !important;border-radius:14px;position:relative;overflow:visible !important;min-height:50px !important}
+.members-page .timeline-ruler{grid-template-columns:240px 1fr 220px !important;gap:10px !important;height:18px !important;margin-bottom:6px !important}
 .members-page .timeline-ruler .ruler-track{height:18px !important}
 .members-page .timeline-ruler .mark{font-size:10px !important}
-.members-page .timeline{height:27px !important;border-radius:12px}
+.members-page .timeline{grid-area:timeline !important;position:relative;overflow:hidden;border-radius:8px !important;height:32px !important;z-index:1 !important;background:rgba(255,255,255,0.02) !important}
 .members-page .timeline .seg{top:3px !important;bottom:3px !important;font-size:10px !important;padding:0 5px !important}
 
-/* Horizontal leave buttons */
-.members-page .member-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}
-.members-page .leave-actions{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
-.members-page .leavebtn{min-width:28px;height:26px;padding:0 8px;border-radius:10px;font-size:11px;line-height:24px}
+/* Leave dropdown */
+.members-page .member-actions{grid-area:actions !important;display:flex !important;flex-direction:row !important;align-items:center !important;justify-content:flex-end !important;gap:10px !important;padding-left:10px;border-left:1px solid rgba(255,255,255,0.08)}
+.members-page .leave-actions{grid-area:leave !important;display:flex !important;align-items:center !important;gap:6px;flex-wrap:nowrap;justify-content:flex-end !important;visibility:visible !important;z-index:10 !important}
+.members-page .leave-field{grid-area:leave !important;display:flex !important;align-items:center !important;gap:6px;font-size:12px;color:#e2e8f0;justify-content:flex-end !important;visibility:visible !important;z-index:10 !important}
+.members-page .leave-label{font-weight:600;letter-spacing:.01em;display:inline-flex;visibility:visible;opacity:1;color:#e2e8f0}
+.members-page .leave-select{display:inline-flex !important;align-items:center !important;justify-content:flex-start !important;width:140px !important;height:32px !important;line-height:1 !important;padding:0 32px 0 10px !important;border-radius:8px !important;font-size:11px !important;font-weight:800 !important;min-width:130px !important;max-width:140px !important;color:#fff !important;background-color:#111827 !important;border:1px solid rgba(255,255,255,0.1) !important;appearance:none !important;cursor:pointer;transition:all 0.2s ease;background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important;background-position:right 8px center !important;background-repeat:no-repeat !important;background-size:16px !important}
+.members-page .iconbtn{flex-shrink:0 !important;width:32px !important;height:32px !important;display:flex !important;align-items:center !important;justify-content:center !important;background:rgba(255,255,255,0.05) !important;border:1px solid rgba(255,255,255,0.1) !important;border-radius:6px !important;transition:all 0.2s ease}
+.members-page .iconbtn:not([data-act="edit"]):hover{background:rgba(6,182,212,0.15) !important;border-color:#06b6d4 !important;color:#06b6d4 !important}
+.members-page .iconbtn[data-act="edit"],
+.members-page button[title="Edit schedule"]{grid-area:pencil !important;background:transparent !important;border:none !important;color:#06b6d4 !important;width:32px !important;height:32px !important;cursor:pointer;transition:all 0.2s ease;display:flex !important;align-items:center !important;justify-content:center !important;visibility:visible !important;z-index:10 !important}
+.members-page .iconbtn[data-act="edit"]:hover{color:#06b6d4 !important;transform:scale(1.15)}
+.members-page .leave-select option{background-color:#111827 !important;color:#fff !important;padding:10px !important}
+.members-page .leave-select:focus,
+.members-page .leave-select:active{outline:none !important;border-color:#06b6d4 !important;box-shadow:0 0 0 3px rgba(6,182,212,0.25) !important}
+.members-page .leave-select:hover{border-color:rgba(6,182,212,0.5) !important}
 
 /* Members overlay background compression (~20%): reduce vertical density in key controls */
 .members-page .timeline-legend{margin-bottom:8px}
@@ -1860,21 +1970,25 @@ body.members-fullscreen-active {
   display: flex;
   flex-direction: column;
   gap: 0;
-  background:
-    radial-gradient(1200px 800px at 18% 0%, rgba(90, 170, 255, 0.12), transparent 60%),
-    radial-gradient(1000px 700px at 82% 8%, rgba(120, 255, 210, 0.08), transparent 55%),
-    linear-gradient(180deg, rgba(4, 7, 12, 0.92) 0%, rgba(4, 7, 12, 0.88) 45%, rgba(4, 7, 12, 0.94) 100%);
-  backdrop-filter: blur(18px) saturate(130%);
-  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  background: linear-gradient(180deg, rgba(5, 8, 14, 0.96) 0%, rgba(6, 10, 18, 0.92) 45%, rgba(5, 8, 14, 0.96) 100%);
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
 }
 
 .members-fullscreen-overlay .members-topbar,
 .members-fullscreen-overlay .daytabs {
   flex: 0 0 auto;
 }
+.members-fullscreen-overlay .members-topbar{
+  padding:10px 12px;
+  gap:12px;
+}
+.members-fullscreen-overlay .members-topbar-zone-right{
+  gap:10px;
+}
 
 .members-fullscreen-overlay .members-enterprise-grid {
-  --members-gap: 16px;
+  --members-gap: 12px;
   --members-left: 280px;
   --members-right: 320px;
 
@@ -2130,6 +2244,35 @@ body.members-fullscreen-active {
   height: calc(100vh - 92px);
 }
 
+body:not(.members-fullscreen-active) .members-enterprise-grid{
+  grid-template-columns: minmax(240px,18%) 10px minmax(640px,82%);
+}
+body:not(.members-fullscreen-active) #membersSplitRight,
+body:not(.members-fullscreen-active) #membersAnalyticsRail{
+  display:none;
+}
+body:not(.members-fullscreen-active) .members-topbar{
+  padding:10px 12px;
+  gap:12px;
+}
+body:not(.members-fullscreen-active) .members-topbar-zone-right{
+  gap:10px;
+}
+body:not(.members-fullscreen-active) .members-timeline-toolbar .hint,
+body:not(.members-fullscreen-active) .members-tip{
+  display:none;
+}
+body:not(.members-fullscreen-active) .members-sub{
+  display:none;
+}
+body:not(.members-fullscreen-active) .members-enterprise-grid{
+  padding-top: 8px;
+}
+.members-page .week-warn{ margin-top:6px; }
+.members-fullscreen-overlay #membersAnalyticsRail{
+  display:flex;
+}
+
 @media (max-width: 1100px){
   .members-enterprise-grid{ grid-template-columns: 1fr; height:auto; }
   .members-splitter{ display:none; }
@@ -2172,6 +2315,20 @@ body.members-fullscreen-active {
 .members-page .input:focus{
   border-color: rgba(59,130,246,0.6);
   box-shadow: 0 0 0 4px rgba(59,130,246,0.15);
+}
+.members-page #paintRole{
+  --paint-dot-color: transparent;
+  padding-left: 26px;
+  background-image: radial-gradient(circle at 8px center, var(--paint-dot-color, transparent) 0 5px, transparent 6px);
+  background-repeat: no-repeat;
+  background-position: 6px center;
+  background-size: 18px 100%;
+}
+.members-page #paintRole option{
+  padding-left: 26px;
+  background-repeat: no-repeat;
+  background-position: 6px center;
+  background-size: 18px 100%;
 }
 
 .btn{
@@ -3053,9 +3210,29 @@ body.members-fullscreen-active .members-topbar,
   z-index: 1;
   font-size: 11px;
   letter-spacing: 0.02em;
-  color: rgba(255,255,255,0.95);
+  color: var(--seg-fg, rgba(255,255,255,0.95));
   text-shadow: 0 1px 2px rgba(0,0,0,0.6);
   pointer-events: none;
+}
+.members-page .seg .seg-time-stack{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:stretch;
+  justify-content:center;
+  z-index:1;
+  pointer-events:none;
+}
+.members-page .seg .seg-time-stack .seg-time{
+  flex:1 1 0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-left:1px solid rgba(255,255,255,0.18);
+  padding:0 4px;
+}
+.members-page .seg .seg-time-stack .seg-time:first-child{
+  border-left:0;
 }
 .members-page .seg .handle{
   z-index: 0;
@@ -3254,11 +3431,213 @@ body.members-fullscreen-active .members-topbar,
 
 /* Compact rows: remove extra stats line + merge hours & percent in one line */
 .members-page .member-task-stats{ display:none !important; }
+
+/* ===== Overall Stats ===== */
+.overall-stats-page{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+.overall-stats-header{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+}
+.overall-stats-controls{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.overall-stats-team{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.overall-stat-card{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-height:110px;
+}
+.overall-stat-label{
+  font-size:12px;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.8px;
+  font-weight:800;
+}
+.overall-stat-value{
+  font-size:26px;
+  font-weight:900;
+  letter-spacing:.3px;
+}
+.overall-stat-sub{
+  font-size:12px;
+  color:var(--muted);
+}
+.overall-stats-table-card{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.overall-stats-table-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.overall-stats-controls{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.overall-filter-card{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.overall-filter-presets{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.overall-filter-row{
+  display:flex;
+  gap:16px;
+  flex-wrap:wrap;
+  align-items:flex-end;
+  justify-content:space-between;
+}
+.overall-filter-custom{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:flex-end;
+}
+.overall-filter-shortcuts{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.overall-filter-search,
+.overall-filter-sort,
+.overall-filter-pagination{
+  display:flex;
+  gap:8px;
+  align-items:flex-end;
+}
+.overall-filter-search{
+  min-width:220px;
+  flex:1;
+}
+.overall-filter-sort{
+  min-width:240px;
+}
+.overall-table-wrap{
+  width:100%;
+  overflow:auto;
+}
+.overall-name{
+  font-weight:800;
+}
+.overall-delta{
+  display:inline-block;
+  margin-left:6px;
+  font-size:11px;
+  color:var(--muted);
+}
+.overall-pagination{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:12px;
+}
+.overall-loading,
+.overall-error{
+  padding:10px 0;
+  font-size:13px;
+  color:var(--muted);
+}
+.overall-error{ color: var(--danger); }
+.overall-stat-card.overall-trend-card{
+  min-height:140px;
+}
+.overall-trend-wrap{
+  margin-top:8px;
+  color:var(--accent);
+}
+.overall-trend-chart{
+  width:100%;
+  height:80px;
+}
+.overall-trend-empty{
+  font-size:12px;
+  color:var(--muted);
+}
+.sparkline{
+  width:100px;
+  height:28px;
+  color:var(--accent);
+}
+.sparkline-empty{
+  font-size:12px;
+  color:var(--muted);
+}
+.overall-detail-row{
+  background:rgba(255,255,255,.02);
+}
+.overall-detail-panel{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding:12px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:rgba(255,255,255,.02);
+}
+.overall-detail-header{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.overall-detail-title{
+  font-weight:800;
+  font-size:14px;
+}
+.overall-detail-kpis{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  font-size:12px;
+  color:var(--muted);
+}
+.overall-detail-chart{
+  width:120px;
+}
+.overall-pilot-card{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.overall-pilot-toggle{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.overall-pilot-inline{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
 .members-page .members-row{
-  padding:6px 10px;
+  padding:4px 8px;
 }
 .members-page .members-row .members-meta{
-  gap:4px;
+  gap:3px;
 }
 .members-page .members-row .member-name{
   font-size:13px;
@@ -3266,6 +3645,12 @@ body.members-fullscreen-active .members-topbar,
 }
 .members-page .members-row .member-progress{
   margin-top:2px;
+}
+.members-page .members-row .progress-meta{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
 }
 .members-page .members-row .progress-text{
   font-size:10px;
@@ -3281,6 +3666,7 @@ body.members-fullscreen-active .members-topbar,
 /* Modals above everything */
 .members-page .modal{ z-index:13000 !important; }
 .members-page .modal-backdrop{ z-index:12900 !important; }
+.members-page .confirm-modal{ z-index:14050 !important; }
 
 /* === Protocol v7: Fix Fullscreen Navigation & Grid Visibility === */
 
@@ -3320,6 +3706,7 @@ body.members-fullscreen-active .members-timeline-toolbar{
 .members-page #coverageMeter{ z-index:10800 !important; }
 .members-page .modal{ z-index:99999 !important; }
 .members-page .modal-backdrop{ z-index:99998 !important; }
+.members-page .confirm-modal{ z-index:100050 !important; }
 
 
 /* =======================================================================
@@ -3464,8 +3851,8 @@ body.members-fullscreen-active .members-topbar{
 /* 2) Toolbar must be flush + clickable in fullscreen */
 .members-fullscreen-overlay .members-timeline-toolbar,
 body.members-fullscreen-active .members-timeline-toolbar{
-  top: 58px !important;        /* aligns under header */
-  margin: 0 !important;        /* removes fullscreen gap */
+  top: 0 !important;        /* flush to the card edge */
+  margin: 0 !important;     /* removes fullscreen gap */
   width: 100% !important;
   border-radius: 0 !important; /* square corners */
   border-left: 0 !important;
@@ -3476,8 +3863,116 @@ body.members-fullscreen-active .members-timeline-toolbar{
 
 /* 3) Ensure overlay container never blocks clicks */
 .members-fullscreen-overlay{
-  pointer-events: none !important;
-}
-.members-fullscreen-overlay > *{
   pointer-events: auto !important;
+}
+
+/* 3b) Keep fullscreen toolbar and header controls clickable */
+body.members-fullscreen-active .members-topbar,
+body.members-fullscreen-active .members-topbar *,
+body.members-fullscreen-active .members-timeline-toolbar,
+body.members-fullscreen-active .members-timeline-toolbar *,
+body.members-fullscreen-active .members-analytics-rail,
+body.members-fullscreen-active .members-analytics-rail *{
+  pointer-events: auto !important;
+}
+
+/* 4) Remove fullscreen-only padding that pushes the paint bar down */
+.members-fullscreen-overlay .members-enterprise-grid{
+  padding-top: 0 !important;
+}
+.members-fullscreen-overlay #schedulePane{
+  padding: 0 !important;
+}
+
+/* ========================================================================== */
+/* Protocol v12: Members Overlay Cleanup + Button Visibility                  */
+/* ========================================================================== */
+.members-fullscreen-overlay{
+  pointer-events: auto !important;
+}
+.members-fullscreen-overlay .members-topbar,
+.members-fullscreen-overlay .members-topbar *{
+  pointer-events: auto !important;
+}
+.members-fullscreen-overlay .members-timeline-toolbar,
+.members-fullscreen-overlay .members-timeline-toolbar *{
+  pointer-events: auto !important;
+}
+.members-fullscreen-overlay .members-topbar{
+  z-index: 12000 !important;
+}
+.members-fullscreen-overlay .members-timeline-toolbar{
+  z-index: 11900 !important;
+}
+.members-fullscreen-overlay .card{
+  background: rgba(10, 16, 26, 0.72);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.3);
+}
+
+/* ========================================================================== */
+/* Protocol v13: Members Overlay Stack + Compact Layout                        */
+/* ========================================================================== */
+.members-page .modal,
+.members-page .confirm-modal{
+  z-index: 14000 !important;
+}
+.members-page .modal-backdrop{
+  z-index: 13900 !important;
+}
+.members-page .members-settings-menu,
+.members-page .reports-menu,
+.members-page .dropdown-menu{
+  z-index: 13500 !important;
+}
+.members-fullscreen-overlay{
+  z-index: 12000 !important;
+}
+.members-fullscreen-overlay .members-topbar{
+  z-index: 12500 !important;
+}
+.members-fullscreen-overlay .members-timeline-toolbar{
+  z-index: 12400 !important;
+}
+
+/* Fullscreen safety: ensure global overlays/modals render above fullscreen shell */
+body.members-fullscreen-active .modal,
+body.members-fullscreen-active .confirm-modal,
+body.members-fullscreen-active .attendance-modal,
+body.members-fullscreen-active #autoPreviewModal,
+body.members-fullscreen-active .graph-status-panel.gsp-floating{
+  z-index: 16000 !important;
+}
+body.members-fullscreen-active .dropdown-menu,
+body.members-fullscreen-active .reports-menu,
+body.members-fullscreen-active .tooltip{
+  z-index: 15500 !important;
+}
+
+.members-page .members-topbar{
+  padding: 10px 12px;
+}
+.members-roster-header{
+  gap: 8px;
+  padding: 10px 12px 8px;
+}
+.roster-searchbar{
+  padding: 6px 8px;
+}
+.roster-item{
+  padding: 8px 10px;
+}
+.members-timeline-toolbar{
+  padding: 8px 10px;
+}
+.members-timeline-scroll{
+  padding: 8px 10px;
+}
+.coverage-panel{
+  padding: 8px 10px;
+}
+.timeline-ruler{
+  margin-top: 8px;
+}
+.members-row + .members-row{
+  margin-top: 8px;
 }

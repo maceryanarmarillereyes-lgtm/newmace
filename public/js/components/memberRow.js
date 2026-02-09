@@ -51,20 +51,29 @@
             <div class="progress-track">
               <div class="progress-bar ${esc(progCls)}" style="width:${progPct}%"></div>
             </div>
-            <span class="progress-text">${esc(progText)}</span>
-            <div class="progress-tooltip">${esc(taskHoursTooltip)}</div>
+            <div class="progress-meta">
+              <span class="progress-tooltip">${esc(taskHoursTooltip)}</span>
+              <span class="progress-text">${esc(progText)}</span>
+            </div>
           </div>
         `;
 
         const teamClass = 'team-' + memberTeamId;
         const rowClass = isInactive ? 'inactive' : '';
 
+        const leaveValue = leave ? String(leave.type||'').toUpperCase() : '';
         const leaveActions = canEdit ? `
           <div class="leave-actions" aria-label="Leave actions">
-            <button class="btn ghost tiny leavebtn ${isActiveLeave(leave,'SICK')?'active':''}" data-act="leave" data-leave="SICK" type="button" title="Sick Leave (SL)">SL</button>
-            <button class="btn ghost tiny leavebtn ${isActiveLeave(leave,'EMERGENCY')?'active':''}" data-act="leave" data-leave="EMERGENCY" type="button" title="Emergency Leave (EL)">EL</button>
-            <button class="btn ghost tiny leavebtn ${isActiveLeave(leave,'VACATION')?'active':''}" data-act="leave" data-leave="VACATION" type="button" title="Vacation Leave (VL)">VL</button>
-            <button class="btn ghost tiny leavebtn ${isActiveLeave(leave,'HOLIDAY')?'active':''}" data-act="leave" data-leave="HOLIDAY" type="button" title="Holiday Leave (HL)">HL</button>
+            <label class="leave-field">
+              <span class="leave-label">Leave:</span>
+              <select class="input leave-select" data-act="leave" aria-label="Leave status">
+                <option value="" ${leaveValue ? '' : 'selected'}>None</option>
+                <option value="SICK" ${isActiveLeave(leave,'SICK')?'selected':''}>Sick Leave (SL)</option>
+                <option value="VACATION" ${isActiveLeave(leave,'VACATION')?'selected':''}>Vacation Leave (VL)</option>
+                <option value="EMERGENCY" ${isActiveLeave(leave,'EMERGENCY')?'selected':''}>Emergency Leave (EL)</option>
+                <option value="HOLIDAY" ${isActiveLeave(leave,'HOLIDAY')?'selected':''}>Holiday Leave (HL)</option>
+              </select>
+            </label>
           </div>
         ` : '';
 

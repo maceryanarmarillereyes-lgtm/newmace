@@ -43,6 +43,8 @@ const ROUTES = {
   'sync/pull': require('../server/routes/sync/pull'),
   'sync/push': require('../server/routes/sync/push'),
 
+  'overall_stats': require('../server/routes/overall_stats'),
+
   'users/create': require('../server/routes/users/create'),
   'users/ensure_profile': require('../server/routes/users/ensure_profile'),
   'users/list': require('../server/routes/users/list'),

@@ -95,16 +95,38 @@ window.Pages.members = function(root){
   }
 
   function fallbackColorForLabel(label){
-    const l = String(label||'').toLowerCase();
-    if(l.includes('mailbox')) return '#4aa3ff';
-    if(l.includes('call')) return '#2ecc71';
-    if(l.includes('back')) return '#ffa21a';
-    if(l.includes('lunch')) return '#22d3ee';
-    if(l.includes('break')) return '#22d3ee';
+    const l = String(label||'').toLowerCase().trim();
+    const palette = {
+      'mailbox manager': '#4aa3ff',
+      'back office': '#ffa21a',
+      'call available': '#2ecc71',
+      'lunch': '#22d3ee',
+      'break': '#22d3ee',
+      'block': '#ff4d4f'
+    };
+    if(palette[l]) return palette[l];
+    if(l.includes('mailbox')) return palette['mailbox manager'];
+    if(l.includes('back')) return palette['back office'];
+    if(l.includes('call')) return palette['call available'];
+    if(l.includes('lunch')) return palette.lunch;
+    if(l.includes('break')) return palette.break;
+    if(l.includes('block')) return palette.block;
     return '#64748b';
+  }
 
-  
-
+  function paintOptionStyle(color){
+    const c = String(color||'').trim();
+    if(!c) return '';
+    const safe = UI.esc(c);
+    return [
+      'background-image: radial-gradient(circle at 8px center, ',
+      safe,
+      ' 0 5px, transparent 6px)',
+      '; background-repeat: no-repeat;',
+      ' background-position: 6px center;',
+      ' background-size: 18px 100%;',
+      ' padding-left: 26px;'
+    ].join('');
   }
 
   function _textColorForBg(hex){
@@ -235,10 +257,10 @@ function syncTaskSelection(taskId, opts){
   requestGraphRefresh._t = 0;
 
   function normalizeToMonday(iso){
-    // Snap selected ISO date to the START of the visible week (Sun–Sat) using calendar math (timezone-safe)
+    // Snap selected ISO date to the START of the visible week (Mon–Sun) using calendar math (timezone-safe)
     const wd = UI.weekdayFromISO(String(iso||defaultWeekStartISO)); // 0=Sun..6=Sat
     if(wd==null) return defaultWeekStartISO;
-    const delta = -wd; // Sunday => 0, Monday => -1, ...
+    const delta = (wd===0) ? -6 : (1 - wd); // Sunday => -6, Monday => 0, ...
     return UI.addDaysISO(String(iso||defaultWeekStartISO), delta);
   }
   weekStartISO = normalizeToMonday(weekStartISO);
@@ -390,8 +412,9 @@ function syncTaskSelection(taskId, opts){
     const row = wrap.querySelector(`.members-row[data-id="${CSS.escape(selMemberId)}"]`);
     if(!row) return;
     selIdx.forEach(i=>{
-      const seg = row.querySelector(`.seg[data-idx="${i}"]`);
-      if(seg) seg.classList.add('selected');
+      const segs = row.querySelectorAll(`.seg[data-idx="${i}"]`);
+      if(!segs.length) return;
+      segs.forEach(seg=>seg.classList.add('selected'));
     });
   }
 
@@ -1456,6 +1479,18 @@ container.innerHTML = `
   // Option B: keep legend chips in the sticky timeline toolbar.
   let selectionMode = false;
 
+  function syncPaintRoleSwatch(roleSel){
+    if(!roleSel) return;
+    const meta = taskMeta(selectedTeamId, roleSel.value) || {};
+    const label = meta.label || roleSel.value || '';
+    const color = meta.color || meta.bg || meta.background || fallbackColorForLabel(label);
+    if(color){
+      roleSel.style.setProperty('--paint-dot-color', color);
+    }else{
+      roleSel.style.removeProperty('--paint-dot-color');
+    }
+  }
+
   function syncTimelineToolbarUI(){
     const paintBtn = wrap.querySelector('#paintToggle');
     const roleSel = wrap.querySelector('#paintRole');
@@ -1469,14 +1504,17 @@ container.innerHTML = `
       if(roleSel.dataset.teamKey !== teamKey){
         const opts = getTeamTaskOptions(selectedTeamId).map(o=>{
           const meta = taskMeta(selectedTeamId, o.id) || {};
-          const dot = legendDotEmoji(meta.color || meta.bg || meta.background || '');
-          const label = UI.esc(o.label||o.id);
-          return `<option value="${UI.esc(o.id)}">${UI.esc(dot)} ${label}</option>`;
+          const label = meta.label || o.label || o.id;
+          const color = meta.color || meta.bg || meta.background || fallbackColorForLabel(label);
+          const style = paintOptionStyle(color);
+          const styleAttr = style ? ` style="${style}"` : '';
+          return `<option value="${UI.esc(o.id)}"${styleAttr}>${UI.esc(label)}</option>`;
         }).join('');
         roleSel.innerHTML = opts;
         roleSel.dataset.teamKey = teamKey;
       }
       roleSel.value = paint.role;
+      syncPaintRoleSwatch(roleSel);
       if(!roleSel.dataset.bound){
         roleSel.dataset.bound = '1';
         roleSel.onchange = ()=>{
@@ -1485,6 +1523,7 @@ container.innerHTML = `
           paint.role = v;
           // Paint dropdown directly drives Graph Panel task comparison.
           syncTaskSelection(v, { render:true, persist:true });
+          syncPaintRoleSwatch(roleSel);
         };
       }
     }
@@ -2645,17 +2684,6 @@ container.innerHTML = `
     renderModal();
     UI.openModal('memberSchedModal');
   }
-function legendDotEmoji(color){
-  const c = String(color||'').toLowerCase();
-  if(c.includes('emerald') || c.includes('green') || c === '#10b981' || c === '#22c55e') return '🟢';
-  if(c.includes('red') || c === '#ef4444' || c === '#f43f5e') return '🔴';
-  if(c.includes('amber') || c.includes('yellow') || c === '#f59e0b' || c === '#eab308') return '🟡';
-  if(c.includes('blue') || c === '#3b82f6' || c === '#60a5fa') return '🔵';
-  if(c.includes('violet') || c.includes('purple') || c === '#8b5cf6' || c === '#a78bfa') return '🟣';
-  if(c.includes('gray') || c.includes('grey') || c.includes('zinc') || c === '#71717a') return '⚪';
-  return '⚪';
-}
-
 function segStyle(b){
   const team = Config.teamById(selectedTeamId);
   if(!team) return { left:0, width:0, hours:0 };
@@ -2666,6 +2694,20 @@ function segStyle(b){
   const left = (s/total)*100;
   const width = ((e-s)/total)*100;
   return { left, width, hours: Math.round(((e-s)/60)*10)/10 };
+}
+function buildSegTimeLabels(team, start, end){
+  const labels = [];
+  const step = GRID_STEP_MIN;
+  const s = UI.offsetFromShiftStart(team, start);
+  const e = UI.offsetFromShiftStart(team, end);
+  if(!Number.isFinite(s) || !Number.isFinite(e) || e <= s){
+    return `<span class="seg-time-stack"><span class="seg-time">${UI.esc(compactTimeLabel(start))}</span></span>`;
+  }
+  for(let off=s; off<e; off+=step){
+    const hm = UI.offsetToHM(team, off);
+    labels.push(`<span class="seg-time">${UI.esc(compactTimeLabel(hm))}</span>`);
+  }
+  return `<span class="seg-time-stack">${labels.join('')}</span>`;
 }
 function currentWeekStartISOManila(){
   // Use Manila-local date boundary and snap to the visible week start (Sun–Sat)
@@ -2827,6 +2869,8 @@ function notifyPastWeekLocked(){
     function weeklyStats(u){
       const totals = { mailbox:0, back:0, call:0 };
       for(let d=0; d<7; d++){
+        const iso = isoForDay(d);
+        if(isRestDay(u.teamId, u.id, iso)) continue;
         const bl = Store.getUserDayBlocks(u.id, d);
         const t = Config.teamById(u.teamId);
         for(const b of (bl||[])){
@@ -2881,6 +2925,8 @@ function notifyPastWeekLocked(){
       const isCall = (tid === _callRole || tid === 'call_onqueue' || tid === 'call_available');
       let total = 0;
       for(let d=0; d<7; d++){
+        const iso = isoForDay(d);
+        if(isRestDay(u.teamId, u.id, iso)) continue;
         const bl = Store.getUserDayBlocks(u.id, d) || [];
         const t = Config.teamById(u.teamId);
         for(const b of bl){
@@ -2954,7 +3000,8 @@ function notifyPastWeekLocked(){
       const ws = weeklyStats(m);
       const prog = _progressForMember(m, paint.role || graphTaskFilterId);
 
-      const blocks = normalizeBlocks(team, Store.getUserDayBlocks(m.id, selectedDay), { locked: dayLockedForGrid && !unlockTriggered });
+      const dayBlocks = rest ? [] : Store.getUserDayBlocks(m.id, selectedDay);
+      const blocks = normalizeBlocks(team, dayBlocks, { locked: dayLockedForGrid && !unlockTriggered });
       const segs = (blocks||[]).map((b,i)=>{
           const st = segStyle(b);
           const role = (b.role || b.task || 'block');
@@ -2973,10 +3020,12 @@ function notifyPastWeekLocked(){
 
           const styleAttr = `left:${st.left}%;width:${st.width}%;${segCssVars}`;
           const lockedIcon = b.locked ? `<span class="seg-lock" aria-label="Locked" title="Locked"><span class="lock-ic" aria-hidden="true"></span></span>` : '';
+          const timeLabels = buildSegTimeLabels(team, b.start, b.end);
+          const roleLabel = blockLabel(role);
 
-          return `<div class="seg ${roleCls} ${b.selected?'is-selected':''} ${b.locked?'is-locked':''}" data-mid="${UI.esc(m.id)}" data-idx="${i}" data-role="${UI.esc(role)}" style="${styleAttr}" title="${UI.esc(b.taskLabel || b.roleLabel || role)} (${st.hours}h)">
+          return `<div class="seg ${roleCls} ${b.selected?'is-selected':''} ${b.locked?'is-locked':''}" data-mid="${UI.esc(m.id)}" data-idx="${i}" data-role="${UI.esc(role)}" style="${styleAttr}" title="${UI.esc(roleLabel)} (${st.hours}h)">
             ${lockedIcon}
-            <span class="seg-time">${UI.esc(compactTimeLabel(b.start))}</span>
+            ${timeLabels}
             <span class="handle" aria-hidden="true"></span>
           </div>`;
         }).join('');
@@ -3018,7 +3067,10 @@ function notifyPastWeekLocked(){
               <div class="progress-track">
                 <div class="progress-bar ${UI.esc(prog.cls||'progress-green')}" style="width:${Math.max(0, Math.min(100, Number(prog.pct)||0))}%"></div>
               </div>
-              <span class="progress-text" title="${UI.esc(prog.taskHoursTooltip||'')}">${UI.esc(((prog.taskHoursTooltip||'') ? (prog.taskHoursTooltip + ' • ') : '') + (prog.pctText||''))}</span>
+              <div class="progress-meta">
+                <span class="progress-tooltip">${UI.esc(prog.taskHoursTooltip||'')}</span>
+                <span class="progress-text">${UI.esc(prog.pctText||'')}</span>
+              </div>
 </div>
           </div>
           <div>
@@ -3036,10 +3088,16 @@ function notifyPastWeekLocked(){
             ` : '<span class="small muted">View</span>'}
             ${canEditTarget(m) ? `
               <div class="leave-actions" aria-label="Leave actions">
-                <button class="btn ghost tiny leavebtn ${leave && leave.type==='SICK'?'active':''}" data-act="leave" data-leave="SICK" type="button" title="Sick Leave (SL)">SL</button>
-                <button class="btn ghost tiny leavebtn ${leave && leave.type==='EMERGENCY'?'active':''}" data-act="leave" data-leave="EMERGENCY" type="button" title="Emergency Leave (EL)">EL</button>
-                <button class="btn ghost tiny leavebtn ${leave && leave.type==='VACATION'?'active':''}" data-act="leave" data-leave="VACATION" type="button" title="Vacation Leave (VL)">VL</button>
-                <button class="btn ghost tiny leavebtn ${leave && leave.type==='HOLIDAY'?'active':''}" data-act="leave" data-leave="HOLIDAY" type="button" title="Holiday Leave (HL)">HL</button>
+                <label class="leave-field">
+                  <span class="leave-label">Leave:</span>
+                  <select class="input leave-select" data-act="leave" aria-label="Leave status">
+                    <option value="" ${leave ? '' : 'selected'}>None</option>
+                    <option value="SICK" ${leave && leave.type==='SICK'?'selected':''}>Sick Leave (SL)</option>
+                    <option value="VACATION" ${leave && leave.type==='VACATION'?'selected':''}>Vacation Leave (VL)</option>
+                    <option value="EMERGENCY" ${leave && leave.type==='EMERGENCY'?'selected':''}>Emergency Leave (EL)</option>
+                    <option value="HOLIDAY" ${leave && leave.type==='HOLIDAY'?'selected':''}>Holiday Leave (HL)</option>
+                  </select>
+                </label>
               </div>
             `:''}
           </div>
@@ -3088,23 +3146,36 @@ function notifyPastWeekLocked(){
       });
     });
 
-    // Leave toggles (per date) — applies immediately.
-    table.querySelectorAll('button[data-act="leave"]').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        const row = btn.closest('.members-row');
+    // Leave selection (per date) — applies immediately.
+    table.querySelectorAll('select[data-act="leave"]').forEach(sel=>{
+      sel.addEventListener('change', async ()=>{
+        const row = sel.closest('.members-row');
         if(!row) return;
         const userId = row.dataset.id;
         const iso = row.dataset.iso || isoForDay(selectedDay);
-        const cur = Store.getLeave ? Store.getLeave(userId, iso) : null;
-        const want = String(btn.dataset.leave||'').toUpperCase();
-        let next = (cur && cur.type===want) ? null : want;
-        if(cur && cur.type===want){
-          const label = ({SICK:'Sick Leave',EMERGENCY:'Emergency Leave',VACATION:'Vacation Leave',HOLIDAY:'Holiday Leave'}[want] || 'Leave');
-          const ok = await UI.confirm({ title:'Remove Status', message:`Remove ${label} status for this member on ${iso}?`, okText:'Remove', danger:true });
-          if(!ok) return;
-        }
+        const want = String(sel.value||'').toUpperCase();
+        const next = want || null;
         try{
-          Store.setLeave(userId, iso, next, { setBy: me.id, setByName: me.name||me.username });
+          const existingLeave = Store.getLeave ? Store.getLeave(userId, iso) : null;
+          const member = Store.getUsers().find(x=>x.id===userId);
+          let backupBlocks = existingLeave && Array.isArray(existingLeave.backupBlocks) ? existingLeave.backupBlocks : null;
+          let backupTeamId = existingLeave && existingLeave.backupTeamId ? existingLeave.backupTeamId : (member && member.teamId) ? member.teamId : null;
+
+          if(next){
+            if(!backupBlocks){
+              backupBlocks = Store.getUserDayBlocks(userId, selectedDay).slice();
+            }
+            Store.setUserDayBlocks(userId, backupTeamId, selectedDay, []);
+          } else if(existingLeave && Array.isArray(existingLeave.backupBlocks)){
+            Store.setUserDayBlocks(userId, backupTeamId, selectedDay, existingLeave.backupBlocks);
+          }
+
+          const leaveMeta = { setBy: me.id, setByName: me.name||me.username };
+          if(next && backupBlocks){
+            leaveMeta.backupBlocks = backupBlocks;
+            leaveMeta.backupTeamId = backupTeamId;
+          }
+          Store.setLeave(userId, iso, next, leaveMeta);
           if(next){
             Store.addLog({ ts: Date.now(), teamId: selectedTeamId, actorId: me.id, actorName: me.name||me.username, action: 'LEAVE_SET', targetId: userId, msg: `${me.name||me.username} set ${want.toLowerCase()} leave`, detail: `Date ${iso}` });
             const u = Store.getUsers().find(x=>x.id===userId);
@@ -3115,11 +3186,10 @@ function notifyPastWeekLocked(){
             addAudit('LEAVE_CLEAR', userId, u ? (u.name||u.username) : null, `Date ${iso}`);
           }
         }catch(e){
-
           UI.toast && UI.toast('Unable to update leave. Please refresh and try again.');
         }
         clearSelection();
-        // Re-render the whole page section so leave buttons + sorting update immediately.
+        // Re-render the whole page section so leave dropdown + sorting update immediately.
         renderAll();
       });
     });
@@ -4081,50 +4151,119 @@ function notifyPastWeekLocked(){
         return changes;
       };
 
-      const buildMessage = (changes)=>{
-        if(!changes || !changes.length){
-          return 'Schedule Updated.';
+      const buildScheduleLines = (snap)=>{
+        const days = (snap && snap.days) ? snap.days : {};
+        const lines = [];
+        for(let d=0; d<7; d++){
+          const iso = isoForDay(d);
+          const blocks = Array.isArray(days[String(d)]) ? days[String(d)].slice() : [];
+          const label = (UI && UI.DAYS && UI.DAYS[d]) ? UI.DAYS[d] : `Day ${d+1}`;
+          if(!blocks.length){
+            lines.push(`• ${label} (${iso}): No assignments.`);
+            continue;
+          }
+          blocks.sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
+          const desc = blocks.map(b=>`${blockLabel(b.role)} (${b.start}-${b.end})`).join(', ');
+          lines.push(`• ${label} (${iso}): ${desc}`);
         }
-        const first = changes[0];
-        const dateLong = formatLongDate(first.iso);
-        let primary = null;
-        let action = '';
-        if(first.added && first.added.length){
-          primary = first.added[0];
-          action = 'added';
-        }else if(first.removed && first.removed.length){
-          primary = first.removed[0];
-          action = 'removed';
+        return lines;
+      };
+
+      const formatSummaryDate = (iso)=>{
+        try{
+          return new Date(String(iso||'')+'T00:00:00Z').toLocaleDateString('en-US', {
+            month:'long', day:'2-digit', year:'numeric', timeZone: Config.TZ
+          });
+        }catch(_){ return String(iso||''); }
+      };
+
+      const pickSummaryDayIndex = (days, changes)=>{
+        const hasBlocks = (idx)=> Array.isArray(days[String(idx)]) && days[String(idx)].length;
+        let dayIdx = (changes && changes.length) ? Number(changes[0].dayIndex) : Number(selectedDay||0);
+        if(!(dayIdx>=0 && dayIdx<7)) dayIdx = 0;
+        if(hasBlocks(dayIdx)) return dayIdx;
+        for(let d=0; d<7; d++){
+          if(hasBlocks(d)) return d;
         }
-        const label = primary ? blockLabel(primary.role) : 'Changes';
-        const tRange = primary ? ` (${primary.start}-${primary.end})` : '';
-        const extra = Math.max(0, changes.reduce((a,c)=>a+((c.added||[]).length+(c.removed||[]).length),0) - 1);
-        const extraTxt = extra ? ` (and ${extra} more change${extra===1?'':'s'})` : '';
-        const summary = `Schedule Updated: ${label} ${action || 'updated'} on ${dateLong}.${extraTxt}`;
+        return dayIdx;
+      };
+
+      const buildSummaryForUser = (snap, changes)=>{
+        const days = (snap && snap.days) ? snap.days : {};
+        const dayIdx = pickSummaryDayIndex(days, changes);
+        const iso = isoForDay(dayIdx);
+        const blocks = Array.isArray(days[String(dayIdx)]) ? days[String(dayIdx)].slice() : [];
+        blocks.sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
+        return {
+          iso,
+          dateLabel: formatSummaryDate(iso),
+          items: blocks.map(b=>({
+            role:String(b.role||''),
+            label:blockLabel(b.role),
+            start:String(b.start||''),
+            end:String(b.end||'')
+          }))
+        };
+      };
+
+      const buildMessage = (changes, snap)=>{
+        const summaryDate = formatLongDate(weekStartISO);
+        let summary = `Schedule Assigned for week of ${summaryDate}.`;
+        if(changes && changes.length){
+          const first = changes[0];
+          const dateLong = formatLongDate(first.iso);
+          let primary = null;
+          let action = '';
+          if(first.added && first.added.length){
+            primary = first.added[0];
+            action = 'added';
+          }else if(first.removed && first.removed.length){
+            primary = first.removed[0];
+            action = 'removed';
+          }
+          const label = primary ? blockLabel(primary.role) : 'Changes';
+          const extra = Math.max(0, changes.reduce((a,c)=>a+((c.added||[]).length+(c.removed||[]).length),0) - 1);
+          const extraTxt = extra ? ` (and ${extra} more change${extra===1?'':'s'})` : '';
+          summary = `Schedule Updated: ${label} ${action || 'updated'} on ${dateLong}.${extraTxt}`;
+        }
 
         const lines = [summary];
-        const details = [];
-        for(const ch of changes.slice(0, 4)){
-          const dLong = formatLongDate(ch.iso);
-          for(const a of (ch.added||[]).slice(0, 4)){
-            details.push(`• Added: ${blockLabel(a.role)} (${a.start}-${a.end}) — ${dLong}`);
+        if(changes && changes.length){
+          const details = [];
+          for(const ch of changes.slice(0, 4)){
+            const dLong = formatLongDate(ch.iso);
+            for(const a of (ch.added||[]).slice(0, 4)){
+              details.push(`• Added: ${blockLabel(a.role)} (${a.start}-${a.end}) — ${dLong}`);
+            }
+            for(const r of (ch.removed||[]).slice(0, 4)){
+              details.push(`• Removed: ${blockLabel(r.role)} (${r.start}-${r.end}) — ${dLong}`);
+            }
           }
-          for(const r of (ch.removed||[]).slice(0, 4)){
-            details.push(`• Removed: ${blockLabel(r.role)} (${r.start}-${r.end}) — ${dLong}`);
+          if(details.length){
+            lines.push('', 'Changes:', ...details);
           }
         }
-        if(details.length){
-          lines.push('', 'Details:', ...details);
+
+        const scheduleLines = buildScheduleLines(snap);
+        if(scheduleLines.length){
+          lines.push('', 'Schedule details:', ...scheduleLines);
         }
         lines.push('', 'Please acknowledge.');
         return lines.join('\n');
       };
 
-      const recipients = [];
+      const recipients = new Set();
       const userMessages = {};
+      const userSummaries = {};
       const snapshotHashes = {};
       const snapshots = {};
       const affectedDates = new Set();
+      let hasAnyChanges = false;
+
+      const hasAssignments = (snap)=>{
+        const days = (snap && snap.days) ? snap.days : {};
+        return Object.values(days).some(dayBlocks => Array.isArray(dayBlocks) && dayBlocks.length);
+      };
 
       for(const m of members){
         const curSnap = snapForUser(m.id);
@@ -4133,18 +4272,34 @@ function notifyPastWeekLocked(){
         snapshots[m.id] = curSnap;
 
         const prevHash = prevHashes[m.id];
-        if(prevHash && String(prevHash) === String(curHash)) continue; // unchanged
-
         const changes = diffSnap(prevSnapshots[m.id], curSnap);
-        if(!changes.length && prevHash) continue; // same content but no diff (guard)
-
-        recipients.push(m.id);
-        userMessages[m.id] = buildMessage(changes);
-        for(const ch of changes){ affectedDates.add(ch.iso); }
+        userMessages[m.id] = buildMessage(changes, curSnap);
+        userSummaries[m.id] = buildSummaryForUser(curSnap, changes);
+        const assigned = hasAssignments(curSnap);
+        if(assigned || changes.length){
+          recipients.add(m.id);
+        }
+        if(changes.length){
+          hasAnyChanges = true;
+          for(const ch of changes){ affectedDates.add(ch.iso); }
+        }
       }
 
-      if(!recipients.length){
-        UI.toast('No member schedule changes detected for this week. Nothing to send.', 'info');
+      const recipientList = Array.from(recipients);
+      if(!recipientList.length){
+        alert('No members have assigned schedules to notify for this week.');
+        return;
+      }
+
+      const buildSnapshotDigest = (hashes, ids)=>{
+        const keys = (ids && ids.length) ? ids.slice().sort() : Object.keys(hashes||{}).sort();
+        const rows = keys.map(k=>`${k}:${String(hashes[k]||'')}`);
+        const raw = rows.join('|');
+        return Store._hash ? Store._hash(raw) : raw;
+      };
+      const snapshotDigest = buildSnapshotDigest(snapshotHashes, recipientList);
+      if(prev && prev.weekStartISO === weekStartISO && String(prev.snapshotDigest||'') === String(snapshotDigest)){
+        UI.toast('No new schedule updates to notify. All members already have the latest schedule.', 'info');
         return;
       }
 
@@ -4157,11 +4312,14 @@ function notifyPastWeekLocked(){
         fromName: me.name||me.username,
         title: 'Schedule Updated',
         body: `Schedule updates were applied for week of ${weekStartISO}. Please acknowledge.`,
-        recipients,
+        recipients: recipientList,
         acks: {},
         userMessages,
+        userSummaries,
         snapshotHashes,
-        snapshots
+        snapshots,
+        snapshotDigest,
+        hasAnyChanges
       };
 
       Store.addNotif(notif);

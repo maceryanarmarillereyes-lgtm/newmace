@@ -1527,7 +1527,13 @@
     },
     addNotif(notif){
       const list = Store.getNotifs();
-      list.unshift(notif);
+      const candidate = notif || {};
+      const digest = candidate.snapshotDigest ? String(candidate.snapshotDigest) : '';
+      if(digest){
+        const dup = list.find(n=>n && n.teamId===candidate.teamId && n.weekStartISO===candidate.weekStartISO && String(n.snapshotDigest||'')===digest);
+        if(dup) return;
+      }
+      list.unshift(candidate);
       Store.saveNotifs(list);
     },
     ackNotif(notifId, userId){

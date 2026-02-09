@@ -1463,14 +1463,13 @@ toast(message, variant){
           <div class="panel notification-popout">
             <div class="head">
               <div>
-                <div class="announce-title" id="schedNotifTitle">Schedule Updated</div>
+                <div class="notif-member" id="schedNotifMember">—</div>
+                <div class="announce-title" id="schedNotifTitle">Schedule Notifications</div>
                 <div class="small" id="schedNotifMeta">—</div>
               </div>
+              <div class="notif-count" id="schedNotifCount"></div>
             </div>
-            <div class="body" id="schedNotifBody" style="white-space:pre-wrap"></div>
-            <div class="foot" style="display:flex;justify-content:flex-end;gap:10px">
-              <button class="btn" type="button" id="schedNotifAck">Acknowledge</button>
-            </div>
+            <div class="body" id="schedNotifBody"></div>
           </div>
         `;
         document.body.appendChild(m);
@@ -1484,14 +1483,32 @@ toast(message, variant){
         'back office': '#ffa21a',
         'call available': '#2ecc71',
         'lunch': '#22d3ee',
+        'block': '#ff4d4f',
       };
-      const taskColorByLabel = (label)=>{
+      const getTeamTasks = ()=>{
+        try{
+          if(window.Store && Store.getTeamTasks && user.teamId != null) return Store.getTeamTasks(user.teamId) || [];
+        }catch(_){ }
+        return [];
+      };
+      const taskColorByLabel = (label, taskId)=>{
+        const tasks = getTeamTasks();
+        const id = String(taskId||'').trim();
+        const lbl = String(label||'').trim();
+        const hit = tasks.find(t=>{
+          if(!t) return false;
+          const tid = String(t.id||t.taskId||'').trim();
+          const tlabel = String(t.label||t.name||'').trim();
+          return (id && tid && tid === id) || (lbl && tlabel && tlabel.toLowerCase() === lbl.toLowerCase());
+        });
+        if(hit && hit.color) return hit.color;
         const s = String(label||'').trim().toLowerCase();
         if(TASK_PALETTE[s]) return TASK_PALETTE[s];
         if(s.includes('mailbox')) return TASK_PALETTE['mailbox manager'];
         if(s.includes('back')) return TASK_PALETTE['back office'];
         if(s.includes('call')) return TASK_PALETTE['call available'];
         if(s.includes('lunch')) return TASK_PALETTE['lunch'];
+        if(s.includes('block')) return TASK_PALETTE['block'];
         return '';
       };
 
@@ -1501,15 +1518,40 @@ toast(message, variant){
         const n = parseInt(m[1],16);
         return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
       };
+      const esc = UI.esc || ((x)=>String(x||'').replace(/[&<>"']/g,(c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;' }[c])));
 
-      const renderNotifBody = (msg)=>{
+      const renderTaskSummary = (summary)=>{
+        if(!summary || !summary.items) return '';
+        const dateLabel = summary.dateLabel || summary.iso || '';
+        const rows = (summary.items||[]).map(item=>{
+          const label = item.label || item.role || '';
+          const c = taskColorByLabel(label, item.role);
+          return `
+            <div class="notif-task-row">
+              <span class="notif-task-bullet" style="--task-color:${esc(c)}"></span>
+              <span class="notif-task-time">${esc(item.start||'')} to ${esc(item.end||'')}</span>
+              <span class="notif-task-eq">=</span>
+              <span class="notif-task-label">${esc(label)}</span>
+            </div>
+          `;
+        }).join('');
+        const empty = !rows ? '<div class="small muted">No assignments for this date.</div>' : rows;
+        return `
+          <div class="notif-summary">
+            <div class="notif-date">Date: ${esc(dateLabel || '—')}</div>
+            ${empty}
+          </div>
+        `;
+      };
+
+      const renderNotifBody = (msg, summary)=>{
         const text = String(msg||'').trim();
-        const esc = UI.esc || ((x)=>String(x||'').replace(/[&<>"']/g,(c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;' }[c])));
         // Expected format:
         // “Schedule Updated: Call Available added on Sunday, February 01, 2026.”
         const m = text.match(/^Schedule Updated:\s*(.+?)\s+(added|removed|updated)\s+on\s+(.+?)\.?\s*$/i);
         if(!m){
-          return `<div style="white-space:pre-wrap">${esc(text || 'Your schedule has been updated.')}</div>`;
+          const fallback = `<div class="notif-intro">${esc(text || 'Your schedule has been updated.')}</div>`;
+          return `${fallback}${renderTaskSummary(summary)}`;
         }
         const label = m[1];
         const action = m[2];
@@ -1519,8 +1561,8 @@ toast(message, variant){
         const bg = rgb ? `rgba(${rgb.r},${rgb.g},${rgb.b},0.14)` : 'rgba(255,255,255,.06)';
         const border = rgb ? `rgba(${rgb.r},${rgb.g},${rgb.b},0.35)` : 'rgba(255,255,255,.14)';
         const taskText = '#081018';
-        return `
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        const headline = `
+          <div class="notif-intro">
             <span class="task-label" style="--task-color:${esc(c)};--task-bg:${esc(bg)};--task-border:${esc(border)};--task-text:${esc(taskText)}">
               <span class="task-color" style="background:${esc(c)}"></span>
               ${esc(label)}
@@ -1528,55 +1570,112 @@ toast(message, variant){
             <span>${esc(action)} on ${esc(date)}.</span>
           </div>
         `;
+        return `${headline}${renderTaskSummary(summary)}`;
       };
       // Prevent spam: show each notif once per tab session (unless page reloads).
-      const shownIds = new Set();
-      let openNotifId = null;
+      const shownKeys = new Set();
       let lastBeepedId = null;
+      const pendingKeyFor = (n)=>{
+        if(!n) return '';
+        if(n.snapshotDigest) return `digest:${String(n.snapshotDigest)}`;
+        return `id:${String(n.id||'')}`;
+      };
+      let lastPending = [];
+      const ackNotif = (n)=>{
+        if(!n || !n.id) return;
+        Store.ackNotif(n.id, user.id);
+        // broadcast ack to other tabs
+        try{ channel && channel.postMessage({ type:'ack', notifId:n.id, userId:user.id }); }catch(e){}
+      };
+      const renderPendingNotifs = (list)=>{
+        if(!list.length){
+          return '<div class="muted">No schedule notifications pending.</div>';
+        }
+        return list.map(n=>{
+          const perUser = (n.userMessages && n.userMessages[user.id]) ? n.userMessages[user.id] : '';
+          const bodyMsg = perUser || n.body || 'Your schedule has been updated.';
+          const summary = (n.userSummaries && n.userSummaries[user.id]) ? n.userSummaries[user.id] : null;
+          const meta = (String(n.type||'')==='MAILBOX_ASSIGN')
+            ? `From: ${n.fromName||'Mailbox Manager'} • ${new Date(n.ts||Date.now()).toLocaleString()} • Mailbox`
+            : `From: ${n.fromName||'Team Lead'} • Week of ${n.weekStartISO||'—'}`;
+          return `
+            <div class="notif-item">
+              <div class="notif-item-head">
+                <div>
+                  <div class="notif-item-title">${esc(n.title || 'Schedule Updated')}</div>
+                  <div class="small muted">${esc(meta)}</div>
+                </div>
+                <button class="btn dashx-ack" data-ack="${esc(n.id)}" type="button" aria-label="Acknowledge schedule notification">
+                  <span class="dashx-spin" aria-hidden="true"></span>
+                  <span class="dashx-acklbl">Acknowledge</span>
+                </button>
+              </div>
+              <div class="notif-item-body">${renderNotifBody(bodyMsg, summary)}</div>
+            </div>
+          `;
+        }).join('');
+      };
       const ping = ()=>{
-        // Show the latest un-acked notif for this user
         const list = Store.getNotifs();
-        const n = list.find(x=>x && Array.isArray(x.recipients) && x.recipients.includes(user.id) && !(x.acks && x.acks[user.id]));
-        if(!n) return;
+        const pendingRaw = list.filter(x=>x && Array.isArray(x.recipients) && x.recipients.includes(user.id) && !(x.acks && x.acks[user.id]));
+        const pendingSorted = pendingRaw.sort((a,b)=> (b.ts||0) - (a.ts||0));
+        const deduped = [];
+        const seen = new Set();
+        for(const n of pendingSorted){
+          const key = pendingKeyFor(n);
+          if(!key || seen.has(key)) continue;
+          seen.add(key);
+          deduped.push(n);
+        }
+        lastPending = deduped;
 
         const modal = document.getElementById('schedNotifModal');
         const isOpen = !!(modal && modal.classList.contains('open'));
+        if(!deduped.length){
+          if(isOpen) UI.closeModal('schedNotifModal');
+          return;
+        }
 
-        // Beep once per notif per tab.
-        if(n.id && n.id !== lastBeepedId){
-          lastBeepedId = n.id;
+        const latest = deduped[0];
+        if(latest && latest.id && latest.id !== lastBeepedId){
+          lastBeepedId = latest.id;
           UI.playNotifSound(user.id);
         }
 
-        UI.el('#schedNotifTitle').textContent = n.title || 'Schedule Updated';
-        if(String(n.type||'')==='MAILBOX_ASSIGN'){
-          UI.el('#schedNotifMeta').textContent = `From: ${n.fromName||'Mailbox Manager'} • ${new Date(n.ts||Date.now()).toLocaleString()} • Mailbox`;
-        }else{
-          UI.el('#schedNotifMeta').textContent = `From: ${n.fromName||'Team Lead'} • Week of ${n.weekStartISO||'—'}`;
+        UI.el('#schedNotifMember').textContent = user.name || user.username || 'Member';
+        UI.el('#schedNotifMeta').textContent = `You have ${deduped.length} pending schedule update${deduped.length===1?'':'s'}.`;
+        const countEl = UI.el('#schedNotifCount');
+        if(countEl) countEl.textContent = String(deduped.length);
+        UI.el('#schedNotifBody').innerHTML = renderPendingNotifs(deduped);
+
+        if(!modal._ackBound){
+          modal._ackBound = true;
+          modal.addEventListener('click', (e)=>{
+            const btn = e && e.target ? e.target.closest('[data-ack]') : null;
+            if(!btn) return;
+            const id = String(btn.getAttribute('data-ack')||'');
+            if(!id) return;
+            try{
+              if(btn.dataset.busy==='1') return;
+              btn.dataset.busy='1';
+              btn.disabled = true;
+              const spin = btn.querySelector('.dashx-spin');
+              const lbl = btn.querySelector('.dashx-acklbl');
+              if(spin) spin.classList.add('on');
+              if(lbl) lbl.textContent = 'Acknowledging…';
+            }catch(_){ }
+            const n = lastPending.find(x=>String(x.id||'')===id);
+            ackNotif(n);
+            ping();
+          });
         }
-        const perUser = (n.userMessages && n.userMessages[user.id]) ? n.userMessages[user.id] : '';
-        const bodyMsg = perUser || n.body || 'Your schedule has been updated.';
-        // Use HTML so we can include a color-coded task badge when applicable.
-        UI.el('#schedNotifBody').innerHTML = renderNotifBody(bodyMsg);
 
-        UI.el('#schedNotifAck').onclick = ()=>{
-          Store.ackNotif(n.id, user.id);
-          // broadcast ack to other tabs
-          try{ channel && channel.postMessage({ type:'ack', notifId:n.id, userId:user.id }); }catch(e){}
-          openNotifId = null;
-          UI.closeModal('schedNotifModal');
-        };
-
-        // Only open once per notif per tab session.
-        if(isOpen && openNotifId === n.id) return;
         if(!isOpen){
-          if(shownIds.has(n.id)) return;
-          shownIds.add(n.id);
-          openNotifId = n.id;
-          UI.openModal('schedNotifModal');
-        } else {
-          // Modal is open but a newer notif arrived.
-          openNotifId = n.id;
+          const key = pendingKeyFor(latest);
+          if(!shownKeys.has(key)){
+            shownKeys.add(key);
+            UI.openModal('schedNotifModal');
+          }
         }
       };
 
@@ -1587,6 +1686,13 @@ toast(message, variant){
         if(ev.key=== 'ums_schedule_notifs' || ev.key=== 'mums_schedule_notifs') ping();
       };
       window.addEventListener('storage', onStorage);
+      const onStore = (ev)=>{
+        try{
+          const key = ev && ev.detail ? String(ev.detail.key||'') : '';
+          if(key === 'ums_schedule_notifs' || key === 'mums_schedule_notifs') ping();
+        }catch(_){ }
+      };
+      window.addEventListener('mums:store', onStore);
 
       if(channel){
         channel.onmessage = ()=>ping();
@@ -1599,6 +1705,7 @@ toast(message, variant){
       return ()=>{
         try{ clearInterval(timer); }catch(e){}
         try{ window.removeEventListener('storage', onStorage); }catch(e){}
+        try{ window.removeEventListener('mums:store', onStore); }catch(e){}
         try{ channel && channel.close(); }catch(e){}
       };
     },

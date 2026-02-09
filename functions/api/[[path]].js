@@ -54,6 +54,9 @@ async function getRoutes(env) {
     'sync/pull': unwrapCjs(await import('../../server/routes/sync/pull.js')),
     'sync/push': unwrapCjs(await import('../../server/routes/sync/push.js')),
 
+    // OVER ALL STATS
+    overall_stats: unwrapCjs(await import('../../server/routes/overall_stats.js')),
+
     'users/list': unwrapCjs(await import('../../server/routes/users/list.js')),
     'users/create': unwrapCjs(await import('../../server/routes/users/create.js')),
     'users/ensure_profile': unwrapCjs(await import('../../server/routes/users/ensure_profile.js')),
