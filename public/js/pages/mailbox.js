@@ -1122,6 +1122,7 @@ const onMailboxStoreEvent = (e)=>{
       k === 'mums_mailbox_tables' ||
       k === 'mums_mailbox_state' ||
       k === 'ums_weekly_schedules' ||
+      k === 'mums_schedule_blocks' ||
       k === 'ums_users' ||
       k === 'mums_team_config' ||
       k === 'ums_activity_logs'
@@ -1140,7 +1141,7 @@ const onMailboxStorageEvent = (e)=>{
     if(
       k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override' ||
       k === 'mums_mailbox_tables' || k === 'mums_mailbox_state' ||
-      k === 'ums_weekly_schedules' || k === 'ums_users' ||
+      k === 'ums_weekly_schedules' || k === 'mums_schedule_blocks' || k === 'ums_users' ||
       k === 'mums_team_config' || k === 'ums_activity_logs'
     ){
       // Override keys still use the explicit override sync helper for cloud reconciliation.

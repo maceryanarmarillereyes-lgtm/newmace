@@ -96,6 +96,18 @@ function isMailboxManagerOnDuty(weekly, userId, nowParts){
   return false;
 }
 
+async function getMailboxScheduleDoc(){
+  const blocksDoc = await getDocValue('mums_schedule_blocks');
+  if(blocksDoc.ok && blocksDoc.value && Object.keys(blocksDoc.value || {}).length){
+    return { ok:true, value: blocksDoc.value, source: 'mums_schedule_blocks' };
+  }
+  const weeklyDoc = await getDocValue('ums_weekly_schedules');
+  if(weeklyDoc.ok){
+    return { ok:true, value: weeklyDoc.value || {}, source: 'ums_weekly_schedules' };
+  }
+  return { ok:false, error:'Failed to read schedules', details: weeklyDoc.details };
+}
+
 function safeString(x, max=240){
   const s = (x==null) ? '' : String(x);
   return s.length>max ? s.slice(0,max) : s;
@@ -186,13 +198,13 @@ module.exports = async (req, res) => {
         return res.end(JSON.stringify({ ok:false, error:'Forbidden (not in duty team)' }));
       }
 
-      const weeklyDoc = await getDocValue('ums_weekly_schedules');
-      if(!weeklyDoc.ok){
+      const scheduleDoc = await getMailboxScheduleDoc();
+      if(!scheduleDoc.ok){
         res.statusCode = 500;
-        return res.end(JSON.stringify({ ok:false, error:'Failed to read schedules', details: weeklyDoc.details }));
+        return res.end(JSON.stringify({ ok:false, error:'Failed to read schedules', details: scheduleDoc.details }));
       }
-      const weekly = weeklyDoc.value || {};
-      const onDuty = isMailboxManagerOnDuty(weekly, actor.id, now);
+      const schedule = scheduleDoc.value || {};
+      const onDuty = isMailboxManagerOnDuty(schedule, actor.id, now);
       if(!onDuty){
         res.statusCode = 403;
         return res.end(JSON.stringify({ ok:false, error:'Forbidden (Mailbox Manager duty not active)' }));
