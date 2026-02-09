@@ -257,9 +257,18 @@ function _mbxMemberSortKey(u){
 
       const bucketSegs = _mbxToSegments(Number(bucket.startMin)||0, Number(bucket.endMin)||0);
       const all = (Store.getUsers ? Store.getUsers() : []) || [];
-      const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
+      const candidates = all
+        .filter(u=>u && u.teamId===teamId && u.status==='active')
+        .slice()
+        .sort((a,b)=>{
+          const an = String(a?.name||a?.username||'').toLowerCase();
+          const bn = String(b?.name||b?.username||'').toLowerCase();
+          if(an && bn && an !== bn) return an.localeCompare(bn);
+          return String(a?.id||'').localeCompare(String(b?.id||''));
+        });
 
       const roleOrder = ['mailbox_manager','mailbox_call'];
+      const matches = [];
       for(const role of roleOrder){
         for(const u of candidates){
           for(const di of dows){
@@ -270,10 +279,28 @@ function _mbxMemberSortKey(u){
               const e = (UI.parseHM ? UI.parseHM(b.end) : _mbxParseHM(b.end));
               if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
               const blockSegs = _mbxToSegments(s, e);
-              if(_mbxSegmentsOverlap(bucketSegs, blockSegs)) return String(u.name||u.username||'—');
+              if(!_mbxSegmentsOverlap(bucketSegs, blockSegs)) continue;
+              matches.push({
+                role,
+                roleIdx: roleOrder.indexOf(role),
+                startMin: s,
+                name: String(u.name||u.username||'—'),
+                id: String(u.id||'')
+              });
             }
           }
         }
+      }
+      if(matches.length){
+        matches.sort((a,b)=>{
+          if(a.roleIdx !== b.roleIdx) return a.roleIdx - b.roleIdx;
+          if(a.startMin !== b.startMin) return a.startMin - b.startMin;
+          const an = a.name.toLowerCase();
+          const bn = b.name.toLowerCase();
+          if(an && bn && an !== bn) return an.localeCompare(bn);
+          return a.id.localeCompare(b.id);
+        });
+        return matches[0].name || '—';
       }
     }catch(_){}
     return '—';

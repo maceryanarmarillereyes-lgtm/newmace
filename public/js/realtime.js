@@ -42,6 +42,11 @@
   ];
 
   const DEFAULT_RELAY_URL = 'ws://localhost:17601';
+  const SUPABASE_STORAGE = {
+    getItem(){ return null; },
+    setItem(){},
+    removeItem(){}
+  };
 
   let ws = null;
   let wsOk = false;
@@ -406,15 +411,15 @@ function applyRemoteKey(key, value){
       lastAuthToken = token;
       if (!window.__MUMS_SB_CLIENT) {
         window.__MUMS_SB_CLIENT = window.supabase.createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
-        auth: { persistSession: false, autoRefreshToken: false },
-        realtime: { params: { eventsPerSecond: 10 } },
-        global: {
-          headers: {
-            // Critical: provide user JWT so Realtime respects RLS (authenticated role)
-            Authorization: 'Bearer ' + token
+          auth: { persistSession: false, autoRefreshToken: false, storage: SUPABASE_STORAGE },
+          realtime: { params: { eventsPerSecond: 10 } },
+          global: {
+            headers: {
+              // Critical: provide user JWT so Realtime respects RLS (authenticated role)
+              Authorization: 'Bearer ' + token
+            }
           }
-        }
-      });
+        });
       }
       sbClient = window.__MUMS_SB_CLIENT;
 
