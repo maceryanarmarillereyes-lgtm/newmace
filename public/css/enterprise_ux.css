@@ -3445,6 +3445,12 @@ body.members-fullscreen-active .members-topbar,
   gap:16px;
   flex-wrap:wrap;
 }
+.overall-stats-controls{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+}
 .overall-stats-team{
   display:flex;
   flex-direction:column;
