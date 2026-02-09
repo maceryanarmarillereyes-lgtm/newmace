@@ -42,6 +42,11 @@
   ];
 
   const DEFAULT_RELAY_URL = 'ws://localhost:17601';
+  const SUPABASE_STORAGE = {
+    getItem(){ return null; },
+    setItem(){},
+    removeItem(){}
+  };
 
   let ws = null;
   let wsOk = false;
@@ -58,6 +63,7 @@
   let connectTimer = null;
   let reconnectTimer = null;
   let reconcileTimer = null;
+  let offlinePullTimer = null;
   let reconnectBackoffMs = 1200;
   let lastAuthToken = '';
 
@@ -92,6 +98,27 @@
 
   function shouldSyncKey(key){
     return SYNC_KEYS.indexOf(key) !== -1;
+  }
+
+  const MEMBER_PUSH_KEYS = new Set([
+    'mums_attendance',
+    'mums_mailbox_state',
+    'ums_cases',
+    'ums_schedule_notifs',
+    'mums_schedule_notifs'
+  ]);
+
+  function canPushKey(key){
+    try{
+      if (!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled())) return false;
+      if (!(CloudAuth.accessToken && CloudAuth.accessToken())) return false;
+      const u = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
+      const role = String(u.role || 'MEMBER');
+      if (role === 'MEMBER' && !MEMBER_PUSH_KEYS.has(String(key||''))) return false;
+      return true;
+    }catch(_){
+      return false;
+    }
   }
 
   
@@ -130,6 +157,7 @@
     try {
       const k = String(key||'');
       if (!k) return;
+      if (!canPushKey(k)) return;
       const q = getQueue();
       const prev = q[k] || {};
       const next = {
@@ -164,6 +192,11 @@
       for (const k of keys) {
         const item = q[k];
         if (!item) continue;
+        if (!canPushKey(item.key || k)) {
+          try{ if (window.Store && Store.addLog) Store.addLog({ action: 'SYNC_QUEUE_DROP_FORBIDDEN', detail: String(item.key||k) + ' reason=client_guard' }); }catch(_){}
+          delete q[k];
+          continue;
+        }
 
         // Only attempt flush when cloud auth is available.
         if (!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled() && CloudAuth.accessToken && CloudAuth.accessToken())) {
@@ -342,11 +375,26 @@ function applyRemoteKey(key, value){
     }
   }
 
+  function ensureOfflinePull(){
+    try{
+      if(offlinePullTimer) return;
+      offlinePullTimer = setInterval(()=>{
+        try{
+          if (cloudMode === 'realtime') return;
+          if (!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled())) return;
+          if (!(CloudAuth.accessToken && CloudAuth.accessToken())) return;
+          pullOnce();
+        }catch(_){ }
+      }, 8000);
+    }catch(_){ }
+  }
+
   function stopCloud(){
     try {
       if (connectTimer) { clearTimeout(connectTimer); connectTimer = null; }
       if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
       if (reconcileTimer) { clearInterval(reconcileTimer); reconcileTimer = null; }
+      if (offlinePullTimer) { clearInterval(offlinePullTimer); offlinePullTimer = null; }
     } catch (_) {}
     try { if (sbChannel && sbChannel.unsubscribe) sbChannel.unsubscribe(); } catch (_) {}
     sbChannel = null;
@@ -381,15 +429,15 @@ function applyRemoteKey(key, value){
       lastAuthToken = token;
       if (!window.__MUMS_SB_CLIENT) {
         window.__MUMS_SB_CLIENT = window.supabase.createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
-        auth: { persistSession: false, autoRefreshToken: false },
-        realtime: { params: { eventsPerSecond: 10 } },
-        global: {
-          headers: {
-            // Critical: provide user JWT so Realtime respects RLS (authenticated role)
-            Authorization: 'Bearer ' + token
+          auth: { persistSession: false, autoRefreshToken: false, storage: SUPABASE_STORAGE },
+          realtime: { params: { eventsPerSecond: 10 } },
+          global: {
+            headers: {
+              // Critical: provide user JWT so Realtime respects RLS (authenticated role)
+              Authorization: 'Bearer ' + token
+            }
           }
-        }
-      });
+        });
       }
       sbClient = window.__MUMS_SB_CLIENT;
 
@@ -496,6 +544,7 @@ function applyRemoteKey(key, value){
 
   async function cloudPush(key, value, removedIds, op){
     try {
+      if(!canPushKey(key)) return;
       const body = { key, value, removedIds: removedIds || [], op: op || 'set', clientId, ts: Date.now() };
       const out = await cloudFetch('/api/sync/push', {
         method: 'POST',
@@ -534,6 +583,7 @@ function applyRemoteKey(key, value){
 
     // Cloud
     if (!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled())) return;
+    if (!canPushKey(key)) return;
 
     // Debounce per key
     if (pushTimers.has(key)) clearTimeout(pushTimers.get(key));
@@ -553,6 +603,7 @@ function applyRemoteKey(key, value){
 
       // If realtime isn't healthy, queue the change and let reconnect/flush handle it.
       if (cloudMode !== 'realtime') {
+        if (!canPushKey(key)) return;
         enqueue(key, value, removedIds, op, 'not_realtime', cloudMode);
         try { connectCloudMandatory(); } catch(_){}
         return;
@@ -595,6 +646,7 @@ function applyRemoteKey(key, value){
       } else {
         dispatchStatus('offline', 'Login required');
       }
+      ensureOfflinePull();
 
 
       // Reconnect on login/logout.
@@ -607,6 +659,7 @@ function applyRemoteKey(key, value){
           return;
         }
         connectCloudMandatory();
+        ensureOfflinePull();
       });
 
       // If Supabase access token rotates (refresh), reconnect realtime
@@ -618,6 +671,7 @@ function applyRemoteKey(key, value){
           lastAuthToken = t;
           // Reconnect to ensure both HTTP headers and WS auth are updated.
           connectCloudMandatory();
+          ensureOfflinePull();
         } catch (_) {}
       });
     } catch (_) {}

@@ -25,22 +25,23 @@
 
     <div class="card pad" style="margin-top:10px">
       <table class="table">
-        <thead><tr><th>Case</th><th>Status</th><th>Created</th></tr></thead>
+        <thead><tr><th>Case</th><th>Status</th><th>Assigned By</th><th>Created</th></tr></thead>
         <tbody>
           ${mine.map(c=>`
             <tr>
               <td>${UI.esc(c.title||'')}</td>
               <td>${UI.esc(c.status||'')}</td>
+              <td>${UI.esc(c.assignedByName||c.assignedBy||'—')}</td>
               <td class="small muted">${UI.esc(fmt(c.createdAt||c.ts||0))}</td>
             </tr>
-          `).join('') || `<tr><td colspan="3" class="muted">No cases assigned to you.</td></tr>`}
+          `).join('') || `<tr><td colspan="4" class="muted">No cases assigned to you.</td></tr>`}
         </tbody>
       </table>
     </div>
   `;
 
-  const rows = [['id','title','status','createdAt']];
-  mine.forEach(c=>rows.push([c.id||'', c.title||'', c.status||'', String(c.createdAt||'')]));
+  const rows = [['id','title','status','assignedBy','createdAt']];
+  mine.forEach(c=>rows.push([c.id||'', c.title||'', c.status||'', c.assignedByName||c.assignedBy||'', String(c.createdAt||'')]));
   UI.el('#caseExportCsv').onclick = ()=>UI.downloadCSV(`my_cases_${me.username||me.id||'user'}.csv`, rows);
   UI.el('#caseExportJson').onclick = ()=>UI.downloadJSON(`my_cases_${me.username||me.id||'user'}.json`, mine);
 });
