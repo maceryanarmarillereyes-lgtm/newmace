@@ -1658,11 +1658,10 @@ toast(message, variant){
       };
       const renderMailboxAssign = (n)=>{
         const desc = n.desc || '';
-        const label = desc ? esc(desc) : '<span class="muted">No description provided.</span>';
+        const label = desc ? esc(desc) : '<span class="muted">Waiting for description...</span>';
         const assignedAt = Number(n.assignedAt || n.ts || 0);
         const timer = formatAssignTimer(assignedAt);
         const caseNo = String(n.caseNo || '').trim();
-        const copiedLabel = caseNo || '—';
         return `
           <div class="mbx-assign-grid">
             <div class="mbx-assign-top">
@@ -1678,11 +1677,11 @@ toast(message, variant){
               </div>
             </div>
             <div class="mbx-assign-card">
-              <div class="mbx-assign-label">Description</div>
+              <div class="mbx-assign-label">Brief Description</div>
               <div class="mbx-assign-desc">${label}</div>
             </div>
-            <div class="mbx-assign-card">
-              <div class="mbx-assign-label">Case #</div>
+            <div class="mbx-assign-card" style="border-color: rgba(56, 189, 248, 0.2); background: rgba(56, 189, 248, 0.03);">
+              <div class="mbx-assign-label" style="color: #38bdf8;">Unique Case ID</div>
               <div class="mbx-assign-case">
                 <span class="mbx-assign-case-no">${esc(copiedLabel)}</span>
                 <button class="btn sm mbx-assign-copy" type="button" data-copy-case="${esc(copiedLabel)}">
