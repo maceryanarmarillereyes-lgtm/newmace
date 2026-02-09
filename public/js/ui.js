@@ -1662,6 +1662,10 @@ toast(message, variant){
         const assignedAt = Number(n.assignedAt || n.ts || 0);
         const timer = formatAssignTimer(assignedAt);
         const caseNo = String(n.caseNo || '').trim();
+        // UI/UX fallback: avoid hard crashes if case number is missing.
+        // Use an explicit placeholder in the UI, but keep copy disabled when empty.
+        const caseNoDisplay = caseNo || 'N/A';
+        const canCopy = !!caseNo;
         return `
           <div class="mbx-assign-grid">
             <div class="mbx-assign-top">
@@ -1683,8 +1687,8 @@ toast(message, variant){
             <div class="mbx-assign-card" style="border-color: rgba(56, 189, 248, 0.2); background: rgba(56, 189, 248, 0.03);">
               <div class="mbx-assign-label" style="color: #38bdf8;">Unique Case ID</div>
               <div class="mbx-assign-case">
-                <span class="mbx-assign-case-no">${esc(copiedLabel)}</span>
-                <button class="btn sm mbx-assign-copy" type="button" data-copy-case="${esc(copiedLabel)}">
+                <span class="mbx-assign-case-no">${esc(caseNoDisplay)}</span>
+                <button class="btn sm mbx-assign-copy" type="button" data-copy-case="${esc(caseNo)}" ${canCopy ? '' : 'disabled aria-disabled="true"'}>
                   <span style="margin-right: 6px;">📋</span> COPY
                 </button>
               </div>
@@ -1711,42 +1715,58 @@ toast(message, variant){
         if(!list.length){
           return '<div class="muted">No notifications pending.</div>';
         }
+        // Resilience: a single bad/malformed notif should not crash the entire modal.
         return list.map(n=>{
-          if(String(n.type||'') === 'MAILBOX_ASSIGN'){
+          try{
+            if(String(n.type||'') === 'MAILBOX_ASSIGN'){
+              return `
+                <div class="notif-item mailbox-assign">
+                  <div class="notif-item-head">
+                    <div class="notif-item-title">Case Assigned Notification</div>
+                    <button class="btn dashx-ack" data-ack="${esc(n.id)}" type="button" aria-label="Acknowledge case assignment notification">
+                      <span class="dashx-spin" aria-hidden="true"></span>
+                      <span class="dashx-acklbl">Acknowledge</span>
+                    </button>
+                  </div>
+                  <div class="notif-item-body">${renderMailboxAssign(n)}</div>
+                </div>
+              `;
+            }
+            const perUser = (n.userMessages && n.userMessages[user.id]) ? n.userMessages[user.id] : '';
+            const bodyMsg = perUser || n.body || 'Your schedule has been updated.';
+            const summary = (n.userSummaries && n.userSummaries[user.id]) ? n.userSummaries[user.id] : null;
+            const meta = (String(n.type||'')==='MAILBOX_ASSIGN')
+              ? `From: ${n.fromName||'Mailbox Manager'} • ${new Date(n.ts||Date.now()).toLocaleString()} • Mailbox`
+              : `From: ${n.fromName||'Team Lead'} • Week of ${n.weekStartISO||'—'}`;
             return `
-              <div class="notif-item mailbox-assign">
+              <div class="notif-item">
                 <div class="notif-item-head">
-                  <div class="notif-item-title">Case Assigned Notification</div>
-                  <button class="btn dashx-ack" data-ack="${esc(n.id)}" type="button" aria-label="Acknowledge case assignment notification">
+                  <div>
+                    <div class="notif-item-title">${esc(n.title || 'Schedule Updated')}</div>
+                    <div class="small muted">${esc(meta)}</div>
+                  </div>
+                  <button class="btn dashx-ack" data-ack="${esc(n.id)}" type="button" aria-label="Acknowledge schedule notification">
                     <span class="dashx-spin" aria-hidden="true"></span>
                     <span class="dashx-acklbl">Acknowledge</span>
                   </button>
                 </div>
-                <div class="notif-item-body">${renderMailboxAssign(n)}</div>
+                <div class="notif-item-body">${renderNotifBody(bodyMsg, summary)}</div>
+              </div>
+            `;
+          }catch(err){
+            try{ console.error('renderPendingNotifs: render failed', err, n); }catch(_){ }
+            return `
+              <div class="notif-item">
+                <div class="notif-item-head">
+                  <div>
+                    <div class="notif-item-title">${esc((n && (n.title||n.type)) ? String(n.title||n.type) : 'Notification')}</div>
+                    <div class="small muted">${esc((n && n.ts) ? new Date(n.ts).toLocaleString() : '')}</div>
+                  </div>
+                </div>
+                <div class="notif-item-body"><div class="muted">N/A</div></div>
               </div>
             `;
           }
-          const perUser = (n.userMessages && n.userMessages[user.id]) ? n.userMessages[user.id] : '';
-          const bodyMsg = perUser || n.body || 'Your schedule has been updated.';
-          const summary = (n.userSummaries && n.userSummaries[user.id]) ? n.userSummaries[user.id] : null;
-          const meta = (String(n.type||'')==='MAILBOX_ASSIGN')
-            ? `From: ${n.fromName||'Mailbox Manager'} • ${new Date(n.ts||Date.now()).toLocaleString()} • Mailbox`
-            : `From: ${n.fromName||'Team Lead'} • Week of ${n.weekStartISO||'—'}`;
-          return `
-            <div class="notif-item">
-              <div class="notif-item-head">
-                <div>
-                  <div class="notif-item-title">${esc(n.title || 'Schedule Updated')}</div>
-                  <div class="small muted">${esc(meta)}</div>
-                </div>
-                <button class="btn dashx-ack" data-ack="${esc(n.id)}" type="button" aria-label="Acknowledge schedule notification">
-                  <span class="dashx-spin" aria-hidden="true"></span>
-                  <span class="dashx-acklbl">Acknowledge</span>
-                </button>
-              </div>
-              <div class="notif-item-body">${renderNotifBody(bodyMsg, summary)}</div>
-            </div>
-          `;
         }).join('');
       };
       const ping = ()=>{

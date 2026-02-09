@@ -66,6 +66,7 @@ After applying migrations:
   - Notification Center:
     - Filters (Unread/Schedule/Mailbox/System/All) work.
     - Acknowledge button updates `ums_schedule_notifs` and removes from Unread.
+    - Mailbox case assignment card renders without console errors; **Unique Case ID** shows the case number (or **N/A**), and the copy button copies the case number when present (disabled when missing).
     - Search works without crashing.
   - Activity Heatmap renders with 7-day view and tooltips.
   - Mailbox Analytics panel renders current shift stats (assigned/confirmed/open + avg response), bucket rows, role distribution.
