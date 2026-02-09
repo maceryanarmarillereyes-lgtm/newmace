@@ -1924,15 +1924,15 @@ body[data-mode="light"] .progress-tooltip{color:#555;}
 .members-page #schedulePane{padding:10px !important}
 .members-page .members-wrap{gap:10px !important}
 .members-page .members-table{display:flex;flex-direction:column;gap:8px}
-.members-page .members-row{display:grid !important;padding:8px 15px !important;gap:12px !important;grid-template-columns:240px 1fr 40px 180px !important;grid-template-areas:"meta timeline pencil leave" !important;align-items:center !important;border-radius:14px;position:relative;overflow:visible !important;min-height:50px !important}
-.members-page .timeline-ruler{grid-template-columns:240px 1fr 200px !important;gap:10px !important;height:18px !important;margin-bottom:6px !important}
+.members-page .members-row{display:grid !important;padding:8px 15px !important;gap:12px !important;grid-template-columns:240px 1fr 220px !important;grid-template-areas:"meta timeline actions" !important;align-items:center !important;border-radius:14px;position:relative;overflow:visible !important;min-height:50px !important}
+.members-page .timeline-ruler{grid-template-columns:240px 1fr 220px !important;gap:10px !important;height:18px !important;margin-bottom:6px !important}
 .members-page .timeline-ruler .ruler-track{height:18px !important}
 .members-page .timeline-ruler .mark{font-size:10px !important}
 .members-page .timeline{grid-area:timeline !important;position:relative;overflow:hidden;border-radius:8px !important;height:32px !important;z-index:1 !important;background:rgba(255,255,255,0.02) !important}
 .members-page .timeline .seg{top:3px !important;bottom:3px !important;font-size:10px !important;padding:0 5px !important}
 
 /* Leave dropdown */
-.members-page .member-actions{display:flex !important;flex-direction:row !important;align-items:center !important;justify-content:flex-end !important;gap:10px !important;padding-left:10px;border-left:1px solid rgba(255,255,255,0.08)}
+.members-page .member-actions{grid-area:actions !important;display:flex !important;flex-direction:row !important;align-items:center !important;justify-content:flex-end !important;gap:10px !important;padding-left:10px;border-left:1px solid rgba(255,255,255,0.08)}
 .members-page .leave-actions{grid-area:leave !important;display:flex !important;align-items:center !important;gap:6px;flex-wrap:nowrap;justify-content:flex-end !important;visibility:visible !important;z-index:10 !important}
 .members-page .leave-field{grid-area:leave !important;display:flex !important;align-items:center !important;gap:6px;font-size:12px;color:#e2e8f0;justify-content:flex-end !important;visibility:visible !important;z-index:10 !important}
 .members-page .leave-label{font-weight:600;letter-spacing:.01em;display:inline-flex;visibility:visible;opacity:1;color:#e2e8f0}
