@@ -688,6 +688,76 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   margin-top:8px;
   white-space:pre-wrap;
 }
+.notification-popout .mailbox-assign .notif-item-head{
+  align-items:center;
+}
+.notification-popout .mbx-assign-grid{
+  display:grid;
+  gap:12px;
+}
+.notification-popout .mbx-assign-top{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  padding:10px 12px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(8,16,32,.55);
+}
+.notification-popout .mbx-assign-from{
+  font-weight:800;
+  letter-spacing:.01em;
+}
+.notification-popout .mbx-assign-timer{
+  text-align:right;
+}
+.notification-popout .mbx-assign-timer-label{
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.12em;
+  color:rgba(148,163,184,.95);
+}
+.notification-popout .mbx-assign-timer-value{
+  font-size:28px;
+  font-weight:900;
+  letter-spacing:.03em;
+  color:rgba(248,250,252,.98);
+}
+.notification-popout .mbx-assign-card{
+  padding:12px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.10);
+  background:linear-gradient(180deg, rgba(56,189,248,.10), rgba(15,23,42,.35));
+}
+.notification-popout .mbx-assign-label{
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:rgba(148,163,184,.95);
+  margin-bottom:6px;
+}
+.notification-popout .mbx-assign-desc{
+  font-size:15px;
+  font-weight:700;
+  color:rgba(248,250,252,.96);
+}
+.notification-popout .mbx-assign-case{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.notification-popout .mbx-assign-case-no{
+  font-size:34px;
+  font-weight:900;
+  letter-spacing:.04em;
+}
+.notification-popout .mbx-assign-copy{
+  padding:6px 12px;
+  font-weight:800;
+}
 
 /* ------------------------------------------------------------------
    My Schedule — Enterprise Weekly/Daily/Team Calendar (13126-09)

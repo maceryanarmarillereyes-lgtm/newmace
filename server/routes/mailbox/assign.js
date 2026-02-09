@@ -475,10 +475,11 @@ module.exports = async (req, res) => {
         teamId: safeString(next?.meta?.teamId || shiftTeamId, 40),
         fromId: actor.id,
         fromName: assignment.actorName,
-        title: 'Mailbox Case Assigned',
+        title: 'Case Assigned Notification',
         body: `Case ${caseNo} assigned to you.`,
         recipients: [assigneeId],
         caseNo,
+        desc,
         shiftKey,
         bucketId: assignment.bucketId,
         timeblock: {
