@@ -1644,6 +1644,45 @@ toast(message, variant){
         `;
         return `${headline}${renderTaskSummary(summary)}`;
       };
+      const formatAssignTimer = (ts)=>{
+        const assignedAt = Number(ts)||0;
+        if(!assignedAt) return '00:00:00';
+        const sec = Math.floor(Math.max(0, Date.now() - assignedAt) / 1000);
+        return (UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`;
+      };
+      const renderMailboxAssign = (n)=>{
+        const desc = n.desc || '';
+        const label = desc ? esc(desc) : '<span class="muted">No description provided.</span>';
+        const assignedAt = Number(n.assignedAt || n.ts || 0);
+        const timer = formatAssignTimer(assignedAt);
+        const caseNo = String(n.caseNo || '').trim();
+        const copiedLabel = caseNo || '—';
+        return `
+          <div class="mbx-assign-grid">
+            <div class="mbx-assign-top">
+              <div>
+                <div class="mbx-assign-from">Mailbox Case Assigned</div>
+                <div class="small muted">From: ${esc(n.fromName || 'Mailbox Manager')} • ${new Date(n.ts||Date.now()).toLocaleString()} • Mailbox</div>
+              </div>
+              <div class="mbx-assign-timer">
+                <div class="mbx-assign-timer-label">Timer</div>
+                <div class="mbx-assign-timer-value" data-assign-timer="${esc(assignedAt)}">${esc(timer)}</div>
+              </div>
+            </div>
+            <div class="mbx-assign-card">
+              <div class="mbx-assign-label">Description</div>
+              <div class="mbx-assign-desc">${label}</div>
+            </div>
+            <div class="mbx-assign-card">
+              <div class="mbx-assign-label">Case #</div>
+              <div class="mbx-assign-case">
+                <span class="mbx-assign-case-no">${esc(copiedLabel)}</span>
+                <button class="btn sm mbx-assign-copy" type="button" data-copy-case="${esc(copiedLabel)}">Copy</button>
+              </div>
+            </div>
+          </div>
+        `;
+      };
       // Prevent spam: show each notif once per tab session (unless page reloads).
       const shownKeys = new Set();
       let lastBeepedId = null;
@@ -1661,9 +1700,23 @@ toast(message, variant){
       };
       const renderPendingNotifs = (list)=>{
         if(!list.length){
-          return '<div class="muted">No schedule notifications pending.</div>';
+          return '<div class="muted">No notifications pending.</div>';
         }
         return list.map(n=>{
+          if(String(n.type||'') === 'MAILBOX_ASSIGN'){
+            return `
+              <div class="notif-item mailbox-assign">
+                <div class="notif-item-head">
+                  <div class="notif-item-title">Case Assigned Notification</div>
+                  <button class="btn dashx-ack" data-ack="${esc(n.id)}" type="button" aria-label="Acknowledge case assignment notification">
+                    <span class="dashx-spin" aria-hidden="true"></span>
+                    <span class="dashx-acklbl">Acknowledge</span>
+                  </button>
+                </div>
+                <div class="notif-item-body">${renderMailboxAssign(n)}</div>
+              </div>
+            `;
+          }
           const perUser = (n.userMessages && n.userMessages[user.id]) ? n.userMessages[user.id] : '';
           const bodyMsg = perUser || n.body || 'Your schedule has been updated.';
           const summary = (n.userSummaries && n.userSummaries[user.id]) ? n.userSummaries[user.id] : null;
@@ -1714,8 +1767,16 @@ toast(message, variant){
           UI.playNotifSound(user.id);
         }
 
+        const allMailbox = deduped.length && deduped.every(n=>String(n.type||'')==='MAILBOX_ASSIGN');
+        const headerLabel = allMailbox
+          ? `Case Assigned Notification${deduped.length===1?'':'s'}`
+          : 'Schedule Notifications';
+        const metaLabel = allMailbox
+          ? `You have ${deduped.length} pending case assignment${deduped.length===1?'':'s'}.`
+          : `You have ${deduped.length} pending schedule update${deduped.length===1?'':'s'}.`;
         UI.el('#schedNotifMember').textContent = user.name || user.username || 'Member';
-        UI.el('#schedNotifMeta').textContent = `You have ${deduped.length} pending schedule update${deduped.length===1?'':'s'}.`;
+        UI.el('#schedNotifTitle').textContent = headerLabel;
+        UI.el('#schedNotifMeta').textContent = metaLabel;
         const countEl = UI.el('#schedNotifCount');
         if(countEl) countEl.textContent = String(deduped.length);
         UI.el('#schedNotifBody').innerHTML = renderPendingNotifs(deduped);
@@ -1724,6 +1785,14 @@ toast(message, variant){
           modal._ackBound = true;
           modal.addEventListener('click', (e)=>{
             const btn = e && e.target ? e.target.closest('[data-ack]') : null;
+            const copyBtn = e && e.target ? e.target.closest('[data-copy-case]') : null;
+            if(copyBtn){
+              const val = String(copyBtn.getAttribute('data-copy-case')||'').trim();
+              if(val){
+                navigator.clipboard.writeText(val).then(()=>{ UI.toast && UI.toast('Case number copied.'); }).catch(()=>{});
+              }
+              return;
+            }
             if(!btn) return;
             const id = String(btn.getAttribute('data-ack')||'');
             if(!id) return;

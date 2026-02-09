@@ -1273,6 +1273,23 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
         }
       }catch(_){ }
 
+      // Update pending assignment timers in monitoring table (if present).
+      try{
+        const timerEls = root.querySelectorAll('[data-assign-at]');
+        if(timerEls && timerEls.length){
+          const now = Date.now();
+          timerEls.forEach(el=>{
+            const ts = Number(el.getAttribute('data-assign-at')||0);
+            if(!ts) return;
+            const sec = Math.floor(Math.max(0, now - ts) / 1000);
+            const label = (UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`;
+            el.setAttribute('title', label);
+            const lbl = el.querySelector('.mbx-mon-wait-label');
+            if(lbl) lbl.textContent = label;
+          });
+        }
+      }catch(_){ }
+
       // shift transition detect + re-render on change
       const { state } = ensureShiftTables();
       // highlight active bucket by toggling classes without full re-render (best effort)
@@ -1567,7 +1584,15 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
       const tds = row.map(a=>{
         if(!a) return `<td class="mbx-mon-cell empty"></td>`;
         const cls = a.confirmedAt ? 'mbx-mon-cell confirmed' : 'mbx-mon-cell';
-        return `<td class="${cls}">${esc(a.caseNo||'')}</td>`;
+        const assignedAt = Number(a.assignedAt||0);
+        const sec = assignedAt ? Math.floor(Math.max(0, Date.now() - assignedAt) / 1000) : 0;
+        const timer = assignedAt ? ((UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`) : '';
+        const waitIcon = a.confirmedAt ? '' : `
+          <span class="mbx-mon-wait" data-assign-at="${esc(assignedAt)}" title="${esc(timer)}" aria-label="Waiting for acknowledgement">
+            <span class="mbx-mon-wait-label">${esc(timer)}</span>
+          </span>
+        `;
+        return `<td class="${cls}"><span class="mbx-mon-case">${esc(a.caseNo||'')}</span>${waitIcon}</td>`;
       }).join('');
       return `<tr><td class="mono" style="text-align:center">${idx+1}</td>${tds}</tr>`;
     }).join('');
