@@ -13,7 +13,13 @@ This repository is intentionally designed as a **Dual-Platform Architecture**.
 - **Purpose:** production
 - **API base path:** `/functions/*`
 - **Routing implementation:** Cloudflare Pages Functions under `functions/`.
+- **Routing implementation:** Cloudflare Pages Functions under `functions/`.
 - **IMPORTANT:** `public/_routes.json` controls which paths are handled by Functions.
+
+#### Cloudflare routing note (file extensions)
+Cloudflare Pages Functions map routes based on file paths, and **function file extensions are not part of the route**.
+If you need a Cloudflare endpoint that *ends with an extension* (e.g. `/functions/vendor/supabase.js`), implement it
+using a **dynamic segment** so the extension becomes part of the parameter value (example: `functions/functions/vendor/[file].js`).
 
 ## Rules for ALL future changes (for humans + AI agents)
 
