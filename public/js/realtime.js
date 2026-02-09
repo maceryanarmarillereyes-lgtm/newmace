@@ -102,6 +102,9 @@
   const MEMBER_PUSH_KEYS = new Set([
     'mums_attendance',
     'mums_mailbox_state',
+    'ums_cases',
+    'ums_schedule_notifs',
+    'mums_schedule_notifs'
     'ums_cases'
   ]);
 

@@ -2177,8 +2177,6 @@ Store.startMailboxOverrideSync = function(opts){
       }
     }catch(_){ }
 
-    if(!window.CloudAuth || !CloudAuth.isEnabled || !CloudAuth.isEnabled()) return;
-
     const getToken = ()=>{
       try{
         const t = (CloudAuth.accessToken && CloudAuth.accessToken()) ? String(CloudAuth.accessToken()||'').trim() : '';
@@ -2218,6 +2216,7 @@ Store.startMailboxOverrideSync = function(opts){
       if(S.inflight) return;
       S.inflight = true;
       try{
+        if(!window.CloudAuth || !CloudAuth.isEnabled || !CloudAuth.isEnabled()) return;
         const token = getToken();
         if(!token) return;
 
@@ -2266,6 +2265,15 @@ Store.startMailboxOverrideSync = function(opts){
       poll('start');
       S.timer = setInterval(()=>{ poll('interval'); }, 5000);
     }
+
+    // Ensure we retry once auth/session is ready.
+    try{
+      if(!window.__mumsMailboxOverrideAuthListener){
+        window.__mumsMailboxOverrideAuthListener = true;
+        window.addEventListener('mums:auth', ()=>{ try{ poll('auth'); }catch(_){ } });
+        window.addEventListener('mums:authtoken', ()=>{ try{ poll('authtoken'); }catch(_){ } });
+      }
+    }catch(_){ }
 
     // Force an immediate poll when requested
     if(opts && opts.force){
