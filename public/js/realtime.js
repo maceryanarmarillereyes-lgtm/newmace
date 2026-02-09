@@ -149,6 +149,7 @@
     try {
       const k = String(key||'');
       if (!k) return;
+      if (!canPushKey(k)) return;
       const q = getQueue();
       const prev = q[k] || {};
       const next = {
@@ -183,6 +184,11 @@
       for (const k of keys) {
         const item = q[k];
         if (!item) continue;
+        if (!canPushKey(item.key || k)) {
+          try{ if (window.Store && Store.addLog) Store.addLog({ action: 'SYNC_QUEUE_DROP_FORBIDDEN', detail: String(item.key||k) + ' reason=client_guard' }); }catch(_){}
+          delete q[k];
+          continue;
+        }
 
         // Only attempt flush when cloud auth is available.
         if (!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled() && CloudAuth.accessToken && CloudAuth.accessToken())) {
