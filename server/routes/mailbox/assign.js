@@ -141,6 +141,12 @@ function pruneNotifs(list){
   return arr.filter(x => x && x.ts && Number(x.ts) >= cutoff).slice(0, 2500);
 }
 
+function pruneCases(list){
+  const arr = Array.isArray(list) ? list : [];
+  const cutoff = Date.now() - (366*24*60*60*1000); // ~12 months
+  return arr.filter(x => x && x.createdAt && Number(x.createdAt) >= cutoff).slice(0, 5000);
+}
+
 async function upsertDoc(key, value, actor, profile, clientId){
   const row = {
     key,
@@ -453,6 +459,32 @@ module.exports = async (req, res) => {
       if(!has){
         const nextNotifs = pruneNotifs([notif, ...prevNotifs]);
         await upsertDoc('mums_schedule_notifs', nextNotifs, actor, profile, clientId);
+      }
+    }catch(_){}
+
+    // Append to global cases list (used by My Case + stats)
+    try{
+      const casesDoc = await getDocValue('ums_cases');
+      const prevCases = (casesDoc.ok && Array.isArray(casesDoc.value)) ? casesDoc.value : [];
+      const caseId = `mbx_${caseNo}`;
+      const entry = {
+        id: caseId,
+        title: caseNo,
+        status: 'Assigned',
+        createdAt: assignment.assignedAt,
+        ts: assignment.assignedAt,
+        assigneeId,
+        assigneeName,
+        assignedById: actor.id,
+        assignedByName: assignment.actorName,
+        shiftKey,
+        bucketId: assignment.bucketId,
+        mailboxTime: bucketLabel
+      };
+      const exists = prevCases.some(c=>String(c?.id||'') === caseId);
+      if(!exists){
+        const nextCases = pruneCases([entry, ...prevCases]);
+        await upsertDoc('ums_cases', nextCases, actor, profile, clientId);
       }
     }catch(_){}
 

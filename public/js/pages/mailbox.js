@@ -673,7 +673,7 @@ root.innerHTML = `
       return 7;
     }
     function getBucketManagerName(bucket){
-      // 1) Scheduled mailbox manager for this bucket (authoritative)
+      // Scheduled mailbox manager for this bucket (authoritative).
       try{
         const scheduled = _mbxFindScheduledManagerForBucket(table, bucket);
         if(scheduled && scheduled !== '—') return String(scheduled);
