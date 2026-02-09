@@ -25,6 +25,14 @@ function manilaNowParts(){
   const dayIndex = d.getUTCDay(); // 0=Sun
   return { hh, mm, isoDate, dayIndex, nowMin: hh*60+mm, nowMs: Date.now() };
 }
+function manilaPartsFromMs(ms){
+  const d = new Date(Number(ms || 0) + 8*60*60*1000);
+  const hh = d.getUTCHours();
+  const mm = d.getUTCMinutes();
+  const isoDate = d.toISOString().slice(0,10);
+  const dayIndex = d.getUTCDay(); // 0=Sun
+  return { hh, mm, isoDate, dayIndex, nowMin: hh*60+mm, nowMs: Number(ms || Date.now()) };
+}
 function parseHM(hm){
   const s = String(hm||'0:0').split(':');
   const h = Math.max(0, Math.min(23, parseInt(s[0]||'0',10)||0));
@@ -61,6 +69,32 @@ async function getDocValue(key){
   if(!out.ok) return { ok:false, error:'select_failed', details: out.json || out.text };
   const row = Array.isArray(out.json) ? out.json[0] : null;
   return { ok:true, value: row ? row.value : null };
+}
+
+async function getMailboxOverrideNowParts(){
+  try{
+    const overrideDoc = await getDocValue('mums_mailbox_time_override_cloud');
+    if(!overrideDoc.ok || !overrideDoc.value || typeof overrideDoc.value !== 'object') return null;
+    const o = overrideDoc.value;
+    if(!o.enabled || String(o.scope || '') !== 'global') return null;
+    const base = Number(o.ms);
+    const MIN_VALID_MS = Date.UTC(2020,0,1);
+    const MAX_VALID_MS = Date.now() + (366 * 24 * 60 * 60 * 1000);
+    if(!Number.isFinite(base) || base <= 0) return null;
+    if(base < MIN_VALID_MS || base > MAX_VALID_MS) return null;
+    const freeze = (o.freeze !== false);
+    let setAt = Number(o.setAt) || 0;
+    if(!freeze){
+      if(!Number.isFinite(setAt) || setAt <= 0 || setAt > (Date.now() + 60*1000)) setAt = Date.now();
+    }else{
+      setAt = 0;
+    }
+    const ms = freeze ? base : (base + Math.max(0, Date.now() - setAt));
+    if(!Number.isFinite(ms) || ms <= 0) return null;
+    return manilaPartsFromMs(ms);
+  }catch(_){
+    return null;
+  }
 }
 
 function computeActiveBucketId(table, nowMin){
@@ -196,7 +230,8 @@ module.exports = async (req, res) => {
       return res.end(JSON.stringify({ ok:false, error:'Missing required fields' }));
     }
 
-    const now = manilaNowParts();
+    const overrideNow = await getMailboxOverrideNowParts();
+    const now = overrideNow || manilaNowParts();
     const shiftTeamId = parseShiftTeamId(shiftKey);
 
     // Load mailbox tables
