@@ -1803,6 +1803,7 @@
           scope: 'global',
           enabled: !!o.enabled,
           freeze: !!o.freeze,
+          override_iso: new Date(Number(o.ms)||Date.now()).toISOString()
           override_iso: new Date(Number(o.ms)||Date.now()).toISOString(),
         };
         const getToken = ()=>{
