@@ -11,7 +11,7 @@
   'use strict';
 
   // Single source of truth for release sequence.
-  const SEQ = 513;
+  const SEQ = 515;
 
   const buildLabel = `MUMS Phase 1-${SEQ}`;
   const cacheBust = `p1-${SEQ}`;

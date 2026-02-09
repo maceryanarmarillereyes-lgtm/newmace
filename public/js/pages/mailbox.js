@@ -219,7 +219,17 @@ function _mbxMemberSortKey(u){
   let isManager = false;
 
   function getDuty(){
-    return UI.getDutyWindow(UI.mailboxNowParts ? UI.mailboxNowParts() : null);
+    let nowParts = null;
+    if(UI && UI.mailboxTimeInfo){
+      const info = UI.mailboxTimeInfo();
+      if(info && info.overrideEnabled && info.effectiveParts){
+        nowParts = info.effectiveParts;
+      }
+    }
+    if(!nowParts){
+      nowParts = UI.mailboxNowParts ? UI.mailboxNowParts() : null;
+    }
+    return UI.getDutyWindow(nowParts);
   }
 
   // Mailbox Manager visibility + permissions are driven by scheduled task blocks.
