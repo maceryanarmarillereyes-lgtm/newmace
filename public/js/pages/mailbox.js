@@ -290,12 +290,15 @@ function _mbxMemberSortKey(u){
     }catch(_){ return false; }
   }
 
-    function canAssignNow(){
+  function canAssignNow(opts){
     try{
       if(isPrivilegedRole(me)) return true;
-      const duty = getDuty();
-      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
-      return eligibleForMailboxManager(me, { teamId: duty?.current?.id, dutyTeam: duty?.current, nowParts });
+      const duty = opts?.duty || getDuty();
+      const nowParts = opts?.nowParts || (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+      const teamId = duty?.current?.id || me.teamId;
+      if(eligibleForMailboxManager(me, { teamId, dutyTeam: duty?.current, nowParts })) return true;
+      // Fallback: rely on schedule blocks even if duty window metadata drifts.
+      return eligibleForMailboxManager(me, { teamId, nowParts });
     }catch(_){
       return false;
     }
@@ -475,7 +478,7 @@ function _mbxMemberSortKey(u){
 
     const duty = getDuty();
     const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
-    isManager = eligibleForMailboxManager(me, { teamId: duty.current.id, dutyTeam: duty.current, nowParts });
+    isManager = canAssignNow({ duty, nowParts });
     const mbxMgrName = _mbxFindOnDutyMailboxManagerName(duty.current.id, duty.current, nowParts, table, activeBucketId);
 
 
