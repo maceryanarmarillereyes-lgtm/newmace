@@ -3431,6 +3431,63 @@ body.members-fullscreen-active .members-topbar,
 
 /* Compact rows: remove extra stats line + merge hours & percent in one line */
 .members-page .member-task-stats{ display:none !important; }
+
+/* ===== Overall Stats ===== */
+.overall-stats-page{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+.overall-stats-header{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+}
+.overall-stats-controls{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.overall-stats-team{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.overall-stat-card{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-height:110px;
+}
+.overall-stat-label{
+  font-size:12px;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.8px;
+  font-weight:800;
+}
+.overall-stat-value{
+  font-size:26px;
+  font-weight:900;
+  letter-spacing:.3px;
+}
+.overall-stat-sub{
+  font-size:12px;
+  color:var(--muted);
+}
+.overall-stats-table-card{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.overall-stats-table-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
 .members-page .members-row{
   padding:4px 8px;
 }
