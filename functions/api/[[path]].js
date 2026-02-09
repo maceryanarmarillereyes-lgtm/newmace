@@ -54,10 +54,6 @@ async function getRoutes(env) {
     'sync/pull': unwrapCjs(await import('../../server/routes/sync/pull.js')),
     'sync/push': unwrapCjs(await import('../../server/routes/sync/push.js')),
 
-<<<<<<< HEAD
-    // OVER ALL STATS
-=======
->>>>>>> 56ecb0ad1819d3321633f343442a95e3880de527
     overall_stats: unwrapCjs(await import('../../server/routes/overall_stats.js')),
 
     'users/list': unwrapCjs(await import('../../server/routes/users/list.js')),
