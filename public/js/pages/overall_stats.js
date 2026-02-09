@@ -148,11 +148,8 @@
     params.set('preset', activePreset || 'custom');
 
     const headers = {};
-<<<<<<< HEAD
     const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
     if(jwt) headers['Authorization'] = `Bearer ${jwt}`;
-=======
->>>>>>> 56ecb0ad1819d3321633f343442a95e3880de527
     if(isLead) headers['x-mums-pilot'] = pilotEnabled ? 'overall_stats' : 'off';
 
     try{
