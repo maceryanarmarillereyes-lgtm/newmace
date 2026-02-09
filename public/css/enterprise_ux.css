@@ -1936,8 +1936,8 @@ body[data-mode="light"] .progress-tooltip{color:#555;}
 .members-page .leave-actions{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
 .members-page .leave-field{display:flex;align-items:center;gap:6px;font-size:12px;color:#e2e8f0}
 .members-page .leave-label{font-weight:600;letter-spacing:.01em;display:inline-flex;visibility:visible;opacity:1;color:#e2e8f0}
-.members-page .leave-select{height:28px;padding:0 8px;border-radius:10px;font-size:12px;min-width:150px;color:#f8fafc;background-color:rgba(30,41,59,.95) !important;border:1px solid rgba(255,255,255,.2) !important;appearance:auto !important;cursor:pointer}
-.members-page .leave-select option{background-color:#0f172a;color:#f8fafc}
+.members-page .leave-select{display:inline-flex !important;align-items:center !important;justify-content:flex-start !important;height:32px !important;line-height:1 !important;padding:0 32px 0 12px !important;border-radius:8px !important;font-size:12px !important;font-weight:800 !important;min-width:150px;color:#fff !important;background-color:#111827 !important;border:1px solid #06b6d4 !important;appearance:none !important;cursor:pointer;background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important;background-position:right 8px center !important;background-repeat:no-repeat !important;background-size:16px !important}
+.members-page .leave-select option{background-color:#111827 !important;color:#fff !important;padding:10px !important}
 .members-page .leave-select:focus{outline:none;border-color:#06b6d4 !important;box-shadow:0 0 0 2px rgba(6,182,212,.2)}
 
 /* Members overlay background compression (~20%): reduce vertical density in key controls */
