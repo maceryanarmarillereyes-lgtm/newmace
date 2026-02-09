@@ -35,15 +35,24 @@ function blockHit(nowMin, startMin, endMin){
   const wraps = endMin <= startMin;
   return (!wraps && nowMin>=startMin && nowMin<endMin) || (wraps && (nowMin>=startMin || nowMin<endMin));
 }
-function currentDutyTeamId(nowMin){
-  const morning = { id:'morning', s:parseHM('06:00'), e:parseHM('15:00') };
-  const mid     = { id:'mid',     s:parseHM('15:00'), e:parseHM('22:00') };
-  const night   = { id:'night',   s:parseHM('22:00'), e:parseHM('06:00') };
-  if(blockHit(nowMin, morning.s, morning.e)) return 'morning';
-  if(blockHit(nowMin, mid.s, mid.e)) return 'mid';
-  if(blockHit(nowMin, night.s, night.e)) return 'night';
-  // Fallback (shouldn't happen)
-  return 'morning';
+function parseShiftTeamId(shiftKey){
+  if(!shiftKey) return '';
+  return String(shiftKey).split('|')[0] || '';
+}
+
+function resolveDutyWindow(teamId, table){
+  const rawStart = safeString(table?.meta?.dutyStart || '', 10);
+  const rawEnd = safeString(table?.meta?.dutyEnd || '', 10);
+  if(rawStart && rawEnd){
+    return { start: rawStart, end: rawEnd, startMin: parseHM(rawStart), endMin: parseHM(rawEnd) };
+  }
+  const defaults = {
+    morning: { start:'06:00', end:'15:00' },
+    mid: { start:'15:00', end:'22:00' },
+    night: { start:'22:00', end:'06:00' }
+  };
+  const def = defaults[String(teamId||'').trim()] || defaults.morning;
+  return { start: def.start, end: def.end, startMin: parseHM(def.start), endMin: parseHM(def.end) };
 }
 
 async function getDocValue(key){
@@ -65,7 +74,7 @@ function computeActiveBucketId(table, nowMin){
   return String(buckets[0].id||'');
 }
 
-function isMailboxManagerOnDuty(weekly, userId, nowParts){
+function isMailboxManagerOnDuty(weekly, userId, nowParts, dutyWindow){
   try{
     const u = weekly && weekly[userId];
     if(!u) return false;
@@ -76,11 +85,14 @@ function isMailboxManagerOnDuty(weekly, userId, nowParts){
     const dows = [dow];
 
     // For cross-midnight duty window (night shift), include previous day blocks when after midnight.
-    const dutyTeamId = currentDutyTeamId(nowMin);
-    if(dutyTeamId === 'night'){
-      const end = parseHM('06:00');
-      if(nowMin < end) dows.push((dow+6)%7);
-    }
+    try{
+      const startMin = Number(dutyWindow?.startMin);
+      const endMin = Number(dutyWindow?.endMin);
+      if(Number.isFinite(startMin) && Number.isFinite(endMin)){
+        const wraps = endMin <= startMin;
+        if(wraps && nowMin < endMin) dows.push((dow+6)%7);
+      }
+    }catch(_){}
 
     for(const di of dows){
       const list = Array.isArray(days[String(di)]) ? days[String(di)] : [];
@@ -118,6 +130,12 @@ function makeAssignmentId(){
 }
 
 function pruneLogs(list){
+  const arr = Array.isArray(list) ? list : [];
+  const cutoff = Date.now() - (183*24*60*60*1000); // ~6 months
+  return arr.filter(x => x && x.ts && Number(x.ts) >= cutoff).slice(0, 2500);
+}
+
+function pruneNotifs(list){
   const arr = Array.isArray(list) ? list : [];
   const cutoff = Date.now() - (183*24*60*60*1000); // ~6 months
   return arr.filter(x => x && x.ts && Number(x.ts) >= cutoff).slice(0, 2500);
@@ -173,43 +191,7 @@ module.exports = async (req, res) => {
     }
 
     const now = manilaNowParts();
-    const dutyTeamId = currentDutyTeamId(now.nowMin);
-
-    // TEAM_LEAD + MEMBER must act only on the active duty shift (admins may override).
-    if(!isAdminAnytime){
-      if(String(shiftKey) !== String(dutyTeamId)){
-        res.statusCode = 403;
-        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not on active shift)' }));
-      }
-      const teamIdGate = safeString(profile && (profile.team_id || profile.teamId) ? (profile.team_id || profile.teamId) : '', 40);
-      if(teamIdGate && teamIdGate !== dutyTeamId){
-        res.statusCode = 403;
-        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not in duty team)' }));
-      }
-    }
-
-
-    // Member gating
-    if(!isAdminAnytime && !isTeamLead){
-      // Must be a member mailbox manager on duty and assigned to current duty team.
-      const teamId = safeString(profile && (profile.team_id || profile.teamId) ? (profile.team_id || profile.teamId) : '', 40);
-      if(!teamId || teamId !== dutyTeamId){
-        res.statusCode = 403;
-        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not in duty team)' }));
-      }
-
-      const scheduleDoc = await getMailboxScheduleDoc();
-      if(!scheduleDoc.ok){
-        res.statusCode = 500;
-        return res.end(JSON.stringify({ ok:false, error:'Failed to read schedules', details: scheduleDoc.details }));
-      }
-      const schedule = scheduleDoc.value || {};
-      const onDuty = isMailboxManagerOnDuty(schedule, actor.id, now);
-      if(!onDuty){
-        res.statusCode = 403;
-        return res.end(JSON.stringify({ ok:false, error:'Forbidden (Mailbox Manager duty not active)' }));
-      }
-    }
+    const shiftTeamId = parseShiftTeamId(shiftKey);
 
     // Load mailbox tables
     const tablesDoc = await getDocValue('mums_mailbox_tables');
@@ -224,10 +206,48 @@ module.exports = async (req, res) => {
       return res.end(JSON.stringify({ ok:false, error:'Mailbox table not found', shiftKey }));
     }
 
+    const dutyWindow = resolveDutyWindow(shiftTeamId, table);
+    const inDutyWindow = blockHit(now.nowMin, dutyWindow.startMin, dutyWindow.endMin);
+
+    // TEAM_LEAD + MEMBER must act only on the active duty shift (admins may override).
+    if(!isAdminAnytime){
+      if(!inDutyWindow){
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not on active shift)' }));
+      }
+      const teamIdGate = safeString(profile && (profile.team_id || profile.teamId) ? (profile.team_id || profile.teamId) : '', 40);
+      if(teamIdGate && shiftTeamId && teamIdGate !== shiftTeamId){
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not in duty team)' }));
+      }
+    }
+
+    // Member gating
+    if(!isAdminAnytime && !isTeamLead){
+      // Must be a member mailbox manager on duty and assigned to current duty team.
+      const teamId = safeString(profile && (profile.team_id || profile.teamId) ? (profile.team_id || profile.teamId) : '', 40);
+      if(!teamId || (shiftTeamId && teamId !== shiftTeamId)){
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not in duty team)' }));
+      }
+
+      const scheduleDoc = await getMailboxScheduleDoc();
+      if(!scheduleDoc.ok){
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ ok:false, error:'Failed to read schedules', details: scheduleDoc.details }));
+      }
+      const schedule = scheduleDoc.value || {};
+      const onDuty = isMailboxManagerOnDuty(schedule, actor.id, now, dutyWindow);
+      if(!onDuty){
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (Mailbox Manager duty not active)' }));
+      }
+    }
+
     // TEAM_LEAD + MEMBER: enforce that assignment is within the active duty shift table.
     if(!isAdminAnytime){
       const tableTeam = safeString(table && table.meta && table.meta.teamId ? table.meta.teamId : '', 40);
-      if(tableTeam && tableTeam !== dutyTeamId){
+      if(tableTeam && shiftTeamId && tableTeam !== shiftTeamId){
         res.statusCode = 403;
         return res.end(JSON.stringify({ ok:false, error:'Forbidden (shiftKey not current duty shift)' }));
       }
@@ -400,6 +420,40 @@ module.exports = async (req, res) => {
       };
       const nextLogs = pruneLogs([logEntry, ...prevLogs]);
       await upsertDoc('ums_activity_logs', nextLogs, actor, profile, clientId);
+    }catch(_){}
+
+    // Notify assignee (real-time schedule notifications feed)
+    try{
+      const notifsDoc = await getDocValue('mums_schedule_notifs');
+      const prevNotifs = (notifsDoc.ok && Array.isArray(notifsDoc.value)) ? notifsDoc.value : [];
+      const notifId = `mbx_assign_${assignment.id}`;
+      const notif = {
+        id: notifId,
+        ts: assignment.assignedAt,
+        type: 'MAILBOX_ASSIGN',
+        teamId: safeString(next?.meta?.teamId || shiftTeamId, 40),
+        fromId: actor.id,
+        fromName: assignment.actorName,
+        title: 'Mailbox Case Assigned',
+        body: `Case ${caseNo} assigned to you.`,
+        recipients: [assigneeId],
+        caseNo,
+        shiftKey,
+        bucketId: assignment.bucketId,
+        timeblock: {
+          start: safeString(bucket.start, 10),
+          end: safeString(bucket.end, 10),
+          label: bucketLabel
+        },
+        userMessages: {
+          [assigneeId]: `Case ${caseNo} assigned to you for mailbox time ${bucketLabel}.`
+        }
+      };
+      const has = prevNotifs.some(n=>n && String(n.id||'') === notifId);
+      if(!has){
+        const nextNotifs = pruneNotifs([notif, ...prevNotifs]);
+        await upsertDoc('mums_schedule_notifs', nextNotifs, actor, profile, clientId);
+      }
     }catch(_){}
 
     res.statusCode = 200;

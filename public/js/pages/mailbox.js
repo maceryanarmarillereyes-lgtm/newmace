@@ -290,12 +290,15 @@ function _mbxMemberSortKey(u){
     }catch(_){ return false; }
   }
 
-    function canAssignNow(){
+  function canAssignNow(opts){
     try{
       if(isPrivilegedRole(me)) return true;
-      const duty = getDuty();
-      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
-      return eligibleForMailboxManager(me, { teamId: duty?.current?.id, dutyTeam: duty?.current, nowParts });
+      const duty = opts?.duty || getDuty();
+      const nowParts = opts?.nowParts || (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+      const teamId = duty?.current?.id || me.teamId;
+      if(eligibleForMailboxManager(me, { teamId, dutyTeam: duty?.current, nowParts })) return true;
+      // Fallback: rely on schedule blocks even if duty window metadata drifts.
+      return eligibleForMailboxManager(me, { teamId, nowParts });
     }catch(_){
       return false;
     }
@@ -475,7 +478,7 @@ function _mbxMemberSortKey(u){
 
     const duty = getDuty();
     const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
-    isManager = eligibleForMailboxManager(me, { teamId: duty.current.id, dutyTeam: duty.current, nowParts });
+    isManager = canAssignNow({ duty, nowParts });
     const mbxMgrName = _mbxFindOnDutyMailboxManagerName(duty.current.id, duty.current, nowParts, table, activeBucketId);
 
 
@@ -676,13 +679,23 @@ root.innerHTML = `
         if(scheduled && scheduled !== '—') return String(scheduled);
       }catch(_){ }
 
-      // 2) Persisted explicit map (from assignment actors)
+      // 2) Active mailbox manager for the current bucket (fallback for live view)
+      try{
+        if(activeBucketId && bucket?.id === activeBucketId){
+          const duty = getDuty();
+          const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+          const live = _mbxFindOnDutyMailboxManagerName(duty?.current?.id, duty?.current, nowParts, table, activeBucketId);
+          if(live && live !== '—') return String(live);
+        }
+      }catch(_){ }
+
+      // 3) Persisted explicit map (from assignment actors)
       try{
         const bm = table && table.meta && table.meta.bucketManagers;
         if(bm && bm[bucket.id] && bm[bucket.id].name) return String(bm[bucket.id].name);
       }catch(_){ }
 
-      // 3) Most recent assignment actor within bucket
+      // 4) Most recent assignment actor within bucket
       try{
         const a = (table.assignments||[]).find(x=>x.bucketId===bucket.id && (x.actorName||''));
         if(a && a.actorName) return String(a.actorName);
