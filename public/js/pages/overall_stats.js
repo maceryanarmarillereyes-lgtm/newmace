@@ -23,6 +23,30 @@
   let loading = false;
   let lastResponse = null;
 
+  function authHeader(){
+    let token = '';
+    try{
+      token = (window.CloudAuth && CloudAuth.accessToken) ? String(CloudAuth.accessToken() || '').trim() : '';
+    }catch(_){ token = ''; }
+    if(!token){
+      try{
+        const sess = (window.CloudAuth && CloudAuth.loadSession) ? CloudAuth.loadSession() : null;
+        token = sess && (sess.access_token || (sess.session && sess.session.access_token))
+          ? String(sess.access_token || (sess.session && sess.session.access_token) || '').trim()
+          : '';
+      }catch(_){ token = ''; }
+    }
+    if(!token){
+      try{
+        const sess = (window.Store && Store.getSession) ? Store.getSession() : null;
+        token = sess && (sess.access_token || (sess.session && sess.session.access_token))
+          ? String(sess.access_token || (sess.session && sess.session.access_token) || '').trim()
+          : '';
+      }catch(_){ token = ''; }
+    }
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   function presetRange(preset){
     const today = UI.manilaTodayISO();
     const start = String(today || '').slice(0, 10);
@@ -147,7 +171,7 @@
     params.set('offset', String(pageOffset));
     params.set('preset', activePreset || 'custom');
 
-    const headers = {};
+    const headers = { ...authHeader() };
     if(isLead) headers['x-mums-pilot'] = pilotEnabled ? 'overall_stats' : 'off';
 
     try{
