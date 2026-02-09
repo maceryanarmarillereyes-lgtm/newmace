@@ -63,6 +63,7 @@
   let connectTimer = null;
   let reconnectTimer = null;
   let reconcileTimer = null;
+  let offlinePullTimer = null;
   let reconnectBackoffMs = 1200;
   let lastAuthToken = '';
 
@@ -375,11 +376,26 @@ function applyRemoteKey(key, value){
     }
   }
 
+  function ensureOfflinePull(){
+    try{
+      if(offlinePullTimer) return;
+      offlinePullTimer = setInterval(()=>{
+        try{
+          if (cloudMode === 'realtime') return;
+          if (!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled())) return;
+          if (!(CloudAuth.accessToken && CloudAuth.accessToken())) return;
+          pullOnce();
+        }catch(_){ }
+      }, 8000);
+    }catch(_){ }
+  }
+
   function stopCloud(){
     try {
       if (connectTimer) { clearTimeout(connectTimer); connectTimer = null; }
       if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
       if (reconcileTimer) { clearInterval(reconcileTimer); reconcileTimer = null; }
+      if (offlinePullTimer) { clearInterval(offlinePullTimer); offlinePullTimer = null; }
     } catch (_) {}
     try { if (sbChannel && sbChannel.unsubscribe) sbChannel.unsubscribe(); } catch (_) {}
     sbChannel = null;
@@ -631,6 +647,7 @@ function applyRemoteKey(key, value){
       } else {
         dispatchStatus('offline', 'Login required');
       }
+      ensureOfflinePull();
 
 
       // Reconnect on login/logout.
@@ -643,6 +660,7 @@ function applyRemoteKey(key, value){
           return;
         }
         connectCloudMandatory();
+        ensureOfflinePull();
       });
 
       // If Supabase access token rotates (refresh), reconnect realtime
@@ -654,6 +672,7 @@ function applyRemoteKey(key, value){
           lastAuthToken = t;
           // Reconnect to ensure both HTTP headers and WS auth are updated.
           connectCloudMandatory();
+          ensureOfflinePull();
         } catch (_) {}
       });
     } catch (_) {}

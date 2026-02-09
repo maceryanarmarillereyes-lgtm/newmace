@@ -255,7 +255,7 @@ function _mbxMemberSortKey(u){
       const nextDow = (startDow + 1) % 7;
       const dows = [startDow, nextDow];
 
-      const bucketSegs = _mbxToSegments(Number(bucket.startMin)||0, Number(bucket.endMin)||0);
+      const bucketStartMin = Number(bucket.startMin)||0;
       const all = (Store.getUsers ? Store.getUsers() : []) || [];
       const candidates = all
         .filter(u=>u && u.teamId===teamId && u.status==='active')
@@ -278,6 +278,7 @@ function _mbxMemberSortKey(u){
               const s = (UI.parseHM ? UI.parseHM(b.start) : _mbxParseHM(b.start));
               const e = (UI.parseHM ? UI.parseHM(b.end) : _mbxParseHM(b.end));
               if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+              if(!_mbxBlockHit(bucketStartMin, s, e)) continue;
               const blockSegs = _mbxToSegments(s, e);
               if(!_mbxSegmentsOverlap(bucketSegs, blockSegs)) continue;
               matches.push({

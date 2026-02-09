@@ -20,6 +20,30 @@ function sendJson(res, statusCode, body) {
   res.end(JSON.stringify(body));
 }
 
+function buildOverridePayload(scope, enabled, freeze, overrideIso, row){
+  const override_iso = enabled ? String(overrideIso||'') : '';
+  let ms = 0;
+  if(enabled && override_iso){
+    const t = Date.parse(override_iso);
+    ms = Number.isFinite(t) ? t : 0;
+  }
+  let setAt = 0;
+  if(enabled && ms && freeze === false){
+    const anchor = row && (row.updated_at || row.created_at);
+    const t = anchor ? Date.parse(String(anchor)) : Date.now();
+    setAt = Number.isFinite(t) ? t : Date.now();
+  }
+  return {
+    scope,
+    enabled: enabled && !!ms,
+    ms: ms || 0,
+    freeze: freeze !== false,
+    setAt: setAt || 0,
+    updated_at: row && row.updated_at ? String(row.updated_at) : null,
+    updated_by: row && row.updated_by ? String(row.updated_by) : null
+  };
+}
+
 // POST /api/mailbox_override/set
 // Body: { scope: 'global'|'superadmin', enabled, freeze, override_iso }
 module.exports = async (req, res) => {
@@ -111,6 +135,22 @@ module.exports = async (req, res) => {
     }
 
     const row = Array.isArray(up.json) ? up.json[0] : up.json;
+
+    // Mirror global override into mums_documents for realtime sync.
+    if(scope === 'global'){
+      try{
+        const override = buildOverridePayload(scope, enabled, freeze, override_iso, row);
+        const docRow = {
+          key: 'mums_mailbox_time_override_cloud',
+          value: override,
+          updated_at: nowIso,
+          updated_by_user_id: u.id,
+          updated_by_name: profile && profile.name ? profile.name : null,
+          updated_by_client_id: null
+        };
+        await serviceUpsert('mums_documents', [docRow], 'key');
+      }catch(_){ }
+    }
 
     return sendJson(res, 200, {
       ok: true,
