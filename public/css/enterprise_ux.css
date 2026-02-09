@@ -1924,19 +1924,21 @@ body[data-mode="light"] .progress-tooltip{color:#555;}
 .members-page #schedulePane{padding:10px !important}
 .members-page .members-wrap{gap:10px !important}
 .members-page .members-table{display:flex;flex-direction:column;gap:8px}
-.members-page .members-row{padding:4px 8px !important;gap:8px !important;grid-template-columns:240px 1fr 190px !important;border-radius:14px}
-.members-page .timeline-ruler{grid-template-columns:240px 1fr 190px !important;gap:10px !important;height:18px !important;margin-bottom:6px !important}
+.members-page .members-row{display:grid !important;padding:6px 12px !important;gap:12px !important;grid-template-columns:240px 1fr 200px !important;align-items:center !important;border-radius:14px;position:relative}
+.members-page .timeline-ruler{grid-template-columns:240px 1fr 200px !important;gap:10px !important;height:18px !important;margin-bottom:6px !important}
 .members-page .timeline-ruler .ruler-track{height:18px !important}
 .members-page .timeline-ruler .mark{font-size:10px !important}
-.members-page .timeline{height:27px !important;border-radius:12px}
+.members-page .timeline{position:relative;overflow:hidden;border-radius:12px;height:32px !important}
 .members-page .timeline .seg{top:3px !important;bottom:3px !important;font-size:10px !important;padding:0 5px !important}
 
 /* Leave dropdown */
-.members-page .member-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.members-page .member-actions{display:flex !important;flex-direction:row !important;align-items:center !important;justify-content:flex-end !important;gap:10px !important;padding-left:10px;border-left:1px solid rgba(255,255,255,0.08)}
 .members-page .leave-actions{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
 .members-page .leave-field{display:flex;align-items:center;gap:6px;font-size:12px;color:#e2e8f0}
 .members-page .leave-label{font-weight:600;letter-spacing:.01em;display:inline-flex;visibility:visible;opacity:1;color:#e2e8f0}
-.members-page .leave-select{display:inline-flex !important;align-items:center !important;justify-content:flex-start !important;height:32px !important;line-height:1 !important;padding:0 32px 0 12px !important;border-radius:8px !important;font-size:12px !important;font-weight:800 !important;min-width:150px;color:#fff !important;background-color:#111827 !important;border:1px solid #06b6d4 !important;appearance:none !important;cursor:pointer;background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important;background-position:right 8px center !important;background-repeat:no-repeat !important;background-size:16px !important}
+.members-page .leave-select{display:inline-flex !important;align-items:center !important;justify-content:flex-start !important;height:32px !important;line-height:1 !important;padding:0 32px 0 12px !important;border-radius:8px !important;font-size:12px !important;font-weight:800 !important;min-width:130px !important;max-width:140px !important;color:#fff !important;background-color:#111827 !important;border:1px solid #06b6d4 !important;appearance:none !important;cursor:pointer;background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important;background-position:right 8px center !important;background-repeat:no-repeat !important;background-size:16px !important}
+.members-page .iconbtn{flex-shrink:0 !important;width:32px !important;height:32px !important;display:flex !important;align-items:center !important;justify-content:center !important;background:rgba(255,255,255,0.05) !important;border:1px solid rgba(255,255,255,0.1) !important;border-radius:6px !important;transition:all 0.2s ease}
+.members-page .iconbtn:hover{background:rgba(6,182,212,0.15) !important;border-color:#06b6d4 !important;color:#06b6d4 !important}
 .members-page .leave-select option{background-color:#111827 !important;color:#fff !important;padding:10px !important}
 .members-page .leave-select:focus{outline:none;border-color:#06b6d4 !important;box-shadow:0 0 0 2px rgba(6,182,212,.2)}
 
