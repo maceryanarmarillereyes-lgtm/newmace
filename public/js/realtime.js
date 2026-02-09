@@ -46,6 +46,9 @@
     getItem: function(){ return null; },
     setItem: function(){},
     removeItem: function(){}
+    getItem(){ return null; },
+    setItem(){},
+    removeItem(){}
   };
 
   let ws = null;
@@ -106,6 +109,7 @@
     'ums_cases',
     'ums_schedule_notifs',
     'mums_schedule_notifs'
+    'ums_cases'
   ]);
 
   function canPushKey(key){

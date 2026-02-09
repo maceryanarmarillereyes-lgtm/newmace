@@ -2529,6 +2529,7 @@ Store.startMailboxOverrideSync = function(opts){
             window.__MUMS_HB_CLIENT_TOKEN = token;
             window.__MUMS_HB_CLIENT = window.supabase.createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
               auth: { persistSession: false, autoRefreshToken: false, storage: { getItem: function(){ return null; }, setItem: function(){}, removeItem: function(){} } },
+              auth: { persistSession: false, autoRefreshToken: false, storage: { getItem(){ return null; }, setItem(){}, removeItem(){} } },
               global: { headers: { Authorization: 'Bearer ' + token } }
             });
           }
