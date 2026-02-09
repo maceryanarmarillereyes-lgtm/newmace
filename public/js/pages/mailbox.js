@@ -104,8 +104,27 @@ function _mbxMinutesOfDayFromParts(p){
   return (Number(p.hh)||0) * 60 + (Number(p.mm)||0);
 }
 function _mbxParseHM(hm){
-  const [h,m] = String(hm||'0:0').split(':').map(Number);
-  return (Math.max(0,Math.min(23,h||0))*60) + Math.max(0,Math.min(59,m||0));
+  const raw = String(hm||'').trim();
+  if(!raw) return 0;
+  let mer = '';
+  let base = raw;
+  const merMatch = raw.match(/\b(am|pm)\b/i);
+  if(merMatch){
+    mer = merMatch[1].toLowerCase();
+    base = raw.replace(/\b(am|pm)\b/i, '').trim();
+  }
+  const parts = base.split(':');
+  let h = Number(parts[0]);
+  let m = Number(parts[1]);
+  if(!Number.isFinite(h)) h = 0;
+  if(!Number.isFinite(m)) m = 0;
+  h = Math.max(0, Math.min(23, h));
+  m = Math.max(0, Math.min(59, m));
+  if(mer){
+    h = h % 12;
+    if(mer === 'pm') h += 12;
+  }
+  return (h * 60) + m;
 }
 function _mbxFmt12(min){
   min = ((min% (24*60)) + (24*60)) % (24*60);
