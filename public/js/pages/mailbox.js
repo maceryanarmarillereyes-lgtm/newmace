@@ -104,8 +104,27 @@ function _mbxMinutesOfDayFromParts(p){
   return (Number(p.hh)||0) * 60 + (Number(p.mm)||0);
 }
 function _mbxParseHM(hm){
-  const [h,m] = String(hm||'0:0').split(':').map(Number);
-  return (Math.max(0,Math.min(23,h||0))*60) + Math.max(0,Math.min(59,m||0));
+  const raw = String(hm||'').trim();
+  if(!raw) return 0;
+  let mer = '';
+  let base = raw;
+  const merMatch = raw.match(/\b(am|pm)\b/i);
+  if(merMatch){
+    mer = merMatch[1].toLowerCase();
+    base = raw.replace(/\b(am|pm)\b/i, '').trim();
+  }
+  const parts = base.split(':');
+  let h = Number(parts[0]);
+  let m = Number(parts[1]);
+  if(!Number.isFinite(h)) h = 0;
+  if(!Number.isFinite(m)) m = 0;
+  h = Math.max(0, Math.min(23, h));
+  m = Math.max(0, Math.min(59, m));
+  if(mer){
+    h = h % 12;
+    if(mer === 'pm') h += 12;
+  }
+  return (h * 60) + m;
 }
 function _mbxFmt12(min){
   min = ((min% (24*60)) + (24*60)) % (24*60);
@@ -200,7 +219,17 @@ function _mbxMemberSortKey(u){
   let isManager = false;
 
   function getDuty(){
-    return UI.getDutyWindow(UI.mailboxNowParts ? UI.mailboxNowParts() : null);
+    let nowParts = null;
+    if(UI && UI.mailboxTimeInfo){
+      const info = UI.mailboxTimeInfo();
+      if(info && info.overrideEnabled && info.effectiveParts){
+        nowParts = info.effectiveParts;
+      }
+    }
+    if(!nowParts){
+      nowParts = UI.mailboxNowParts ? UI.mailboxNowParts() : null;
+    }
+    return UI.getDutyWindow(nowParts);
   }
 
   // Mailbox Manager visibility + permissions are driven by scheduled task blocks.
@@ -255,11 +284,20 @@ function _mbxMemberSortKey(u){
       const nextDow = (startDow + 1) % 7;
       const dows = [startDow, nextDow];
 
-      const bucketSegs = _mbxToSegments(Number(bucket.startMin)||0, Number(bucket.endMin)||0);
+      const bucketStartMin = Number(bucket.startMin)||0;
       const all = (Store.getUsers ? Store.getUsers() : []) || [];
-      const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
+      const candidates = all
+        .filter(u=>u && u.teamId===teamId && u.status==='active')
+        .slice()
+        .sort((a,b)=>{
+          const an = String(a?.name||a?.username||'').toLowerCase();
+          const bn = String(b?.name||b?.username||'').toLowerCase();
+          if(an && bn && an !== bn) return an.localeCompare(bn);
+          return String(a?.id||'').localeCompare(String(b?.id||''));
+        });
 
       const roleOrder = ['mailbox_manager','mailbox_call'];
+      const matches = [];
       for(const role of roleOrder){
         for(const u of candidates){
           for(const di of dows){
@@ -269,11 +307,30 @@ function _mbxMemberSortKey(u){
               const s = (UI.parseHM ? UI.parseHM(b.start) : _mbxParseHM(b.start));
               const e = (UI.parseHM ? UI.parseHM(b.end) : _mbxParseHM(b.end));
               if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+              if(!_mbxBlockHit(bucketStartMin, s, e)) continue;
               const blockSegs = _mbxToSegments(s, e);
-              if(_mbxSegmentsOverlap(bucketSegs, blockSegs)) return String(u.name||u.username||'—');
+              if(!_mbxSegmentsOverlap(bucketSegs, blockSegs)) continue;
+              matches.push({
+                role,
+                roleIdx: roleOrder.indexOf(role),
+                startMin: s,
+                name: String(u.name||u.username||'—'),
+                id: String(u.id||'')
+              });
             }
           }
         }
+      }
+      if(matches.length){
+        matches.sort((a,b)=>{
+          if(a.roleIdx !== b.roleIdx) return a.roleIdx - b.roleIdx;
+          if(a.startMin !== b.startMin) return a.startMin - b.startMin;
+          const an = a.name.toLowerCase();
+          const bn = b.name.toLowerCase();
+          if(an && bn && an !== bn) return an.localeCompare(bn);
+          return a.id.localeCompare(b.id);
+        });
+        return matches[0].name || '—';
       }
     }catch(_){}
     return '—';
@@ -290,12 +347,15 @@ function _mbxMemberSortKey(u){
     }catch(_){ return false; }
   }
 
-    function canAssignNow(){
+  function canAssignNow(opts){
     try{
       if(isPrivilegedRole(me)) return true;
-      const duty = getDuty();
-      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
-      return eligibleForMailboxManager(me, { teamId: duty?.current?.id, dutyTeam: duty?.current, nowParts });
+      const duty = opts?.duty || getDuty();
+      const nowParts = opts?.nowParts || (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+      const teamId = duty?.current?.id || me.teamId;
+      if(eligibleForMailboxManager(me, { teamId, dutyTeam: duty?.current, nowParts })) return true;
+      // Fallback: rely on schedule blocks even if duty window metadata drifts.
+      return eligibleForMailboxManager(me, { teamId, nowParts });
     }catch(_){
       return false;
     }
@@ -475,7 +535,7 @@ function _mbxMemberSortKey(u){
 
     const duty = getDuty();
     const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
-    isManager = eligibleForMailboxManager(me, { teamId: duty.current.id, dutyTeam: duty.current, nowParts });
+    isManager = canAssignNow({ duty, nowParts });
     const mbxMgrName = _mbxFindOnDutyMailboxManagerName(duty.current.id, duty.current, nowParts, table, activeBucketId);
 
 
@@ -670,19 +730,29 @@ root.innerHTML = `
       return 7;
     }
     function getBucketManagerName(bucket){
-      // 1) Scheduled mailbox manager for this bucket (authoritative)
+      // Scheduled mailbox manager for this bucket (authoritative).
       try{
         const scheduled = _mbxFindScheduledManagerForBucket(table, bucket);
         if(scheduled && scheduled !== '—') return String(scheduled);
       }catch(_){ }
 
-      // 2) Persisted explicit map (from assignment actors)
+      // 2) Active mailbox manager for the current bucket (fallback for live view)
+      try{
+        if(activeBucketId && bucket?.id === activeBucketId){
+          const duty = getDuty();
+          const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+          const live = _mbxFindOnDutyMailboxManagerName(duty?.current?.id, duty?.current, nowParts, table, activeBucketId);
+          if(live && live !== '—') return String(live);
+        }
+      }catch(_){ }
+
+      // 3) Persisted explicit map (from assignment actors)
       try{
         const bm = table && table.meta && table.meta.bucketManagers;
         if(bm && bm[bucket.id] && bm[bucket.id].name) return String(bm[bucket.id].name);
       }catch(_){ }
 
-      // 3) Most recent assignment actor within bucket
+      // 4) Most recent assignment actor within bucket
       try{
         const a = (table.assignments||[]).find(x=>x.bucketId===bucket.id && (x.actorName||''));
         if(a && a.actorName) return String(a.actorName);
@@ -1122,6 +1192,7 @@ const onMailboxStoreEvent = (e)=>{
       k === 'mums_mailbox_tables' ||
       k === 'mums_mailbox_state' ||
       k === 'ums_weekly_schedules' ||
+      k === 'mums_schedule_blocks' ||
       k === 'ums_users' ||
       k === 'mums_team_config' ||
       k === 'ums_activity_logs'
@@ -1140,7 +1211,7 @@ const onMailboxStorageEvent = (e)=>{
     if(
       k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override' ||
       k === 'mums_mailbox_tables' || k === 'mums_mailbox_state' ||
-      k === 'ums_weekly_schedules' || k === 'ums_users' ||
+      k === 'ums_weekly_schedules' || k === 'mums_schedule_blocks' || k === 'ums_users' ||
       k === 'mums_team_config' || k === 'ums_activity_logs'
     ){
       // Override keys still use the explicit override sync helper for cloud reconciliation.
@@ -1199,6 +1270,23 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
             note.textContent = 'Countdown is in override mode';
             note.style.display = visible ? 'block' : 'none';
           }
+        }
+      }catch(_){ }
+
+      // Update pending assignment timers in monitoring table (if present).
+      try{
+        const timerEls = root.querySelectorAll('[data-assign-at]');
+        if(timerEls && timerEls.length){
+          const now = Date.now();
+          timerEls.forEach(el=>{
+            const ts = Number(el.getAttribute('data-assign-at')||0);
+            if(!ts) return;
+            const sec = Math.floor(Math.max(0, now - ts) / 1000);
+            const label = (UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`;
+            el.setAttribute('title', label);
+            const lbl = el.querySelector('.mbx-mon-wait-label');
+            if(lbl) lbl.textContent = label;
+          });
         }
       }catch(_){ }
 
@@ -1496,7 +1584,15 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
       const tds = row.map(a=>{
         if(!a) return `<td class="mbx-mon-cell empty"></td>`;
         const cls = a.confirmedAt ? 'mbx-mon-cell confirmed' : 'mbx-mon-cell';
-        return `<td class="${cls}">${esc(a.caseNo||'')}</td>`;
+        const assignedAt = Number(a.assignedAt||0);
+        const sec = assignedAt ? Math.floor(Math.max(0, Date.now() - assignedAt) / 1000) : 0;
+        const timer = assignedAt ? ((UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`) : '';
+        const waitIcon = a.confirmedAt ? '' : `
+          <span class="mbx-mon-wait" data-assign-at="${esc(assignedAt)}" title="${esc(timer)}" aria-label="Waiting for acknowledgement">
+            <span class="mbx-mon-wait-label">${esc(timer)}</span>
+          </span>
+        `;
+        return `<td class="${cls}"><span class="mbx-mon-case">${esc(a.caseNo||'')}</span>${waitIcon}</td>`;
       }).join('');
       return `<tr><td class="mono" style="text-align:center">${idx+1}</td>${tds}</tr>`;
     }).join('');

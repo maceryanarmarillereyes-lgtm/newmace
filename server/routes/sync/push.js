@@ -34,7 +34,9 @@ const WRITE_KEYS = new Set([
 const MEMBER_WRITE_KEYS = new Set([
   'mums_attendance',
   'mums_mailbox_state',
-  'ums_cases'
+  'ums_cases',
+  'ums_schedule_notifs',
+  'mums_schedule_notifs'
 ]);
 
 function isObject(x) {

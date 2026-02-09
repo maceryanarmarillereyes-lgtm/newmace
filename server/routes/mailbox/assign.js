@@ -25,6 +25,14 @@ function manilaNowParts(){
   const dayIndex = d.getUTCDay(); // 0=Sun
   return { hh, mm, isoDate, dayIndex, nowMin: hh*60+mm, nowMs: Date.now() };
 }
+function manilaPartsFromMs(ms){
+  const d = new Date(Number(ms || 0) + 8*60*60*1000);
+  const hh = d.getUTCHours();
+  const mm = d.getUTCMinutes();
+  const isoDate = d.toISOString().slice(0,10);
+  const dayIndex = d.getUTCDay(); // 0=Sun
+  return { hh, mm, isoDate, dayIndex, nowMin: hh*60+mm, nowMs: Number(ms || Date.now()) };
+}
 function parseHM(hm){
   const s = String(hm||'0:0').split(':');
   const h = Math.max(0, Math.min(23, parseInt(s[0]||'0',10)||0));
@@ -35,15 +43,24 @@ function blockHit(nowMin, startMin, endMin){
   const wraps = endMin <= startMin;
   return (!wraps && nowMin>=startMin && nowMin<endMin) || (wraps && (nowMin>=startMin || nowMin<endMin));
 }
-function currentDutyTeamId(nowMin){
-  const morning = { id:'morning', s:parseHM('06:00'), e:parseHM('15:00') };
-  const mid     = { id:'mid',     s:parseHM('15:00'), e:parseHM('22:00') };
-  const night   = { id:'night',   s:parseHM('22:00'), e:parseHM('06:00') };
-  if(blockHit(nowMin, morning.s, morning.e)) return 'morning';
-  if(blockHit(nowMin, mid.s, mid.e)) return 'mid';
-  if(blockHit(nowMin, night.s, night.e)) return 'night';
-  // Fallback (shouldn't happen)
-  return 'morning';
+function parseShiftTeamId(shiftKey){
+  if(!shiftKey) return '';
+  return String(shiftKey).split('|')[0] || '';
+}
+
+function resolveDutyWindow(teamId, table){
+  const rawStart = safeString(table?.meta?.dutyStart || '', 10);
+  const rawEnd = safeString(table?.meta?.dutyEnd || '', 10);
+  if(rawStart && rawEnd){
+    return { start: rawStart, end: rawEnd, startMin: parseHM(rawStart), endMin: parseHM(rawEnd) };
+  }
+  const defaults = {
+    morning: { start:'06:00', end:'15:00' },
+    mid: { start:'15:00', end:'22:00' },
+    night: { start:'22:00', end:'06:00' }
+  };
+  const def = defaults[String(teamId||'').trim()] || defaults.morning;
+  return { start: def.start, end: def.end, startMin: parseHM(def.start), endMin: parseHM(def.end) };
 }
 
 async function getDocValue(key){
@@ -52,6 +69,32 @@ async function getDocValue(key){
   if(!out.ok) return { ok:false, error:'select_failed', details: out.json || out.text };
   const row = Array.isArray(out.json) ? out.json[0] : null;
   return { ok:true, value: row ? row.value : null };
+}
+
+async function getMailboxOverrideNowParts(){
+  try{
+    const overrideDoc = await getDocValue('mums_mailbox_time_override_cloud');
+    if(!overrideDoc.ok || !overrideDoc.value || typeof overrideDoc.value !== 'object') return null;
+    const o = overrideDoc.value;
+    if(!o.enabled || String(o.scope || '') !== 'global') return null;
+    const base = Number(o.ms);
+    const MIN_VALID_MS = Date.UTC(2020,0,1);
+    const MAX_VALID_MS = Date.now() + (366 * 24 * 60 * 60 * 1000);
+    if(!Number.isFinite(base) || base <= 0) return null;
+    if(base < MIN_VALID_MS || base > MAX_VALID_MS) return null;
+    const freeze = (o.freeze !== false);
+    let setAt = Number(o.setAt) || 0;
+    if(!freeze){
+      if(!Number.isFinite(setAt) || setAt <= 0 || setAt > (Date.now() + 60*1000)) setAt = Date.now();
+    }else{
+      setAt = 0;
+    }
+    const ms = freeze ? base : (base + Math.max(0, Date.now() - setAt));
+    if(!Number.isFinite(ms) || ms <= 0) return null;
+    return manilaPartsFromMs(ms);
+  }catch(_){
+    return null;
+  }
 }
 
 function computeActiveBucketId(table, nowMin){
@@ -65,7 +108,7 @@ function computeActiveBucketId(table, nowMin){
   return String(buckets[0].id||'');
 }
 
-function isMailboxManagerOnDuty(weekly, userId, nowParts){
+function isMailboxManagerOnDuty(weekly, userId, nowParts, dutyWindow){
   try{
     const u = weekly && weekly[userId];
     if(!u) return false;
@@ -76,11 +119,14 @@ function isMailboxManagerOnDuty(weekly, userId, nowParts){
     const dows = [dow];
 
     // For cross-midnight duty window (night shift), include previous day blocks when after midnight.
-    const dutyTeamId = currentDutyTeamId(nowMin);
-    if(dutyTeamId === 'night'){
-      const end = parseHM('06:00');
-      if(nowMin < end) dows.push((dow+6)%7);
-    }
+    try{
+      const startMin = Number(dutyWindow?.startMin);
+      const endMin = Number(dutyWindow?.endMin);
+      if(Number.isFinite(startMin) && Number.isFinite(endMin)){
+        const wraps = endMin <= startMin;
+        if(wraps && nowMin < endMin) dows.push((dow+6)%7);
+      }
+    }catch(_){}
 
     for(const di of dows){
       const list = Array.isArray(days[String(di)]) ? days[String(di)] : [];
@@ -96,6 +142,18 @@ function isMailboxManagerOnDuty(weekly, userId, nowParts){
   return false;
 }
 
+async function getMailboxScheduleDoc(){
+  const blocksDoc = await getDocValue('mums_schedule_blocks');
+  if(blocksDoc.ok && blocksDoc.value && Object.keys(blocksDoc.value || {}).length){
+    return { ok:true, value: blocksDoc.value, source: 'mums_schedule_blocks' };
+  }
+  const weeklyDoc = await getDocValue('ums_weekly_schedules');
+  if(weeklyDoc.ok){
+    return { ok:true, value: weeklyDoc.value || {}, source: 'ums_weekly_schedules' };
+  }
+  return { ok:false, error:'Failed to read schedules', details: weeklyDoc.details };
+}
+
 function safeString(x, max=240){
   const s = (x==null) ? '' : String(x);
   return s.length>max ? s.slice(0,max) : s;
@@ -109,6 +167,18 @@ function pruneLogs(list){
   const arr = Array.isArray(list) ? list : [];
   const cutoff = Date.now() - (183*24*60*60*1000); // ~6 months
   return arr.filter(x => x && x.ts && Number(x.ts) >= cutoff).slice(0, 2500);
+}
+
+function pruneNotifs(list){
+  const arr = Array.isArray(list) ? list : [];
+  const cutoff = Date.now() - (183*24*60*60*1000); // ~6 months
+  return arr.filter(x => x && x.ts && Number(x.ts) >= cutoff).slice(0, 2500);
+}
+
+function pruneCases(list){
+  const arr = Array.isArray(list) ? list : [];
+  const cutoff = Date.now() - (366*24*60*60*1000); // ~12 months
+  return arr.filter(x => x && x.createdAt && Number(x.createdAt) >= cutoff).slice(0, 5000);
 }
 
 async function upsertDoc(key, value, actor, profile, clientId){
@@ -160,44 +230,9 @@ module.exports = async (req, res) => {
       return res.end(JSON.stringify({ ok:false, error:'Missing required fields' }));
     }
 
-    const now = manilaNowParts();
-    const dutyTeamId = currentDutyTeamId(now.nowMin);
-
-    // TEAM_LEAD + MEMBER must act only on the active duty shift (admins may override).
-    if(!isAdminAnytime){
-      if(String(shiftKey) !== String(dutyTeamId)){
-        res.statusCode = 403;
-        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not on active shift)' }));
-      }
-      const teamIdGate = safeString(profile && (profile.team_id || profile.teamId) ? (profile.team_id || profile.teamId) : '', 40);
-      if(teamIdGate && teamIdGate !== dutyTeamId){
-        res.statusCode = 403;
-        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not in duty team)' }));
-      }
-    }
-
-
-    // Member gating
-    if(!isAdminAnytime && !isTeamLead){
-      // Must be a member mailbox manager on duty and assigned to current duty team.
-      const teamId = safeString(profile && (profile.team_id || profile.teamId) ? (profile.team_id || profile.teamId) : '', 40);
-      if(!teamId || teamId !== dutyTeamId){
-        res.statusCode = 403;
-        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not in duty team)' }));
-      }
-
-      const weeklyDoc = await getDocValue('ums_weekly_schedules');
-      if(!weeklyDoc.ok){
-        res.statusCode = 500;
-        return res.end(JSON.stringify({ ok:false, error:'Failed to read schedules', details: weeklyDoc.details }));
-      }
-      const weekly = weeklyDoc.value || {};
-      const onDuty = isMailboxManagerOnDuty(weekly, actor.id, now);
-      if(!onDuty){
-        res.statusCode = 403;
-        return res.end(JSON.stringify({ ok:false, error:'Forbidden (Mailbox Manager duty not active)' }));
-      }
-    }
+    const overrideNow = await getMailboxOverrideNowParts();
+    const now = overrideNow || manilaNowParts();
+    const shiftTeamId = parseShiftTeamId(shiftKey);
 
     // Load mailbox tables
     const tablesDoc = await getDocValue('mums_mailbox_tables');
@@ -212,10 +247,48 @@ module.exports = async (req, res) => {
       return res.end(JSON.stringify({ ok:false, error:'Mailbox table not found', shiftKey }));
     }
 
+    const dutyWindow = resolveDutyWindow(shiftTeamId, table);
+    const inDutyWindow = blockHit(now.nowMin, dutyWindow.startMin, dutyWindow.endMin);
+
+    // TEAM_LEAD + MEMBER must act only on the active duty shift (admins may override).
+    if(!isAdminAnytime){
+      if(!inDutyWindow){
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not on active shift)' }));
+      }
+      const teamIdGate = safeString(profile && (profile.team_id || profile.teamId) ? (profile.team_id || profile.teamId) : '', 40);
+      if(teamIdGate && shiftTeamId && teamIdGate !== shiftTeamId){
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not in duty team)' }));
+      }
+    }
+
+    // Member gating
+    if(!isAdminAnytime && !isTeamLead){
+      // Must be a member mailbox manager on duty and assigned to current duty team.
+      const teamId = safeString(profile && (profile.team_id || profile.teamId) ? (profile.team_id || profile.teamId) : '', 40);
+      if(!teamId || (shiftTeamId && teamId !== shiftTeamId)){
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (not in duty team)' }));
+      }
+
+      const scheduleDoc = await getMailboxScheduleDoc();
+      if(!scheduleDoc.ok){
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ ok:false, error:'Failed to read schedules', details: scheduleDoc.details }));
+      }
+      const schedule = scheduleDoc.value || {};
+      const onDuty = isMailboxManagerOnDuty(schedule, actor.id, now, dutyWindow);
+      if(!onDuty){
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (Mailbox Manager duty not active)' }));
+      }
+    }
+
     // TEAM_LEAD + MEMBER: enforce that assignment is within the active duty shift table.
     if(!isAdminAnytime){
       const tableTeam = safeString(table && table.meta && table.meta.teamId ? table.meta.teamId : '', 40);
-      if(tableTeam && tableTeam !== dutyTeamId){
+      if(tableTeam && shiftTeamId && tableTeam !== shiftTeamId){
         res.statusCode = 403;
         return res.end(JSON.stringify({ ok:false, error:'Forbidden (shiftKey not current duty shift)' }));
       }
@@ -388,6 +461,67 @@ module.exports = async (req, res) => {
       };
       const nextLogs = pruneLogs([logEntry, ...prevLogs]);
       await upsertDoc('ums_activity_logs', nextLogs, actor, profile, clientId);
+    }catch(_){}
+
+    // Notify assignee (real-time schedule notifications feed)
+    try{
+      const notifsDoc = await getDocValue('mums_schedule_notifs');
+      const prevNotifs = (notifsDoc.ok && Array.isArray(notifsDoc.value)) ? notifsDoc.value : [];
+      const notifId = `mbx_assign_${assignment.id}`;
+      const notif = {
+        id: notifId,
+        ts: assignment.assignedAt,
+        type: 'MAILBOX_ASSIGN',
+        teamId: safeString(next?.meta?.teamId || shiftTeamId, 40),
+        fromId: actor.id,
+        fromName: assignment.actorName,
+        title: 'Case Assigned Notification',
+        body: `Case ${caseNo} assigned to you.`,
+        recipients: [assigneeId],
+        caseNo,
+        desc,
+        shiftKey,
+        bucketId: assignment.bucketId,
+        timeblock: {
+          start: safeString(bucket.start, 10),
+          end: safeString(bucket.end, 10),
+          label: bucketLabel
+        },
+        userMessages: {
+          [assigneeId]: `Case ${caseNo} assigned to you for mailbox time ${bucketLabel}.`
+        }
+      };
+      const has = prevNotifs.some(n=>n && String(n.id||'') === notifId);
+      if(!has){
+        const nextNotifs = pruneNotifs([notif, ...prevNotifs]);
+        await upsertDoc('mums_schedule_notifs', nextNotifs, actor, profile, clientId);
+      }
+    }catch(_){}
+
+    // Append to global cases list (used by My Case + stats)
+    try{
+      const casesDoc = await getDocValue('ums_cases');
+      const prevCases = (casesDoc.ok && Array.isArray(casesDoc.value)) ? casesDoc.value : [];
+      const caseId = `mbx_${caseNo}`;
+      const entry = {
+        id: caseId,
+        title: caseNo,
+        status: 'Assigned',
+        createdAt: assignment.assignedAt,
+        ts: assignment.assignedAt,
+        assigneeId,
+        assigneeName,
+        assignedById: actor.id,
+        assignedByName: assignment.actorName,
+        shiftKey,
+        bucketId: assignment.bucketId,
+        mailboxTime: bucketLabel
+      };
+      const exists = prevCases.some(c=>String(c?.id||'') === caseId);
+      if(!exists){
+        const nextCases = pruneCases([entry, ...prevCases]);
+        await upsertDoc('ums_cases', nextCases, actor, profile, clientId);
+      }
     }catch(_){}
 
     res.statusCode = 200;
