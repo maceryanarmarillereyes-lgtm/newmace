@@ -13,7 +13,6 @@
   const pilotKey = 'mums_pilot_overall_stats';
   const storedPilot = localStorage.getItem(pilotKey);
   let pilotEnabled = !isLead || (storedPilot === null ? true : storedPilot === '1');
-  let selectedTeamId = isLead ? me.teamId : ((teams[0] && teams[0].id) || '');
   let activePreset = 'current_week';
   let dateRange = presetRange(activePreset);
   let sortBy = 'name';
