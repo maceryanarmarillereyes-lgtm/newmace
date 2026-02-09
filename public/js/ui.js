@@ -1650,9 +1650,15 @@ toast(message, variant){
         const sec = Math.floor(Math.max(0, Date.now() - assignedAt) / 1000);
         return (UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`;
       };
+      const updateTimers = ()=>{
+        document.querySelectorAll('[data-assign-timer]').forEach((el)=>{
+          const start = parseInt(el.getAttribute('data-assign-timer'));
+          if(start) el.textContent = formatAssignTimer(start);
+        });
+      };
       const renderMailboxAssign = (n)=>{
         const desc = n.desc || '';
-        const label = desc ? esc(desc) : '<span class="muted">No description provided.</span>';
+        const label = desc ? esc(desc) : '<span class="muted">Waiting for description...</span>';
         const assignedAt = Number(n.assignedAt || n.ts || 0);
         const timer = formatAssignTimer(assignedAt);
         const caseNo = String(n.caseNo || '').trim();
@@ -1661,23 +1667,28 @@ toast(message, variant){
           <div class="mbx-assign-grid">
             <div class="mbx-assign-top">
               <div>
-                <div class="mbx-assign-from">Mailbox Case Assigned</div>
-                <div class="small muted">From: ${esc(n.fromName || 'Mailbox Manager')} • ${new Date(n.ts||Date.now()).toLocaleString()} • Mailbox</div>
+                <div class="mbx-assign-from">NEW CASE ASSIGNED</div>
+                <div class="small muted" style="margin-top: 4px; font-weight: 600;">
+                  Sender: ${esc(n.fromName || 'System')} • ${new Date(n.ts || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                </div>
               </div>
-              <div class="mbx-assign-timer">
-                <div class="mbx-assign-timer-label">Timer</div>
+              <div class="mbx-assign-timer" style="text-align: right;">
+                <div class="mbx-assign-live"><span class="mbx-assign-pulse"></span>LIVE ELAPSED</div>
                 <div class="mbx-assign-timer-value" data-assign-timer="${esc(assignedAt)}">${esc(timer)}</div>
               </div>
             </div>
             <div class="mbx-assign-card">
-              <div class="mbx-assign-label">Description</div>
+              <div class="mbx-assign-label">Brief Description</div>
               <div class="mbx-assign-desc">${label}</div>
             </div>
-            <div class="mbx-assign-card">
-              <div class="mbx-assign-label">Case #</div>
+            <div class="mbx-assign-card" style="border-color: rgba(56, 189, 248, 0.2); background: rgba(56, 189, 248, 0.03);">
+              <div class="mbx-assign-label" style="color: #38bdf8;">Unique Case ID</div>
               <div class="mbx-assign-case">
                 <span class="mbx-assign-case-no">${esc(copiedLabel)}</span>
-                <button class="btn sm mbx-assign-copy" type="button" data-copy-case="${esc(copiedLabel)}">Copy</button>
+                <button class="btn mbx-assign-copy" type="button" data-copy-case="${esc(copiedLabel)}">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  COPY ID
+                </button>
               </div>
             </div>
           </div>
@@ -1821,7 +1832,10 @@ toast(message, variant){
       };
 
       // periodic poll (cheap) + cross-tab hints
-      let timer = setInterval(ping, 1500);
+      let timer = setInterval(()=>{
+        ping();
+        updateTimers();
+      }, 1000);
       const onStorage = (ev)=>{
         if(!ev || !ev.key) return;
         if(ev.key=== 'ums_schedule_notifs' || ev.key=== 'mums_schedule_notifs') ping();

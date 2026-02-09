@@ -693,70 +693,115 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 }
 .notification-popout .mbx-assign-grid{
   display:grid;
-  gap:12px;
+  gap:16px;
+  padding:8px 0;
 }
 .notification-popout .mbx-assign-top{
   display:flex;
-  align-items:flex-start;
+  align-items:center;
   justify-content:space-between;
-  gap:16px;
-  padding:10px 12px;
-  border-radius:14px;
-  border:1px solid rgba(255,255,255,.10);
-  background:rgba(8,16,32,.55);
+  padding:16px 20px;
+  background:rgba(255,255,255,.03);
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.08);
 }
 .notification-popout .mbx-assign-from{
-  font-weight:800;
-  letter-spacing:.01em;
+  font-weight:900;
+  font-size:15px;
+  letter-spacing:.2px;
+  color:#38bdf8;
 }
-.notification-popout .mbx-assign-timer{
-  text-align:right;
+.notification-popout .mbx-assign-live{
+  font-size:9px;
+  font-weight:900;
+  color:#4ade80;
+  letter-spacing:.1em;
+  margin-bottom:4px;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:6px;
 }
-.notification-popout .mbx-assign-timer-label{
-  font-size:11px;
-  font-weight:800;
-  letter-spacing:.12em;
-  color:rgba(148,163,184,.95);
+.notification-popout .mbx-assign-pulse{
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:#4ade80;
+  box-shadow:0 0 12px rgba(74,222,128,.6);
+  animation:mbx-pulse 1.4s ease-in-out infinite;
 }
 .notification-popout .mbx-assign-timer-value{
-  font-size:28px;
+  font-family:'JetBrains Mono','Roboto Mono',monospace;
+  font-size:34px;
   font-weight:900;
-  letter-spacing:.03em;
-  color:rgba(248,250,252,.98);
+  color:#ffffff;
+  text-shadow:0 0 20px rgba(56,189,248,.3);
+  line-height:1;
 }
 .notification-popout .mbx-assign-card{
-  padding:12px;
-  border-radius:14px;
-  border:1px solid rgba(255,255,255,.10);
-  background:linear-gradient(180deg, rgba(56,189,248,.10), rgba(15,23,42,.35));
+  padding:20px;
+  border-radius:16px;
+  background:linear-gradient(165deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.01) 100%);
+  border:1px solid rgba(255,255,255,.1);
+  box-shadow:0 4px 24px rgba(0,0,0,.2);
 }
 .notification-popout .mbx-assign-label{
-  font-size:12px;
-  font-weight:800;
-  letter-spacing:.12em;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.2em;
   text-transform:uppercase;
-  color:rgba(148,163,184,.95);
-  margin-bottom:6px;
+  color:rgba(148,163,184,.6);
+  margin-bottom:12px;
 }
 .notification-popout .mbx-assign-desc{
-  font-size:15px;
+  font-size:18px;
   font-weight:700;
-  color:rgba(248,250,252,.96);
+  color:#f1f5f9;
+  line-height:1.4;
 }
 .notification-popout .mbx-assign-case{
   display:flex;
-  align-items:center;
+  align-items:flex-end;
   justify-content:space-between;
-  gap:12px;
 }
 .notification-popout .mbx-assign-case-no{
-  font-size:34px;
-  font-weight:900;
-  letter-spacing:.04em;
+  font-size:48px;
+  font-weight:950;
+  letter-spacing:-.02em;
+  color:#ffffff;
+  line-height:1;
 }
-.notification-popout .mbx-assign-copy{
-  padding:6px 12px;
-  font-weight:800;
+.mbx-assign-copy{
+  height:42px;
+  padding:0 20px !important;
+  background:#ffffff !important;
+  color:#0f172a !important;
+  border:none;
+  font-weight:900;
+  font-size:13px;
+  border-radius:10px;
+  transition:all .2s cubic-bezier(.4,0,.2,1);
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.mbx-assign-copy:hover{
+  transform:translateY(-2px);
+  box-shadow:0 8px 20px rgba(255,255,255,.2);
+}
+@keyframes mbx-pulse{
+  0%{
+    transform:scale(.9);
+    opacity:.7;
+  }
+  50%{
+    transform:scale(1.15);
+    opacity:1;
+  }
+  100%{
+    transform:scale(.9);
+    opacity:.7;
+  }
 }
 
 /* ------------------------------------------------------------------
