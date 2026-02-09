@@ -20,36 +20,39 @@
         </div>
         <h1 class="h1" style="margin-top:10px">Login</h1>
         <p class="h2">Login required. Timezone: <b>Asia/Manila</b></p>
-        <div class="grid2">
-          <div>
-            <label class="small">Username or Email</label>
-            <input class="input" id="login" placeholder="Username or email" autocomplete="username" />
+        <!-- Wrap credentials in a form so browsers can correctly detect and autofill password fields. -->
+        <form id="loginForm" autocomplete="on" novalidate>
+          <div class="grid2">
+            <div>
+              <label class="small" for="login">Username or Email</label>
+              <input class="input" id="login" name="username" placeholder="Username or email" autocomplete="username" />
+            </div>
+            <div>
+              <label class="small" for="password">Password</label>
+              <input class="input" id="password" name="password" type="password" placeholder="Password" autocomplete="current-password" />
+            </div>
           </div>
-          <div>
-            <label class="small">Password</label>
-            <input class="input" id="password" type="password" placeholder="Password" autocomplete="current-password" />
-          </div>
-        </div>
 
-        <div class="row" style="justify-content:flex-start;align-items:center;margin-top:10px;gap:12px;flex-wrap:wrap">
-          <label class="row small" style="gap:8px;cursor:pointer;user-select:none">
-            <input type="checkbox" id="saveDetails" />
-            <span>Save details</span>
-          </label>
-          <label class="row small" id="savePasswordWrap" style="gap:8px;cursor:pointer;user-select:none;display:none">
-            <input type="checkbox" id="savePassword" />
-            <span>Also save password (not recommended)</span>
-          </label>
-        </div>
-
-        <div class="row" style="justify-content:space-between;margin-top:12px;flex-wrap:wrap">
-          <div class="small">Initial Super User: <b>MUMS / MUMS</b></div>
-          <div class="row" style="gap:8px">
-            <button class="btn" id="resetMeys" type="button">Reset MUMS</button>
-            <button class="btn danger" id="factoryReset" type="button">Factory Reset</button>
-            <button class="btn primary" id="loginBtn" type="button">Login</button>
+          <div class="row" style="justify-content:flex-start;align-items:center;margin-top:10px;gap:12px;flex-wrap:wrap">
+            <label class="row small" style="gap:8px;cursor:pointer;user-select:none">
+              <input type="checkbox" id="saveDetails" />
+              <span>Save details</span>
+            </label>
+            <label class="row small" id="savePasswordWrap" style="gap:8px;cursor:pointer;user-select:none;display:none">
+              <input type="checkbox" id="savePassword" />
+              <span>Also save password (not recommended)</span>
+            </label>
           </div>
-        </div>
+
+          <div class="row" style="justify-content:space-between;margin-top:12px;flex-wrap:wrap">
+            <div class="small">Initial Super User: <b>MUMS / MUMS</b></div>
+            <div class="row" style="gap:8px">
+              <button class="btn" id="resetMeys" type="button">Reset MUMS</button>
+              <button class="btn danger" id="factoryReset" type="button">Factory Reset</button>
+              <button class="btn primary" id="loginBtn" type="submit">Login</button>
+            </div>
+          </div>
+        </form>
         <div class="err" id="err" style="display:none"></div>
 
         <div class="row" style="justify-content:space-between;align-items:center;margin-top:10px;gap:10px;flex-wrap:wrap">
@@ -198,8 +201,15 @@
       }
     }
 
-    $("loginBtn").onclick = doLogin;
-    $("password").addEventListener("keydown", (e)=>{ if(e.key==="Enter") doLogin(); });
+    // Use a form submit handler so password managers/autofill behave properly.
+    // Prevent default navigation to keep the app SPA-style.
+    const loginForm = $("loginForm");
+    if(loginForm){
+      loginForm.addEventListener("submit", (e)=>{
+        try{ e.preventDefault(); }catch(_){ }
+        doLogin();
+      });
+    }
 
     // Save details UI wiring
     try{
