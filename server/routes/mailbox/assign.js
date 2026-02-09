@@ -135,6 +135,12 @@ function pruneLogs(list){
   return arr.filter(x => x && x.ts && Number(x.ts) >= cutoff).slice(0, 2500);
 }
 
+function pruneNotifs(list){
+  const arr = Array.isArray(list) ? list : [];
+  const cutoff = Date.now() - (183*24*60*60*1000); // ~6 months
+  return arr.filter(x => x && x.ts && Number(x.ts) >= cutoff).slice(0, 2500);
+}
+
 async function upsertDoc(key, value, actor, profile, clientId){
   const row = {
     key,
@@ -414,6 +420,40 @@ module.exports = async (req, res) => {
       };
       const nextLogs = pruneLogs([logEntry, ...prevLogs]);
       await upsertDoc('ums_activity_logs', nextLogs, actor, profile, clientId);
+    }catch(_){}
+
+    // Notify assignee (real-time schedule notifications feed)
+    try{
+      const notifsDoc = await getDocValue('mums_schedule_notifs');
+      const prevNotifs = (notifsDoc.ok && Array.isArray(notifsDoc.value)) ? notifsDoc.value : [];
+      const notifId = `mbx_assign_${assignment.id}`;
+      const notif = {
+        id: notifId,
+        ts: assignment.assignedAt,
+        type: 'MAILBOX_ASSIGN',
+        teamId: safeString(next?.meta?.teamId || shiftTeamId, 40),
+        fromId: actor.id,
+        fromName: assignment.actorName,
+        title: 'Mailbox Case Assigned',
+        body: `Case ${caseNo} assigned to you.`,
+        recipients: [assigneeId],
+        caseNo,
+        shiftKey,
+        bucketId: assignment.bucketId,
+        timeblock: {
+          start: safeString(bucket.start, 10),
+          end: safeString(bucket.end, 10),
+          label: bucketLabel
+        },
+        userMessages: {
+          [assigneeId]: `Case ${caseNo} assigned to you for mailbox time ${bucketLabel}.`
+        }
+      };
+      const has = prevNotifs.some(n=>n && String(n.id||'') === notifId);
+      if(!has){
+        const nextNotifs = pruneNotifs([notif, ...prevNotifs]);
+        await upsertDoc('mums_schedule_notifs', nextNotifs, actor, profile, clientId);
+      }
     }catch(_){}
 
     res.statusCode = 200;
