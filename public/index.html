@@ -712,7 +712,40 @@
 
   <script src="./js/env_runtime.js?v=p1-515"></script>
   <script src="./js/remote_patch.js?v=p1-515"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.0/dist/umd/supabase.min.js"></script>
+  <script>
+    // Load Supabase UMD as a first-party script when possible.
+    //
+    // Edge InPrivate / Tracking Prevention can block storage access for 3rd-party
+    // CDN scripts. Serving the SDK from our own origin avoids that.
+    (function () {
+      const sources = [
+        // Cloudflare Pages (PROD)
+        '/functions/vendor/supabase.js',
+        // Vercel (UAT)
+        '/api/vendor/supabase.js',
+        // Last-resort fallback
+        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.0/dist/umd/supabase.min.js'
+      ];
+
+      function loadAt(i) {
+        if (i >= sources.length) {
+          try { console.warn('[MUMS] Supabase SDK failed to load from all sources; app will run in limited mode.'); } catch (_) {}
+          return;
+        }
+        const src = sources[i];
+        const s = document.createElement('script');
+        s.defer = true;
+        s.src = src;
+        s.onload = function () {
+          try { window.__MUMS_SUPABASE_SRC = src; } catch (_) {}
+        };
+        s.onerror = function () { loadAt(i + 1); };
+        document.head.appendChild(s);
+      }
+
+      loadAt(0);
+    })();
+  </script>
   <!-- Load in order (no modules) so it works via file:// in Edge -->
   <script src="./js/config/version.js?v=p1-515"></script>
   <script src="./js/config.js?v=p1-515"></script>

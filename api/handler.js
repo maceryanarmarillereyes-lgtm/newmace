@@ -26,6 +26,9 @@ const ROUTES = {
   'health': require('../server/routes/health'),
   'debug/log': require('../server/routes/debug/log'),
 
+  // Vendor bundles served as first-party scripts (avoid 3rd-party storage blocks)
+  'vendor/supabase.js': require('../server/routes/vendor/supabase'),
+
   // Keep-alive ping for Supabase (prevents project pausing on free plans)
   'keep_alive': require('../server/routes/keep_alive'),
   // Back-compat alias if callers hit /api/keep_alive.js

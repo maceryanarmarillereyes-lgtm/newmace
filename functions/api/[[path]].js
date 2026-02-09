@@ -41,6 +41,9 @@ async function getRoutes(env) {
     env: unwrapCjs(await import('../../server/routes/env.js')),
     'env.js': unwrapCjs(await import('../../server/routes/env.js')),
     health: unwrapCjs(await import('../../server/routes/health.js')),
+
+    // Vendor bundles served as first-party scripts (avoid 3rd-party storage blocks)
+    'vendor/supabase.js': unwrapCjs(await import('../../server/routes/vendor/supabase.js')),
     keep_alive: unwrapCjs(await import('../../server/routes/keep_alive.js')),
     'keep_alive.js': unwrapCjs(await import('../../server/routes/keep_alive.js')),
     'debug/log': unwrapCjs(await import('../../server/routes/debug/log.js')),
