@@ -2869,6 +2869,8 @@ function notifyPastWeekLocked(){
     function weeklyStats(u){
       const totals = { mailbox:0, back:0, call:0 };
       for(let d=0; d<7; d++){
+        const iso = isoForDay(d);
+        if(isRestDay(u.teamId, u.id, iso)) continue;
         const bl = Store.getUserDayBlocks(u.id, d);
         const t = Config.teamById(u.teamId);
         for(const b of (bl||[])){
@@ -2923,6 +2925,8 @@ function notifyPastWeekLocked(){
       const isCall = (tid === _callRole || tid === 'call_onqueue' || tid === 'call_available');
       let total = 0;
       for(let d=0; d<7; d++){
+        const iso = isoForDay(d);
+        if(isRestDay(u.teamId, u.id, iso)) continue;
         const bl = Store.getUserDayBlocks(u.id, d) || [];
         const t = Config.teamById(u.teamId);
         for(const b of bl){
@@ -2996,7 +3000,8 @@ function notifyPastWeekLocked(){
       const ws = weeklyStats(m);
       const prog = _progressForMember(m, paint.role || graphTaskFilterId);
 
-      const blocks = normalizeBlocks(team, Store.getUserDayBlocks(m.id, selectedDay), { locked: dayLockedForGrid && !unlockTriggered });
+      const dayBlocks = rest ? [] : Store.getUserDayBlocks(m.id, selectedDay);
+      const blocks = normalizeBlocks(team, dayBlocks, { locked: dayLockedForGrid && !unlockTriggered });
       const segs = (blocks||[]).map((b,i)=>{
           const st = segStyle(b);
           const role = (b.role || b.task || 'block');

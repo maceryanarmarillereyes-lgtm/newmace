@@ -142,6 +142,7 @@
     NAV: [
       { id: 'dashboard', label: 'Dashboard', icon: '🏠', perm: 'view_dashboard' },
       { id: 'mailbox', label: 'Mailbox', icon: '📨', perm: 'view_mailbox' },
+      { id: 'overall_stats', label: 'OVER ALL STATS', icon: '📊', perm: 'view_members' },
 
       {
         id: 'team',
