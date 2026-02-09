@@ -1662,18 +1662,17 @@ toast(message, variant){
         const assignedAt = Number(n.assignedAt || n.ts || 0);
         const timer = formatAssignTimer(assignedAt);
         const caseNo = String(n.caseNo || '').trim();
-        const copiedLabel = caseNo || '—';
         return `
           <div class="mbx-assign-grid">
             <div class="mbx-assign-top">
               <div>
-                <div class="mbx-assign-from">NEW CASE ASSIGNED</div>
-                <div class="small muted" style="margin-top: 4px; font-weight: 600;">
-                  Sender: ${esc(n.fromName || 'System')} • ${new Date(n.ts || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                <div class="mbx-assign-from" style="font-size: 16px; color: #38bdf8;">Mailbox Case Assigned</div>
+                <div class="small muted" style="margin-top: 4px;">
+                  From: ${esc(n.fromName || 'System')} • ${new Date(n.ts || Date.now()).toLocaleTimeString()}
                 </div>
               </div>
-              <div class="mbx-assign-timer" style="text-align: right;">
-                <div class="mbx-assign-live"><span class="mbx-assign-pulse"></span>LIVE ELAPSED</div>
+              <div class="mbx-assign-timer">
+                <div class="mbx-assign-timer-label" style="color: #4ade80;">TIMER</div>
                 <div class="mbx-assign-timer-value" data-assign-timer="${esc(assignedAt)}">${esc(timer)}</div>
               </div>
             </div>
@@ -1685,9 +1684,8 @@ toast(message, variant){
               <div class="mbx-assign-label" style="color: #38bdf8;">Unique Case ID</div>
               <div class="mbx-assign-case">
                 <span class="mbx-assign-case-no">${esc(copiedLabel)}</span>
-                <button class="btn mbx-assign-copy" type="button" data-copy-case="${esc(copiedLabel)}">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                  COPY ID
+                <button class="btn sm mbx-assign-copy" type="button" data-copy-case="${esc(copiedLabel)}">
+                  <span style="margin-right: 6px;">📋</span> COPY
                 </button>
               </div>
             </div>
