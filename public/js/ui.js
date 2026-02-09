@@ -542,7 +542,27 @@ toast(message, variant){
         const u = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
         const superAdmin = window.Config && Config.ROLES ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
         const isSA = !!(u && u.role === superAdmin);
-        const o = (window.Store && Store.getMailboxTimeOverride) ? Store.getMailboxTimeOverride() : null;
+        let o = (window.Store && Store.getMailboxTimeOverride) ? Store.getMailboxTimeOverride() : null;
+        try{
+          const raw = localStorage.getItem('mums_mailbox_time_override_cloud');
+          const cloud = raw ? JSON.parse(raw) : null;
+          if(cloud && typeof cloud === 'object' && cloud.enabled && String(cloud.scope) === 'global'){
+            const def = { enabled:false, ms:0, freeze:true, setAt:0, scope:'global' };
+            const c = Object.assign({}, def, cloud);
+            c.enabled = !!c.enabled;
+            c.ms = Number(c.ms)||0;
+            c.freeze = (c.freeze !== false);
+            c.setAt = Number(c.setAt)||0;
+            c.scope = 'global';
+            const oScope = String(o?.scope||'');
+            const oMs = Number(o?.ms)||0;
+            const oSetAt = Number(o?.setAt)||0;
+            const oFreeze = (o?.freeze !== false);
+            if(!o || !o.enabled || oScope !== 'global' || oMs !== c.ms || oSetAt !== c.setAt || oFreeze !== c.freeze){
+              o = c;
+            }
+          }
+        }catch(_){}
 
         // Strong validation: if override is missing/malformed, fall back to system Manila time.
         // ===== CODE UNTOUCHABLES =====
@@ -593,7 +613,27 @@ toast(message, variant){
         const u = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
         const superAdmin = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
         info.isSuperAdmin = !!(u && u.role === superAdmin);
-        const o = (window.Store && Store.getMailboxTimeOverride) ? Store.getMailboxTimeOverride() : null;
+        let o = (window.Store && Store.getMailboxTimeOverride) ? Store.getMailboxTimeOverride() : null;
+        try{
+          const raw = localStorage.getItem('mums_mailbox_time_override_cloud');
+          const cloud = raw ? JSON.parse(raw) : null;
+          if(cloud && typeof cloud === 'object' && cloud.enabled && String(cloud.scope) === 'global'){
+            const def = { enabled:false, ms:0, freeze:true, setAt:0, scope:'global' };
+            const c = Object.assign({}, def, cloud);
+            c.enabled = !!c.enabled;
+            c.ms = Number(c.ms)||0;
+            c.freeze = (c.freeze !== false);
+            c.setAt = Number(c.setAt)||0;
+            c.scope = 'global';
+            const oScope = String(o?.scope||'');
+            const oMs = Number(o?.ms)||0;
+            const oSetAt = Number(o?.setAt)||0;
+            const oFreeze = (o?.freeze !== false);
+            if(!o || !o.enabled || oScope !== 'global' || oMs !== c.ms || oSetAt !== c.setAt || oFreeze !== c.freeze){
+              o = c;
+            }
+          }
+        }catch(_){}
 
         // Strong validation: if override is missing/malformed, treat as no override.
         // ===== CODE UNTOUCHABLES =====
