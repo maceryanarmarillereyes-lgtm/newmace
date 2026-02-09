@@ -43,6 +43,9 @@
 
   const DEFAULT_RELAY_URL = 'ws://localhost:17601';
   const SUPABASE_STORAGE = {
+    getItem: function(){ return null; },
+    setItem: function(){},
+    removeItem: function(){}
     getItem(){ return null; },
     setItem(){},
     removeItem(){}
@@ -370,6 +373,9 @@ function applyRemoteKey(key, value){
         if (d.updatedAt && d.updatedAt > lastCloudTs) lastCloudTs = d.updatedAt;
       }
       cloudOkAt = Date.now();
+      if (cloudMode !== 'realtime') {
+        dispatchStatus('polling', 'Polling sync active');
+      }
       // Do not downgrade mode to polling; realtime remains mandatory.
     } catch (e) {
       dispatchStatus(cloudMode, `Pull error: ${String(e && e.message ? e.message : e)}`);
