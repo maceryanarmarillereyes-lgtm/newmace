@@ -1805,6 +1805,10 @@
           freeze: !!o.freeze
         };
         payload.override_iso = new Date(Number(o.ms)||Date.now()).toISOString();
+          freeze: !!o.freeze,
+          override_iso: new Date(Number(o.ms)||Date.now()).toISOString()
+          override_iso: new Date(Number(o.ms)||Date.now()).toISOString(),
+        };
         const getToken = ()=>{
           try{
             const t = (window.CloudAuth && CloudAuth.accessToken) ? String(CloudAuth.accessToken()||'').trim() : '';
@@ -1848,6 +1852,10 @@
           const token = getToken();
           if(!sendToCloud(token)){
             queuePending();
+        if (window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled()) {
+          const token = getToken();
+          if(!sendToCloud(token)){
+            try{ window.__mumsMailboxOverridePending = payload; }catch(_){ }
             try{
               if(window.CloudAuth && CloudAuth.ensureFreshSession){
                 CloudAuth.ensureFreshSession({ tryRefresh:true, clearOnFail:false, leewaySec: 60 })
@@ -1857,6 +1865,20 @@
           }
         } else {
           queuePending();
+            try{
+              if(!window.__mumsMailboxOverridePendingListener){
+                window.__mumsMailboxOverridePendingListener = true;
+                window.addEventListener('mums:authtoken', ()=>{
+                  try{
+                    const pending = window.__mumsMailboxOverridePending;
+                    if(!pending) return;
+                    const t = getToken();
+                    if(sendToCloud(t)) window.__mumsMailboxOverridePending = null;
+                  }catch(_){ }
+                });
+              }
+            }catch(_){ }
+          }
         }
       }
 
