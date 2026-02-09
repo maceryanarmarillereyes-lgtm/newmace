@@ -335,6 +335,11 @@ async function login(usernameOrEmail, password){
   const id = String(usernameOrEmail||'').trim();
   if(!id) return { ok:false, message:'Missing username/email.' };
 
+  // Guard: never hit the password grant endpoint with an empty/undefined password.
+  // This prevents noisy 400s ("missing password") from accidental callers.
+  const pw = String(password || '').trim();
+  if (!pw) return { ok:false, message:'Missing password.' };
+
   // Accept either full email or username.
   const canonicalEmail = id.includes('@') ? id : `${id}@${domain}`;
 
@@ -342,7 +347,7 @@ async function login(usernameOrEmail, password){
     const r = await apiFetch('/auth/v1/token?grant_type=password', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password: pw })
     });
 
     const bodyText = await r.text().catch(()=> '');
