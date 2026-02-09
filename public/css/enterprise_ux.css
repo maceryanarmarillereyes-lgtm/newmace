@@ -3732,6 +3732,20 @@ body.members-fullscreen-active .members-analytics-rail *{
   z-index: 12400 !important;
 }
 
+/* Fullscreen safety: ensure global overlays/modals render above fullscreen shell */
+body.members-fullscreen-active .modal,
+body.members-fullscreen-active .confirm-modal,
+body.members-fullscreen-active .attendance-modal,
+body.members-fullscreen-active #autoPreviewModal,
+body.members-fullscreen-active .graph-status-panel.gsp-floating{
+  z-index: 16000 !important;
+}
+body.members-fullscreen-active .dropdown-menu,
+body.members-fullscreen-active .reports-menu,
+body.members-fullscreen-active .tooltip{
+  z-index: 15500 !important;
+}
+
 .members-page .members-topbar{
   padding: 10px 12px;
 }
