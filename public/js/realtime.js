@@ -106,6 +106,7 @@
     'ums_cases',
     'ums_schedule_notifs',
     'mums_schedule_notifs'
+    'ums_cases'
   ]);
 
   function canPushKey(key){

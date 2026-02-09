@@ -279,6 +279,8 @@ function _mbxMemberSortKey(u){
               const e = (UI.parseHM ? UI.parseHM(b.end) : _mbxParseHM(b.end));
               if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
               if(!_mbxBlockHit(bucketStartMin, s, e)) continue;
+              const blockSegs = _mbxToSegments(s, e);
+              if(!_mbxSegmentsOverlap(bucketSegs, blockSegs)) continue;
               matches.push({
                 role,
                 roleIdx: roleOrder.indexOf(role),
@@ -704,6 +706,29 @@ root.innerHTML = `
         const scheduled = _mbxFindScheduledManagerForBucket(table, bucket);
         if(scheduled && scheduled !== '—') return String(scheduled);
       }catch(_){ }
+
+      // 2) Active mailbox manager for the current bucket (fallback for live view)
+      try{
+        if(activeBucketId && bucket?.id === activeBucketId){
+          const duty = getDuty();
+          const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+          const live = _mbxFindOnDutyMailboxManagerName(duty?.current?.id, duty?.current, nowParts, table, activeBucketId);
+          if(live && live !== '—') return String(live);
+        }
+      }catch(_){ }
+
+      // 3) Persisted explicit map (from assignment actors)
+      try{
+        const bm = table && table.meta && table.meta.bucketManagers;
+        if(bm && bm[bucket.id] && bm[bucket.id].name) return String(bm[bucket.id].name);
+      }catch(_){ }
+
+      // 4) Most recent assignment actor within bucket
+      try{
+        const a = (table.assignments||[]).find(x=>x.bucketId===bucket.id && (x.actorName||''));
+        if(a && a.actorName) return String(a.actorName);
+      }catch(_){ }
+
       return '—';
     }
 
