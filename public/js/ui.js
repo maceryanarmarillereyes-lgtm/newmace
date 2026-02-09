@@ -563,6 +563,22 @@ toast(message, variant){
             }
           }
         }catch(_){}
+        if(!o || !o.enabled || String(o.scope||'') !== 'global'){
+          try{
+            const raw = localStorage.getItem('mums_mailbox_time_override_cloud');
+            const cloud = raw ? JSON.parse(raw) : null;
+            if(cloud && typeof cloud === 'object' && cloud.enabled && String(cloud.scope) === 'global'){
+              const def = { enabled:false, ms:0, freeze:true, setAt:0, scope:'global' };
+              const c = Object.assign({}, def, cloud);
+              c.enabled = !!c.enabled;
+              c.ms = Number(c.ms)||0;
+              c.freeze = (c.freeze !== false);
+              c.setAt = Number(c.setAt)||0;
+              c.scope = 'global';
+              o = c;
+            }
+          }catch(_){}
+        }
 
         // Strong validation: if override is missing/malformed, fall back to system Manila time.
         // ===== CODE UNTOUCHABLES =====
@@ -634,6 +650,22 @@ toast(message, variant){
             }
           }
         }catch(_){}
+        if(!o || !o.enabled || String(o.scope||'') !== 'global'){
+          try{
+            const raw = localStorage.getItem('mums_mailbox_time_override_cloud');
+            const cloud = raw ? JSON.parse(raw) : null;
+            if(cloud && typeof cloud === 'object' && cloud.enabled && String(cloud.scope) === 'global'){
+              const def = { enabled:false, ms:0, freeze:true, setAt:0, scope:'global' };
+              const c = Object.assign({}, def, cloud);
+              c.enabled = !!c.enabled;
+              c.ms = Number(c.ms)||0;
+              c.freeze = (c.freeze !== false);
+              c.setAt = Number(c.setAt)||0;
+              c.scope = 'global';
+              o = c;
+            }
+          }catch(_){}
+        }
 
         // Strong validation: if override is missing/malformed, treat as no override.
         // ===== CODE UNTOUCHABLES =====
