@@ -1828,6 +1828,26 @@
           }).catch(() => {});
           return true;
         };
+        const queuePending = ()=>{
+          try{ window.__mumsMailboxOverridePending = payload; }catch(_){ }
+          try{
+            if(!window.__mumsMailboxOverridePendingListener){
+              window.__mumsMailboxOverridePendingListener = true;
+              window.addEventListener('mums:authtoken', ()=>{
+                try{
+                  const pending = window.__mumsMailboxOverridePending;
+                  if(!pending) return;
+                  const t = getToken();
+                  if(sendToCloud(t)) window.__mumsMailboxOverridePending = null;
+                }catch(_){ }
+              });
+            }
+          }catch(_){ }
+        };
+        if (window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled()) {
+          const token = getToken();
+          if(!sendToCloud(token)){
+            queuePending();
         if (window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled()) {
           const token = getToken();
           if(!sendToCloud(token)){
@@ -1838,6 +1858,9 @@
                   .then(()=>{ try{ const fresh = getToken(); if(sendToCloud(fresh)) window.__mumsMailboxOverridePending = null; }catch(_){ } });
               }
             }catch(_){ }
+          }
+        } else {
+          queuePending();
             try{
               if(!window.__mumsMailboxOverridePendingListener){
                 window.__mumsMailboxOverridePendingListener = true;
