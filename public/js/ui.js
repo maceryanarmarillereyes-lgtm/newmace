@@ -1650,6 +1650,12 @@ toast(message, variant){
         const sec = Math.floor(Math.max(0, Date.now() - assignedAt) / 1000);
         return (UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`;
       };
+      const updateTimers = ()=>{
+        document.querySelectorAll('[data-assign-timer]').forEach((el)=>{
+          const start = parseInt(el.getAttribute('data-assign-timer'));
+          if(start) el.textContent = formatAssignTimer(start);
+        });
+      };
       const renderMailboxAssign = (n)=>{
         const desc = n.desc || '';
         const label = desc ? esc(desc) : '<span class="muted">No description provided.</span>';
@@ -1661,11 +1667,13 @@ toast(message, variant){
           <div class="mbx-assign-grid">
             <div class="mbx-assign-top">
               <div>
-                <div class="mbx-assign-from">Mailbox Case Assigned</div>
-                <div class="small muted">From: ${esc(n.fromName || 'Mailbox Manager')} • ${new Date(n.ts||Date.now()).toLocaleString()} • Mailbox</div>
+                <div class="mbx-assign-from" style="font-size: 16px; color: #38bdf8;">Mailbox Case Assigned</div>
+                <div class="small muted" style="margin-top: 4px;">
+                  From: ${esc(n.fromName || 'System')} • ${new Date(n.ts || Date.now()).toLocaleTimeString()}
+                </div>
               </div>
               <div class="mbx-assign-timer">
-                <div class="mbx-assign-timer-label">Timer</div>
+                <div class="mbx-assign-timer-label" style="color: #4ade80;">TIMER</div>
                 <div class="mbx-assign-timer-value" data-assign-timer="${esc(assignedAt)}">${esc(timer)}</div>
               </div>
             </div>
@@ -1677,7 +1685,9 @@ toast(message, variant){
               <div class="mbx-assign-label">Case #</div>
               <div class="mbx-assign-case">
                 <span class="mbx-assign-case-no">${esc(copiedLabel)}</span>
-                <button class="btn sm mbx-assign-copy" type="button" data-copy-case="${esc(copiedLabel)}">Copy</button>
+                <button class="btn sm mbx-assign-copy" type="button" data-copy-case="${esc(copiedLabel)}">
+                  <span style="margin-right: 6px;">📋</span> COPY
+                </button>
               </div>
             </div>
           </div>
@@ -1821,7 +1831,10 @@ toast(message, variant){
       };
 
       // periodic poll (cheap) + cross-tab hints
-      let timer = setInterval(ping, 1500);
+      let timer = setInterval(()=>{
+        ping();
+        updateTimers();
+      }, 1000);
       const onStorage = (ev)=>{
         if(!ev || !ev.key) return;
         if(ev.key=== 'ums_schedule_notifs' || ev.key=== 'mums_schedule_notifs') ping();
