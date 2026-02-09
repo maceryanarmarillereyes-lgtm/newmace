@@ -3488,6 +3488,151 @@ body.members-fullscreen-active .members-topbar,
   justify-content:space-between;
   align-items:center;
 }
+.overall-stats-controls{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.overall-filter-card{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.overall-filter-presets{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.overall-filter-row{
+  display:flex;
+  gap:16px;
+  flex-wrap:wrap;
+  align-items:flex-end;
+  justify-content:space-between;
+}
+.overall-filter-custom{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:flex-end;
+}
+.overall-filter-shortcuts{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.overall-filter-search,
+.overall-filter-sort,
+.overall-filter-pagination{
+  display:flex;
+  gap:8px;
+  align-items:flex-end;
+}
+.overall-filter-search{
+  min-width:220px;
+  flex:1;
+}
+.overall-filter-sort{
+  min-width:240px;
+}
+.overall-table-wrap{
+  width:100%;
+  overflow:auto;
+}
+.overall-name{
+  font-weight:800;
+}
+.overall-delta{
+  display:inline-block;
+  margin-left:6px;
+  font-size:11px;
+  color:var(--muted);
+}
+.overall-pagination{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:12px;
+}
+.overall-loading,
+.overall-error{
+  padding:10px 0;
+  font-size:13px;
+  color:var(--muted);
+}
+.overall-error{ color: var(--danger); }
+.overall-stat-card.overall-trend-card{
+  min-height:140px;
+}
+.overall-trend-wrap{
+  margin-top:8px;
+  color:var(--accent);
+}
+.overall-trend-chart{
+  width:100%;
+  height:80px;
+}
+.overall-trend-empty{
+  font-size:12px;
+  color:var(--muted);
+}
+.sparkline{
+  width:100px;
+  height:28px;
+  color:var(--accent);
+}
+.sparkline-empty{
+  font-size:12px;
+  color:var(--muted);
+}
+.overall-detail-row{
+  background:rgba(255,255,255,.02);
+}
+.overall-detail-panel{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding:12px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:rgba(255,255,255,.02);
+}
+.overall-detail-header{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.overall-detail-title{
+  font-weight:800;
+  font-size:14px;
+}
+.overall-detail-kpis{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  font-size:12px;
+  color:var(--muted);
+}
+.overall-detail-chart{
+  width:120px;
+}
+.overall-pilot-card{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.overall-pilot-toggle{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.overall-pilot-inline{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
 .members-page .members-row{
   padding:4px 8px;
 }
