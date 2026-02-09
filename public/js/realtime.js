@@ -43,9 +43,6 @@
 
   const DEFAULT_RELAY_URL = 'ws://localhost:17601';
   const SUPABASE_STORAGE = {
-    getItem: function(){ return null; },
-    setItem: function(){},
-    removeItem: function(){}
     getItem(){ return null; },
     setItem(){},
     removeItem(){}
@@ -109,7 +106,6 @@
     'ums_cases',
     'ums_schedule_notifs',
     'mums_schedule_notifs'
-    'ums_cases'
   ]);
 
   function canPushKey(key){
