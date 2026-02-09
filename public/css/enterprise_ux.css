@@ -1936,7 +1936,9 @@ body[data-mode="light"] .progress-tooltip{color:#555;}
 .members-page .leave-actions{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
 .members-page .leave-field{display:flex;align-items:center;gap:6px;font-size:12px;color:#e2e8f0}
 .members-page .leave-label{font-weight:600;letter-spacing:.01em;display:inline-flex;visibility:visible;opacity:1;color:#e2e8f0}
-.members-page .leave-select{height:28px;padding:0 8px;border-radius:10px;font-size:12px;min-width:150px;color:#f8fafc}
+.members-page .leave-select{height:28px;padding:0 8px;border-radius:10px;font-size:12px;min-width:150px;color:#f8fafc;background-color:rgba(30,41,59,.95) !important;border:1px solid rgba(255,255,255,.2) !important;appearance:auto !important;cursor:pointer}
+.members-page .leave-select option{background-color:#0f172a;color:#f8fafc}
+.members-page .leave-select:focus{outline:none;border-color:#06b6d4 !important;box-shadow:0 0 0 2px rgba(6,182,212,.2)}
 
 /* Members overlay background compression (~20%): reduce vertical density in key controls */
 .members-page .timeline-legend{margin-bottom:8px}
