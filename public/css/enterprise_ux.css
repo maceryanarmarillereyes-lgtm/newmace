@@ -693,17 +693,16 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 }
 .notification-popout .mbx-assign-grid{
   display:grid;
-  gap:16px;
-  padding:8px 0;
+  gap:14px;
 }
 .notification-popout .mbx-assign-top{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  padding:16px 20px;
-  background:rgba(255,255,255,.03);
-  border-radius:16px;
+  padding:14px 16px;
+  border-radius:14px;
   border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);
 }
 .notification-popout .mbx-assign-from{
   font-weight:900;
@@ -713,32 +712,29 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 }
 .notification-popout .mbx-assign-timer-value{
   font-family:'JetBrains Mono','Roboto Mono',monospace;
-  font-size:34px;
+  font-size:32px;
   font-weight:900;
   color:#ffffff;
-  text-shadow:0 0 20px rgba(56,189,248,.3);
-  line-height:1;
+  text-shadow:0 0 15px rgba(255,255,255,.2);
 }
 .notification-popout .mbx-assign-card{
-  padding:20px;
-  border-radius:16px;
-  background:linear-gradient(165deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.01) 100%);
+  padding:16px;
+  border-radius:14px;
   border:1px solid rgba(255,255,255,.1);
-  box-shadow:0 4px 24px rgba(0,0,0,.2);
+  background:linear-gradient(145deg, rgba(56,189,248,.08), rgba(15,23,42,.4));
 }
 .notification-popout .mbx-assign-label{
-  font-size:10px;
+  font-size:11px;
   font-weight:900;
-  letter-spacing:.2em;
+  letter-spacing:.15em;
   text-transform:uppercase;
-  color:rgba(148,163,184,.6);
-  margin-bottom:12px;
+  color:rgba(148,163,184,.8);
+  margin-bottom:8px;
 }
 .notification-popout .mbx-assign-desc{
-  font-size:18px;
+  font-size:16px;
   font-weight:700;
-  color:#f1f5f9;
-  line-height:1.4;
+  color:#f8fafc;
 }
 .notification-popout .mbx-assign-case{
   display:flex;
@@ -746,29 +742,21 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   justify-content:space-between;
 }
 .notification-popout .mbx-assign-case-no{
-  font-size:48px;
+  font-size:42px;
   font-weight:950;
-  letter-spacing:-.02em;
+  letter-spacing:.02em;
   color:#ffffff;
-  line-height:1;
 }
-.mbx-assign-copy{
-  height:42px;
-  padding:0 20px !important;
-  background:#ffffff !important;
-  color:#0f172a !important;
-  border:none;
-  font-weight:900;
-  font-size:13px;
-  border-radius:10px;
-  transition:all .2s cubic-bezier(.4,0,.2,1);
-  display:flex;
-  align-items:center;
-  gap:8px;
+.notification-popout .mbx-assign-copy{
+  background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.2);
+  padding:6px 12px;
+  font-weight:800;
+  transition:all .2s ease;
 }
-.mbx-assign-copy:hover{
-  transform:translateY(-2px);
-  box-shadow:0 8px 20px rgba(255,255,255,.2);
+.notification-popout .mbx-assign-copy:hover{
+  background:rgba(56,189,248,.15);
+  border-color:#38bdf8;
 }
 
 /* ------------------------------------------------------------------
