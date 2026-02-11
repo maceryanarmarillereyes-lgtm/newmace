@@ -1548,32 +1548,40 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
     const by = {};
     for(const m of members){ by[m.id] = []; }
 
-    // Collapse duplicate assignments for the same assignee+case number.
-    // Keep the most recent record and prefer a confirmed record when present.
-    const pick = new Map();
+    const merged = [];
+    const seen = new Set();
     for(const a of (table.assignments||[])){
       if(!a) continue;
-      const aid = String(a.assigneeId||'').trim();
-      const caseNo = String(a.caseNo||'').trim();
-      if(!aid || !caseNo) continue;
-      const key = `${aid}|${caseNo.toLowerCase()}`;
-      const prev = pick.get(key);
-      if(!prev){
-        pick.set(key, a);
-        continue;
-      }
-      const prevConfirmed = Number(prev.confirmedAt||0) > 0;
-      const curConfirmed = Number(a.confirmedAt||0) > 0;
-      if(curConfirmed && !prevConfirmed){
-        pick.set(key, a);
-        continue;
-      }
-      const prevTs = Number(prev.assignedAt||prev.ts||0);
-      const curTs = Number(a.assignedAt||a.ts||0);
-      if(curTs >= prevTs) pick.set(key, a);
+      const k = `${String(a.id||'')}|${String(a.caseNo||'')}|${String(a.assigneeId||'')}`;
+      if(seen.has(k)) continue;
+      seen.add(k);
+      merged.push(a);
     }
 
-    for(const a of pick.values()){
+    // Resilience: when assignment docs lag or were created by older payloads,
+    // supplement from canonical cases list for the same shift.
+    try{
+      const allCases = (window.Store && Store.getCases) ? (Store.getCases()||[]) : [];
+      const key = String(shiftKey||'').trim();
+      for(const c of allCases){
+        if(!c || String(c.shiftKey||'').trim() !== key) continue;
+        const aid = String(c.assigneeId||'').trim();
+        const caseNo = String(c.caseNo||c.title||'').trim();
+        if(!aid || !caseNo || !by[aid]) continue;
+        const k = `fallback|${caseNo}|${aid}`;
+        if(seen.has(k)) continue;
+        seen.add(k);
+        merged.push({
+          id: String(c.id || `fallback_${aid}_${caseNo}`),
+          caseNo,
+          assigneeId: aid,
+          assignedAt: Number(c.createdAt||c.ts||Date.now()) || Date.now(),
+          confirmedAt: Number(c.confirmedAt||0) || 0
+        });
+      }
+    }catch(_){ }
+
+    for(const a of merged){
       if(!a || !by[a.assigneeId]) continue;
       by[a.assigneeId].push(a);
     }
