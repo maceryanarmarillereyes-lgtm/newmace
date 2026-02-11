@@ -1588,7 +1588,7 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
 
     const cols = members.map(m=>{
       const list = by[m.id] || [];
-      return { id:m.id, name:m.name, count:list.length, list:list.slice().reverse() };
+      return { id:m.id, name:m.name, count:list.length, list:list.slice().sort((a,b)=>(Number(b.assignedAt||b.ts||0)-Number(a.assignedAt||a.ts||0))) };
     });
     cols.sort((a,b)=>{
       if(a.count !== b.count) return a.count - b.count;
