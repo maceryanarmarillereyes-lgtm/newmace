@@ -588,28 +588,91 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   width:min(440px, calc(100vw - 24px));
   max-height:min(86vh, 780px);
 }
+#schedNotifModal .panel.notification-popout.mailbox-compact-mode{
+  width:min(360px, calc(100vw - 24px));
+  max-height:none;
+  height:auto;
+  overflow:visible;
+  border-radius:16px;
+}
 .notification-popout.mailbox-compact-mode{
-  width:min(420px, calc(100vw - 24px));
+  width:min(360px, calc(100vw - 24px));
+  max-height:none;
+  height:auto;
+  overflow:visible;
   border-radius:16px;
 }
 .notification-popout.mailbox-compact-mode .head{
   display:none;
 }
+#schedNotifModal .panel.notification-popout.mailbox-compact-mode,
+#schedNotifModal .panel.notification-popout.mailbox-compact-mode .body{
+  max-height:none !important;
+  overflow:visible !important;
+}
 .notification-popout.mailbox-compact-mode .body{
-  padding:10px;
+  padding:8px;
+  max-height:none;
+  overflow:visible;
 }
 .notification-popout.mailbox-compact-mode .notif-item.mailbox-assign{
   margin:0;
   width:100%;
   max-width:100%;
+  padding:8px;
 }
 .notification-popout.mailbox-compact-mode .notif-item.mailbox-assign .notif-item-head{
-  margin-bottom:8px;
+  margin-bottom:6px;
 }
 .notification-popout.mailbox-compact-mode .notif-item.mailbox-assign .dashx-ack{
-  padding:6px 9px;
+  padding:5px 8px;
   min-height:0;
-  font-size:11px;
+  font-size:10px;
+}
+.notification-popout.mailbox-compact-mode .notif-item.mailbox-assign .notif-item-body{
+  margin-top:6px;
+}
+.notification-popout.mailbox-compact-mode .mbx-assign-grid{
+  gap:6px;
+}
+.notification-popout.mailbox-compact-mode .mbx-assign-top,
+.notification-popout.mailbox-compact-mode .mbx-assign-card{
+  padding:8px;
+  border-radius:9px;
+}
+.notification-popout.mailbox-compact-mode .mbx-assign-title,
+.notification-popout.mailbox-compact-mode .mbx-assign-from{
+  font-size:12px;
+}
+.notification-popout.mailbox-compact-mode .mbx-assign-row{
+  gap:8px;
+}
+.notification-popout.mailbox-compact-mode .mbx-assign-timer{
+  min-width:104px;
+}
+.notification-popout.mailbox-compact-mode .mbx-assign-timer-label,
+.notification-popout.mailbox-compact-mode .mbx-assign-label{
+  font-size:9px;
+}
+.notification-popout.mailbox-compact-mode .mbx-assign-timer-value{
+  margin-top:3px;
+  font-size:23px;
+}
+.notification-popout.mailbox-compact-mode .mbx-assign-desc{
+  margin-top:4px;
+  font-size:15px;
+  line-height:1.2;
+}
+.notification-popout.mailbox-compact-mode .mbx-assign-case{
+  margin-top:6px;
+  gap:8px;
+}
+.notification-popout.mailbox-compact-mode .mbx-assign-case-no{
+  font-size:48px;
+}
+.notification-popout.mailbox-compact-mode .mbx-assign-copy{
+  padding:6px 9px;
+  font-size:10px;
 }
 #schedNotifModal{
   z-index:14050;
