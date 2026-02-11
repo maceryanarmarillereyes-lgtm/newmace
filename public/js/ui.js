@@ -1659,40 +1659,86 @@ toast(message, variant){
           if(start) el.textContent = formatAssignTimer(start);
         });
       };
-      const renderMailboxAssign = (n)=>{
-        const desc = String(n && n.desc ? n.desc : '').trim();
-        const assignedAt = Number((n && (n.assignedAt || n.ts)) || 0);
-        const timer = formatAssignTimer(assignedAt);
-        const caseNo = String(n && n.caseNo ? n.caseNo : '').trim();
-        const caseNoDisplay = caseNo || 'N/A';
-        const canCopy = !!caseNo;
-        const copiedLabel = String((n && n.copiedLabel) || 'COPY ID').trim() || 'COPY ID';
-        const fromName = String((n && n.fromName) || 'Mailbox Manager').trim() || 'Mailbox Manager';
-        return `
-          <div class="mbx-assign-grid">
-            <div class="mbx-assign-top">
-              <div class="mbx-assign-title">Case Assigned Notification</div>
+      const formatAssignTimestamp = (ts)=>{
+        const ms = Number(ts) || 0;
+        if(!ms) return 'N/A';
+        try{
+          const d = new Date(ms);
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          const yyyy = String(d.getFullYear());
+          const hour24 = d.getHours();
+          const mins = String(d.getMinutes()).padStart(2, '0');
+          const hour12 = String(hour24 % 12 || 12).padStart(2, '0');
+          const meridiem = hour24 >= 12 ? 'PM' : 'AM';
+          return `${mm}/${dd}/${yyyy} ${hour12}:${mins} ${meridiem}`;
+        }catch(_){
+          return 'N/A';
+        }
+      };
+      const truncate = (v, max=50)=>{
+        const s = String(v || '').trim();
+        if(!s) return '';
+        if(s.length <= max) return s;
+        return `${s.slice(0, max-1)}…`;
+      };
+      const renderAssignedBy = (n)=>{
+        const name = String((n && n.fromName) || 'Mailbox Manager').trim() || 'Mailbox Manager';
+        const avatar = String((n && (n.fromAvatar || n.fromAvatarUrl || n.avatarUrl)) || '').trim();
+        if(avatar){
+          return `
+            <div class="mbx-assign-by-wrap">
+              <span class="mini-avatar"><img src="${esc(avatar)}" alt="${esc(name)} avatar" loading="lazy"/></span>
+              <span class="mbx-assign-by-name">${esc(name)}</span>
             </div>
-            <div class="mbx-assign-row">
-              <div class="mbx-assign-from">${esc(fromName)}</div>
-              <div class="mbx-assign-timer">
-                <div class="mbx-assign-timer-label">Live Elapsed</div>
-                <div class="mbx-assign-timer-value" data-assign-timer="${esc(assignedAt)}">${esc(timer)}</div>
-              </div>
-            </div>
-            <div class="mbx-assign-card">
-              <div class="mbx-assign-label">Brief Description</div>
-              <div class="mbx-assign-desc">${desc ? esc(desc) : '<span class="muted">N/A</span>'}</div>
-            </div>
-            <div class="mbx-assign-card case-zone">
-              <div class="mbx-assign-label">Unique Case ID</div>
-              <div class="mbx-assign-case">
-                <span class="mbx-assign-case-no">${esc(caseNoDisplay)}</span>
-                <button class="btn sm mbx-assign-copy" type="button" data-copy-case="${esc(caseNo)}" data-copy-label="${esc(copiedLabel)}" ${canCopy ? '' : 'disabled aria-disabled="true"'}>
-                  <span aria-hidden="true" style="margin-right:8px;">📋</span><span class="mbx-copy-label">${esc(copiedLabel)}</span>
+          `;
+        }
+        return `<span class="mbx-assign-by-name">${esc(name)}</span>`;
+      };
+      const renderMailboxAssignTable = (list)=>{
+        const rows = (Array.isArray(list) ? list : []).map((n, index)=>{
+          const assignedAt = Number((n && (n.assignedAt || n.ts)) || 0);
+          const ts = formatAssignTimestamp(assignedAt);
+          const caseNo = String((n && (n.caseNo || n.ticketNumber || n.id)) || '').trim() || 'N/A';
+          const desc = String((n && n.desc) || '').trim();
+          const descDisplay = truncate(desc, 50) || 'N/A';
+          const timer = formatAssignTimer(assignedAt);
+          return `
+            <tr class="mbx-assign-row-item" data-ack-row="${esc(n.id)}">
+              <td>${index + 1}</td>
+              <td class="mbx-assign-ts">${esc(ts)}</td>
+              <td><strong class="mbx-assign-case-cell">${esc(caseNo)}</strong></td>
+              <td title="${esc(desc || 'N/A')}">${esc(descDisplay)}</td>
+              <td>${renderAssignedBy(n)}</td>
+              <td class="mbx-assign-live" data-assign-timer="${esc(assignedAt)}">${esc(timer)}</td>
+              <td>
+                <button class="btn dashx-ack mbx-accept-btn" data-ack="${esc(n.id)}" type="button" aria-label="Accept case assignment">
+                  <span class="dashx-spin" aria-hidden="true"></span>
+                  <span class="dashx-acklbl">ACCEPT</span>
                 </button>
-              </div>
-            </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+        if(!rows){
+          return '<div class="muted">No pending cases.</div>';
+        }
+        return `
+          <div class="mbx-assign-table-wrap" role="region" aria-label="Pending case assignments">
+            <table class="mbx-assign-table" role="table">
+              <thead>
+                <tr>
+                  <th>No.</th>
+                  <th>TIMESTAMP</th>
+                  <th>CASE#</th>
+                  <th>DESCRIPTION</th>
+                  <th>ASSIGNED BY</th>
+                  <th>TIME ELAPSED</th>
+                  <th>STATUS</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
           </div>
         `;
       };
@@ -1713,8 +1759,10 @@ toast(message, variant){
       };
       const renderPendingNotifs = (list)=>{
         if(!list.length){
-          return '<div class="muted">No notifications pending.</div>';
+          return '<div class="muted">No pending cases.</div>';
         }
+        const allMailbox = list.every(n=>String(n && n.type || '') === 'MAILBOX_ASSIGN');
+        if(allMailbox) return renderMailboxAssignTable(list);
         // Resilience: a single bad/malformed notif should not crash the entire modal.
         return list.map(n=>{
           try{
@@ -1796,7 +1844,7 @@ toast(message, variant){
         }
 
         const allMailbox = deduped.length && deduped.every(n=>String(n.type||'')==='MAILBOX_ASSIGN');
-        const compactMailboxMode = !!(allMailbox && deduped.length === 1);
+        const compactMailboxMode = false;
         const headerLabel = allMailbox
           ? `Case Assigned Notification${deduped.length===1?'':'s'}`
           : 'Schedule Notifications';
@@ -1808,36 +1856,24 @@ toast(message, variant){
         UI.el('#schedNotifMeta').textContent = metaLabel;
         const countEl = UI.el('#schedNotifCount');
         if(countEl) countEl.textContent = String(deduped.length);
-        const visibleList = compactMailboxMode ? [latest] : deduped;
+        const visibleList = deduped;
         UI.el('#schedNotifBody').innerHTML = renderPendingNotifs(visibleList);
 
         const panelEl = modal ? modal.querySelector('.notification-popout') : null;
         if(panelEl){
           panelEl.classList.toggle('mailbox-compact-mode', compactMailboxMode);
-          if(compactMailboxMode) panelEl.scrollTop = 0;
+          panelEl.classList.toggle('mailbox-table-mode', !!allMailbox);
+          if(compactMailboxMode || allMailbox) panelEl.scrollTop = 0;
         }
 
-        if(!modal._ackBound){
+        if(modal && !modal._ackBound){
           modal._ackBound = true;
           modal.addEventListener('click', (e)=>{
             const btn = e && e.target ? e.target.closest('[data-ack]') : null;
-            const copyBtn = e && e.target ? e.target.closest('[data-copy-case]') : null;
-            if(copyBtn){
-              const val = String(copyBtn.getAttribute('data-copy-case')||'').trim();
-              const copiedLabel = String(copyBtn.getAttribute('data-copy-label') || 'COPY ID').trim() || 'COPY ID';
-              if(val){
-                navigator.clipboard.writeText(val).then(()=>{ UI.toast && UI.toast('Case number copied.'); }).catch(()=>{});
-                const copyLbl = copyBtn.querySelector('.mbx-copy-label');
-                if(copyLbl){
-                  copyLbl.textContent = 'COPIED';
-                  setTimeout(()=>{ try{ copyLbl.textContent = copiedLabel; }catch(_){ copyLbl.textContent = copiedLabel; } }, 1300);
-                }
-              }
-              return;
-            }
             if(!btn) return;
             const id = String(btn.getAttribute('data-ack')||'');
             if(!id) return;
+            const row = btn.closest('[data-ack-row]');
             try{
               if(btn.dataset.busy==='1') return;
               btn.dataset.busy='1';
@@ -1845,11 +1881,20 @@ toast(message, variant){
               const spin = btn.querySelector('.dashx-spin');
               const lbl = btn.querySelector('.dashx-acklbl');
               if(spin) spin.classList.add('on');
-              if(lbl) lbl.textContent = 'Acknowledging…';
+              if(lbl) lbl.textContent = 'ACCEPTING…';
             }catch(_){ }
             const n = lastPending.find(x=>String(x.id||'')===id);
-            ackNotif(n);
-            ping();
+            try{
+              ackNotif(n);
+              if(row){
+                row.classList.add('is-removing');
+                setTimeout(()=>{ ping(); }, 200);
+              }else{
+                ping();
+              }
+            }catch(_){
+              ping();
+            }
           });
         }
 
