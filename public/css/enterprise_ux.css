@@ -598,7 +598,6 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .notification-popout.mailbox-compact-mode{
   width:min(360px, calc(100vw - 24px));
   max-height:none;
-  height:auto;
   overflow:visible;
   border-radius:16px;
 }
