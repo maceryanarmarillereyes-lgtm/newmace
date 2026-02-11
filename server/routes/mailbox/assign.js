@@ -369,53 +369,56 @@ module.exports = async (req, res) => {
       role
     };
 
-    // Write back mailbox tables doc
-    allTables[shiftKey] = next;
-
-    // Upsert with a small conflict-avoidance retry: if a race causes us to lose our new assignment,
-    // re-merge against the latest value once.
+    // Write back mailbox tables doc.
+    // Persist with verify/retry and fail hard when we cannot confirm durability.
     let wrote = false;
-    for(let attempt=0; attempt<2; attempt++){
-      const up = await upsertDoc('mums_mailbox_tables', allTables, actor, profile, clientId);
+    let persistedTable = next;
+    for(let attempt=0; attempt<4; attempt++){
+      let latestAll = allTables;
+      if(attempt > 0){
+        const latestDoc = await getDocValue('mums_mailbox_tables');
+        latestAll = (latestDoc.ok && latestDoc.value && typeof latestDoc.value === 'object') ? latestDoc.value : {};
+      }
+
+      const latestTable = (latestAll[shiftKey] && typeof latestAll[shiftKey] === 'object') ? latestAll[shiftKey] : {};
+      const merged = JSON.parse(JSON.stringify(latestTable));
+      merged.assignments = Array.isArray(merged.assignments) ? merged.assignments : [];
+      if(!merged.assignments.some(a=>a && a.id===assignment.id)) merged.assignments.unshift(assignment);
+
+      merged.counts = (merged.counts && typeof merged.counts === 'object') ? merged.counts : {};
+      merged.counts[assigneeId] = (merged.counts[assigneeId] && typeof merged.counts[assigneeId] === 'object') ? merged.counts[assigneeId] : {};
+      merged.counts[assigneeId][assignment.bucketId] = (Number(merged.counts[assigneeId][assignment.bucketId]) || 0) + 1;
+
+      merged.meta = (merged.meta && typeof merged.meta === 'object') ? merged.meta : {};
+      merged.meta.bucketManagers = (merged.meta.bucketManagers && typeof merged.meta.bucketManagers === 'object') ? merged.meta.bucketManagers : {};
+      merged.meta.bucketManagers[assignment.bucketId] = {
+        id: actor.id,
+        name: assignment.actorName,
+        at: Date.now(),
+        role
+      };
+
+      const payloadAll = Object.assign({}, latestAll, { [shiftKey]: merged });
+      const up = await upsertDoc('mums_mailbox_tables', payloadAll, actor, profile, clientId);
       if(!up.ok){
         res.statusCode = 500;
         return res.end(JSON.stringify({ ok:false, error:'Failed to update mailbox tables', details: up.details }));
       }
-      // Verify our assignment exists (best effort)
+
       const verify = await getDocValue('mums_mailbox_tables');
-      if(verify.ok){
-        const vAll = (verify.value && typeof verify.value === 'object') ? verify.value : {};
-        const vTable = vAll[shiftKey];
-        const ok = !!(vTable && Array.isArray(vTable.assignments) && vTable.assignments.some(a=>a && a.id===assignment.id));
-        if(ok){
-          wrote = true;
-          // Keep verified version as truth
-          allTables[shiftKey] = vTable;
-          break;
-        }
-        // Merge and retry (prepend if missing)
-        try{
-          const latest = vTable && typeof vTable === 'object' ? vTable : next;
-          const merged = JSON.parse(JSON.stringify(latest));
-          merged.assignments = Array.isArray(merged.assignments) ? merged.assignments : [];
-          if(!merged.assignments.some(a=>a && a.id===assignment.id)) merged.assignments.unshift(assignment);
-          // counts and bucket manager
-          merged.counts = (merged.counts && typeof merged.counts === 'object') ? merged.counts : {};
-          merged.counts[assigneeId] = (merged.counts[assigneeId] && typeof merged.counts[assigneeId] === 'object') ? merged.counts[assigneeId] : {};
-          if(!merged.counts[assigneeId][assignment.bucketId]){
-            merged.counts[assigneeId][assignment.bucketId] = (Number(latest?.counts?.[assigneeId]?.[assignment.bucketId])||0) + 1;
-          }
-          merged.meta = (merged.meta && typeof merged.meta === 'object') ? merged.meta : {};
-          merged.meta.bucketManagers = (merged.meta.bucketManagers && typeof merged.meta.bucketManagers === 'object') ? merged.meta.bucketManagers : {};
-          merged.meta.bucketManagers[assignment.bucketId] = merged.meta.bucketManagers[assignment.bucketId] || next.meta.bucketManagers[assignment.bucketId];
-          vAll[shiftKey] = merged;
-          Object.assign(allTables, vAll);
-        }catch(_){}
+      const verifyAll = (verify.ok && verify.value && typeof verify.value === 'object') ? verify.value : {};
+      const verifyTable = verifyAll[shiftKey];
+      const ok = !!(verifyTable && Array.isArray(verifyTable.assignments) && verifyTable.assignments.some(a=>a && a.id===assignment.id));
+      if(ok){
+        wrote = true;
+        allTables[shiftKey] = verifyTable;
+        persistedTable = verifyTable;
+        break;
       }
     }
     if(!wrote){
-      // We still proceed; realtime reconciliation will resolve.
-      wrote = true;
+      res.statusCode = 409;
+      return res.end(JSON.stringify({ ok:false, error:'Assignment write conflict. Please try again.', code:'MAILBOX_ASSIGN_CONFLICT' }));
     }
 
     // Append audit log entry (document-based)
@@ -424,7 +427,7 @@ module.exports = async (req, res) => {
       const prevLogs = (logsDoc.ok && Array.isArray(logsDoc.value)) ? logsDoc.value : [];
       const logEntry = {
         ts: assignment.assignedAt,
-        teamId: safeString(next?.meta?.teamId, 40),
+        teamId: safeString(persistedTable?.meta?.teamId, 40),
         actorId: actor.id,
         actorName: assignment.actorName,
         actorRole: role,
@@ -472,7 +475,7 @@ module.exports = async (req, res) => {
         id: notifId,
         ts: assignment.assignedAt,
         type: 'MAILBOX_ASSIGN',
-        teamId: safeString(next?.meta?.teamId || shiftTeamId, 40),
+        teamId: safeString(persistedTable?.meta?.teamId || shiftTeamId, 40),
         fromId: actor.id,
         fromName: assignment.actorName,
         title: 'Case Assigned Notification',
