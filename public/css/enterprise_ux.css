@@ -588,6 +588,13 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   width:min(440px, calc(100vw - 24px));
   max-height:min(86vh, 780px);
 }
+#schedNotifModal .panel.notification-popout.mailbox-table-mode{
+  width:min(1180px, calc(100vw - 24px));
+  max-height:min(86vh, 780px);
+}
+.notification-popout.mailbox-table-mode .body{
+  padding:10px 12px 12px;
+}
 #schedNotifModal .panel.notification-popout.mailbox-compact-mode{
   width:min(360px, calc(100vw - 24px));
   max-height:none;
@@ -1006,6 +1013,17 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   cursor:not-allowed;
 }
 @media (max-width: 960px){
+  #schedNotifModal .panel.notification-popout.mailbox-table-mode{
+    width:min(100vw - 16px, 920px);
+  }
+  .notification-popout.mailbox-table-mode .head{
+    padding-bottom:10px;
+  }
+  .notification-popout .mbx-assign-table thead th,
+  .notification-popout .mbx-assign-table tbody td{
+    padding:9px 8px;
+    font-size:11px;
+  }
   .notification-popout .mailbox-assign{
     width:min(100%, 360px);
   }
