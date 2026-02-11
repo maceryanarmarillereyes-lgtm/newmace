@@ -688,75 +688,189 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   margin-top:8px;
   white-space:pre-wrap;
 }
+.notification-popout .mailbox-assign{
+  position:relative;
+  overflow:hidden;
+  padding:12px;
+  border-radius:18px;
+  border:1px solid rgba(90,122,167,.34);
+  background:
+    radial-gradient(120% 100% at 8% -5%, rgba(45,212,191,.14), transparent 56%),
+    radial-gradient(115% 95% at 100% 100%, rgba(56,189,248,.12), transparent 60%),
+    linear-gradient(145deg, rgba(14,27,47,.84), rgba(10,19,36,.84));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.16),
+    inset 0 -1px 0 rgba(100,116,139,.2),
+    0 16px 28px rgba(2,8,23,.34);
+  backdrop-filter:blur(12px);
+}
+.notification-popout .mailbox-assign::before{
+  content:"";
+  position:absolute;
+  top:11px;
+  left:14px;
+  width:90px;
+  height:6px;
+  border-radius:999px;
+  background:linear-gradient(90deg, rgba(45,212,191,.96), rgba(34,211,238,.75));
+  box-shadow:0 0 18px rgba(45,212,191,.58);
+  pointer-events:none;
+}
 .notification-popout .mailbox-assign .notif-item-head{
-  align-items:center;
+  align-items:flex-start;
+  margin-top:6px;
 }
 .notification-popout .mbx-assign-grid{
   display:grid;
-  gap:14px;
+  gap:12px;
+  margin-top:8px;
+}
+.notification-popout .mbx-assign-top,
+.notification-popout .mbx-assign-card{
+  position:relative;
+  overflow:hidden;
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid rgba(148,163,184,.35);
+  background:linear-gradient(145deg, rgba(30,41,59,.45), rgba(15,23,42,.52));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14), 0 8px 20px rgba(2,8,23,.2);
+}
+.notification-popout .mbx-assign-chip{
+  display:inline-flex;
+  align-items:center;
+  height:24px;
+  border-radius:8px;
+  padding:0 10px;
+  margin-bottom:10px;
+  background:linear-gradient(90deg, #2dd4bf, #22d3ee);
+  color:#082f49;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
 }
 .notification-popout .mbx-assign-top{
   display:flex;
-  align-items:center;
-  justify-content:space-between;
-  padding:14px 16px;
-  border-radius:14px;
-  border:1px solid rgba(255,255,255,.08);
-  background:rgba(255,255,255,.03);
-}
-.notification-popout .mbx-assign-from{
-  font-weight:900;
-  font-size:15px;
-  letter-spacing:.2px;
-  color:#38bdf8;
-}
-.notification-popout .mbx-assign-timer-value{
-  font-family:'JetBrains Mono','Roboto Mono',monospace;
-  font-size:32px;
-  font-weight:900;
-  color:#ffffff;
-  text-shadow:0 0 15px rgba(255,255,255,.2);
-}
-.notification-popout .mbx-assign-card{
-  padding:16px;
-  border-radius:14px;
-  border:1px solid rgba(255,255,255,.1);
-  background:linear-gradient(145deg, rgba(56,189,248,.08), rgba(15,23,42,.4));
-}
-.notification-popout .mbx-assign-label{
-  font-size:11px;
-  font-weight:900;
-  letter-spacing:.15em;
-  text-transform:uppercase;
-  color:rgba(148,163,184,.8);
-  margin-bottom:8px;
-}
-.notification-popout .mbx-assign-desc{
-  font-size:16px;
-  font-weight:700;
-  color:#f8fafc;
-}
-.notification-popout .mbx-assign-case{
-  display:flex;
   align-items:flex-end;
   justify-content:space-between;
+  gap:14px;
+}
+.notification-popout .mbx-assign-title{
+  font-size:18px;
+  font-weight:900;
+  line-height:1.18;
+  letter-spacing:.01em;
+  color:#f8fafc;
+}
+.notification-popout .mbx-assign-from{
+  margin-top:4px;
+  font-size:15px;
+  font-weight:700;
+  line-height:1.2;
+  color:rgba(226,232,240,.92);
+}
+.notification-popout .mbx-assign-meta{
+  margin-top:8px;
+  font-size:12px;
+  color:rgba(148,163,184,.9);
+}
+.notification-popout .mbx-assign-timer{
+  text-align:right;
+  min-width:200px;
+}
+.notification-popout .mbx-assign-timer-label{
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.08em;
+  color:#22c55e;
+  text-transform:uppercase;
+}
+.notification-popout .mbx-assign-timer-value{
+  margin-top:4px;
+  font-family:'JetBrains Mono','Roboto Mono',monospace;
+  font-size:48px;
+  font-weight:850;
+  letter-spacing:.03em;
+  color:#fff;
+  font-variant-numeric:tabular-nums;
+  text-shadow:0 0 18px rgba(255,255,255,.18);
+}
+.notification-popout .mbx-assign-label{
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:rgba(226,232,240,.84);
+}
+.notification-popout .mbx-assign-desc{
+  margin-top:8px;
+  font-size:40px;
+  font-weight:860;
+  line-height:1.14;
+  color:rgba(241,245,249,.96);
+}
+.notification-popout .mbx-assign-card.case-zone{
+  border-color:rgba(34,211,238,.7);
+  background:
+    radial-gradient(120% 100% at 20% 14%, rgba(34,211,238,.18), transparent 58%),
+    linear-gradient(140deg, rgba(11,53,76,.82), rgba(9,37,62,.82));
+  box-shadow:
+    inset 0 1px 0 rgba(165,243,252,.24),
+    0 0 0 1px rgba(34,211,238,.28),
+    0 16px 32px rgba(2,17,36,.34);
+}
+.notification-popout .mbx-assign-case{
+  margin-top:12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
 }
 .notification-popout .mbx-assign-case-no{
-  font-size:42px;
+  font-size:48px;
   font-weight:950;
-  letter-spacing:.02em;
-  color:#ffffff;
+  line-height:1;
+  letter-spacing:.05em;
+  color:#fff;
 }
 .notification-popout .mbx-assign-copy{
-  background:rgba(255,255,255,.05);
-  border:1px solid rgba(255,255,255,.2);
-  padding:6px 12px;
-  font-weight:800;
-  transition:all .2s ease;
+  min-width:170px;
+  padding:10px 18px;
+  border-radius:12px;
+  border:1px solid rgba(226,232,240,.78);
+  background:#ffffff;
+  color:#0f172a;
+  font-size:18px;
+  font-weight:900;
+  box-shadow:0 10px 24px rgba(226,232,240,.24);
+  transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
 }
-.notification-popout .mbx-assign-copy:hover{
-  background:rgba(56,189,248,.15);
-  border-color:#38bdf8;
+.notification-popout .mbx-assign-copy:hover:not([disabled]){
+  transform:translateY(-2px);
+  box-shadow:0 14px 28px rgba(226,232,240,.34);
+  background:#f8fafc;
+}
+.notification-popout .mbx-assign-copy[disabled]{
+  opacity:.58;
+  cursor:not-allowed;
+}
+@media (max-width: 960px){
+  .notification-popout .mbx-assign-top,
+  .notification-popout .mbx-assign-case{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  .notification-popout .mbx-assign-timer{
+    min-width:0;
+    text-align:left;
+    width:100%;
+  }
+  .notification-popout .mbx-assign-timer-value{
+    font-size:40px;
+  }
+  .notification-popout .mbx-assign-desc{
+    font-size:30px;
+  }
 }
 
 /* ------------------------------------------------------------------

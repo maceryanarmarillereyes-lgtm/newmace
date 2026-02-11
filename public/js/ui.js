@@ -1648,7 +1648,10 @@ toast(message, variant){
         const assignedAt = Number(ts)||0;
         if(!assignedAt) return '00:00:00';
         const sec = Math.floor(Math.max(0, Date.now() - assignedAt) / 1000);
-        return (UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`;
+        const h = String(Math.floor(sec / 3600)).padStart(2, '0');
+        const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+        const s = String(sec % 60).padStart(2, '0');
+        return `${h}:${m}:${s}`;
       };
       const updateTimers = ()=>{
         document.querySelectorAll('[data-assign-timer]').forEach((el)=>{
@@ -1657,39 +1660,42 @@ toast(message, variant){
         });
       };
       const renderMailboxAssign = (n)=>{
-        const desc = n.desc || '';
-        const label = desc ? esc(desc) : '<span class="muted">Waiting for description...</span>';
-        const assignedAt = Number(n.assignedAt || n.ts || 0);
+        const desc = String(n && n.desc ? n.desc : '').trim();
+        const assignedAt = Number((n && (n.assignedAt || n.ts)) || 0);
         const timer = formatAssignTimer(assignedAt);
-        const caseNo = String(n.caseNo || '').trim();
-        // UI/UX fallback: avoid hard crashes if case number is missing.
-        // Use an explicit placeholder in the UI, but keep copy disabled when empty.
+        const caseNo = String(n && n.caseNo ? n.caseNo : '').trim();
         const caseNoDisplay = caseNo || 'N/A';
         const canCopy = !!caseNo;
+        const copiedLabel = String((n && n.copiedLabel) || 'COPY ID').trim() || 'COPY ID';
+        const fromName = String((n && n.fromName) || 'Mailbox Manager').trim() || 'Mailbox Manager';
+        const senderName = String((n && n.senderName) || (n && n.sender) || fromName).trim() || fromName;
+        const assignedTs = new Date((n && n.ts) || Date.now()).toLocaleTimeString();
         return `
           <div class="mbx-assign-grid">
             <div class="mbx-assign-top">
               <div>
-                <div class="mbx-assign-from" style="font-size: 16px; color: #38bdf8;">Mailbox Case Assigned</div>
-                <div class="small muted" style="margin-top: 4px;">
-                  From: ${esc(n.fromName || 'System')} • ${new Date(n.ts || Date.now()).toLocaleTimeString()}
-                </div>
+                <div class="mbx-assign-chip">New Case Assigned</div>
+                <div class="mbx-assign-title">Case Assigned Notification</div>
+                <div class="mbx-assign-from">${esc(fromName)}</div>
+                <div class="mbx-assign-meta">Sender Name</div>
+                <div class="mbx-assign-from">${esc(senderName)}</div>
+                <div class="mbx-assign-meta">${esc(assignedTs)}</div>
               </div>
               <div class="mbx-assign-timer">
-                <div class="mbx-assign-timer-label" style="color: #4ade80;">TIMER</div>
+                <div class="mbx-assign-timer-label">Live Elapsed</div>
                 <div class="mbx-assign-timer-value" data-assign-timer="${esc(assignedAt)}">${esc(timer)}</div>
               </div>
             </div>
             <div class="mbx-assign-card">
               <div class="mbx-assign-label">Brief Description</div>
-              <div class="mbx-assign-desc">${label}</div>
+              <div class="mbx-assign-desc">${desc ? esc(desc) : 'N/A'}</div>
             </div>
-            <div class="mbx-assign-card" style="border-color: rgba(56, 189, 248, 0.2); background: rgba(56, 189, 248, 0.03);">
-              <div class="mbx-assign-label" style="color: #38bdf8;">Unique Case ID</div>
+            <div class="mbx-assign-card case-zone">
+              <div class="mbx-assign-label">Unique Case ID</div>
               <div class="mbx-assign-case">
                 <span class="mbx-assign-case-no">${esc(caseNoDisplay)}</span>
-                <button class="btn sm mbx-assign-copy" type="button" data-copy-case="${esc(caseNo)}" ${canCopy ? '' : 'disabled aria-disabled="true"'}>
-                  <span style="margin-right: 6px;">📋</span> COPY
+                <button class="btn sm mbx-assign-copy" type="button" data-copy-case="${esc(caseNo)}" data-copy-label="${esc(copiedLabel)}" ${canCopy ? '' : 'disabled aria-disabled="true"'}>
+                  <span aria-hidden="true" style="margin-right:8px;">📋</span><span class="mbx-copy-label">${esc(copiedLabel)}</span>
                 </button>
               </div>
             </div>
@@ -1817,8 +1823,14 @@ toast(message, variant){
             const copyBtn = e && e.target ? e.target.closest('[data-copy-case]') : null;
             if(copyBtn){
               const val = String(copyBtn.getAttribute('data-copy-case')||'').trim();
+              const copiedLabel = String(copyBtn.getAttribute('data-copy-label') || 'COPY ID').trim() || 'COPY ID';
               if(val){
                 navigator.clipboard.writeText(val).then(()=>{ UI.toast && UI.toast('Case number copied.'); }).catch(()=>{});
+                const copyLbl = copyBtn.querySelector('.mbx-copy-label');
+                if(copyLbl){
+                  copyLbl.textContent = 'COPIED';
+                  setTimeout(()=>{ try{ copyLbl.textContent = copiedLabel; }catch(_){ copyLbl.textContent = copiedLabel; } }, 1300);
+                }
               }
               return;
             }
