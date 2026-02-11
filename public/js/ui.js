@@ -1670,7 +1670,9 @@ toast(message, variant){
         const fromName = String((n && n.fromName) || 'Mailbox Manager').trim() || 'Mailbox Manager';
         return `
           <div class="mbx-assign-grid">
-            <div class="mbx-assign-title">Case Assigned Notification</div>
+            <div class="mbx-assign-top">
+              <div class="mbx-assign-title">Case Assigned Notification</div>
+            </div>
             <div class="mbx-assign-row">
               <div class="mbx-assign-from">${esc(fromName)}</div>
               <div class="mbx-assign-timer">

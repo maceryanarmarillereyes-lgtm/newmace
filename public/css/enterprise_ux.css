@@ -733,7 +733,6 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 }
 .notification-popout .mailbox-assign .notif-item-head{
   align-items:center;
-  justify-content:flex-end;
   margin-top:0;
   margin-bottom:6px;
 }
@@ -796,7 +795,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .notification-popout .mbx-assign-timer-value{
   margin-top:4px;
   font-family:'JetBrains Mono','Roboto Mono',monospace;
-  font-size:24px;
+  font-size:30px;
   font-weight:800;
   line-height:1;
   letter-spacing:.02em;
@@ -812,7 +811,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 }
 .notification-popout .mbx-assign-desc{
   margin-top:6px;
-  font-size:16px;
+  font-size:24px;
   font-weight:700;
   line-height:1.2;
   color:rgba(241,245,249,.95);
@@ -830,7 +829,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   gap:10px;
 }
 .notification-popout .mbx-assign-case-no{
-  font-size:32px;
+  font-size:40px;
   font-weight:900;
   line-height:1;
   letter-spacing:.03em;
@@ -873,13 +872,13 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
     width:100%;
   }
   .notification-popout .mbx-assign-timer-value{
-    font-size:22px;
+    font-size:26px;
   }
   .notification-popout .mbx-assign-desc{
-    font-size:15px;
+    font-size:20px;
   }
   .notification-popout .mbx-assign-case-no{
-    font-size:28px;
+    font-size:34px;
   }
 }
 
