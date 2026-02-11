@@ -1668,18 +1668,14 @@ toast(message, variant){
         const canCopy = !!caseNo;
         const copiedLabel = String((n && n.copiedLabel) || 'COPY ID').trim() || 'COPY ID';
         const fromName = String((n && n.fromName) || 'Mailbox Manager').trim() || 'Mailbox Manager';
-        const senderName = String((n && n.senderName) || (n && n.sender) || fromName).trim() || fromName;
         const assignedTs = new Date((n && n.ts) || Date.now()).toLocaleTimeString();
         return `
           <div class="mbx-assign-grid">
             <div class="mbx-assign-top">
               <div>
-                <div class="mbx-assign-chip">New Case Assigned</div>
                 <div class="mbx-assign-title">Case Assigned Notification</div>
                 <div class="mbx-assign-from">${esc(fromName)}</div>
-                <div class="mbx-assign-meta">Sender Name</div>
-                <div class="mbx-assign-from">${esc(senderName)}</div>
-                <div class="mbx-assign-meta">${esc(assignedTs)}</div>
+                <div class="mbx-assign-meta">From: ${esc(fromName)} • ${esc(assignedTs)}</div>
               </div>
               <div class="mbx-assign-timer">
                 <div class="mbx-assign-timer-label">Live Elapsed</div>
@@ -1688,7 +1684,7 @@ toast(message, variant){
             </div>
             <div class="mbx-assign-card">
               <div class="mbx-assign-label">Brief Description</div>
-              <div class="mbx-assign-desc">${desc ? esc(desc) : 'N/A'}</div>
+              <div class="mbx-assign-desc">${desc ? esc(desc) : '<span class="muted">N/A</span>'}</div>
             </div>
             <div class="mbx-assign-card case-zone">
               <div class="mbx-assign-label">Unique Case ID</div>
