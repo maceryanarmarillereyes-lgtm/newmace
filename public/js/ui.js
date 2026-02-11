@@ -1670,7 +1670,9 @@ toast(message, variant){
         const fromName = String((n && n.fromName) || 'Mailbox Manager').trim() || 'Mailbox Manager';
         return `
           <div class="mbx-assign-grid">
-            <div class="mbx-assign-title">Case Assigned Notification</div>
+            <div class="mbx-assign-top">
+              <div class="mbx-assign-title">Case Assigned Notification</div>
+            </div>
             <div class="mbx-assign-row">
               <div class="mbx-assign-from">${esc(fromName)}</div>
               <div class="mbx-assign-timer">
@@ -1794,8 +1796,7 @@ toast(message, variant){
         }
 
         const allMailbox = deduped.length && deduped.every(n=>String(n.type||'')==='MAILBOX_ASSIGN');
-        const latestIsMailbox = String((latest && latest.type) || '') === 'MAILBOX_ASSIGN';
-        const compactMailboxMode = !!latestIsMailbox;
+        const compactMailboxMode = !!(allMailbox && deduped.length === 1);
         const headerLabel = allMailbox
           ? `Case Assigned Notification${deduped.length===1?'':'s'}`
           : 'Schedule Notifications';
@@ -1810,11 +1811,14 @@ toast(message, variant){
         const visibleList = compactMailboxMode ? [latest] : deduped;
         UI.el('#schedNotifBody').innerHTML = renderPendingNotifs(visibleList);
 
-        var panelEl = modal ? modal.querySelector('.notification-popout') : null;
+        const panelEl = modal ? modal.querySelector('.notification-popout') : null;
         if(panelEl){
           panelEl.classList.toggle('mailbox-compact-mode', compactMailboxMode);
           if(compactMailboxMode) panelEl.scrollTop = 0;
         }
+
+        const panelEl = modal ? modal.querySelector('.notification-popout') : null;
+        if(panelEl) panelEl.classList.toggle('mailbox-compact-mode', compactMailboxMode);
 
         if(!modal._ackBound){
           modal._ackBound = true;
