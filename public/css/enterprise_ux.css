@@ -787,7 +787,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .notification-popout .mbx-assign-table-wrap{
   border:1px solid rgba(51,65,85,.92);
   border-radius:14px;
-  overflow:hidden;
+  overflow:auto;
   background:rgba(15,23,42,.96);
   box-shadow:0 16px 32px rgba(2,8,23,.45);
 }
@@ -795,7 +795,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   width:100%;
   border-collapse:separate;
   border-spacing:0;
-  table-layout:fixed;
+  min-width:980px;
   font-family:'Inter','Roboto','Segoe UI',sans-serif;
 }
 .notification-popout .mbx-assign-table thead th{
@@ -812,27 +812,12 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   border-bottom:1px solid rgba(51,65,85,.96);
   white-space:nowrap;
 }
-.notification-popout .mbx-assign-table th:nth-child(1),
-.notification-popout .mbx-assign-table td:nth-child(1){ width:5%; }
-.notification-popout .mbx-assign-table th:nth-child(2),
-.notification-popout .mbx-assign-table td:nth-child(2){ width:18%; }
-.notification-popout .mbx-assign-table th:nth-child(3),
-.notification-popout .mbx-assign-table td:nth-child(3){ width:11%; }
-.notification-popout .mbx-assign-table th:nth-child(4),
-.notification-popout .mbx-assign-table td:nth-child(4){ width:28%; }
-.notification-popout .mbx-assign-table th:nth-child(5),
-.notification-popout .mbx-assign-table td:nth-child(5){ width:16%; }
-.notification-popout .mbx-assign-table th:nth-child(6),
-.notification-popout .mbx-assign-table td:nth-child(6){ width:12%; }
-.notification-popout .mbx-assign-table th:nth-child(7),
-.notification-popout .mbx-assign-table td:nth-child(7){ width:10%; }
 .notification-popout .mbx-assign-table tbody td{
   background:#0f172a;
   color:#f8fafc;
-  padding:10px 11px;
+  padding:12px;
   border-bottom:1px solid rgba(51,65,85,.86);
   vertical-align:middle;
-  word-break:break-word;
 }
 .notification-popout .mbx-assign-table tbody tr{
   transition:background .18s ease, opacity .22s ease, transform .22s ease;

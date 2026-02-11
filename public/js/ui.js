@@ -1845,7 +1845,6 @@ toast(message, variant){
 
         const allMailbox = deduped.length && deduped.every(n=>String(n.type||'')==='MAILBOX_ASSIGN');
         const compactMailboxMode = false;
-        const mailboxTableMode = !!allMailbox;
         const headerLabel = allMailbox
           ? `Case Assigned Notification${deduped.length===1?'':'s'}`
           : 'Schedule Notifications';
