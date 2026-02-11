@@ -689,122 +689,121 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   white-space:pre-wrap;
 }
 .notification-popout .mailbox-assign{
-  width:min(100%, 396px);
-  margin:0 auto;
   position:relative;
   overflow:hidden;
-  padding:10px;
-  border-radius:16px;
-  border:1px solid rgba(255,255,255,.10);
+  padding:14px;
+  border-radius:20px;
+  border:1px solid rgba(125,211,252,.26);
   background:
-    radial-gradient(130% 110% at 8% -12%, rgba(45,212,191,.12), transparent 56%),
-    radial-gradient(120% 95% at 100% 105%, rgba(34,211,238,.12), transparent 62%),
-    rgba(30,41,59,.95);
+    radial-gradient(130% 80% at 14% -10%, rgba(45,212,191,.22), transparent 58%),
+    radial-gradient(130% 80% at 100% 120%, rgba(34,211,238,.17), transparent 62%),
+    linear-gradient(145deg, rgba(12,26,43,.86), rgba(9,18,35,.78));
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.08),
-    0 16px 28px rgba(2,6,23,.48);
-  backdrop-filter:blur(8px);
+    inset 0 1px 0 rgba(255,255,255,.22),
+    inset 0 -1px 0 rgba(148,163,184,.12),
+    0 18px 36px rgba(2,8,23,.42),
+    0 0 0 1px rgba(56,189,248,.16);
+  backdrop-filter:blur(14px);
+}
+.notification-popout .mailbox-assign::before{
+  content:"";
+  position:absolute;
+  top:12px;
+  left:12px;
+  width:96px;
+  height:8px;
+  border-radius:999px;
+  background:linear-gradient(90deg, rgba(45,212,191,.95), rgba(34,211,238,.78));
+  box-shadow:0 0 20px rgba(45,212,191,.68);
+  pointer-events:none;
 }
 .notification-popout .mailbox-assign .notif-item-head{
   align-items:flex-start;
-  margin:0;
-}
-.notification-popout .mailbox-assign .notif-item-title{
-  font-size:18px;
-  font-weight:900;
+  margin-top:8px;
 }
 .notification-popout .mbx-assign-grid{
   display:grid;
-  gap:10px;
-  margin-top:8px;
+  gap:16px;
+  margin-top:10px;
 }
 .notification-popout .mbx-assign-top,
 .notification-popout .mbx-assign-card{
   position:relative;
   overflow:hidden;
-  padding:12px;
-  border-radius:14px;
-  border:1px solid rgba(148,163,184,.26);
-  background:linear-gradient(145deg, rgba(22,33,53,.92), rgba(15,23,42,.86));
+  padding:18px 20px;
+  border-radius:22px;
+  border:1px solid rgba(226,232,240,.28);
+  background:linear-gradient(145deg, rgba(30,41,59,.56), rgba(17,24,39,.52));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18), 0 12px 24px rgba(2,8,23,.28);
 }
-.notification-popout .mbx-assign-chip{
-  display:inline-flex;
-  align-items:center;
-  height:20px;
-  border-radius:999px;
-  padding:0 10px;
-  margin-bottom:8px;
-  background:#14b8a6;
-  color:#ecfeff;
-  font-size:10px;
+.notification-popout .mbx-assign-top{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:14px;
+}
+.notification-popout .mbx-assign-from{
+  font-size:42px;
   font-weight:900;
-  letter-spacing:.08em;
-  text-transform:uppercase;
-}
-.notification-popout .mbx-assign-title{
-  font-size:18px;
-  font-weight:900;
-  line-height:1.2;
+  line-height:1.08;
+  letter-spacing:.01em;
   color:#f8fafc;
-}
-.notification-popout .mbx-assign-row{
-  margin-top:8px;
-  display:grid;
-  grid-template-columns:minmax(0,1fr) auto;
-  gap:12px;
-  align-items:end;
-}
-.notification-popout .mbx-assign-name-primary{
-  font-size:16px;
-  font-weight:800;
-  color:#f8fafc;
-  line-height:1.2;
 }
 .notification-popout .mbx-assign-meta{
   margin-top:8px;
-  font-size:12px;
-  color:rgba(148,163,184,.95);
-}
-.notification-popout .mbx-assign-name-secondary{
-  margin-top:2px;
   font-size:15px;
-  font-weight:800;
-  color:#f1f5f9;
+  color:rgba(226,232,240,.76);
 }
 .notification-popout .mbx-assign-timer{
   text-align:right;
-  min-width:126px;
+  min-width:210px;
 }
 .notification-popout .mbx-assign-timer-label{
-  font-size:11px;
+  font-size:14px;
   font-weight:900;
   letter-spacing:.08em;
   color:#22c55e;
   text-transform:uppercase;
 }
 .notification-popout .mbx-assign-timer-value{
-  margin-top:3px;
+  margin-top:8px;
   font-family:'JetBrains Mono','Roboto Mono',monospace;
-  font-size:40px;
+  font-size:54px;
   font-weight:850;
-  line-height:1;
-  letter-spacing:.02em;
-  color:#f8fafc;
+  letter-spacing:.03em;
+  color:#fff;
   font-variant-numeric:tabular-nums;
+  text-shadow:0 0 24px rgba(255,255,255,.2);
+}
+.notification-popout .mbx-assign-title{
+  font-size:46px;
+  font-weight:900;
+  line-height:1.12;
+  letter-spacing:.01em;
+  color:#f8fafc;
 }
 .notification-popout .mbx-assign-label{
-  font-size:12px;
+  font-size:14px;
   font-weight:900;
-  letter-spacing:.06em;
+  letter-spacing:.08em;
   text-transform:uppercase;
-  color:rgba(203,213,225,.86);
+  color:rgba(226,232,240,.86);
 }
 .notification-popout .mbx-assign-desc{
-  margin-top:8px;
-  font-size:26px;
+  margin-top:14px;
+  font-size:22px;
   font-weight:800;
-  line-height:1.18;
-  color:#f8fafc;
+  color:rgba(241,245,249,.95);
+}
+.notification-popout .mbx-assign-card.case-zone{
+  border-color:rgba(34,211,238,.64);
+  background:
+    radial-gradient(110% 100% at 15% 10%, rgba(34,211,238,.18), transparent 54%),
+    linear-gradient(140deg, rgba(12,39,62,.82), rgba(13,34,51,.82));
+  box-shadow:
+    inset 0 1px 0 rgba(165,243,252,.28),
+    0 0 0 1px rgba(34,211,238,.42),
+    0 24px 36px rgba(3,15,31,.4);
 }
 .notification-popout .mbx-assign-card.case-zone{
   border-color:rgba(34,211,238,.68);
@@ -817,54 +816,59 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
     0 14px 30px rgba(2,20,38,.34);
 }
 .notification-popout .mbx-assign-case{
-  margin-top:10px;
+  margin-top:14px;
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:12px;
+  gap:14px;
 }
 .notification-popout .mbx-assign-case-no{
   font-size:48px;
   font-weight:950;
   line-height:1;
-  letter-spacing:.04em;
+  letter-spacing:.05em;
   color:#fff;
 }
 .notification-popout .mbx-assign-copy{
-  min-width:138px;
-  padding:10px 14px;
-  border-radius:12px;
-  border:1px solid rgba(226,232,240,.78);
+  min-width:180px;
+  padding:12px 20px;
+  border-radius:14px;
+  border:1px solid rgba(226,232,240,.7);
   background:#ffffff;
   color:#0f172a;
-  font-size:16px;
+  font-size:20px;
   font-weight:900;
-  box-shadow:0 10px 22px rgba(226,232,240,.24);
+  box-shadow:0 10px 24px rgba(226,232,240,.2);
   transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
 }
 .notification-popout .mbx-assign-copy:hover:not([disabled]){
   transform:translateY(-2px);
-  box-shadow:0 14px 26px rgba(226,232,240,.34);
+  box-shadow:0 14px 28px rgba(226,232,240,.32);
   background:#f8fafc;
 }
 .notification-popout .mbx-assign-copy[disabled]{
   opacity:.58;
   cursor:not-allowed;
 }
-@media (max-width: 640px){
-  .notification-popout .mailbox-assign{
-    width:100%;
-  }
-  .notification-popout .mbx-assign-row,
+@media (max-width: 960px){
+  .notification-popout .mbx-assign-top,
   .notification-popout .mbx-assign-case{
-    grid-template-columns:1fr;
-    display:flex;
     flex-direction:column;
     align-items:flex-start;
   }
   .notification-popout .mbx-assign-timer{
-    text-align:left;
     min-width:0;
+    text-align:left;
+    width:100%;
+  }
+  .notification-popout .mbx-assign-title{
+    font-size:32px;
+  }
+  .notification-popout .mbx-assign-from{
+    font-size:34px;
+  }
+  .notification-popout .mbx-assign-timer-value{
+    font-size:42px;
   }
 }
 
