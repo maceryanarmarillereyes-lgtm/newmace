@@ -672,8 +672,10 @@ root.innerHTML = `
     }
 
 
-    // Ensure Assign Case modal is mounted outside the mailbox root so it survives re-renders.
+    // Ensure mailbox modals are mounted outside the root so they survive re-renders.
     ensureAssignModalMounted();
+    ensureCaseActionMenuMounted();
+    ensureReassignModalMounted();
 
     // export
     UI.el('#mbxExportCsv').onclick = ()=>exportCSV(table);
@@ -711,7 +713,27 @@ root.innerHTML = `
         }
         openAssignModal(uid);
       };
-}
+    }
+
+    // dblclick on monitoring case cell -> action menu
+    const monitorWrap = root.querySelector('.mbx-monitor-wrap');
+    if(monitorWrap){
+      monitorWrap.ondblclick = (e)=>{
+        const cell = e && e.target ? e.target.closest('td[data-case-action="1"]') : null;
+        if(!cell) return;
+        if(!canAssignNow()){
+          UI.toast('You do not have permission to manage cases right now.', 'warn');
+          return;
+        }
+        openCaseActionMenu({
+          shiftKey,
+          assignmentId: String(cell.getAttribute('data-assignment-id') || ''),
+          caseNo: String(cell.getAttribute('data-case-no') || ''),
+          ownerId: String(cell.getAttribute('data-owner-id') || ''),
+          ownerName: String(cell.getAttribute('data-owner-name') || '')
+        });
+      };
+    }
 
     // timer init + override pill
     startTimerLoop();
@@ -824,6 +846,11 @@ root.innerHTML = `
   // Assignment modal
   let _assignUserId = null;
   let _assignSending = false;
+
+  // Case action menu / reassign modal state
+  let _caseActionCtx = null;
+  let _caseActionBusy = false;
+  let _reassignBusy = false;
 
   function _mbxAuthHeader(){
     const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
@@ -1014,6 +1041,242 @@ root.innerHTML = `
     }catch(e){
       setAssignSubmitting(false);
       return err(String(e?.message||e));
+    }
+  }
+
+
+  function getReassignCandidates(table, previousOwnerId){
+    try{
+      const teamId = String(table?.meta?.teamId || '');
+      const users = (Store.getUsers ? Store.getUsers() : []) || [];
+      return users
+        .filter(u=>u && u.status==='active' && String(u.teamId||'')===teamId && String(u.role||'')==='MEMBER' && String(u.id||'')!==String(previousOwnerId||''))
+        .map(u=>({ id:String(u.id||''), name:String(u.name||u.username||u.id||'N/A') }))
+        .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+    }catch(_){
+      return [];
+    }
+  }
+
+  function ensureCaseActionMenuMounted(){
+    try{
+      if(document.getElementById('mbxCaseActionModal')) return;
+      const host = document.createElement('div');
+      host.className = 'modal';
+      host.id = 'mbxCaseActionModal';
+      host.innerHTML = `
+        <div class="panel" style="max-width:480px">
+          <div class="head">
+            <div>
+              <div class="announce-title">Case Action Menu</div>
+              <div class="small muted" id="mbxCaseActionMeta">Select action for this case.</div>
+            </div>
+            <button class="btn ghost" type="button" data-close="mbxCaseActionModal">✕</button>
+          </div>
+          <div class="body" style="display:grid;gap:10px">
+            <button class="btn" id="mbxActionReassign" type="button">Transfer / Reassign Case</button>
+            <button class="btn danger" id="mbxActionDelete" type="button">Delete</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(host);
+      host.querySelectorAll('[data-close="mbxCaseActionModal"]').forEach(b=>{
+        b.onclick = ()=>{ if(!_caseActionBusy) UI.closeModal('mbxCaseActionModal'); };
+      });
+      host.addEventListener('click', (e)=>{
+        try{ if(e && e.target === host && !_caseActionBusy) UI.closeModal('mbxCaseActionModal'); }catch(_){ }
+      });
+      const reassignBtn = host.querySelector('#mbxActionReassign');
+      if(reassignBtn) reassignBtn.onclick = ()=>openReassignModal();
+      const deleteBtn = host.querySelector('#mbxActionDelete');
+      if(deleteBtn) deleteBtn.onclick = ()=>confirmDeleteCase();
+    }catch(e){ console.error('Failed to mount case action menu', e); }
+  }
+
+  function ensureReassignModalMounted(){
+    try{
+      if(document.getElementById('mbxReassignModal')) return;
+      const host = document.createElement('div');
+      host.className = 'modal';
+      host.id = 'mbxReassignModal';
+      host.innerHTML = `
+        <div class="panel" style="max-width:560px">
+          <div class="head">
+            <div>
+              <div class="announce-title">Reassign Form</div>
+              <div class="small muted">Select new assignee from the same team mailbox member list.</div>
+            </div>
+            <button class="btn ghost" type="button" data-close="mbxReassignModal">✕</button>
+          </div>
+          <div class="body" style="display:grid;gap:10px">
+            <div>
+              <label class="small">Case #</label>
+              <input class="input" id="mbxReassignCaseNo" disabled />
+            </div>
+            <div>
+              <label class="small">Previous Case Owner</label>
+              <input class="input" id="mbxPrevOwner" disabled />
+            </div>
+            <div>
+              <label class="small">Select Reassign to</label>
+              <select class="input" id="mbxReassignTo"></select>
+            </div>
+            <div class="err" id="mbxReassignErr" style="display:none"></div>
+            <div class="row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
+              <button class="btn" type="button" data-close="mbxReassignModal">Cancel</button>
+              <button class="btn primary" type="button" id="mbxReassignSubmit">Save</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(host);
+      host.querySelectorAll('[data-close="mbxReassignModal"]').forEach(b=>{
+        b.onclick = ()=>{ if(!_reassignBusy) UI.closeModal('mbxReassignModal'); };
+      });
+      host.addEventListener('click', (e)=>{
+        try{ if(e && e.target === host && !_reassignBusy) UI.closeModal('mbxReassignModal'); }catch(_){ }
+      });
+      const submit = host.querySelector('#mbxReassignSubmit');
+      if(submit) submit.onclick = ()=>submitReassign();
+    }catch(e){ console.error('Failed to mount reassign modal', e); }
+  }
+
+  function openCaseActionMenu(ctx){
+    ensureCaseActionMenuMounted();
+    const assignmentId = String(ctx?.assignmentId || '');
+    const caseNo = String(ctx?.caseNo || '').trim();
+    const ownerId = String(ctx?.ownerId || '');
+    if(!assignmentId || !caseNo) return;
+    _caseActionCtx = {
+      shiftKey: String(ctx?.shiftKey || ''),
+      assignmentId,
+      caseNo,
+      ownerId,
+      ownerName: String(ctx?.ownerName || ownerId || 'N/A')
+    };
+    const meta = UI.el('#mbxCaseActionMeta');
+    if(meta) meta.textContent = `Case #${_caseActionCtx.caseNo} • Owner: ${_caseActionCtx.ownerName}`;
+    UI.openModal('mbxCaseActionModal');
+  }
+
+  function openReassignModal(){
+    const ctx = _caseActionCtx;
+    if(!ctx) return;
+    const { shiftKey } = ensureShiftTables();
+    const table = Store.getMailboxTable ? Store.getMailboxTable(ctx.shiftKey || shiftKey) : null;
+    const candidates = getReassignCandidates(table || {}, ctx.ownerId);
+
+    const caseEl = UI.el('#mbxReassignCaseNo');
+    const prevEl = UI.el('#mbxPrevOwner');
+    const sel = UI.el('#mbxReassignTo');
+    const err = UI.el('#mbxReassignErr');
+    if(caseEl) caseEl.value = ctx.caseNo || 'N/A';
+    if(prevEl) prevEl.value = ctx.ownerName || 'N/A';
+    if(err){ err.style.display='none'; err.textContent=''; }
+
+    if(sel){
+      sel.innerHTML = candidates.length
+        ? `<option value="">Select member</option>${candidates.map(c=>`<option value="${UI.esc(c.id)}">${UI.esc(c.name)}</option>`).join('')}`
+        : '<option value="">No eligible member found</option>';
+    }
+
+    UI.closeModal('mbxCaseActionModal');
+    UI.openModal('mbxReassignModal');
+  }
+
+  async function submitReassign(){
+    if(_reassignBusy) return;
+    const ctx = _caseActionCtx;
+    if(!ctx) return;
+
+    const sel = UI.el('#mbxReassignTo');
+    const newAssigneeId = String(sel && sel.value || '').trim();
+    const errEl = UI.el('#mbxReassignErr');
+    const setErr = (msg)=>{
+      if(!errEl) return UI.toast(msg, 'warn');
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    };
+    if(!newAssigneeId) return setErr('Please select a member for reassignment.');
+
+    _reassignBusy = true;
+    const btn = UI.el('#mbxReassignSubmit');
+    if(btn) btn.disabled = true;
+
+    try{
+      const { res, data } = await mbxPost('/api/mailbox/case_action', {
+        action: 'reassign',
+        shiftKey: ctx.shiftKey,
+        assignmentId: ctx.assignmentId,
+        newAssigneeId,
+        clientId: _mbxClientId() || undefined
+      });
+
+      if(res.status === 401){
+        UI.toast('Session expired. Please log in again.', 'warn');
+        try{ window.Auth && Auth.forceLogout && Auth.forceLogout('Session expired. Please log in again.'); }catch(_){ }
+        return;
+      }
+
+      if(!res.ok || !data || !data.ok){
+        const msg = (data && (data.error || data.message)) ? String(data.error||data.message) : `Failed (${res.status})`;
+        return setErr(msg);
+      }
+
+      try{ if(data.table && Store.saveMailboxTable) Store.saveMailboxTable(ctx.shiftKey, data.table, { fromRealtime:true }); }catch(_){ }
+      UI.closeModal('mbxReassignModal');
+      UI.toast(`Case ${ctx.caseNo} reassigned.`);
+      scheduleRender('case-reassign-success');
+    }catch(e){
+      setErr(String(e?.message||e));
+    }finally{
+      _reassignBusy = false;
+      if(btn) btn.disabled = false;
+    }
+  }
+
+  async function confirmDeleteCase(){
+    const ctx = _caseActionCtx;
+    if(!ctx || _caseActionBusy) return;
+
+    const ok = await UI.confirm({
+      title: 'Delete Case',
+      message: `Are you sure you want to Delete this case number ${ctx.caseNo}?`,
+      okText: 'Yes',
+      cancelText: 'Cancel',
+      danger: true
+    });
+    if(!ok) return;
+
+    _caseActionBusy = true;
+    try{
+      const { res, data } = await mbxPost('/api/mailbox/case_action', {
+        action: 'delete',
+        shiftKey: ctx.shiftKey,
+        assignmentId: ctx.assignmentId,
+        clientId: _mbxClientId() || undefined
+      });
+
+      if(res.status === 401){
+        UI.toast('Session expired. Please log in again.', 'warn');
+        try{ window.Auth && Auth.forceLogout && Auth.forceLogout('Session expired. Please log in again.'); }catch(_){ }
+        return;
+      }
+
+      if(!res.ok || !data || !data.ok){
+        const msg = (data && (data.error || data.message)) ? String(data.error||data.message) : `Failed (${res.status})`;
+        UI.toast(msg, 'warn');
+        return;
+      }
+
+      try{ if(data.table && Store.saveMailboxTable) Store.saveMailboxTable(ctx.shiftKey, data.table, { fromRealtime:true }); }catch(_){ }
+      UI.closeModal('mbxCaseActionModal');
+      UI.toast(`Case ${ctx.caseNo} deleted.`);
+      scheduleRender('case-delete-success');
+    }catch(e){
+      UI.toast(String(e?.message||e), 'warn');
+    }finally{
+      _caseActionBusy = false;
     }
   }
 
@@ -1547,7 +1810,8 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
   function buildCaseMonitoringMatrix(table, shiftKey){
     const members = (table.members||[]).slice();
     const by = {};
-    for(const m of members){ by[m.id] = []; }
+    const memberById = {};
+    for(const m of members){ by[m.id] = []; memberById[m.id] = m; }
 
     const mergedByCase = new Map();
     function normalizedCaseKey(assigneeId, caseNo){
@@ -1568,7 +1832,8 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
           caseNo,
           assigneeId,
           assignedAt,
-          confirmedAt
+          confirmedAt,
+          assigneeName: String(raw.assigneeName || memberById[assigneeId]?.name || assigneeId || '').slice(0,120)
         });
         return;
       }
@@ -1577,6 +1842,9 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
       existing.confirmedAt = Math.max(Number(existing.confirmedAt||0), confirmedAt);
       if(String(existing.id||'').startsWith('fallback_') && raw.id){
         existing.id = String(raw.id);
+      }
+      if(!existing.assigneeName){
+        existing.assigneeName = String(raw.assigneeName || memberById[assigneeId]?.name || assigneeId || '').slice(0,120);
       }
     }
 
@@ -1593,6 +1861,7 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
           id: String(c.id || ''),
           caseNo: String(c.caseNo||c.title||'').trim(),
           assigneeId: String(c.assigneeId||'').trim(),
+          assigneeName: String(c.assigneeName || c.assignee || '').trim(),
           assignedAt: Number(c.createdAt||c.ts||Date.now()) || Date.now(),
           confirmedAt: Number(c.confirmedAt||0) || 0
         });
@@ -1643,7 +1912,11 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
           : `<span class="mbx-mon-status mbx-mon-wait" data-assign-at="${esc(assignedAt)}" title="${esc(timer)}" aria-label="Waiting for acknowledgement">
               <span class="mbx-mon-wait-dot" aria-hidden="true"></span>
             </span>`;
-        return `<td class="${cls}"><span class="mbx-mon-case">${esc(a.caseNo||'')}</span>${statusIcon}</td>`;
+        const aid = esc(String(a.id||''));
+        const caseNo = esc(String(a.caseNo||''));
+        const ownerId = esc(String(a.assigneeId||''));
+        const ownerName = esc(String(a.assigneeName||''));
+        return `<td class="${cls}" data-case-action="1" data-assignment-id="${aid}" data-case-no="${caseNo}" data-owner-id="${ownerId}" data-owner-name="${ownerName}" title="Double-click to open action menu"><span class="mbx-mon-case">${caseNo}</span>${statusIcon}</td>`;
       }).join('');
       return `<tr><td class="mono" style="text-align:center">${idx+1}</td>${tds}</tr>`;
     }).join('');

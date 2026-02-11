@@ -2954,6 +2954,8 @@ body.modal-open .quicklinks-bar{pointer-events:none;opacity:.22;filter:saturate(
 }
 .mbx-mon-table th:last-child,.mbx-mon-table td:last-child{border-right:0}
 .mbx-mon-cell{font-weight:850;text-align:center}
+.mbx-mon-cell[data-case-action="1"]{cursor:pointer;user-select:none}
+.mbx-mon-cell[data-case-action="1"]:hover{background:color-mix(in srgb, var(--surface-2) 62%, transparent)}
 .mbx-mon-cell.empty{background: color-mix(in srgb, var(--surface-0) 55%, transparent)}
 .mbx-mon-cell.confirmed{
   background: rgba(148,163,184,0.25);
