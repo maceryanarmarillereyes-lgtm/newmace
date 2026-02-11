@@ -1817,9 +1817,6 @@ toast(message, variant){
           if(compactMailboxMode) panelEl.scrollTop = 0;
         }
 
-        const panelEl = modal ? modal.querySelector('.notification-popout') : null;
-        if(panelEl) panelEl.classList.toggle('mailbox-compact-mode', compactMailboxMode);
-
         if(!modal._ackBound){
           modal._ackBound = true;
           modal.addEventListener('click', (e)=>{
