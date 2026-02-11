@@ -481,6 +481,7 @@ module.exports = async (req, res) => {
         title: 'Case Assigned Notification',
         body: `Case ${caseNo} assigned to you.`,
         recipients: [assigneeId],
+        assignmentId: assignment.id,
         caseNo,
         desc,
         shiftKey,

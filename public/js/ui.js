@@ -1695,6 +1695,48 @@ toast(message, variant){
         }
         return `<span class="mbx-assign-by-name">${esc(name)}</span>`;
       };
+      const mailboxAssignmentIdFromNotif = (n)=>{
+        try{
+          const explicit = String((n && n.assignmentId) || '').trim();
+          if(explicit) return explicit;
+          const id = String((n && n.id) || '').trim();
+          if(id.startsWith('mbx_assign_')) return id.slice('mbx_assign_'.length);
+        }catch(_){ }
+        return '';
+      };
+      const confirmMailboxAssignmentFromNotif = async (n)=>{
+        try{
+          if(!n || String(n.type||'') !== 'MAILBOX_ASSIGN') return { ok:true, skipped:true };
+          const shiftKey = String((n && n.shiftKey) || '').trim();
+          const assignmentId = mailboxAssignmentIdFromNotif(n);
+          if(!shiftKey || !assignmentId) return { ok:false, message:'Missing mailbox assignment reference.' };
+
+          const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+          if(!jwt) return { ok:false, message:'Session expired. Please log in again.' };
+
+          const res = await fetch('/api/mailbox/confirm', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${jwt}`
+            },
+            body: JSON.stringify({ shiftKey, assignmentId })
+          });
+          const data = await res.json().catch(()=>null);
+          if(!res.ok || !data || !data.ok){
+            const msg = (data && (data.message || data.error)) ? String(data.message || data.error) : `Failed (${res.status})`;
+            return { ok:false, message: msg };
+          }
+          try{
+            if(data.table && window.Store && Store.saveMailboxTable){
+              Store.saveMailboxTable(shiftKey, data.table, { fromRealtime:true });
+            }
+          }catch(_){ }
+          return { ok:true };
+        }catch(e){
+          return { ok:false, message: String(e && (e.message || e) || 'Confirm failed') };
+        }
+      };
       const renderMailboxAssignTable = (list)=>{
         const rows = (Array.isArray(list) ? list : []).map((n, index)=>{
           const assignedAt = Number((n && (n.assignedAt || n.ts)) || 0);
@@ -1747,6 +1789,7 @@ toast(message, variant){
       let lastBeepedId = null;
       const pendingKeyFor = (n)=>{
         if(!n) return '';
+        if(String(n.type||'') === 'MAILBOX_ASSIGN') return `id:${String(n.id||'')}`;
         if(n.snapshotDigest) return `digest:${String(n.snapshotDigest)}`;
         return `id:${String(n.id||'')}`;
       };
@@ -1869,7 +1912,7 @@ toast(message, variant){
 
         if(modal && !modal._ackBound){
           modal._ackBound = true;
-          modal.addEventListener('click', (e)=>{
+          modal.addEventListener('click', async (e)=>{
             const btn = e && e.target ? e.target.closest('[data-ack]') : null;
             if(!btn) return;
             const id = String(btn.getAttribute('data-ack')||'');
@@ -1886,6 +1929,19 @@ toast(message, variant){
             }catch(_){ }
             const n = lastPending.find(x=>String(x.id||'')===id);
             try{
+              const confirmResult = await confirmMailboxAssignmentFromNotif(n);
+              if(confirmResult && !confirmResult.ok){
+                UI.toast(confirmResult.message || 'Unable to accept case assignment.', 'warn');
+                try{
+                  btn.dataset.busy='0';
+                  btn.disabled = false;
+                  const spin = btn.querySelector('.dashx-spin');
+                  const lbl = btn.querySelector('.dashx-acklbl');
+                  if(spin) spin.classList.remove('on');
+                  if(lbl) lbl.textContent = 'ACCEPT';
+                }catch(_){ }
+                return;
+              }
               ackNotif(n);
               if(row){
                 row.classList.add('is-removing');

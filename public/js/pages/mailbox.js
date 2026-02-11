@@ -1284,8 +1284,6 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
             const sec = Math.floor(Math.max(0, now - ts) / 1000);
             const label = (UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`;
             el.setAttribute('title', label);
-            const lbl = el.querySelector('.mbx-mon-wait-label');
-            if(lbl) lbl.textContent = label;
           });
         }
       }catch(_){ }
@@ -1591,7 +1589,6 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
           ? `<span class="mbx-mon-status mbx-mon-done" title="Accepted" aria-label="Accepted">✓</span>`
           : `<span class="mbx-mon-status mbx-mon-wait" data-assign-at="${esc(assignedAt)}" title="${esc(timer)}" aria-label="Waiting for acknowledgement">
               <span class="mbx-mon-wait-dot" aria-hidden="true"></span>
-              <span class="mbx-mon-wait-label">${esc(timer)}</span>
             </span>`;
         return `<td class="${cls}"><span class="mbx-mon-case">${esc(a.caseNo||'')}</span>${statusIcon}</td>`;
       }).join('');
