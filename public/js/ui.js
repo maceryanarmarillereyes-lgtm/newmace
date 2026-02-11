@@ -1866,7 +1866,7 @@ toast(message, variant){
           if(compactMailboxMode || mailboxTableMode) panelEl.scrollTop = 0;
         }
 
-        if(!modal._ackBound){
+        if(modal && !modal._ackBound){
           modal._ackBound = true;
           modal.addEventListener('click', (e)=>{
             const btn = e && e.target ? e.target.closest('[data-ack]') : null;
