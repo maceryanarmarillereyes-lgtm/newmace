@@ -1695,6 +1695,106 @@ toast(message, variant){
         }
         return `<span class="mbx-assign-by-name">${esc(name)}</span>`;
       };
+      const mailboxAssignmentIdFromNotif = (n)=>{
+        try{
+          const explicit = String((n && n.assignmentId) || '').trim();
+          if(explicit) return explicit;
+          const id = String((n && n.id) || '').trim();
+          if(id.startsWith('mbx_assign_')) return id.slice('mbx_assign_'.length);
+        }catch(_){ }
+        return '';
+      };
+      const resolveMailboxAssignmentIdFromTable = (n, userId)=>{
+        try{
+          const shiftKey = String((n && n.shiftKey) || '').trim();
+          if(!shiftKey || !window.Store || !Store.getMailboxTable) return '';
+          const table = Store.getMailboxTable(shiftKey);
+          const list = Array.isArray(table && table.assignments) ? table.assignments : [];
+          if(!list.length) return '';
+          const caseNo = String((n && n.caseNo) || '').trim();
+          const uid = String(userId || '').trim();
+          const hit = list.find(a=>a && !a.confirmedAt && (!uid || String(a.assigneeId||'')===uid) && (!caseNo || String(a.caseNo||'')===caseNo));
+          return hit ? String(hit.id||'') : '';
+        }catch(_){ }
+        return '';
+      };
+      const markLocalMailboxAssignmentConfirmed = (n, user)=>{
+        try{
+          if(!n || !window.Store || !Store.getMailboxTable || !Store.saveMailboxTable) return false;
+          const shiftKey = String((n.shiftKey)||'').trim();
+          if(!shiftKey) return false;
+          const table = Store.getMailboxTable(shiftKey);
+          if(!table || !Array.isArray(table.assignments)) return false;
+          const assignmentId = mailboxAssignmentIdFromNotif(n) || resolveMailboxAssignmentIdFromTable(n, user && user.id);
+          const caseNo = String((n.caseNo)||'').trim();
+          const uid = String((user && user.id) || '').trim();
+          const next = JSON.parse(JSON.stringify(table));
+          const row = next.assignments.find(a=>a && (
+            (assignmentId && String(a.id||'') === assignmentId) ||
+            (!assignmentId && caseNo && String(a.caseNo||'') === caseNo && (!uid || String(a.assigneeId||'')===uid))
+          ));
+          if(!row) return false;
+          if(!row.confirmedAt){
+            row.confirmedAt = Date.now();
+            row.confirmedById = uid || String(row.confirmedById||'');
+            row.confirmedByName = (user && (user.name || user.username)) ? (user.name || user.username) : String(row.confirmedByName||'');
+          }
+          Store.saveMailboxTable(shiftKey, next, { fromRealtime:true });
+          return true;
+        }catch(_){ }
+        return false;
+      };
+      const confirmMailboxAssignmentFromNotif = async (n)=>{
+        try{
+          if(!n || String(n.type||'') !== 'MAILBOX_ASSIGN') return { ok:true, skipped:true };
+          const shiftKey = String((n && n.shiftKey) || '').trim();
+          if(!shiftKey) return { ok:false, message:'Missing shift key for mailbox assignment.' };
+
+          const me = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
+          const fallbackAssignmentId = resolveMailboxAssignmentIdFromTable(n, me && me.id);
+          const assignmentId = mailboxAssignmentIdFromNotif(n) || fallbackAssignmentId;
+          if(!assignmentId) return { ok:false, message:'Missing mailbox assignment reference.' };
+
+          // Optimistic local update for immediate green-check UX.
+          markLocalMailboxAssignmentConfirmed(Object.assign({}, n, { assignmentId }), me);
+
+          const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+          if(!jwt) return { ok:true, localOnly:true };
+
+          const doConfirm = async (aid)=>{
+            const res = await fetch('/api/mailbox/confirm', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${jwt}`
+              },
+              body: JSON.stringify({ shiftKey, assignmentId: aid })
+            });
+            const data = await res.json().catch(()=>null);
+            return { res, data };
+          };
+
+          let out = await doConfirm(assignmentId);
+          if((!out.res.ok || !out.data || !out.data.ok) && Number(out.res.status)===404){
+            const retryId = resolveMailboxAssignmentIdFromTable(n, me && me.id);
+            if(retryId && retryId !== assignmentId){
+              out = await doConfirm(retryId);
+            }
+          }
+          if(!out.res.ok || !out.data || !out.data.ok){
+            const msg = (out.data && (out.data.message || out.data.error)) ? String(out.data.message || out.data.error) : `Failed (${out.res.status})`;
+            return { ok:false, message: msg };
+          }
+          try{
+            if(out.data.table && window.Store && Store.saveMailboxTable){
+              Store.saveMailboxTable(shiftKey, out.data.table, { fromRealtime:true });
+            }
+          }catch(_){ }
+          return { ok:true };
+        }catch(e){
+          return { ok:false, message: String(e && (e.message || e) || 'Confirm failed') };
+        }
+      };
       const renderMailboxAssignTable = (list)=>{
         const rows = (Array.isArray(list) ? list : []).map((n, index)=>{
           const assignedAt = Number((n && (n.assignedAt || n.ts)) || 0);
@@ -1747,6 +1847,16 @@ toast(message, variant){
       let lastBeepedId = null;
       const pendingKeyFor = (n)=>{
         if(!n) return '';
+        if(String(n.type||'') === 'MAILBOX_ASSIGN'){
+          const id = String(n.id||'').trim();
+          const aid = String(n.assignmentId||'').trim();
+          if(id) return `id:${id}`;
+          if(aid) return `assign:${aid}`;
+          const shift = String(n.shiftKey||'').trim();
+          const caseNo = String(n.caseNo||'').trim();
+          const ts = String(n.ts||'').trim();
+          return `mailbox:${shift}|${caseNo}|${ts}`;
+        }
         if(n.snapshotDigest) return `digest:${String(n.snapshotDigest)}`;
         return `id:${String(n.id||'')}`;
       };
@@ -1869,7 +1979,7 @@ toast(message, variant){
 
         if(modal && !modal._ackBound){
           modal._ackBound = true;
-          modal.addEventListener('click', (e)=>{
+          modal.addEventListener('click', async (e)=>{
             const btn = e && e.target ? e.target.closest('[data-ack]') : null;
             if(!btn) return;
             const id = String(btn.getAttribute('data-ack')||'');
@@ -1886,6 +1996,19 @@ toast(message, variant){
             }catch(_){ }
             const n = lastPending.find(x=>String(x.id||'')===id);
             try{
+              const confirmResult = await confirmMailboxAssignmentFromNotif(n);
+              if(confirmResult && !confirmResult.ok){
+                UI.toast(confirmResult.message || 'Unable to accept case assignment.', 'warn');
+                try{
+                  btn.dataset.busy='0';
+                  btn.disabled = false;
+                  const spin = btn.querySelector('.dashx-spin');
+                  const lbl = btn.querySelector('.dashx-acklbl');
+                  if(spin) spin.classList.remove('on');
+                  if(lbl) lbl.textContent = 'ACCEPT';
+                }catch(_){ }
+                return;
+              }
               ackNotif(n);
               if(row){
                 row.classList.add('is-removing');

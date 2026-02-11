@@ -653,7 +653,7 @@ root.innerHTML = `
           </div>
         </div>
         <div class="mbx-monitor-wrap">
-          ${renderCaseMonitoring(table)}
+          ${renderCaseMonitoring(table, shiftKey)}
         </div>
       </div>
     `;
@@ -1284,8 +1284,6 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
             const sec = Math.floor(Math.max(0, now - ts) / 1000);
             const label = (UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`;
             el.setAttribute('title', label);
-            const lbl = el.querySelector('.mbx-mon-wait-label');
-            if(lbl) lbl.textContent = label;
           });
         }
       }catch(_){ }
@@ -1545,17 +1543,44 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
     }
   }
 
-  function buildCaseMonitoringMatrix(table){
+  function buildCaseMonitoringMatrix(table, shiftKey){
     const members = (table.members||[]).slice();
     const by = {};
     for(const m of members){ by[m.id] = []; }
+
+    // Collapse duplicate assignments for the same assignee+case number.
+    // Keep the most recent record and prefer a confirmed record when present.
+    const pick = new Map();
     for(const a of (table.assignments||[])){
+      if(!a) continue;
+      const aid = String(a.assigneeId||'').trim();
+      const caseNo = String(a.caseNo||'').trim();
+      if(!aid || !caseNo) continue;
+      const key = `${aid}|${caseNo.toLowerCase()}`;
+      const prev = pick.get(key);
+      if(!prev){
+        pick.set(key, a);
+        continue;
+      }
+      const prevConfirmed = Number(prev.confirmedAt||0) > 0;
+      const curConfirmed = Number(a.confirmedAt||0) > 0;
+      if(curConfirmed && !prevConfirmed){
+        pick.set(key, a);
+        continue;
+      }
+      const prevTs = Number(prev.assignedAt||prev.ts||0);
+      const curTs = Number(a.assignedAt||a.ts||0);
+      if(curTs >= prevTs) pick.set(key, a);
+    }
+
+    for(const a of pick.values()){
       if(!a || !by[a.assigneeId]) continue;
       by[a.assigneeId].push(a);
     }
+
     const cols = members.map(m=>{
       const list = by[m.id] || [];
-      return { id:m.id, name:m.name, count:list.length, list:list.slice().reverse() };
+      return { id:m.id, name:m.name, count:list.length, list:list.slice().sort((a,b)=>(Number(b.assignedAt||b.ts||0)-Number(a.assignedAt||a.ts||0))) };
     });
     cols.sort((a,b)=>{
       if(a.count !== b.count) return a.count - b.count;
@@ -1569,9 +1594,9 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
     return { cols, rows };
   }
 
-  function renderCaseMonitoring(table){
+  function renderCaseMonitoring(table, shiftKey){
     const esc = UI.esc;
-    const m = buildCaseMonitoringMatrix(table);
+    const m = buildCaseMonitoringMatrix(table, shiftKey);
     if(!m.cols.length){
       return `<div class="small muted" style="padding:14px">No members found for this shift.</div>`;
     }
@@ -1591,7 +1616,6 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
           ? `<span class="mbx-mon-status mbx-mon-done" title="Accepted" aria-label="Accepted">✓</span>`
           : `<span class="mbx-mon-status mbx-mon-wait" data-assign-at="${esc(assignedAt)}" title="${esc(timer)}" aria-label="Waiting for acknowledgement">
               <span class="mbx-mon-wait-dot" aria-hidden="true"></span>
-              <span class="mbx-mon-wait-label">${esc(timer)}</span>
             </span>`;
         return `<td class="${cls}"><span class="mbx-mon-case">${esc(a.caseNo||'')}</span>${statusIcon}</td>`;
       }).join('');

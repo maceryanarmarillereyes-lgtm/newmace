@@ -163,6 +163,11 @@ function makeAssignmentId(){
   return 'mbx_srv_' + Math.random().toString(16).slice(2) + '_' + Date.now().toString(36);
 }
 
+
+function normalizeCaseNo(v){
+  return String(v||'').trim().toLowerCase();
+}
+
 function pruneLogs(list){
   const arr = Array.isArray(list) ? list : [];
   const cutoff = Date.now() - (183*24*60*60*1000); // ~6 months
@@ -353,6 +358,12 @@ module.exports = async (req, res) => {
     // Apply patch with minimal risk of clobbering
     const next = JSON.parse(JSON.stringify(table)); // deep-ish clone for safety
     next.assignments = Array.isArray(next.assignments) ? next.assignments : [];
+    const lowerCaseNo = normalizeCaseNo(caseNo);
+    const existingSameCase = next.assignments.find(a=>normalizeCaseNo(a && a.caseNo) === lowerCaseNo);
+    if(existingSameCase){
+      res.statusCode = 409;
+      return res.end(JSON.stringify({ ok:false, error:'Duplicate case number', code:'DUPLICATE_CASE' }));
+    }
     next.assignments.unshift(assignment);
 
     next.counts = (next.counts && typeof next.counts === 'object') ? next.counts : {};
@@ -383,11 +394,21 @@ module.exports = async (req, res) => {
       const latestTable = (latestAll[shiftKey] && typeof latestAll[shiftKey] === 'object') ? latestAll[shiftKey] : {};
       const merged = JSON.parse(JSON.stringify(latestTable));
       merged.assignments = Array.isArray(merged.assignments) ? merged.assignments : [];
-      if(!merged.assignments.some(a=>a && a.id===assignment.id)) merged.assignments.unshift(assignment);
+      const existingById = merged.assignments.find(a=>a && a.id===assignment.id);
+      const existingByCase = merged.assignments.find(a=>normalizeCaseNo(a && a.caseNo) === lowerCaseNo);
+      if(existingByCase && !existingById){
+        // Concurrent duplicate assignment guard: treat as duplicate and stop retries.
+        res.statusCode = 409;
+        return res.end(JSON.stringify({ ok:false, error:'Duplicate case number', code:'DUPLICATE_CASE' }));
+      }
+      const inserted = !existingById;
+      if(inserted) merged.assignments.unshift(assignment);
 
       merged.counts = (merged.counts && typeof merged.counts === 'object') ? merged.counts : {};
       merged.counts[assigneeId] = (merged.counts[assigneeId] && typeof merged.counts[assigneeId] === 'object') ? merged.counts[assigneeId] : {};
-      merged.counts[assigneeId][assignment.bucketId] = (Number(merged.counts[assigneeId][assignment.bucketId]) || 0) + 1;
+      if(inserted){
+        merged.counts[assigneeId][assignment.bucketId] = (Number(merged.counts[assigneeId][assignment.bucketId]) || 0) + 1;
+      }
 
       merged.meta = (merged.meta && typeof merged.meta === 'object') ? merged.meta : {};
       merged.meta.bucketManagers = (merged.meta.bucketManagers && typeof merged.meta.bucketManagers === 'object') ? merged.meta.bucketManagers : {};
@@ -481,6 +502,7 @@ module.exports = async (req, res) => {
         title: 'Case Assigned Notification',
         body: `Case ${caseNo} assigned to you.`,
         recipients: [assigneeId],
+        assignmentId: assignment.id,
         caseNo,
         desc,
         shiftKey,
