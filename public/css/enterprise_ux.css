@@ -584,6 +584,33 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   border-radius:20px;
   box-shadow:0 22px 60px rgba(0,0,0,.50);
 }
+#schedNotifModal .panel.notification-popout{
+  width:min(440px, calc(100vw - 24px));
+  max-height:min(86vh, 780px);
+}
+.notification-popout.mailbox-compact-mode{
+  width:min(420px, calc(100vw - 24px));
+  border-radius:16px;
+}
+.notification-popout.mailbox-compact-mode .head{
+  display:none;
+}
+.notification-popout.mailbox-compact-mode .body{
+  padding:10px;
+}
+.notification-popout.mailbox-compact-mode .notif-item.mailbox-assign{
+  margin:0;
+  width:100%;
+  max-width:100%;
+}
+.notification-popout.mailbox-compact-mode .notif-item.mailbox-assign .notif-item-head{
+  margin-bottom:8px;
+}
+.notification-popout.mailbox-compact-mode .notif-item.mailbox-assign .dashx-ack{
+  padding:6px 9px;
+  min-height:0;
+  font-size:11px;
+}
 #schedNotifModal{
   z-index:14050;
 }
