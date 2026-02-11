@@ -1808,7 +1808,14 @@ toast(message, variant){
         UI.el('#schedNotifMeta').textContent = metaLabel;
         const countEl = UI.el('#schedNotifCount');
         if(countEl) countEl.textContent = String(deduped.length);
-        UI.el('#schedNotifBody').innerHTML = renderPendingNotifs(deduped);
+        const visibleList = compactMailboxMode ? [latest] : deduped;
+        UI.el('#schedNotifBody').innerHTML = renderPendingNotifs(visibleList);
+
+        const panelEl = modal ? modal.querySelector('.notification-popout') : null;
+        if(panelEl){
+          panelEl.classList.toggle('mailbox-compact-mode', compactMailboxMode);
+          if(compactMailboxMode) panelEl.scrollTop = 0;
+        }
 
         const panelEl = modal ? modal.querySelector('.notification-popout') : null;
         if(panelEl) panelEl.classList.toggle('mailbox-compact-mode', compactMailboxMode);
