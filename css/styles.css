@@ -2919,6 +2919,17 @@ body.modal-open .quicklinks-bar{pointer-events:none;opacity:.22;filter:saturate(
   background: rgba(148,163,184,0.25);
   color: color-mix(in srgb, var(--text-0) 80%, transparent);
 }
+.mbx-mon-status{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;margin-left:6px}
+.mbx-mon-wait{gap:6px;font-size:11px;font-weight:700;opacity:.95}
+.mbx-mon-wait-dot{
+  width:12px;height:12px;border:2px solid rgba(158,211,255,.45);border-top-color:#9ed3ff;border-radius:999px;
+  display:inline-block;animation:mbxSpin .9s linear infinite;
+}
+.mbx-mon-done{
+  width:18px;height:18px;border-radius:999px;background:rgba(34,197,94,.16);border:1px solid rgba(34,197,94,.45);
+  color:#22c55e;font-size:12px;font-weight:900;line-height:1;
+}
+@keyframes mbxSpin{to{transform:rotate(360deg)}}
 .mbx-mon-head .mbx-mon-name{
   display:flex;
   justify-content:center;

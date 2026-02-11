@@ -1587,12 +1587,13 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
         const assignedAt = Number(a.assignedAt||0);
         const sec = assignedAt ? Math.floor(Math.max(0, Date.now() - assignedAt) / 1000) : 0;
         const timer = assignedAt ? ((UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`) : '';
-        const waitIcon = a.confirmedAt ? '' : `
-          <span class="mbx-mon-wait" data-assign-at="${esc(assignedAt)}" title="${esc(timer)}" aria-label="Waiting for acknowledgement">
-            <span class="mbx-mon-wait-label">${esc(timer)}</span>
-          </span>
-        `;
-        return `<td class="${cls}"><span class="mbx-mon-case">${esc(a.caseNo||'')}</span>${waitIcon}</td>`;
+        const statusIcon = a.confirmedAt
+          ? `<span class="mbx-mon-status mbx-mon-done" title="Accepted" aria-label="Accepted">✓</span>`
+          : `<span class="mbx-mon-status mbx-mon-wait" data-assign-at="${esc(assignedAt)}" title="${esc(timer)}" aria-label="Waiting for acknowledgement">
+              <span class="mbx-mon-wait-dot" aria-hidden="true"></span>
+              <span class="mbx-mon-wait-label">${esc(timer)}</span>
+            </span>`;
+        return `<td class="${cls}"><span class="mbx-mon-case">${esc(a.caseNo||'')}</span>${statusIcon}</td>`;
       }).join('');
       return `<tr><td class="mono" style="text-align:center">${idx+1}</td>${tds}</tr>`;
     }).join('');
