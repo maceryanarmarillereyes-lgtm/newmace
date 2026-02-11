@@ -1548,15 +1548,38 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
     const by = {};
     for(const m of members){ by[m.id] = []; }
 
-    const merged = [];
-    const seen = new Set();
-    for(const a of (table.assignments||[])){
-      if(!a) continue;
-      const k = `${String(a.id||'')}|${String(a.caseNo||'')}|${String(a.assigneeId||'')}`;
-      if(seen.has(k)) continue;
-      seen.add(k);
-      merged.push(a);
+    const mergedByCase = new Map();
+    function normalizedCaseKey(assigneeId, caseNo){
+      return `${String(assigneeId||'').trim()}|${String(caseNo||'').trim().toLowerCase()}`;
     }
+    function upsertMerged(raw){
+      if(!raw) return;
+      const assigneeId = String(raw.assigneeId||'').trim();
+      const caseNo = String(raw.caseNo||raw.title||'').trim();
+      if(!assigneeId || !caseNo || !by[assigneeId]) return;
+      const key = normalizedCaseKey(assigneeId, caseNo);
+      const assignedAt = Number(raw.assignedAt||raw.createdAt||raw.ts||Date.now()) || Date.now();
+      const confirmedAt = Number(raw.confirmedAt||0) || 0;
+      const existing = mergedByCase.get(key);
+      if(!existing){
+        mergedByCase.set(key, {
+          id: String(raw.id || `merged_${assigneeId}_${caseNo}`),
+          caseNo,
+          assigneeId,
+          assignedAt,
+          confirmedAt
+        });
+        return;
+      }
+      // Deduplicate by logical case key while preserving freshest timestamps and accepted status.
+      existing.assignedAt = Math.max(Number(existing.assignedAt||0), assignedAt);
+      existing.confirmedAt = Math.max(Number(existing.confirmedAt||0), confirmedAt);
+      if(String(existing.id||'').startsWith('fallback_') && raw.id){
+        existing.id = String(raw.id);
+      }
+    }
+
+    for(const a of (table.assignments||[])) upsertMerged(a);
 
     // Resilience: when assignment docs lag or were created by older payloads,
     // supplement from canonical cases list for the same shift.
@@ -1565,23 +1588,17 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
       const key = String(shiftKey||'').trim();
       for(const c of allCases){
         if(!c || String(c.shiftKey||'').trim() !== key) continue;
-        const aid = String(c.assigneeId||'').trim();
-        const caseNo = String(c.caseNo||c.title||'').trim();
-        if(!aid || !caseNo || !by[aid]) continue;
-        const k = `fallback|${caseNo}|${aid}`;
-        if(seen.has(k)) continue;
-        seen.add(k);
-        merged.push({
-          id: String(c.id || `fallback_${aid}_${caseNo}`),
-          caseNo,
-          assigneeId: aid,
+        upsertMerged({
+          id: String(c.id || ''),
+          caseNo: String(c.caseNo||c.title||'').trim(),
+          assigneeId: String(c.assigneeId||'').trim(),
           assignedAt: Number(c.createdAt||c.ts||Date.now()) || Date.now(),
           confirmedAt: Number(c.confirmedAt||0) || 0
         });
       }
     }catch(_){ }
 
-    for(const a of merged){
+    for(const a of mergedByCase.values()){
       if(!a || !by[a.assigneeId]) continue;
       by[a.assigneeId].push(a);
     }
