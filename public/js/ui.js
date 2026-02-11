@@ -1668,15 +1668,13 @@ toast(message, variant){
         const canCopy = !!caseNo;
         const copiedLabel = String((n && n.copiedLabel) || 'COPY ID').trim() || 'COPY ID';
         const fromName = String((n && n.fromName) || 'Mailbox Manager').trim() || 'Mailbox Manager';
-        const assignedTs = new Date((n && n.ts) || Date.now()).toLocaleTimeString();
         return `
           <div class="mbx-assign-grid">
             <div class="mbx-assign-top">
-              <div>
-                <div class="mbx-assign-title">Case Assigned Notification</div>
-                <div class="mbx-assign-from">${esc(fromName)}</div>
-                <div class="mbx-assign-meta">From: ${esc(fromName)} • ${esc(assignedTs)}</div>
-              </div>
+              <div class="mbx-assign-title">Case Assigned Notification</div>
+            </div>
+            <div class="mbx-assign-row">
+              <div class="mbx-assign-from">${esc(fromName)}</div>
               <div class="mbx-assign-timer">
                 <div class="mbx-assign-timer-label">Live Elapsed</div>
                 <div class="mbx-assign-timer-value" data-assign-timer="${esc(assignedAt)}">${esc(timer)}</div>
