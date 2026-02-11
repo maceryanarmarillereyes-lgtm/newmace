@@ -584,6 +584,33 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   border-radius:20px;
   box-shadow:0 22px 60px rgba(0,0,0,.50);
 }
+#schedNotifModal .panel.notification-popout{
+  width:min(440px, calc(100vw - 24px));
+  max-height:min(86vh, 780px);
+}
+.notification-popout.mailbox-compact-mode{
+  width:min(420px, calc(100vw - 24px));
+  border-radius:16px;
+}
+.notification-popout.mailbox-compact-mode .head{
+  display:none;
+}
+.notification-popout.mailbox-compact-mode .body{
+  padding:10px;
+}
+.notification-popout.mailbox-compact-mode .notif-item.mailbox-assign{
+  margin:0;
+  width:100%;
+  max-width:100%;
+}
+.notification-popout.mailbox-compact-mode .notif-item.mailbox-assign .notif-item-head{
+  margin-bottom:8px;
+}
+.notification-popout.mailbox-compact-mode .notif-item.mailbox-assign .dashx-ack{
+  padding:6px 9px;
+  min-height:0;
+  font-size:11px;
+}
 #schedNotifModal{
   z-index:14050;
 }
@@ -689,161 +716,142 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   white-space:pre-wrap;
 }
 .notification-popout .mailbox-assign{
+  width:min(100%, 400px);
+  max-width:400px;
+  margin:0 auto;
   position:relative;
   overflow:hidden;
-  padding:14px;
-  border-radius:20px;
-  border:1px solid rgba(125,211,252,.26);
-  background:
-    radial-gradient(130% 80% at 14% -10%, rgba(45,212,191,.22), transparent 58%),
-    radial-gradient(130% 80% at 100% 120%, rgba(34,211,238,.17), transparent 62%),
-    linear-gradient(145deg, rgba(12,26,43,.86), rgba(9,18,35,.78));
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.22),
-    inset 0 -1px 0 rgba(148,163,184,.12),
-    0 18px 36px rgba(2,8,23,.42),
-    0 0 0 1px rgba(56,189,248,.16);
-  backdrop-filter:blur(14px);
+  padding:10px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(15,23,42,.95);
+  box-shadow:0 14px 32px rgba(2,8,23,.42);
+  backdrop-filter:blur(8px);
 }
 .notification-popout .mailbox-assign::before{
-  content:"";
-  position:absolute;
-  top:12px;
-  left:12px;
-  width:96px;
-  height:8px;
-  border-radius:999px;
-  background:linear-gradient(90deg, rgba(45,212,191,.95), rgba(34,211,238,.78));
-  box-shadow:0 0 20px rgba(45,212,191,.68);
-  pointer-events:none;
+  content:none;
 }
 .notification-popout .mailbox-assign .notif-item-head{
-  align-items:flex-start;
-  margin-top:8px;
+  align-items:center;
+  justify-content:flex-end;
+  margin-top:0;
+  margin-bottom:6px;
+}
+.notification-popout .mailbox-assign .notif-item-title{
+  font-size:13px;
+  font-weight:700;
+  color:rgba(248,250,252,.95);
 }
 .notification-popout .mbx-assign-grid{
   display:grid;
-  gap:16px;
-  margin-top:10px;
+  gap:8px;
+  margin-top:0;
 }
 .notification-popout .mbx-assign-top,
 .notification-popout .mbx-assign-card{
   position:relative;
   overflow:hidden;
-  padding:18px 20px;
-  border-radius:22px;
-  border:1px solid rgba(226,232,240,.28);
-  background:linear-gradient(145deg, rgba(30,41,59,.56), rgba(17,24,39,.52));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.18), 0 12px 24px rgba(2,8,23,.28);
+  padding:10px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(30,41,59,.55);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
 }
 .notification-popout .mbx-assign-top{
-  display:flex;
-  align-items:flex-end;
-  justify-content:space-between;
-  gap:14px;
+  display:block;
 }
-.notification-popout .mbx-assign-from{
-  font-size:42px;
-  font-weight:900;
-  line-height:1.08;
+.notification-popout .mbx-assign-title{
+  font-size:14px;
+  font-weight:700;
+  line-height:1.25;
   letter-spacing:.01em;
   color:#f8fafc;
 }
+.notification-popout .mbx-assign-row{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+.notification-popout .mbx-assign-from{
+  font-size:14px;
+  font-weight:700;
+  line-height:1.25;
+  color:#f1f5f9;
+}
 .notification-popout .mbx-assign-meta{
-  margin-top:8px;
-  font-size:15px;
-  color:rgba(226,232,240,.76);
+  display:none;
 }
 .notification-popout .mbx-assign-timer{
   text-align:right;
-  min-width:210px;
+  min-width:132px;
 }
 .notification-popout .mbx-assign-timer-label{
-  font-size:14px;
-  font-weight:900;
+  font-size:10px;
+  font-weight:800;
   letter-spacing:.08em;
-  color:#22c55e;
+  color:#4ade80;
   text-transform:uppercase;
 }
 .notification-popout .mbx-assign-timer-value{
-  margin-top:8px;
+  margin-top:4px;
   font-family:'JetBrains Mono','Roboto Mono',monospace;
-  font-size:54px;
-  font-weight:850;
-  letter-spacing:.03em;
+  font-size:24px;
+  font-weight:800;
+  line-height:1;
+  letter-spacing:.02em;
   color:#fff;
   font-variant-numeric:tabular-nums;
-  text-shadow:0 0 24px rgba(255,255,255,.2);
-}
-.notification-popout .mbx-assign-title{
-  font-size:46px;
-  font-weight:900;
-  line-height:1.12;
-  letter-spacing:.01em;
-  color:#f8fafc;
 }
 .notification-popout .mbx-assign-label{
-  font-size:14px;
-  font-weight:900;
+  font-size:10px;
+  font-weight:800;
   letter-spacing:.08em;
   text-transform:uppercase;
-  color:rgba(226,232,240,.86);
+  color:rgba(226,232,240,.82);
 }
 .notification-popout .mbx-assign-desc{
-  margin-top:14px;
-  font-size:22px;
-  font-weight:800;
+  margin-top:6px;
+  font-size:16px;
+  font-weight:700;
+  line-height:1.2;
   color:rgba(241,245,249,.95);
 }
 .notification-popout .mbx-assign-card.case-zone{
-  border-color:rgba(34,211,238,.64);
-  background:
-    radial-gradient(110% 100% at 15% 10%, rgba(34,211,238,.18), transparent 54%),
-    linear-gradient(140deg, rgba(12,39,62,.82), rgba(13,34,51,.82));
-  box-shadow:
-    inset 0 1px 0 rgba(165,243,252,.28),
-    0 0 0 1px rgba(34,211,238,.42),
-    0 24px 36px rgba(3,15,31,.4);
-}
-.notification-popout .mbx-assign-card.case-zone{
-  border-color:rgba(34,211,238,.68);
-  background:
-    radial-gradient(120% 100% at 8% 0%, rgba(20,184,166,.18), transparent 58%),
-    linear-gradient(145deg, rgba(16,63,86,.88), rgba(15,23,42,.92));
-  box-shadow:
-    inset 0 1px 0 rgba(165,243,252,.2),
-    0 0 0 1px rgba(34,211,238,.22),
-    0 14px 30px rgba(2,20,38,.34);
+  border-color:rgba(45,212,191,.36);
+  background:linear-gradient(135deg, rgba(19,78,74,.92), rgba(15,23,42,.94));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12);
 }
 .notification-popout .mbx-assign-case{
-  margin-top:14px;
+  margin-top:8px;
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:14px;
+  gap:10px;
 }
 .notification-popout .mbx-assign-case-no{
-  font-size:48px;
-  font-weight:950;
+  font-size:32px;
+  font-weight:900;
   line-height:1;
-  letter-spacing:.05em;
+  letter-spacing:.03em;
   color:#fff;
 }
 .notification-popout .mbx-assign-copy{
-  min-width:180px;
-  padding:12px 20px;
-  border-radius:14px;
-  border:1px solid rgba(226,232,240,.7);
-  background:#ffffff;
-  color:#0f172a;
-  font-size:20px;
-  font-weight:900;
-  box-shadow:0 10px 24px rgba(226,232,240,.2);
+  min-width:auto;
+  padding:7px 10px;
+  border-radius:8px;
+  border:1px solid rgba(226,232,240,.8);
+  background:#fff;
+  color:#020617;
+  font-size:11px;
+  font-weight:800;
+  line-height:1;
+  box-shadow:0 6px 16px rgba(2,8,23,.26);
   transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
 }
 .notification-popout .mbx-assign-copy:hover:not([disabled]){
-  transform:translateY(-2px);
-  box-shadow:0 14px 28px rgba(226,232,240,.32);
+  transform:translateY(-1px);
+  box-shadow:0 8px 18px rgba(226,232,240,.24);
   background:#f8fafc;
 }
 .notification-popout .mbx-assign-copy[disabled]{
@@ -851,7 +859,10 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   cursor:not-allowed;
 }
 @media (max-width: 960px){
-  .notification-popout .mbx-assign-top,
+  .notification-popout .mailbox-assign{
+    width:min(100%, 360px);
+  }
+  .notification-popout .mbx-assign-row,
   .notification-popout .mbx-assign-case{
     flex-direction:column;
     align-items:flex-start;
@@ -861,14 +872,14 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
     text-align:left;
     width:100%;
   }
-  .notification-popout .mbx-assign-title{
-    font-size:32px;
-  }
-  .notification-popout .mbx-assign-from{
-    font-size:34px;
-  }
   .notification-popout .mbx-assign-timer-value{
-    font-size:42px;
+    font-size:22px;
+  }
+  .notification-popout .mbx-assign-desc{
+    font-size:15px;
+  }
+  .notification-popout .mbx-assign-case-no{
+    font-size:28px;
   }
 }
 
