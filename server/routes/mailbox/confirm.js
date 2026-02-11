@@ -39,6 +39,11 @@ function pruneLogs(list){
   const cutoff = Date.now() - (183*24*60*60*1000);
   return arr.filter(x => x && x.ts && Number(x.ts) >= cutoff).slice(0, 2500);
 }
+function pruneCases(list){
+  const arr = Array.isArray(list) ? list : [];
+  const cutoff = Date.now() - (366*24*60*60*1000);
+  return arr.filter(x => x && Number(x.createdAt || x.ts || 0) >= cutoff).slice(0, 5000);
+}
 
 module.exports = async (req, res) => {
   try{
@@ -175,6 +180,29 @@ module.exports = async (req, res) => {
       };
       const nextLogs = pruneLogs([logEntry, ...prevLogs]);
       await upsertDoc('ums_activity_logs', nextLogs, actor, profile, clientId);
+    }catch(_){}
+
+    // Keep canonical case entries consistent with mailbox confirmation.
+    try{
+      const casesDoc = await getDocValue('ums_cases');
+      const prevCases = (casesDoc.ok && Array.isArray(casesDoc.value)) ? casesDoc.value : [];
+      const caseNoLower = String(a.caseNo || '').trim().toLowerCase();
+      const confirmedAt = Number(a.confirmedAt || Date.now()) || Date.now();
+      const confirmerName = (profile && profile.name) ? profile.name : (actor.email || '');
+      const nextCases = prevCases.map((c)=>{
+        if(!c || typeof c !== 'object') return c;
+        const sameAssignee = String(c.assigneeId || '') === String(a.assigneeId || '');
+        const sameShift = String(c.shiftKey || '') === String(shiftKey || '');
+        const sameCaseNo = String(c.caseNo || c.title || '').trim().toLowerCase() === caseNoLower;
+        if(!sameAssignee || !sameShift || !sameCaseNo) return c;
+        return Object.assign({}, c, {
+          status: 'Accepted',
+          confirmedAt,
+          confirmedById: actor.id,
+          confirmedByName: confirmerName
+        });
+      });
+      await upsertDoc('ums_cases', pruneCases(nextCases), actor, profile, clientId);
     }catch(_){}
 
     res.statusCode = 200;
