@@ -1668,15 +1668,11 @@ toast(message, variant){
         const canCopy = !!caseNo;
         const copiedLabel = String((n && n.copiedLabel) || 'COPY ID').trim() || 'COPY ID';
         const fromName = String((n && n.fromName) || 'Mailbox Manager').trim() || 'Mailbox Manager';
-        const assignedTs = new Date((n && n.ts) || Date.now()).toLocaleTimeString();
         return `
           <div class="mbx-assign-grid">
-            <div class="mbx-assign-top">
-              <div>
-                <div class="mbx-assign-title">Case Assigned Notification</div>
-                <div class="mbx-assign-from">${esc(fromName)}</div>
-                <div class="mbx-assign-meta">From: ${esc(fromName)} • ${esc(assignedTs)}</div>
-              </div>
+            <div class="mbx-assign-title">Case Assigned Notification</div>
+            <div class="mbx-assign-row">
+              <div class="mbx-assign-from">${esc(fromName)}</div>
               <div class="mbx-assign-timer">
                 <div class="mbx-assign-timer-label">Live Elapsed</div>
                 <div class="mbx-assign-timer-value" data-assign-timer="${esc(assignedAt)}">${esc(timer)}</div>
@@ -1724,7 +1720,6 @@ toast(message, variant){
               return `
                 <div class="notif-item mailbox-assign">
                   <div class="notif-item-head">
-                    <div class="notif-item-title">Case Assigned Notification</div>
                     <button class="btn dashx-ack" data-ack="${esc(n.id)}" type="button" aria-label="Acknowledge case assignment notification">
                       <span class="dashx-spin" aria-hidden="true"></span>
                       <span class="dashx-acklbl">Acknowledge</span>
@@ -1799,6 +1794,7 @@ toast(message, variant){
         }
 
         const allMailbox = deduped.length && deduped.every(n=>String(n.type||'')==='MAILBOX_ASSIGN');
+        const compactMailboxMode = !!(allMailbox && deduped.length === 1);
         const headerLabel = allMailbox
           ? `Case Assigned Notification${deduped.length===1?'':'s'}`
           : 'Schedule Notifications';
@@ -1811,6 +1807,12 @@ toast(message, variant){
         const countEl = UI.el('#schedNotifCount');
         if(countEl) countEl.textContent = String(deduped.length);
         UI.el('#schedNotifBody').innerHTML = renderPendingNotifs(deduped);
+
+        const panelEl = modal ? modal.querySelector('.notification-popout') : null;
+        if(panelEl){
+          panelEl.classList.toggle('mailbox-compact-mode', compactMailboxMode);
+          if(compactMailboxMode) panelEl.scrollTop = 0;
+        }
 
         if(!modal._ackBound){
           modal._ackBound = true;
