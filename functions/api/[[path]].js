@@ -72,7 +72,9 @@ async function getRoutes(env) {
 
     'mailbox/assign': unwrapCjs(await import('../../server/routes/mailbox/assign.js')),
     'mailbox/confirm': unwrapCjs(await import('../../server/routes/mailbox/confirm.js')),
-    'mailbox/case_action': unwrapCjs(await import('../../server/routes/mailbox/case_action.js'))
+    'mailbox/case_action': unwrapCjs(await import('../../server/routes/mailbox/case_action.js')),
+
+    'member/schedule': unwrapCjs(await import('../../server/routes/member_schedule.js'))
   };
 
   return ROUTES;
@@ -155,6 +157,26 @@ function normalizeRoutePath(p) {
   return raw;
 }
 
+function resolveRoute(routePath, routes) {
+  const exact = routes[routePath];
+  if (exact) return { handler: exact, params: {} };
+
+  const dynamicPatterns = [
+    {
+      re: /^member\/([^/]+)\/schedule$/,
+      map: (m) => ({ memberId: decodeURIComponent(m[1] || '') }),
+      handler: routes['member/schedule']
+    }
+  ];
+
+  for (const entry of dynamicPatterns) {
+    const hit = routePath.match(entry.re);
+    if (!hit || !entry.handler) continue;
+    return { handler: entry.handler, params: entry.map(hit) };
+  }
+  return { handler: null, params: {} };
+}
+
 export async function onRequest(context) {
   const request = context.request;
   const url = new URL(request.url);
@@ -168,7 +190,8 @@ export async function onRequest(context) {
   const routePath = normalizeRoutePath(p);
 
   const routes = await getRoutes(context.env);
-  const handler = routes[routePath];
+  const resolved = resolveRoute(routePath, routes);
+  const handler = resolved.handler;
 
   if (!handler) {
     return new Response(JSON.stringify({ ok: false, error: 'not_found', path: routePath }), {
@@ -191,7 +214,7 @@ export async function onRequest(context) {
 
   const nodeRes = createNodeRes();
   try {
-    await handler(nodeReq, nodeRes);
+    await handler(nodeReq, nodeRes, resolved.params);
   } catch (err) {
     return new Response(JSON.stringify({ ok: false, error: 'handler_failed', message: String(err?.message || err) }), {
       status: 500,
