@@ -2815,17 +2815,40 @@ body.modal-open .quicklinks-bar{pointer-events:none;opacity:.22;filter:saturate(
   letter-spacing:0.2px;
 }
 .mbx-tools{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:flex-end; }
-.mbx-table-wrap{ width:100%; overflow:auto; border-radius:14px; }
+.mbx-tools-right{ margin-left:auto; }
+.mbx-shift-subtitle{
+  display:block;
+  font-size:12px;
+  margin-top:2px;
+  letter-spacing:0.12em;
+  font-weight:750;
+  text-transform:uppercase;
+  color: color-mix(in srgb, var(--text-muted) 88%, transparent);
+}
+.mbx-info-btn{
+  appearance:none;
+  border:0;
+  background:transparent;
+  color:inherit;
+  cursor:help;
+  font-size:13px;
+  padding:0 2px;
+}
+.mbx-table-wrap{ width:100%; overflow:auto; border-radius:10px; border:1px solid color-mix(in srgb, var(--card-border) 68%, transparent); }
 .table.mbx-table{
   width:100%;
   min-width: 760px;
+  border-collapse: collapse;
 }
 .table.mbx-table th, .table.mbx-table td{
   /* Compact enterprise density (~70% of default row height) */
-  padding: 7px 9px;
+  padding: 8px 9px;
   vertical-align: middle;
+  border-bottom:1px solid color-mix(in srgb, var(--card-border) 62%, transparent);
 }
+.table.mbx-table tbody tr:last-child td{ border-bottom:1px solid color-mix(in srgb, var(--card-border) 62%, transparent); }
 .table.mbx-table thead th{
+  border-bottom:1px solid color-mix(in srgb, var(--card-border) 75%, transparent);
   position: sticky;
   top: 0;
   z-index: 2;
@@ -2846,9 +2869,22 @@ body.modal-open .quicklinks-bar{pointer-events:none;opacity:.22;filter:saturate(
 }
 .mbx-member-grid{
   display:grid;
-  grid-template-columns: minmax(200px, 1.8fr) minmax(120px, 1fr);
+  grid-template-columns: 30px minmax(0,1fr);
   gap: 10px;
   align-items: center;
+}
+.mbx-avatar{
+  width:28px;
+  height:28px;
+  border-radius:999px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-size:10px;
+  font-weight:900;
+  color:var(--text-0);
+  background:color-mix(in srgb, var(--accent) 26%, var(--surface-2));
+  border:1px solid color-mix(in srgb, var(--accent) 44%, transparent);
 }
 .mbx-name-col{ min-width:0; }
 .mbx-name-main{
@@ -2861,7 +2897,7 @@ body.modal-open .quicklinks-bar{pointer-events:none;opacity:.22;filter:saturate(
 }
 .mbx-name-sub{
   margin-top: 2px;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 750;
   letter-spacing: 0.12px;
   text-transform: uppercase;
@@ -2870,20 +2906,26 @@ body.modal-open .quicklinks-bar{pointer-events:none;opacity:.22;filter:saturate(
   overflow:hidden;
   text-overflow:ellipsis;
 }
-.mbx-duty-col{
-  text-align:center;
-  font-size: 11px;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  color: color-mix(in srgb, var(--text-0) 88%, transparent);
-}
 .mbx-th{ display:flex; flex-direction:column; align-items:center; gap:2px; }
+.mbx-group-row th{
+  top:0;
+  z-index:3;
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:0.08em;
+  color:color-mix(in srgb, var(--text-muted) 88%, transparent);
+  background:color-mix(in srgb, var(--surface-3) 72%, transparent);
+}
+.mbx-group-th{ text-align:center; }
 .mbx-th-top{ font-size:10px; font-weight:800; opacity:0.68; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .mbx-th-time{ font-weight:850; }
 .mbx-num{
   font-variant-numeric: tabular-nums;
   font-weight: 800;
+}
+.mbx-num[data-zero="1"]{
+  color: color-mix(in srgb, var(--text-muted) 75%, transparent);
+  font-weight:700;
 }
 .mbx-time-th{ text-align: center; }
 .mbx-count-td{ text-align: center; }
@@ -2891,8 +2933,8 @@ body.modal-open .quicklinks-bar{pointer-events:none;opacity:.22;filter:saturate(
 .mbx-foot{ font-weight: 900; letter-spacing:0.2px; }
 
 .table.mbx-table .active-col{
-  box-shadow: inset 0 0 0 1px rgba(64,160,255,0.45), inset 0 0 22px rgba(64,160,255,0.12);
-  background: rgba(64,160,255,0.06);
+  box-shadow: inset 0 0 0 1px rgba(64,160,255,0.28);
+  background: rgba(64,160,255,0.04);
 }
 @media (max-width: 920px){
   .table.mbx-table{ min-width: 680px; }
