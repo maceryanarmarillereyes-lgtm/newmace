@@ -611,10 +611,12 @@ root.innerHTML = `
       <div class="mbx-card" style="margin-top:12px">
         <div class="mbx-card-head">
           <div class="mbx-title">
-            <div class="mbx-shift-title">${UI.esc(table.meta.teamLabel)}</div>
-            <div class="small muted">MAILBOX COUNTER • Shift key: <span class="mono">${UI.esc(shiftKey)}</span></div>
+            <div class="mbx-shift-title">${UI.esc(table.meta.teamLabel)} <span class="mbx-shift-subtitle">Mailbox Counter</span></div>
+            <div class="small muted">Live assignment counts for the active shift.
+              <button class="mbx-info-btn" type="button" title="Shift key: ${UI.esc(shiftKey)}" aria-label="View shift key metadata">ℹ️</button>
+            </div>
           </div>
-          <div class="mbx-tools">
+          <div class="mbx-tools mbx-tools-right">
             <span class="badge" id="mbxMgrBadge" title="Mailbox Manager">${UI.esc(mbxMgrName)}</span>
             <div class="small muted">Active mailbox time:</div>
             <span class="badge">${UI.esc((_mbxBucketLabel((table.buckets||[]).find(b=>b.id===activeBucketId)||table.buckets?.[0]||{startMin:0,endMin:0})))}</span>
@@ -742,6 +744,18 @@ root.innerHTML = `
   function renderTable(table, activeBucketId, totals, interactive){
     const buckets = table.buckets || [];
     const members = table.members || [];
+    const bucketManagers = buckets.map(b=>({ bucket:b, name:getBucketManagerName(b) }));
+    const groupedManagers = [];
+
+    for(const item of bucketManagers){
+      const last = groupedManagers[groupedManagers.length-1];
+      if(last && last.name === item.name){
+        last.colspan += 1;
+      }else{
+        groupedManagers.push({ name:item.name, colspan:1 });
+      }
+    }
+
     // Mailbox Manager (per time bucket) shown above the time range.
     function _mbxHeaderFontPx(name){
       const n = String(name||'').trim();
@@ -783,50 +797,65 @@ root.innerHTML = `
       return '—';
     }
 
+    function _mbxInitials(name){
+      const raw = String(name||'').trim();
+      if(!raw) return 'NA';
+      const parts = raw.split(/\s+/).filter(Boolean);
+      if(!parts.length) return 'NA';
+      const first = parts[0][0] || '';
+      const second = (parts.length > 1 ? parts[1][0] : (parts[0][1] || '')) || '';
+      return (first + second).toUpperCase();
+    }
+
 
     const rows = members.map(m=>{
       const cells = buckets.map(b=>{
         const v = safeGetCount(table, m.id, b.id);
         const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
-        return `<td class="${cls} mbx-count-td"><span class="mbx-num">${v}</span></td>`;
+        return `<td class="${cls} mbx-count-td"><span class="mbx-num" data-zero="${v===0 ? '1' : '0'}">${v}</span></td>`;
       }).join('');
       const total = totals.rowTotals[m.id] || 0;
 
-      const duty = (m.dutyLabel && m.dutyLabel !== '—') ? m.dutyLabel : '—';
       const role = (m.roleLabel || _mbxRoleLabel(m.role) || '').trim();
 
       return `<tr class="mbx-tr ${interactive ? 'mbx-assignable' : ''}" ${interactive ? `data-assign-member="${m.id}"` : ''} title="${interactive ? 'Double-click anywhere on this row to assign a case' : ''}">
         <td class="mbx-name">
           <div class="mbx-member-grid">
+            <div class="mbx-avatar" aria-hidden="true">${UI.esc(_mbxInitials(m.name))}</div>
             <div class="mbx-name-col">
               <div class="mbx-name-main">${UI.esc(m.name)}</div>
               <div class="mbx-name-sub">${UI.esc(role || '—')}</div>
             </div>
-            <div class="mbx-duty-col ${duty==='—' ? 'muted' : ''}">${UI.esc(duty)}</div>
           </div>
         </td>
         ${cells}
-        <td class="mbx-total mbx-count-td"><span class="mbx-num">${total}</span></td>
+        <td class="mbx-total mbx-count-td"><span class="mbx-num" data-zero="${total===0 ? '1' : '0'}">${total}</span></td>
       </tr>`;
     }).join('');
 
     const footCells = buckets.map(b=>{
       const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
-      return `<td class="${cls} mbx-count-td"><span class="mbx-num">${totals.colTotals[b.id]||0}</span></td>`;
+      const vv = totals.colTotals[b.id]||0;
+      return `<td class="${cls} mbx-count-td"><span class="mbx-num" data-zero="${vv===0 ? '1' : '0'}">${vv}</span></td>`;
     }).join('');
 
     return `
       <table class="table mbx-table">
         <thead>
+          <tr class="mbx-group-row">
+            <th></th>
+            ${groupedManagers.map(g=>{
+              const fs = _mbxHeaderFontPx(g.name);
+              const label = g.name && g.name !== '—' ? UI.esc(g.name) : 'N/A';
+              return `<th colspan="${g.colspan}" class="mbx-group-th"><span class="mbx-th-top" style="font-size:${fs}px">${label}</span></th>`;
+            }).join('')}
+            <th></th>
+          </tr>
           <tr>
             <th style="min-width:260px">Member</th>
-            ${buckets.map(b=>{
+            ${bucketManagers.map(({ bucket:b })=>{
               const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
-              const mgr = getBucketManagerName(b);
-              // Show only the assigned user's name (no label). If none yet, keep blank.
-              const mgrLabel = mgr ? UI.esc(mgr) : '';
-              const fs = _mbxHeaderFontPx(mgr);
-              return `<th class="${cls} mbx-time-th"><div class="mbx-th"><div class="mbx-th-top" style="font-size:${fs}px" title="${mgr ? UI.esc(mgr) : 'Mailbox Manager'}">${mgrLabel}</div><div class="mbx-th-time">${UI.esc(_mbxBucketLabel(b))}</div></div></th>`;
+              return `<th class="${cls} mbx-time-th"><div class="mbx-th"><div class="mbx-th-time">${UI.esc(_mbxBucketLabel(b))}</div></div></th>`;
             }).join('')}
             <th style="width:110px" class="mbx-time-th">Total</th>
           </tr>
@@ -836,7 +865,7 @@ root.innerHTML = `
           <tr>
             <td class="mbx-foot">TOTAL</td>
             ${footCells}
-            <td class="mbx-foot mbx-count-td"><span class="mbx-num">${totals.shiftTotal||0}</span></td>
+            <td class="mbx-foot mbx-count-td"><span class="mbx-num" data-zero="${(totals.shiftTotal||0)===0 ? '1' : '0'}">${totals.shiftTotal||0}</span></td>
           </tr>
         </tfoot>
       </table>
