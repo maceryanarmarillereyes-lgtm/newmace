@@ -26,6 +26,9 @@
   try { localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { localTZ = ''; }
 
   const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  let teamThemePalette = {};
+  let themePaletteLoadedFor = '';
+
 
   function esc(s) { return (window.UI && UI.esc) ? UI.esc(s) : String(s || '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
 
@@ -200,6 +203,32 @@
       .replace(/\s+/g, ' ');
   }
 
+  function normalizeTaskCssKey(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  function paletteTaskAliases(taskKey) {
+    const k = normalizeTaskCssKey(taskKey);
+    if (!k) return [];
+    if (k === 'call_onqueue') return ['call_onqueue', 'call_available'];
+    if (k === 'call_available') return ['call_available', 'call_onqueue'];
+    return [k];
+  }
+
+  function themeColorForTask(taskIdOrLabel) {
+    const keys = paletteTaskAliases(taskIdOrLabel);
+    for (const key of keys) {
+      const paletteKey = `task_${key}`;
+      const c = teamThemePalette && teamThemePalette[paletteKey];
+      if (isRenderableColor(c)) return String(c);
+    }
+    return '';
+  }
+
   function findTeamTaskMeta(taskIdOrLabel) {
     const wanted = normalizeTaskKey(taskIdOrLabel);
     if (!wanted) return null;
@@ -224,9 +253,29 @@
 
   function taskColor(taskId) {
     const label = taskLabel(taskId);
+    const fromTheme = themeColorForTask(taskId) || themeColorForTask(label);
+    if (isRenderableColor(fromTheme)) return String(fromTheme);
     const teamTask = findTeamTaskMeta(taskId) || findTeamTaskMeta(label);
     const configuredColor = teamTask ? String(teamTask.color || teamTask.colour || '') : '';
     return normalizeTaskColor(label || taskId, configuredColor) || 'rgba(255,255,255,.18)';
+  }
+
+  function taskTypeAttr(taskIdOrLabel) {
+    const keys = paletteTaskAliases(taskIdOrLabel);
+    return keys[0] || 'block';
+  }
+
+  function buildThemeStyleVars(hours) {
+    const out = [`--schx-hours:${hours}`];
+    const pairs = Object.entries(teamThemePalette || {});
+    for (const [k, v] of pairs) {
+      if (!String(k || '').startsWith('task_')) continue;
+      if (!isRenderableColor(v)) continue;
+      const taskKey = normalizeTaskCssKey(String(k).slice(5));
+      if (!taskKey) continue;
+      out.push(`--theme-${taskKey}:${String(v)}`);
+    }
+    return out.join(';');
   }
 
   function scheduleLegendItems() {
@@ -254,9 +303,8 @@
 
   function taskVars(color) {
     const c = String(color || '#93c5fd');
-    // Enterprise pastel surface + bright text to preserve contrast in dark mode.
-    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.58) : 'rgba(80,160,255,0.58)';
-    const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.96) : 'rgba(80,160,255,0.96)';
+    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.18) : 'rgba(80,160,255,0.18)';
+    const border = c;
     const text = '#FFFFFF';
     return { color: c, bg, border, text };
   }
@@ -527,7 +575,7 @@
     const nowOffset = currentTimeOffsetMinutes(shift);
 
     host.innerHTML = `
-      <div class="schx" data-shift="${esc(sk)}" style="--schx-hours:${hours}">
+      <div class="schx" data-shift="${esc(sk)}" style="${esc(buildThemeStyleVars(hours))}">
         <div class="schx-header">
           <div>
             <div class="ux-h1">My Schedule</div>
@@ -673,7 +721,8 @@
       return `
         <div
           class="schedule-block schx-block"
-          style="top:calc(${m.topH} * var(--schx-row-h));height:calc(${m.heightH} * var(--schx-row-h));--task-color:${esc(vars.color)};--task-bg:${esc(vars.bg)};--task-border:${esc(vars.border)};--task-text:${esc(vars.text)}"
+          data-task-type="${esc(taskTypeAttr(b.schedule))}"
+          style="top:calc(${m.topH} * var(--schx-row-h));height:calc(${m.heightH} * var(--schx-row-h));--task-color:${esc(vars.color)};--task-text:${esc(vars.text)}"
           role="button"
           tabindex="0"
           data-tooltip="${esc(tooltipLines.join('\n'))}"
@@ -813,11 +862,12 @@
           class="tsg-cell has-task"
           role="cell"
           tabindex="0"
-          style="--task-color:${esc(vars.color)};--task-bg:${esc(vars.bg)};--task-border:${esc(vars.border)};--task-text:${esc(vars.text)};background:${esc(vars.bg)}"
+          data-task-type="${esc(taskTypeAttr(taskId))}"
+          style="--task-color:${esc(vars.color)};--task-text:${esc(vars.text)}"
           data-tooltip="${esc(tooltip)}"
           aria-label="${esc(memberName)} ${esc(label)} ${esc(hourStart)} to ${esc(hourEnd)}"
         >
-          ${showLabel ? `<span class="task-label tsg-badge" style="--task-color:${esc(vars.color)};--task-bg:rgba(0,0,0,.20);--task-border:rgba(255,255,255,.18);--task-text:#fff"><span class="task-color" style="background:${esc(vars.color)}"></span>${esc(label)}</span>` : ''}
+          ${showLabel ? `<span class="task-label tsg-badge" style="--task-color:${esc(vars.color)};--task-bg:color-mix(in srgb, var(--task-color) 22%, transparent);--task-border:var(--task-color);--task-text:#fff"><span class="task-color" style="background:${esc(vars.color)}"></span>${esc(label)}</span>` : ''}
         </div>
       `);
     }
@@ -935,6 +985,22 @@
     }, 1000);
   }
 
+  async function refreshMemberScheduleTheme() {
+    const uid = String((me && me.id) || '');
+    if (!uid || themePaletteLoadedFor === uid) return;
+    try {
+      const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+      const headers = jwt ? { Authorization: `Bearer ${jwt}` } : {};
+      const res = await fetch(`/api/member/${encodeURIComponent(uid)}/schedule`, { headers, cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      const palette = (data && data.teamThemePalette && typeof data.teamThemePalette === 'object') ? data.teamThemePalette : {};
+      teamThemePalette = palette;
+      themePaletteLoadedFor = uid;
+      render();
+    } catch (_) { }
+  }
+
   function startRealtimeRefresh() {
     if (storeListener && Store.unlisten) {
       try { Store.unlisten(storeListener); } catch (_) { }
@@ -954,4 +1020,5 @@
   // Init
   render();
   startRealtimeRefresh();
+  refreshMemberScheduleTheme();
 });
