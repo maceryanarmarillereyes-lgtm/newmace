@@ -152,13 +152,26 @@
     return id;
   }
 
+  function isRenderableColor(color) {
+    const value = String(color || '').trim();
+    if (!value) return false;
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) return true;
+    if (/^(rgb|rgba|hsl|hsla)\(/i.test(value)) return true;
+    return false;
+  }
+
+  function canonicalTaskColor(labelOrId) {
+    const key = String(labelOrId || '').trim().toLowerCase();
+    if (key === 'mailbox_manager' || key.includes('mailbox')) return '#4aa3ff';
+    if (key === 'back_office' || key.includes('back office') || key.includes('admin')) return '#ffa21a';
+    if (key === 'call_onqueue' || key === 'call_available' || key.includes('call')) return '#2ecc71';
+    if (key === 'lunch' || key.includes('lunch') || key.includes('break')) return '#22d3ee';
+    return '#4aa3ff';
+  }
+
   function normalizeTaskColor(labelOrId, rawColor) {
-    const lbl = String(labelOrId || '').toLowerCase();
-    if (lbl === 'mailbox manager') return '#4aa3ff';
-    if (lbl === 'back office') return '#ffa21a';
-    if (lbl === 'call available') return '#2ecc71';
-    if (lbl === 'lunch') return '#22d3ee';
-    return rawColor || '';
+    if (isRenderableColor(rawColor)) return String(rawColor).trim();
+    return canonicalTaskColor(labelOrId);
   }
 
   function taskColor(taskId) {
@@ -169,16 +182,45 @@
       }
     } catch (_) { }
     const lbl = taskLabel(taskId);
-    return normalizeTaskColor(lbl, c) || 'rgba(255,255,255,.18)';
+    return normalizeTaskColor(lbl || taskId, c) || 'rgba(255,255,255,.18)';
+  }
+
+  function scheduleLegendItems() {
+    const defaults = [
+      { id: 'mailbox_manager', label: 'Mailbox Manager' },
+      { id: 'call_available', label: 'Call Available' },
+      { id: 'back_office', label: 'Back Office' },
+      { id: 'lunch', label: 'Lunch / Break' },
+    ];
+    const tasks = getTeamTasks();
+    return defaults.map(def => {
+      const hit = tasks.find(t => {
+        const tid = String(t && (t.id || t.taskId || '')).toLowerCase();
+        const lbl = String(t && (t.label || t.name || '')).toLowerCase();
+        if (def.id === 'call_available') return tid === 'call_available' || tid === 'call_onqueue' || lbl.includes('call available');
+        if (def.id === 'lunch') return tid === 'lunch' || lbl.includes('lunch') || lbl.includes('break');
+        return tid === def.id || lbl.includes(def.label.toLowerCase());
+      }) || null;
+      const raw = hit ? (hit.color || hit.colour || '') : '';
+      const label = hit ? String(hit.label || hit.name || def.label) : def.label;
+      const color = normalizeTaskColor(def.id, raw);
+      return { label, color };
+    });
   }
 
   function taskVars(color) {
     const c = String(color || '#4aa3ff');
-    // Enterprise pastel surface + dark text for readability in dark mode.
-    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.34) : 'rgba(80,160,255,0.34)';
-    const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.52) : 'rgba(80,160,255,0.52)';
-    const text = '#081425';
+    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.80) : 'rgba(74,163,255,0.80)';
+    const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 1) : c;
+    const text = '#052036';
     return { color: c, bg, border, text };
+  }
+
+  function shiftLabel(sk) {
+    const key = String(sk || '').toLowerCase();
+    if (key.includes('night')) return 'night';
+    if (key.includes('mid')) return 'mid';
+    return 'morning';
   }
 
   function taskIcon(label) {
@@ -448,8 +490,8 @@
 
         <div class="schx-kpis">
           <div class="schx-kpi">
-            <div class="small muted">Shift</div>
-            <div class="big">${esc(teamLabel || '—')}</div>
+            <div class="small muted">Shift status</div>
+            <div class="big">${esc(shiftLabel(sk))}</div>
             <div class="small muted">${esc(shift.startHM)}–${esc(shift.endHM)}</div>
           </div>
           <div class="schx-kpi">
@@ -470,10 +512,7 @@
         </div>
 
         <div class="schx-legend" aria-label="Schedule legend">
-          <span class="legend-item"><span class="legend-dot mailbox"></span>Mailbox Manager</span>
-          <span class="legend-item"><span class="legend-dot call"></span>Call Available</span>
-          <span class="legend-item"><span class="legend-dot admin"></span>Back Office</span>
-          <span class="legend-item"><span class="legend-dot break"></span>Lunch / Break</span>
+          ${scheduleLegendItems().map(item => `<span class="legend-item"><span class="legend-dot" style="background:${esc(item.color)}"></span>${esc(item.label)}</span>`).join('')}
         </div>
 
         ${(mode === 'day' || mode === 'team') ? renderDayTabs(week) : ''}
@@ -601,6 +640,7 @@
         </header>
         <div class="schx-daybody" data-day="${d.dayIdx}" style="--shift-len:${shift.lenMin}" aria-label="${esc(d.dayLabel)} blocks">
           ${lines}
+          <div class="schx-vline" aria-hidden="true"></div>
           ${blocksHtml || `<div class="schx-empty small muted">No blocks</div>`}
         </div>
       </section>
