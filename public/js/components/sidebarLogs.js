@@ -1,7 +1,7 @@
 (function(){
   // Left sidebar Activity Logs widget
   // - Keeps content inside the overlay background
-  // - Shows latest 5 logs based on role visibility
+  // - Shows latest 6 logs based on role visibility
   window.Components = window.Components || {};
 
   function canSeeLog(me, entry){
@@ -54,19 +54,25 @@
 
         const listEl = UI.el('#sideLogsList');
         const hintEl = UI.el('#sideLogsHint');
-        const btn = UI.el('#openLogs');
-        if(!listEl || !hintEl || !btn) return;
+        const viewAllBtn = UI.el('#sideLogsViewAll');
+        if(!listEl || !hintEl) return;
 
-        btn.onclick = ()=>{ window.location.hash = '#logs'; };
+        if(viewAllBtn) viewAllBtn.onclick = ()=>{ window.location.hash = '#logs'; };
 
-        const logs = Store.getLogs().filter(l=>canSeeLog(this._lastUser, l)).slice(0,5);
-        hintEl.textContent = logs.length ? `Showing ${logs.length} recent` : 'No activity';
+        const logs = Store.getLogs().filter(l=>canSeeLog(this._lastUser, l)).slice(0,6);
+        hintEl.textContent = logs.length ? `Updated ${logs.length} item${logs.length>1?'s':''}` : 'No activity';
+
+        if(!logs.length){
+          listEl.innerHTML = '<div class="log-empty">No recent activity.</div>';
+          return;
+        }
 
         listEl.innerHTML = logs.map(e=>{
           const teamClass = `team-${e.teamId}`;
           return `<div class="logline ${teamClass}" title="${UI.esc(e.detail||'')}">
-            <span class="t">[${fmtHHMM(e.ts)}]</span>
-            <span class="m">${UI.esc(e.msg||e.action||'')}</span>
+            <span class="t">${fmtHHMM(e.ts)}</span>
+            <span class="tl-dot" aria-hidden="true"></span>
+            <span class="m">${UI.esc(e.msg||e.action||'Activity updated')}</span>
           </div>`;
         }).join('');
       }catch(e){
