@@ -160,7 +160,30 @@
     return false;
   }
 
-  function canonicalTaskColor(labelOrId) {
+  function rgbaFromColor(color, alpha) {
+    const c = String(color || '').trim();
+    const a = Number.isFinite(Number(alpha)) ? Number(alpha) : 1;
+    if ((window.UI && UI.hexToRgba) && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c)) {
+      try { return UI.hexToRgba(c, a); } catch (_) { }
+    }
+    const hex = c.replace('#', '');
+    if (/^[0-9a-f]{3}$/i.test(hex)) {
+      const r = parseInt(hex[0] + hex[0], 16);
+      const g = parseInt(hex[1] + hex[1], 16);
+      const b = parseInt(hex[2] + hex[2], 16);
+      return `rgba(${r},${g},${b},${a})`;
+    }
+    if (/^[0-9a-f]{6}$/i.test(hex)) {
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      return `rgba(${r},${g},${b},${a})`;
+    }
+    if (/^(rgb|rgba|hsl|hsla)\(/i.test(c)) return c;
+    return `rgba(147,197,253,${a})`;
+  }
+
+  function semanticTaskColor(labelOrId) {
     const key = String(labelOrId || '').trim().toLowerCase();
     if (key === 'mailbox_manager' || key.includes('mailbox')) return '#c4b5fd';
     if (key === 'back_office' || key.includes('back office') || key.includes('admin')) return '#fdba74';
@@ -214,7 +237,7 @@
   }
 
   function taskVars(color) {
-    const c = String(color || '#4aa3ff');
+    const c = String(color || '#93c5fd');
     // Enterprise pastel surface + bright text to preserve contrast in dark mode.
     const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.58) : 'rgba(80,160,255,0.58)';
     const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.96) : 'rgba(80,160,255,0.96)';
@@ -774,7 +797,7 @@
           class="tsg-cell has-task"
           role="cell"
           tabindex="0"
-          style="--task-color:${esc(vars.color)};--task-bg:${esc(vars.bg)};--task-border:${esc(vars.border)};--task-text:${esc(vars.text)};background:${esc(vars.color)}"
+          style="--task-color:${esc(vars.color)};--task-bg:${esc(vars.bg)};--task-border:${esc(vars.border)};--task-text:${esc(vars.text)};background:${esc(vars.bg)}"
           data-tooltip="${esc(tooltip)}"
           aria-label="${esc(memberName)} ${esc(label)} ${esc(hourStart)} to ${esc(hourEnd)}"
         >
