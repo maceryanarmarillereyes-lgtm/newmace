@@ -192,25 +192,41 @@
     return '#93c5fd';
   }
 
+  function normalizeTaskKey(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_\s-]+/g, ' ')
+      .replace(/\s+/g, ' ');
+  }
+
+  function findTeamTaskMeta(taskIdOrLabel) {
+    const wanted = normalizeTaskKey(taskIdOrLabel);
+    if (!wanted) return null;
+    const tasks = getTeamTasks();
+    for (const task of tasks) {
+      if (!task) continue;
+      const id = String(task.id || task.taskId || '');
+      const label = String(task.label || task.name || '');
+      const aliases = [
+        normalizeTaskKey(id),
+        normalizeTaskKey(label),
+      ].filter(Boolean);
+      if (aliases.includes(wanted)) return task;
+    }
+    return null;
+  }
+
   function normalizeTaskColor(labelOrId, rawColor) {
-    const lbl = String(labelOrId || '').trim().toLowerCase();
-    if (lbl.includes('mailbox')) return '#c4b5fd';
-    if (lbl.includes('back office') || lbl.includes('admin')) return '#fdba74';
-    if (lbl.includes('call')) return '#86efac';
-    if (lbl.includes('lunch') || lbl.includes('break')) return '#94a3b8';
     if (isRenderableColor(rawColor)) return String(rawColor);
-    return canonicalTaskColor(lbl || labelOrId);
+    return semanticTaskColor(labelOrId);
   }
 
   function taskColor(taskId) {
-    let c = '';
-    try {
-      if (window.Store && Store.getTeamTaskColor && me.teamId != null) {
-        c = Store.getTeamTaskColor(me.teamId, String(taskId || '')) || '';
-      }
-    } catch (_) { }
-    const lbl = taskLabel(taskId);
-    return normalizeTaskColor(lbl || taskId, c) || 'rgba(255,255,255,.18)';
+    const label = taskLabel(taskId);
+    const teamTask = findTeamTaskMeta(taskId) || findTeamTaskMeta(label);
+    const configuredColor = teamTask ? String(teamTask.color || teamTask.colour || '') : '';
+    return normalizeTaskColor(label || taskId, configuredColor) || 'rgba(255,255,255,.18)';
   }
 
   function scheduleLegendItems() {
