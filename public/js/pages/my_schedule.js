@@ -185,23 +185,21 @@
 
   function semanticTaskColor(labelOrId) {
     const key = String(labelOrId || '').trim().toLowerCase();
-    if (!key) return '';
     if (key === 'mailbox_manager' || key.includes('mailbox')) return '#c4b5fd';
     if (key === 'back_office' || key.includes('back office') || key.includes('admin')) return '#fdba74';
     if (key === 'call_onqueue' || key === 'call_available' || key.includes('call')) return '#86efac';
     if (key === 'lunch' || key.includes('lunch') || key.includes('break')) return '#94a3b8';
-    return '';
-  }
-
-  function canonicalTaskColor(labelOrId) {
-    return semanticTaskColor(labelOrId) || '#93c5fd';
+    return '#93c5fd';
   }
 
   function normalizeTaskColor(labelOrId, rawColor) {
-    const semantic = semanticTaskColor(labelOrId);
-    if (semantic) return semantic;
+    const lbl = String(labelOrId || '').trim().toLowerCase();
+    if (lbl.includes('mailbox')) return '#c4b5fd';
+    if (lbl.includes('back office') || lbl.includes('admin')) return '#fdba74';
+    if (lbl.includes('call')) return '#86efac';
+    if (lbl.includes('lunch') || lbl.includes('break')) return '#94a3b8';
     if (isRenderableColor(rawColor)) return String(rawColor);
-    return canonicalTaskColor(labelOrId);
+    return canonicalTaskColor(lbl || labelOrId);
   }
 
   function taskColor(taskId) {
@@ -241,8 +239,8 @@
   function taskVars(color) {
     const c = String(color || '#93c5fd');
     // Enterprise pastel surface + bright text to preserve contrast in dark mode.
-    const bg = rgbaFromColor(c, 0.58);
-    const border = rgbaFromColor(c, 0.96);
+    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.58) : 'rgba(80,160,255,0.58)';
+    const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.96) : 'rgba(80,160,255,0.96)';
     const text = '#FFFFFF';
     return { color: c, bg, border, text };
   }
