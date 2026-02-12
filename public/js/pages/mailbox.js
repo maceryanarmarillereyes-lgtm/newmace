@@ -1583,23 +1583,17 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
 
       // shift transition detect + re-render on change
       const { state } = ensureShiftTables();
-      // highlight active bucket by toggling classes without full re-render (best effort)
+      // highlight only the active time header (avoid full-column flashing)
       try{
         const { table } = ensureShiftTables();
         const active = computeActiveBucketId(table);
-        const ths = root.querySelectorAll('.mbx-table thead th');
         const idxMap = {};
         (table.buckets||[]).forEach((b,i)=>idxMap[b.id]=i);
         const activeIdx = idxMap[active];
-        // columns: Member is 0, buckets start at 1
-        const bucketStartCol = 1;
-        root.querySelectorAll('.mbx-table .active-col').forEach(n=>n.classList.remove('active-col'));
+        root.querySelectorAll('.mbx-table thead th.active-head-col').forEach(n=>n.classList.remove('active-head-col'));
         if(activeIdx !== undefined){
-          const col = bucketStartCol + activeIdx;
-          root.querySelectorAll(`.mbx-table tr`).forEach(tr=>{
-            const cell = tr.children && tr.children[col];
-            if(cell) cell.classList.add('active-col');
-          });
+          const timeHeads = root.querySelectorAll('.mbx-table thead tr:last-child th.mbx-time-th');
+          if(timeHeads && timeHeads[activeIdx]) timeHeads[activeIdx].classList.add('active-head-col');
         }
       }catch(_){ }
 
