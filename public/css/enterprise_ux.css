@@ -1363,10 +1363,10 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   border-radius:999px;
   border:1px solid rgba(255,255,255,.18);
 }
-.schx-legend .legend-dot.mailbox{ background:#93c5fd; }
-.schx-legend .legend-dot.call{ background:#86efac; }
-.schx-legend .legend-dot.admin{ background:#fdba74; }
-.schx-legend .legend-dot.break{ background:#94a3b8; }
+.schx-legend .legend-dot.mailbox{ background:#4aa3ff; }
+.schx-legend .legend-dot.call{ background:#2ecc71; }
+.schx-legend .legend-dot.admin{ background:#ffa21a; }
+.schx-legend .legend-dot.break{ background:#22d3ee; }
 
 .schx-foot{
   margin-top:12px;

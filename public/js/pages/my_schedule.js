@@ -152,6 +152,23 @@
     return id;
   }
 
+  function isRenderableColor(color) {
+    const value = String(color || '').trim();
+    if (!value) return false;
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) return true;
+    if (/^(rgb|rgba|hsl|hsla)\(/i.test(value)) return true;
+    return false;
+  }
+
+  function canonicalTaskColor(labelOrId) {
+    const key = String(labelOrId || '').trim().toLowerCase();
+    if (key === 'mailbox_manager' || key.includes('mailbox')) return '#4aa3ff';
+    if (key === 'back_office' || key.includes('back office') || key.includes('admin')) return '#ffa21a';
+    if (key === 'call_onqueue' || key === 'call_available' || key.includes('call')) return '#2ecc71';
+    if (key === 'lunch' || key.includes('lunch') || key.includes('break')) return '#22d3ee';
+    return '#4aa3ff';
+  }
+
   function normalizeTaskColor(labelOrId, rawColor) {
     const lbl = String(labelOrId || '').trim().toLowerCase();
     if (lbl.includes('mailbox')) return '#c4b5fd';
@@ -169,7 +186,30 @@
       }
     } catch (_) { }
     const lbl = taskLabel(taskId);
-    return normalizeTaskColor(lbl, c) || 'rgba(255,255,255,.18)';
+    return normalizeTaskColor(lbl || taskId, c) || 'rgba(255,255,255,.18)';
+  }
+
+  function scheduleLegendItems() {
+    const defaults = [
+      { id: 'mailbox_manager', label: 'Mailbox Manager' },
+      { id: 'call_available', label: 'Call Available' },
+      { id: 'back_office', label: 'Back Office' },
+      { id: 'lunch', label: 'Lunch / Break' },
+    ];
+    const tasks = getTeamTasks();
+    return defaults.map(def => {
+      const hit = tasks.find(t => {
+        const tid = String(t && (t.id || t.taskId || '')).toLowerCase();
+        const lbl = String(t && (t.label || t.name || '')).toLowerCase();
+        if (def.id === 'call_available') return tid === 'call_available' || tid === 'call_onqueue' || lbl.includes('call available');
+        if (def.id === 'lunch') return tid === 'lunch' || lbl.includes('lunch') || lbl.includes('break');
+        return tid === def.id || lbl.includes(def.label.toLowerCase());
+      }) || null;
+      const raw = hit ? (hit.color || hit.colour || '') : '';
+      const label = hit ? String(hit.label || hit.name || def.label) : def.label;
+      const color = normalizeTaskColor(def.id, raw);
+      return { label, color };
+    });
   }
 
   function taskVars(color) {
@@ -477,10 +517,7 @@
         </div>
 
         <div class="schx-legend" aria-label="Schedule legend">
-          <span class="legend-item"><span class="legend-dot mailbox"></span>Mailbox Manager</span>
-          <span class="legend-item"><span class="legend-dot call"></span>Call Available</span>
-          <span class="legend-item"><span class="legend-dot admin"></span>Back Office</span>
-          <span class="legend-item"><span class="legend-dot break"></span>Lunch / Break</span>
+          ${scheduleLegendItems().map(item => `<span class="legend-item"><span class="legend-dot" style="background:${esc(item.color)}"></span>${esc(item.label)}</span>`).join('')}
         </div>
 
         ${(mode === 'day' || mode === 'team') ? renderDayTabs(week) : ''}
