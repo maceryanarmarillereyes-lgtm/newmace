@@ -174,11 +174,20 @@
 
   function taskVars(color) {
     const c = String(color || '#4aa3ff');
-    // Build consistent translucent background + borders
-    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.16) : 'rgba(80,160,255,0.16)';
-    const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.32) : 'rgba(80,160,255,0.32)';
-    const text = '#ffffff';
+    // Enterprise pastel surface + dark text for readability in dark mode.
+    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.34) : 'rgba(80,160,255,0.34)';
+    const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.52) : 'rgba(80,160,255,0.52)';
+    const text = '#081425';
     return { color: c, bg, border, text };
+  }
+
+  function taskIcon(label) {
+    const key = String(label || '').trim().toLowerCase();
+    if (key.includes('call')) return '📞';
+    if (key.includes('mailbox')) return '📥';
+    if (key.includes('lunch') || key.includes('break')) return '☕';
+    if (key.includes('back office') || key.includes('admin')) return '🗂️';
+    return '•';
   }
 
   function normalizeBlock(b) {
@@ -261,7 +270,7 @@
     const nowMin = (Number(parts.hh) || 0) * 60 + (Number(parts.mm) || 0);
     const wd = weekdayFromISO(parts.isoDate || todayISO);
     const blocks = getMyBlocks(wd).map(normalizeBlock).sort((a, b) => parseHM(a.start) - parseHM(b.start));
-    if (!blocks.length) return { label: '—', active: null, next: null, wd, isoDate: parts.isoDate || todayISO, blocks };
+    if (!blocks.length) return { label: '—', active: null, next: null, wd, isoDate: parts.isoDate || todayISO, blocks, secLeft: 0, state: 'idle' };
 
     const inBlock = (b) => {
       const s = parseHM(b.start);
@@ -275,6 +284,8 @@
     const next = after[0] || (active ? null : blocks[0] || null);
 
     let label = '—';
+    let secLeft = 0;
+    let state = 'idle';
     try {
       const nowMs = Date.now();
       const fmt = (sec) => (UI.formatDuration ? UI.formatDuration(sec) : `${Math.round(sec / 60)}m`);
@@ -285,17 +296,43 @@
         const endISO = wraps && nowMin >= sMin ? addDaysISO(parts.isoDate, 1) : parts.isoDate;
         const endMs = UI.parseManilaDateTimeLocal(`${endISO}T${active.end}`);
         const left = Math.max(0, Math.floor((endMs - nowMs) / 1000));
+        secLeft = left;
+        state = 'active';
         label = `Ends in ${fmt(left)}`;
       } else if (next && UI.parseManilaDateTimeLocal) {
         const nMin = parseHM(next.start);
         const startISO = (nMin < nowMin) ? addDaysISO(parts.isoDate, 1) : parts.isoDate;
         const startMs = UI.parseManilaDateTimeLocal(`${startISO}T${next.start}`);
         const left = Math.max(0, Math.floor((startMs - nowMs) / 1000));
+        secLeft = left;
+        state = 'next';
         label = `Starts in ${fmt(left)}`;
       }
     } catch (_) { }
 
-    return { label, active, next, wd, isoDate: parts.isoDate || todayISO, blocks };
+    return { label, active, next, wd, isoDate: parts.isoDate || todayISO, blocks, secLeft, state };
+  }
+
+  function computeCountdownTone(countdown) {
+    const sec = Number(countdown && countdown.secLeft) || 0;
+    if (!countdown || countdown.state === 'idle') return 'muted';
+    if (sec <= 3600) return 'warn';
+    if (sec <= 3 * 3600) return 'focus';
+    return 'ok';
+  }
+
+  function currentTimeOffsetMinutes(shift) {
+    try {
+      const p = nowManilaParts();
+      if (!p) return null;
+      const nowMin = (Number(p.hh) || 0) * 60 + (Number(p.mm) || 0);
+      let off = nowMin - shift.startMin;
+      if (off < 0) off += (24 * 60);
+      if (off < 0 || off > shift.lenMin) return null;
+      return off;
+    } catch (_) {
+      return null;
+    }
   }
 
   function currentWeekStartMondayISO() {
@@ -387,6 +424,8 @@
     const todayBlocks = week[todayWD] ? week[todayWD].blocks : [];
 
     const hours = Math.max(1, Math.ceil(shift.lenMin / 60));
+    const countdownTone = computeCountdownTone(countdown);
+    const nowOffset = currentTimeOffsetMinutes(shift);
 
     host.innerHTML = `
       <div class="schx" data-shift="${esc(sk)}" style="--schx-hours:${hours}">
@@ -418,7 +457,7 @@
             <div class="big">${todayBlocks.length} block${todayBlocks.length === 1 ? '' : 's'}</div>
             <div class="small muted">${countdown.active ? `Active: ${esc(taskLabel(countdown.active.schedule))}` : (todayBlocks.length ? 'No active block' : 'No blocks')}</div>
           </div>
-          <div class="schx-kpi">
+          <div class="schx-kpi countdown ${esc(countdownTone)}">
             <div class="small muted">Countdown</div>
             <div class="big" id="schxCountdown">${esc(countdown.label)}</div>
             <div class="small muted">Auto-updates in real time</div>
@@ -428,6 +467,13 @@
             <div class="big">${totalWeekBlocks} total</div>
             <div class="small muted">${esc(formatDateLong(weekStartSunISO))} → ${esc(formatDateLong(isoForDay(6)))}</div>
           </div>
+        </div>
+
+        <div class="schx-legend" aria-label="Schedule legend">
+          <span class="legend-item"><span class="legend-dot mailbox"></span>Mailbox Manager</span>
+          <span class="legend-item"><span class="legend-dot call"></span>Call Available</span>
+          <span class="legend-item"><span class="legend-dot admin"></span>Back Office</span>
+          <span class="legend-item"><span class="legend-dot break"></span>Lunch / Break</span>
         </div>
 
         ${(mode === 'day' || mode === 'team') ? renderDayTabs(week) : ''}
@@ -446,6 +492,7 @@
               </div>
 
               <div class="schx-cols ${mode === 'day' ? 'day' : 'week'}" id="schxCols" aria-label="${mode === 'day' ? 'Daily calendar' : 'Weekly calendar'}">
+                ${nowOffset != null ? `<div class="schx-nowline" aria-hidden="true" style="top:calc(var(--schx-head-h) + var(--schx-head-gap) + ${(nowOffset / 60)} * var(--schx-row-h))"><span class="schx-nowline-dot"></span></div>` : ''}
                 ${visibleDays.map(d => renderDay(d, shift, hours)).join('')}
               </div>
             </div>
@@ -534,17 +581,11 @@
           role="button"
           tabindex="0"
           data-tooltip="${esc(tooltipLines.join('\n'))}"
-          aria-label="${esc(label)} ${esc(b.start)} to ${esc(b.end)}"
+          aria-label="${esc(label)}"
         >
-          <div class="schx-btop">
-            <span class="task-label" style="--task-color:${esc(vars.color)};--task-bg:${esc(vars.bg)};--task-border:${esc(vars.border)};--task-text:${esc(vars.text)}">
-              <span class="task-color" style="background:${esc(vars.color)}"></span>
-              ${esc(label)}
-            </span>
-            <span class="schx-time">${esc(b.start)}–${esc(b.end)}</span>
-          </div>
-          <div class="schx-bsub">
-            ${localRange ? `<span class="small muted">Local: ${esc(localRange)} (${esc(localTZ)})</span>` : `<span class="small muted">${esc(tzManila)}</span>`}
+          <div class="schx-btop minimal">
+            <span class="schx-status-icon" aria-hidden="true">${esc(taskIcon(label))}</span>
+            <span class="schx-block-title">${esc(label)}</span>
           </div>
         </div>
       `;
