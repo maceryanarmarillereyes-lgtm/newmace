@@ -170,8 +170,12 @@
   }
 
   function normalizeTaskColor(labelOrId, rawColor) {
-    if (isRenderableColor(rawColor)) return String(rawColor).trim();
-    return canonicalTaskColor(labelOrId);
+    const lbl = String(labelOrId || '').trim().toLowerCase();
+    if (lbl.includes('mailbox')) return '#c4b5fd';
+    if (lbl.includes('back office') || lbl.includes('admin')) return '#93c5fd';
+    if (lbl.includes('call')) return '#86efac';
+    if (lbl.includes('lunch') || lbl.includes('break')) return '#94a3b8';
+    return rawColor || '#93c5fd';
   }
 
   function taskColor(taskId) {
@@ -210,9 +214,10 @@
 
   function taskVars(color) {
     const c = String(color || '#4aa3ff');
-    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.80) : 'rgba(74,163,255,0.80)';
-    const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 1) : c;
-    const text = '#052036';
+    // Enterprise pastel surface + bright text to preserve contrast in dark mode.
+    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.72) : 'rgba(80,160,255,0.72)';
+    const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.96) : 'rgba(80,160,255,0.96)';
+    const text = '#f8fbff';
     return { color: c, bg, border, text };
   }
 
