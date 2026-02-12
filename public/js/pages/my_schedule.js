@@ -160,22 +160,48 @@
     return false;
   }
 
-  function canonicalTaskColor(labelOrId) {
+  function rgbaFromColor(color, alpha) {
+    const c = String(color || '').trim();
+    const a = Number.isFinite(Number(alpha)) ? Number(alpha) : 1;
+    if ((window.UI && UI.hexToRgba) && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c)) {
+      try { return UI.hexToRgba(c, a); } catch (_) { }
+    }
+    const hex = c.replace('#', '');
+    if (/^[0-9a-f]{3}$/i.test(hex)) {
+      const r = parseInt(hex[0] + hex[0], 16);
+      const g = parseInt(hex[1] + hex[1], 16);
+      const b = parseInt(hex[2] + hex[2], 16);
+      return `rgba(${r},${g},${b},${a})`;
+    }
+    if (/^[0-9a-f]{6}$/i.test(hex)) {
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      return `rgba(${r},${g},${b},${a})`;
+    }
+    if (/^(rgb|rgba|hsl|hsla)\(/i.test(c)) return c;
+    return `rgba(147,197,253,${a})`;
+  }
+
+  function semanticTaskColor(labelOrId) {
     const key = String(labelOrId || '').trim().toLowerCase();
-    if (key === 'mailbox_manager' || key.includes('mailbox')) return '#4aa3ff';
-    if (key === 'back_office' || key.includes('back office') || key.includes('admin')) return '#ffa21a';
-    if (key === 'call_onqueue' || key === 'call_available' || key.includes('call')) return '#2ecc71';
-    if (key === 'lunch' || key.includes('lunch') || key.includes('break')) return '#22d3ee';
-    return '#4aa3ff';
+    if (!key) return '';
+    if (key === 'mailbox_manager' || key.includes('mailbox')) return '#c4b5fd';
+    if (key === 'back_office' || key.includes('back office') || key.includes('admin')) return '#fdba74';
+    if (key === 'call_onqueue' || key === 'call_available' || key.includes('call')) return '#86efac';
+    if (key === 'lunch' || key.includes('lunch') || key.includes('break')) return '#94a3b8';
+    return '';
+  }
+
+  function canonicalTaskColor(labelOrId) {
+    return semanticTaskColor(labelOrId) || '#93c5fd';
   }
 
   function normalizeTaskColor(labelOrId, rawColor) {
-    const lbl = String(labelOrId || '').trim().toLowerCase();
-    if (lbl.includes('mailbox')) return '#c4b5fd';
-    if (lbl.includes('back office') || lbl.includes('admin')) return '#93c5fd';
-    if (lbl.includes('call')) return '#86efac';
-    if (lbl.includes('lunch') || lbl.includes('break')) return '#94a3b8';
-    return rawColor || '#93c5fd';
+    const semantic = semanticTaskColor(labelOrId);
+    if (semantic) return semantic;
+    if (isRenderableColor(rawColor)) return String(rawColor);
+    return canonicalTaskColor(labelOrId);
   }
 
   function taskColor(taskId) {
@@ -213,11 +239,11 @@
   }
 
   function taskVars(color) {
-    const c = String(color || '#4aa3ff');
+    const c = String(color || '#93c5fd');
     // Enterprise pastel surface + bright text to preserve contrast in dark mode.
-    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.72) : 'rgba(80,160,255,0.72)';
-    const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.96) : 'rgba(80,160,255,0.96)';
-    const text = '#f8fbff';
+    const bg = rgbaFromColor(c, 0.58);
+    const border = rgbaFromColor(c, 0.96);
+    const text = '#FFFFFF';
     return { color: c, bg, border, text };
   }
 
@@ -371,8 +397,20 @@
   function currentTimeOffsetMinutes(shift) {
     try {
       const p = nowManilaParts();
-      if (!p) return null;
-      const nowMin = (Number(p.hh) || 0) * 60 + (Number(p.mm) || 0);
+      let hh = p ? Number(p.hh) : NaN;
+      let mm = p ? Number(p.mm) : NaN;
+      if (!Number.isFinite(hh) || !Number.isFinite(mm)) {
+        const now = new Date();
+        const manila = new Intl.DateTimeFormat('en-US', {
+          timeZone: tzManila,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(now);
+        hh = Number((manila.find(x => x.type === 'hour') || {}).value || 0);
+        mm = Number((manila.find(x => x.type === 'minute') || {}).value || 0);
+      }
+      const nowMin = (hh || 0) * 60 + (mm || 0);
       let off = nowMin - shift.startMin;
       if (off < 0) off += (24 * 60);
       if (off < 0 || off > shift.lenMin) return null;
@@ -761,7 +799,7 @@
           class="tsg-cell has-task"
           role="cell"
           tabindex="0"
-          style="--task-color:${esc(vars.color)};--task-bg:${esc(vars.bg)};--task-border:${esc(vars.border)};--task-text:${esc(vars.text)};background:${esc(vars.color)}"
+          style="--task-color:${esc(vars.color)};--task-bg:${esc(vars.bg)};--task-border:${esc(vars.border)};--task-text:${esc(vars.text)};background:${esc(vars.bg)}"
           data-tooltip="${esc(tooltip)}"
           aria-label="${esc(memberName)} ${esc(label)} ${esc(hourStart)} to ${esc(hourEnd)}"
         >
