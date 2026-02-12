@@ -153,12 +153,12 @@
   }
 
   function normalizeTaskColor(labelOrId, rawColor) {
-    const lbl = String(labelOrId || '').toLowerCase();
-    if (lbl === 'mailbox manager') return '#4aa3ff';
-    if (lbl === 'back office') return '#ffa21a';
-    if (lbl === 'call available') return '#2ecc71';
-    if (lbl === 'lunch') return '#22d3ee';
-    return rawColor || '';
+    const lbl = String(labelOrId || '').trim().toLowerCase();
+    if (lbl.includes('mailbox')) return '#c4b5fd';
+    if (lbl.includes('back office') || lbl.includes('admin')) return '#93c5fd';
+    if (lbl.includes('call')) return '#86efac';
+    if (lbl.includes('lunch') || lbl.includes('break')) return '#94a3b8';
+    return rawColor || '#93c5fd';
   }
 
   function taskColor(taskId) {
@@ -174,11 +174,18 @@
 
   function taskVars(color) {
     const c = String(color || '#4aa3ff');
-    // Enterprise pastel surface + dark text for readability in dark mode.
-    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.34) : 'rgba(80,160,255,0.34)';
-    const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.52) : 'rgba(80,160,255,0.52)';
-    const text = '#081425';
+    // Enterprise pastel surface + bright text to preserve contrast in dark mode.
+    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.72) : 'rgba(80,160,255,0.72)';
+    const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.96) : 'rgba(80,160,255,0.96)';
+    const text = '#f8fbff';
     return { color: c, bg, border, text };
+  }
+
+  function shiftLabel(sk) {
+    const key = String(sk || '').toLowerCase();
+    if (key.includes('night')) return 'night';
+    if (key.includes('mid')) return 'mid';
+    return 'morning';
   }
 
   function taskIcon(label) {
@@ -448,8 +455,8 @@
 
         <div class="schx-kpis">
           <div class="schx-kpi">
-            <div class="small muted">Shift</div>
-            <div class="big">${esc(teamLabel || '—')}</div>
+            <div class="small muted">Shift status</div>
+            <div class="big">${esc(shiftLabel(sk))}</div>
             <div class="small muted">${esc(shift.startHM)}–${esc(shift.endHM)}</div>
           </div>
           <div class="schx-kpi">
@@ -601,6 +608,7 @@
         </header>
         <div class="schx-daybody" data-day="${d.dayIdx}" style="--shift-len:${shift.lenMin}" aria-label="${esc(d.dayLabel)} blocks">
           ${lines}
+          <div class="schx-vline" aria-hidden="true"></div>
           ${blocksHtml || `<div class="schx-empty small muted">No blocks</div>`}
         </div>
       </section>

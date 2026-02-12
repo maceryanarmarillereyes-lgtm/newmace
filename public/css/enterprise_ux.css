@@ -1136,10 +1136,10 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 }
 
 .schx-cal{
-  border:1px solid var(--border);
+  border:1px solid rgba(255,255,255,.12);
   border-radius:18px;
   padding:12px;
-  background: rgba(255,255,255,.02);
+  background: linear-gradient(180deg, rgba(16,25,43,.92), rgba(12,20,34,.9));
   max-height: calc(100vh - 250px);
   overflow:auto;
 }
@@ -1147,8 +1147,11 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .schx-grid{
   display:grid;
   grid-template-columns: 76px 1fr;
-  gap:10px;
+  gap:0;
   align-items:start;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:14px;
+  overflow:hidden;
 }
 .schedule-ruler,
 .schx-ruler{
@@ -1229,9 +1232,6 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .schx-cols.week{
   grid-template-columns: repeat(7, minmax(180px, 1fr));
   overflow-x:auto;
-  padding-bottom:6px;
-  border:1px solid var(--border);
-  border-radius:14px;
 }
 .schx-cols.day{
   grid-template-columns: 1fr;
@@ -1241,7 +1241,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   display:flex;
   flex-direction:column;
   min-width:180px;
-  border-left:1px solid rgba(255,255,255,.06);
+  border-left:1px solid rgba(255,255,255,.10);
 }
 .schx-day:first-child{ border-left:none; }
 .schx-dayhead{
@@ -1276,20 +1276,21 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   margin-top:0;
   height: calc(var(--schx-hours) * var(--schx-row-h));
   min-height: calc(var(--schx-hours) * var(--schx-row-h));
-  border-right:1px solid rgba(255,255,255,.08);
-  background: rgba(0,0,0,.18);
+  border-right:1px solid rgba(255,255,255,.10);
+  background: rgba(12,20,34,.54);
   overflow:hidden;
   /* subtle grid backing (lines also rendered as elements for crispness) */
   background-image: repeating-linear-gradient(
     to bottom,
-    rgba(255,255,255,.04) 0px,
-    rgba(255,255,255,.04) 1px,
+    rgba(255,255,255,.06) 0px,
+    rgba(255,255,255,.06) 1px,
     rgba(0,0,0,0) 1px,
     rgba(0,0,0,0) var(--schx-row-h)
   );
 }
 .schx-lines{ position:absolute; inset:0; pointer-events:none; }
-.schx-line{ position:absolute; left:0; right:0; height:1px; background: rgba(255,255,255,.08); }
+.schx-vline{ position:absolute; top:0; bottom:0; width:1px; right:0; background: rgba(255,255,255,.10); pointer-events:none; }
+.schx-line{ position:absolute; left:0; right:0; height:1px; background: rgba(255,255,255,.10); }
 .schx-nowline{
   position:absolute;
   left:0;
@@ -1317,6 +1318,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   left:6px;
   right:6px;
   padding:8px 10px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.14);
   border-radius:10px;
   border:1px solid var(--task-border);
   background: var(--task-bg);
@@ -1338,6 +1340,8 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
+  color: var(--task-text);
+  text-shadow: 0 1px 0 rgba(0,0,0,.3);
 }
 
 .schx-legend{
