@@ -162,20 +162,21 @@
 
   function canonicalTaskColor(labelOrId) {
     const key = String(labelOrId || '').trim().toLowerCase();
-    if (key === 'mailbox_manager' || key.includes('mailbox')) return '#4aa3ff';
-    if (key === 'back_office' || key.includes('back office') || key.includes('admin')) return '#ffa21a';
-    if (key === 'call_onqueue' || key === 'call_available' || key.includes('call')) return '#2ecc71';
-    if (key === 'lunch' || key.includes('lunch') || key.includes('break')) return '#22d3ee';
-    return '#4aa3ff';
+    if (key === 'mailbox_manager' || key.includes('mailbox')) return '#c4b5fd';
+    if (key === 'back_office' || key.includes('back office') || key.includes('admin')) return '#fdba74';
+    if (key === 'call_onqueue' || key === 'call_available' || key.includes('call')) return '#86efac';
+    if (key === 'lunch' || key.includes('lunch') || key.includes('break')) return '#94a3b8';
+    return '#93c5fd';
   }
 
   function normalizeTaskColor(labelOrId, rawColor) {
     const lbl = String(labelOrId || '').trim().toLowerCase();
     if (lbl.includes('mailbox')) return '#c4b5fd';
-    if (lbl.includes('back office') || lbl.includes('admin')) return '#93c5fd';
+    if (lbl.includes('back office') || lbl.includes('admin')) return '#fdba74';
     if (lbl.includes('call')) return '#86efac';
     if (lbl.includes('lunch') || lbl.includes('break')) return '#94a3b8';
-    return rawColor || '#93c5fd';
+    if (isRenderableColor(rawColor)) return String(rawColor);
+    return canonicalTaskColor(lbl || labelOrId);
   }
 
   function taskColor(taskId) {
@@ -215,9 +216,9 @@
   function taskVars(color) {
     const c = String(color || '#4aa3ff');
     // Enterprise pastel surface + bright text to preserve contrast in dark mode.
-    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.72) : 'rgba(80,160,255,0.72)';
+    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.58) : 'rgba(80,160,255,0.58)';
     const border = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.96) : 'rgba(80,160,255,0.96)';
-    const text = '#f8fbff';
+    const text = '#FFFFFF';
     return { color: c, bg, border, text };
   }
 
@@ -371,8 +372,20 @@
   function currentTimeOffsetMinutes(shift) {
     try {
       const p = nowManilaParts();
-      if (!p) return null;
-      const nowMin = (Number(p.hh) || 0) * 60 + (Number(p.mm) || 0);
+      let hh = p ? Number(p.hh) : NaN;
+      let mm = p ? Number(p.mm) : NaN;
+      if (!Number.isFinite(hh) || !Number.isFinite(mm)) {
+        const now = new Date();
+        const manila = new Intl.DateTimeFormat('en-US', {
+          timeZone: tzManila,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(now);
+        hh = Number((manila.find(x => x.type === 'hour') || {}).value || 0);
+        mm = Number((manila.find(x => x.type === 'minute') || {}).value || 0);
+      }
+      const nowMin = (hh || 0) * 60 + (mm || 0);
       let off = nowMin - shift.startMin;
       if (off < 0) off += (24 * 60);
       if (off < 0 || off > shift.lenMin) return null;
