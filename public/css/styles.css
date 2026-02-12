@@ -2916,11 +2916,7 @@ body.modal-open .quicklinks-bar{pointer-events:none;opacity:.22;filter:saturate(
   color:color-mix(in srgb, var(--text-muted) 88%, transparent);
   background:color-mix(in srgb, var(--surface-3) 72%, transparent);
 }
-.mbx-group-spacer{
-  background:color-mix(in srgb, var(--surface-3) 72%, transparent);
-}
 .mbx-group-th{ text-align:center; }
-.mbx-group-th.is-empty{ color:transparent; }
 .mbx-th-top{ font-size:10px; font-weight:800; opacity:0.68; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .mbx-th-time{ font-weight:850; }
 .mbx-num{
@@ -2936,7 +2932,7 @@ body.modal-open .quicklinks-bar{pointer-events:none;opacity:.22;filter:saturate(
 .mbx-total{ text-align: center; }
 .mbx-foot{ font-weight: 900; letter-spacing:0.2px; }
 
-.table.mbx-table thead th.active-head-col{
+.table.mbx-table .active-col{
   box-shadow: inset 0 0 0 1px rgba(64,160,255,0.28);
   background: rgba(64,160,255,0.04);
 }

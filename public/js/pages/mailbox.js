@@ -744,13 +744,7 @@ root.innerHTML = `
   function renderTable(table, activeBucketId, totals, interactive){
     const buckets = table.buckets || [];
     const members = table.members || [];
-    function _mbxManagerDisplayName(name){
-      const value = String(name||'').trim();
-      if(!value || value === '—') return '';
-      return value;
-    }
-
-    const bucketManagers = buckets.map(b=>({ bucket:b, name:_mbxManagerDisplayName(getBucketManagerName(b)) }));
+    const bucketManagers = buckets.map(b=>({ bucket:b, name:getBucketManagerName(b) }));
     const groupedManagers = [];
 
     for(const item of bucketManagers){
@@ -761,7 +755,6 @@ root.innerHTML = `
         groupedManagers.push({ name:item.name, colspan:1 });
       }
     }
-    const showGroupedManagers = groupedManagers.some(g=>g.name) && groupedManagers.length < Math.max(1, bucketManagers.length);
 
     // Mailbox Manager (per time bucket) shown above the time range.
     function _mbxHeaderFontPx(name){
@@ -818,7 +811,8 @@ root.innerHTML = `
     const rows = members.map(m=>{
       const cells = buckets.map(b=>{
         const v = safeGetCount(table, m.id, b.id);
-        return `<td class="mbx-count-td"><span class="mbx-num" data-zero="${v===0 ? '1' : '0'}">${v}</span></td>`;
+        const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
+        return `<td class="${cls} mbx-count-td"><span class="mbx-num" data-zero="${v===0 ? '1' : '0'}">${v}</span></td>`;
       }).join('');
       const total = totals.rowTotals[m.id] || 0;
 
@@ -840,23 +834,27 @@ root.innerHTML = `
     }).join('');
 
     const footCells = buckets.map(b=>{
+      const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
       const vv = totals.colTotals[b.id]||0;
-      return `<td class="mbx-count-td"><span class="mbx-num" data-zero="${vv===0 ? '1' : '0'}">${vv}</span></td>`;
+      return `<td class="${cls} mbx-count-td"><span class="mbx-num" data-zero="${vv===0 ? '1' : '0'}">${vv}</span></td>`;
     }).join('');
 
     return `
       <table class="table mbx-table">
         <thead>
-          ${showGroupedManagers ? `<tr class="mbx-group-row"><th class="mbx-group-spacer"></th>${groupedManagers.map(g=>{
+          <tr class="mbx-group-row">
+            <th></th>
+            ${groupedManagers.map(g=>{
               const fs = _mbxHeaderFontPx(g.name);
-              const label = g.name ? UI.esc(g.name) : '';
-              const emptyCls = g.name ? '' : ' is-empty';
-              return `<th colspan="${g.colspan}" class="mbx-group-th${emptyCls}"><span class="mbx-th-top" style="font-size:${fs}px">${label}</span></th>`;
-            }).join('')}<th class="mbx-group-spacer"></th></tr>` : ''}
+              const label = g.name && g.name !== '—' ? UI.esc(g.name) : 'N/A';
+              return `<th colspan="${g.colspan}" class="mbx-group-th"><span class="mbx-th-top" style="font-size:${fs}px">${label}</span></th>`;
+            }).join('')}
+            <th></th>
+          </tr>
           <tr>
             <th style="min-width:260px">Member</th>
             ${bucketManagers.map(({ bucket:b })=>{
-              const cls = (activeBucketId && b.id===activeBucketId) ? 'active-head-col' : '';
+              const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
               return `<th class="${cls} mbx-time-th"><div class="mbx-th"><div class="mbx-th-time">${UI.esc(_mbxBucketLabel(b))}</div></div></th>`;
             }).join('')}
             <th style="width:110px" class="mbx-time-th">Total</th>
