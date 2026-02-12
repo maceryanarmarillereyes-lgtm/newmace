@@ -2907,6 +2907,53 @@ body.modal-open .quicklinks-bar{pointer-events:none;opacity:.22;filter:saturate(
   text-overflow:ellipsis;
 }
 .mbx-th{ display:flex; flex-direction:column; align-items:center; gap:2px; }
+.mbx-duty-col{
+  text-align:center;
+  min-width:170px;
+}
+.mbx-duty-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:24px;
+  max-width:100%;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:0.03em;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  border:1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+  background:color-mix(in srgb, var(--surface-2) 80%, transparent);
+  color:var(--text-muted);
+}
+.mbx-duty-pill[data-tone="manager"]{
+  color:#dbeafe;
+  border-color:rgba(56,189,248,0.55);
+  background:rgba(14,116,144,0.34);
+}
+.mbx-duty-pill[data-tone="call"]{
+  color:#dcfce7;
+  border-color:rgba(52,211,153,0.55);
+  background:rgba(6,95,70,0.34);
+}
+.mbx-duty-pill[data-tone="active"]{
+  color:#e0e7ff;
+  border-color:rgba(129,140,248,0.52);
+  background:rgba(67,56,202,0.3);
+}
+.mbx-duty-pill[data-tone="break"]{
+  color:#fef3c7;
+  border-color:rgba(251,191,36,0.55);
+  background:rgba(146,64,14,0.32);
+}
+.mbx-duty-pill[data-tone="idle"]{
+  color:color-mix(in srgb, var(--text-muted) 88%, transparent);
+  border-color:color-mix(in srgb, var(--card-border) 70%, transparent);
+  background:color-mix(in srgb, var(--surface-2) 75%, transparent);
+}
 .mbx-group-row th{
   top:0;
   z-index:3;
@@ -2917,7 +2964,7 @@ body.modal-open .quicklinks-bar{pointer-events:none;opacity:.22;filter:saturate(
   background:color-mix(in srgb, var(--surface-3) 72%, transparent);
 }
 .mbx-group-th{ text-align:center; }
-.mbx-th-top{ font-size:10px; font-weight:800; opacity:0.68; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.mbx-th-top{ font-size:10px; font-weight:800; opacity:0.68; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; min-height:12px; display:inline-block; }
 .mbx-th-time{ font-weight:850; }
 .mbx-num{
   font-variant-numeric: tabular-nums;

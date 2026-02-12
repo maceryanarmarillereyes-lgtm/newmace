@@ -214,6 +214,15 @@ function _mbxMemberSortKey(u){
   return { w, name: String(u?.name||u?.username||'').toLowerCase() };
 }
 
+function _mbxDutyTone(label){
+  const t = String(label||'').toLowerCase();
+  if(!t || t === '—' || t === 'n/a') return 'idle';
+  if(t.includes('mailbox manager')) return 'manager';
+  if(t.includes('mailbox call')) return 'call';
+  if(t.includes('break') || t.includes('lunch')) return 'break';
+  return 'active';
+}
+
 (window.Pages=window.Pages||{}, window.Pages.mailbox = function(root){
   const me = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
   let isManager = false;
@@ -660,6 +669,8 @@ root.innerHTML = `
       </div>
     `;
 
+    refreshMemberDutyPills(root);
+
     // toggle prev
     const tBtn = UI.el('#mbxTogglePrev');
     if(tBtn){
@@ -741,6 +752,36 @@ root.innerHTML = `
     startTimerLoop();
   }
 
+  function resolveMemberDutyLabel(member, nowParts){
+    try{
+      const all = (Store.getUsers ? Store.getUsers() : []) || [];
+      const live = all.find(u=>u && String(u.id||'') === String(member?.id||''));
+      const label = _mbxDutyLabelForUser(live || member, nowParts);
+      const safe = String(label||'').trim();
+      return safe || '—';
+    }catch(_){
+      return '—';
+    }
+  }
+
+  function refreshMemberDutyPills(scopeRoot){
+    try{
+      const host = scopeRoot || root;
+      if(!host) return;
+      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+      host.querySelectorAll('[data-mbx-duty-user]').forEach(node=>{
+        const uid = String(node.getAttribute('data-mbx-duty-user') || '').trim();
+        if(!uid) return;
+        const member = { id: uid };
+        const duty = resolveMemberDutyLabel(member, nowParts);
+        const dutyText = (duty && duty !== '—') ? duty : 'No active duty';
+        node.textContent = dutyText;
+        node.dataset.tone = _mbxDutyTone(dutyText);
+        node.title = `Current duty: ${dutyText}`;
+      });
+    }catch(_){ }
+  }
+
   function renderTable(table, activeBucketId, totals, interactive){
     const buckets = table.buckets || [];
     const members = table.members || [];
@@ -817,6 +858,8 @@ root.innerHTML = `
       const total = totals.rowTotals[m.id] || 0;
 
       const role = (m.roleLabel || _mbxRoleLabel(m.role) || '').trim();
+      const dutyLabel = resolveMemberDutyLabel(m, (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null)));
+      const safeDutyLabel = (dutyLabel && dutyLabel !== '—') ? dutyLabel : 'No active duty';
 
       return `<tr class="mbx-tr ${interactive ? 'mbx-assignable' : ''}" ${interactive ? `data-assign-member="${m.id}"` : ''} title="${interactive ? 'Double-click anywhere on this row to assign a case' : ''}">
         <td class="mbx-name">
@@ -827,6 +870,9 @@ root.innerHTML = `
               <div class="mbx-name-sub">${UI.esc(role || '—')}</div>
             </div>
           </div>
+        </td>
+        <td class="mbx-duty-col">
+          <span class="mbx-duty-pill" data-mbx-duty-user="${UI.esc(m.id)}" data-tone="${_mbxDutyTone(safeDutyLabel)}" title="Current duty: ${UI.esc(safeDutyLabel)}">${UI.esc(safeDutyLabel)}</span>
         </td>
         ${cells}
         <td class="mbx-total mbx-count-td"><span class="mbx-num" data-zero="${total===0 ? '1' : '0'}">${total}</span></td>
@@ -843,16 +889,17 @@ root.innerHTML = `
       <table class="table mbx-table">
         <thead>
           <tr class="mbx-group-row">
-            <th></th>
+            <th colspan="2"></th>
             ${groupedManagers.map(g=>{
               const fs = _mbxHeaderFontPx(g.name);
-              const label = g.name && g.name !== '—' ? UI.esc(g.name) : 'N/A';
+              const label = g.name && g.name !== '—' ? UI.esc(g.name) : '';
               return `<th colspan="${g.colspan}" class="mbx-group-th"><span class="mbx-th-top" style="font-size:${fs}px">${label}</span></th>`;
             }).join('')}
             <th></th>
           </tr>
           <tr>
             <th style="min-width:260px">Member</th>
+            <th style="min-width:170px" class="mbx-time-th">Current Duty</th>
             ${bucketManagers.map(({ bucket:b })=>{
               const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
               return `<th class="${cls} mbx-time-th"><div class="mbx-th"><div class="mbx-th-time">${UI.esc(_mbxBucketLabel(b))}</div></div></th>`;
@@ -864,6 +911,7 @@ root.innerHTML = `
         <tfoot>
           <tr>
             <td class="mbx-foot">TOTAL</td>
+            <td class="mbx-foot">—</td>
             ${footCells}
             <td class="mbx-foot mbx-count-td"><span class="mbx-num" data-zero="${(totals.shiftTotal||0)===0 ? '1' : '0'}">${totals.shiftTotal||0}</span></td>
           </tr>
@@ -1568,6 +1616,7 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
 
       // Update pending assignment timers in monitoring table (if present).
       try{
+        refreshMemberDutyPills(root);
         const timerEls = root.querySelectorAll('[data-assign-at]');
         if(timerEls && timerEls.length){
           const now = Date.now();
