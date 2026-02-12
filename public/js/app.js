@@ -923,6 +923,14 @@ function renderWorldClocksBar(){
     return (a + b).toUpperCase();
   }
 
+  function _normalizeDailyWorkMode(modeRaw){
+    const mode = String(modeRaw || '').trim().toUpperCase();
+    if(!mode) return '';
+    if(mode === 'OFFICE' || mode === 'IN_OFFICE' || mode === 'IN OFFICE') return 'OFFICE';
+    if(mode === 'WFH' || mode === 'WFM' || mode === 'WORK_FROM_HOME' || mode === 'WORK FROM HOME') return 'WFH';
+    return '';
+  }
+
   function renderOnlineUsersBar(){
     const host = document.getElementById('onlineUsersBar');
     if(!host) return;
@@ -931,6 +939,18 @@ function renderWorldClocksBar(){
 
     let list = [];
     try{ list = (window.Store && Store.getOnlineUsers) ? Store.getOnlineUsers() : []; }catch(_){ list=[]; }
+    const latestModeByUser = {};
+    try{
+      const attendance = (window.Store && Store.getAttendance) ? Store.getAttendance() : [];
+      (Array.isArray(attendance) ? attendance : []).forEach(rec=>{
+        if(!rec) return;
+        const uid = String(rec.userId || rec.id || '').trim();
+        if(!uid || latestModeByUser[uid]) return;
+        const normalized = _normalizeDailyWorkMode(rec.mode);
+        if(normalized) latestModeByUser[uid] = normalized;
+      });
+    }catch(_){ }
+
     const buckets = { morning:[], mid:[], night:[], dev:[] };
     list.forEach(u=>{
       const b = _bucketForUser(u);
@@ -939,7 +959,8 @@ function renderWorldClocksBar(){
 
     function pills(arr){
       return (arr||[]).slice(0, 18).map(u=>{
-        const mode = String(u.mode||'').toUpperCase();
+        const uid = String(u.userId || u.id || '').trim();
+        const mode = _normalizeDailyWorkMode(u.mode) || (uid ? latestModeByUser[uid] : '');
         const red = mode === 'WFH';
         const photo = u.photo ? String(u.photo) : '';
         const nm = String(u.name||u.username||'User');
