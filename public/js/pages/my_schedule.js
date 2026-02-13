@@ -346,22 +346,21 @@
 
   function normalizeActionItem(raw) {
     const item = raw && typeof raw === 'object' ? raw : {};
-    const description = String(item.description || item.detail || item.text || '').trim().slice(0, 500);
-    let shortDescription = String(item.shortDescription || item.short || item.title || '').trim();
-    let fullDescription = String(item.fullDescription || item.notes || '').trim();
-    if (!shortDescription && description) {
-      const split = description.match(/^([^:]{1,120})\s*:\s*(.+)$/);
-      shortDescription = split ? String(split[1] || '').trim() : String(description).slice(0, 80).trim();
-      if (!fullDescription && split) fullDescription = String(split[2] || '').trim();
-    }
-    if (!shortDescription) shortDescription = 'Action Item';
+    const descriptionRaw = String(item.description || item.detail || item.text || '').trim();
+    const shortRaw = String(item.shortDescription || item.short || '').trim();
+    const fullRaw = String(item.fullDescription || item.full || '').trim();
+    const autoShort = shortRaw || String(descriptionRaw.split(':')[0] || '').trim();
+    const autoFull = fullRaw || String(descriptionRaw.includes(':') ? descriptionRaw.split(':').slice(1).join(':') : descriptionRaw).trim();
+    const description = String(descriptionRaw || composeActionItemDescription(autoShort, autoFull)).trim().slice(0, 500);
+    const shortDescription = String(autoShort || descriptionRaw || '').trim().slice(0, 80);
+    const fullDescription = String(autoFull || description).trim().slice(0, 500);
     const priorityRaw = String(item.priority || 'normal').trim().toLowerCase();
     const priority = (priorityRaw === 'low' || priorityRaw === 'high') ? priorityRaw : 'normal';
     return {
       id: String(item.id || `ai_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`),
       description,
-      shortDescription: shortDescription.slice(0, 80),
-      fullDescription: fullDescription.slice(0, 500),
+      shortDescription,
+      fullDescription,
       completed: !!(item.completed || item.done || item.status === 'completed'),
       priority,
       createdAt: Number(item.createdAt || Date.now()),
@@ -782,7 +781,7 @@
     const shortValue = String(shortText || '').trim();
     const fullValue = String(fullText || '').trim();
     const detail = composeActionItemDescription(shortValue, fullValue);
-    const actionItem = normalizeActionItem({ description: detail, shortDescription: shortValue || 'Action Item', fullDescription: fullValue, completed: false, priority: 'normal' });
+    const actionItem = normalizeActionItem({ description: detail, completed: false, priority: 'normal' });
     return normalizeBlock({
       start: minutesToTimeInput(startMin),
       end: minutesToTimeInput(endMin),
@@ -918,7 +917,7 @@
       const minuteValue = parseHM(actionTime);
       const matchIndex = current.findIndex(block => isWithinBlockWindow(block, minuteValue));
       const combined = composeActionItemDescription(shortDescription, fullDescription);
-      const appended = normalizeActionItem({ description: combined, shortDescription, fullDescription, completed: false, priority: 'normal' });
+      const appended = normalizeActionItem({ description: combined, completed: false, priority: 'normal' });
 
       let nextBlocks = [];
       if (matchIndex >= 0) {
@@ -992,7 +991,6 @@
       const bKey = blockKey(d.dayIdx, b, idx);
       const selected = (viewMode === 'day' && selectedBlockKey === bKey) ? 'is-selected' : '';
       const status = blockStatus(d.iso, b);
-      const actionShorts = collectBlockActionShortLabels(b);
       const localRange = (localTZ && localTZ !== tzManila) ? localRangeLabel(d.iso, b.start, b.end) : '';
       const audit = findAuditForBlock(d.dayIdx, b);
       const auditLine = audit ? `Assigned by ${audit.actorName || '—'} • ${formatTs(audit.ts)}` : '';
@@ -1026,7 +1024,6 @@
             <span class="schx-status-icon" aria-hidden="true">${esc(taskIcon(label))}</span>
             <span class="schx-block-title">${esc(label)}</span>
           </div>
-          ${actionShorts.length ? `<ul class="small" style="margin:6px 0 0 18px; padding:0; list-style:disc; opacity:.95;">${actionShorts.map(item => `<li>${esc(item)}</li>`).join('')}</ul>` : ''}
           <div class="schx-bfoot">${esc(status)}</div>
         </div>
       `;
