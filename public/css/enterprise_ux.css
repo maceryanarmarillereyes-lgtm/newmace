@@ -1118,7 +1118,8 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   display:flex;
   align-items:center;
   justify-content:center;
-  height:30px;
+  gap:4px;
+  height:34px;
   padding:0 12px;
   border-radius:12px;
   border:1px solid var(--border);
@@ -1129,11 +1130,13 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   font-size:12px;
 }
 .schx-daytab .dot{ margin-left:8px; width:7px; height:7px; border-radius:999px; background: rgba(255,255,255,.55); }
+.schx-daytab-date{ opacity:.9; font-variant-numeric:tabular-nums; }
 .schx-daytab.active{
-  background: rgba(80,160,255,0.16);
-  border-color: rgba(80,160,255,0.32);
-  color:#fff;
+  background: #ffffff;
+  border-color: #ffffff;
+  color:#0b1424;
 }
+.schx-daytab.active .dot{ background: rgba(11,20,36,.58); }
 
 .schx-cal{
   border:1px solid rgba(255,255,255,.12);
@@ -1142,6 +1145,12 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   background: linear-gradient(180deg, rgba(16,25,43,.92), rgba(12,20,34,.9));
   max-height: calc(100vh - 250px);
   overflow:auto;
+}
+
+.schx-day-layout{
+  display:grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 30%);
+  gap:12px;
 }
 
 .schx-grid{
@@ -1311,6 +1320,21 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   border-radius:999px;
   background:#ff4d4f;
 }
+.schx-nowline-badge{
+  position:absolute;
+  left:-2px;
+  top:50%;
+  transform: translate(-100%,-50%);
+  padding:2px 8px;
+  border-radius:999px;
+  border:1px solid rgba(255,77,79,.65);
+  background: rgba(255,77,79,.16);
+  color:#ffd6d6;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.2px;
+  white-space:nowrap;
+}
 .schx-empty{ position:absolute; top:10px; left:10px; right:10px; }
 
 .schx-block{
@@ -1348,6 +1372,26 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   background: color-mix(in srgb, var(--theme-lunch, var(--task-color, #93c5fd)) 20%, transparent);
 }
 
+.schx-bmeta{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:4px;
+}
+.schx-time-range{
+  font-size:11px;
+  font-weight:800;
+  opacity:.92;
+}
+.schx-status-tag{
+  font-size:10px;
+  font-weight:900;
+  padding:2px 6px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.3);
+  background: rgba(0,0,0,.2);
+}
 .schx-btop.minimal{
   display:flex;
   align-items:center;
@@ -1356,7 +1400,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 }
 .schx-status-icon{ font-size:12px; line-height:1; }
 .schx-block-title{
-  font-size:12px;
+  font-size:14px;
   font-weight:950;
   line-height:1.2;
   white-space:nowrap;
@@ -1364,6 +1408,28 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   text-overflow:ellipsis;
   color: #FFFFFF;
   text-shadow: 0 1px 0 rgba(0,0,0,.3);
+}
+.schx-subtasks{
+  margin:8px 0 0;
+  padding:0 0 0 18px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  font-size:12px;
+  line-height:1.25;
+}
+.schx-subtasks li{ opacity:.95; }
+.schx-bfoot{
+  margin-top:8px;
+  font-size:11px;
+  font-weight:800;
+  opacity:.9;
+}
+.schx-block.compact .schx-subtasks,
+.schx-block.compact .schx-bfoot{ display:none; }
+.schx-block.compact .schx-block-title{ font-size:13px; }
+.schx-block.is-selected{
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.32), 0 0 0 1px rgba(255,255,255,.18), 0 12px 20px rgba(0,0,0,.25);
 }
 
 .schx-legend{
@@ -1412,6 +1478,19 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   border-color: var(--theme-lunch, var(--task-color, #93c5fd));
   background: color-mix(in srgb, var(--theme-lunch, var(--task-color, #93c5fd)) 20%, transparent);
 }
+.schx-context{
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:14px;
+  background: rgba(10,18,32,.8);
+  padding:12px;
+  min-height: 220px;
+}
+.schx-context-head{ display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+.schx-context-date{ font-size:11px; opacity:.8; text-align:right; }
+.schx-context-card{ margin-top:10px; border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:12px; background: rgba(255,255,255,.03); }
+.schx-context-title{ font-size:15px; font-weight:950; margin-bottom:4px; }
+.schx-context-list{ margin:10px 0 0; padding-left:18px; display:flex; flex-direction:column; gap:6px; font-size:12px; }
+
 .schx-foot{
   margin-top:12px;
   display:flex;
@@ -1522,6 +1601,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   .schx-kpis{ grid-template-columns: repeat(4, minmax(0,1fr)); }
 }
 @media (max-width: 720px){
+  .schx-day-layout{ grid-template-columns: 1fr; }
   .schx-grid{ grid-template-columns: 1fr; }
   .schx-ruler, .schedule-ruler{ display:none; }
   .schx-day{ min-width:0; }

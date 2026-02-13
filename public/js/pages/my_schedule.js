@@ -528,6 +528,7 @@
 
   let tickTimer = null;
   let storeListener = null;
+  let selectedBlockKey = '';
 
   function setViewMode(mode) {
     const m = String(mode || '').toLowerCase();
@@ -539,7 +540,53 @@
   function setFocusDay(d) {
     focusDay = Math.max(0, Math.min(6, Number(d) || 0));
     try { localStorage.setItem('mums_sched_day', String(focusDay)); } catch (_) { }
+    selectedBlockKey = '';
     render();
+  }
+
+  function blockKey(dayIdx, b, idx) {
+    const bb = b || {};
+    return `${Number(dayIdx || 0)}|${String(bb.start || '')}|${String(bb.end || '')}|${String(bb.schedule || '')}|${Number(idx || 0)}`;
+  }
+
+  function extractChecklistItems(block, label) {
+    const noteText = String((block && block.notes) || '').trim();
+    if (noteText) {
+      const bits = noteText
+        .split(/\r?\n|\s*[;•]\s*|\s*,\s*/)
+        .map(s => String(s || '').trim())
+        .filter(Boolean);
+      if (bits.length) return bits.slice(0, 4);
+    }
+    const key = normalizeTaskKey(label || (block && block.schedule) || '');
+    if (key.includes('back office') || key.includes('admin')) return ['Check pending emails', 'Update CRM records', 'Team huddle prep'];
+    if (key.includes('call')) return ['Queue: General inquiries', 'Ticket review follow-ups', 'Escalation handoff checks'];
+    if (key.includes('mailbox')) return ['Review unassigned cases', 'Assign next tickets', 'SLA compliance check'];
+    if (key.includes('lunch') || key.includes('break')) return ['Break window', 'Hydration reminder'];
+    return ['No sub-tasks listed'];
+  }
+
+  function blockStatus(dayIso, block) {
+    const now = nowManilaParts();
+    if (!now || String(dayIso || '') !== String(now.isoDate || '')) return 'Scheduled';
+    const nowMin = (Number(now.hh) || 0) * 60 + (Number(now.mm) || 0);
+    const s = parseHM(block.start);
+    const e = parseHM(block.end);
+    const wraps = e <= s;
+    const active = wraps ? (nowMin >= s || nowMin < e) : (nowMin >= s && nowMin < e);
+    if (active) return 'In Progress';
+    if (nowMin >= s) return 'Completed';
+    return 'Scheduled';
+  }
+
+  function formatNowTimeBadge() {
+    const now = nowManilaParts();
+    if (!now) return 'Now';
+    const hh = Number(now.hh) || 0;
+    const mm = Number(now.mm) || 0;
+    const period = hh >= 12 ? 'PM' : 'AM';
+    const h12 = (hh % 12) || 12;
+    return `${h12}:${pad2(mm)} ${period}`;
   }
 
   function render() {
@@ -626,6 +673,7 @@
           ${mode === 'team'
       ? renderTeamView(shift, hours, focusISO, focusLong)
       : `
+            <div class="${mode === 'day' ? 'schx-day-layout' : ''}">
             <div class="schx-grid" style="--shift-len:${shift.lenMin}">
               <div class="schedule-ruler schx-ruler" aria-hidden="true">
                 <!-- Spacer matches the day header + gap so tick labels align with grid lines -->
@@ -636,9 +684,11 @@
               </div>
 
               <div class="schx-cols ${mode === 'day' ? 'day' : 'week'}" id="schxCols" aria-label="${mode === 'day' ? 'Daily calendar' : 'Weekly calendar'}">
-                ${nowOffset != null ? `<div class="schx-nowline" aria-hidden="true" style="top:calc(var(--schx-head-h) + var(--schx-head-gap) + ${(nowOffset / 60)} * var(--schx-row-h))"><span class="schx-nowline-dot"></span></div>` : ''}
+                ${nowOffset != null ? `<div class="schx-nowline" aria-hidden="true" style="top:calc(var(--schx-head-h) + var(--schx-head-gap) + ${(nowOffset / 60)} * var(--schx-row-h))"><span class="schx-nowline-dot"></span><span class="schx-nowline-badge">${esc(formatNowTimeBadge())}</span></div>` : ''}
                 ${visibleDays.map(d => renderDay(d, shift, hours)).join('')}
               </div>
+            </div>
+            ${mode === 'day' ? renderDayContextPanel(week[focusDay]) : ''}
             </div>
 
             <div class="schx-foot">
@@ -665,6 +715,7 @@
     bindViewToggle(host);
     bindDayTabs(host);
     bindTooltip(host);
+    bindBlockSelection(host);
     bindSwipe(host);
     startTickLoop(host, shift);
   }
@@ -675,7 +726,8 @@
         ${week.map(d => {
       const active = d.dayIdx === focusDay ? 'active' : '';
       const dot = d.blocks.length ? '<span class="dot" aria-hidden="true"></span>' : '';
-      return `<button class="schx-daytab ${active}" type="button" data-day="${d.dayIdx}" role="tab" aria-selected="${d.dayIdx === focusDay}">${esc(d.dayLabel.slice(0, 3))}${dot}</button>`;
+      const date = String(d.iso || '').slice(-2);
+      return `<button class="schx-daytab ${active}" type="button" data-day="${d.dayIdx}" role="tab" aria-selected="${d.dayIdx === focusDay}"><span class="schx-daytab-date">${esc(date)}</span> <span>${esc(d.dayLabel.slice(0, 3))}</span>${dot}</button>`;
     }).join('')}
       </div>
     `;
@@ -700,11 +752,16 @@
     const d = day;
     const blocks = (d.blocks || []).map(normalizeBlock);
 
-    const blocksHtml = blocks.map((b) => {
+    const blocksHtml = blocks.map((b, idx) => {
       const label = taskLabel(b.schedule) || 'Block';
       const c = taskColor(b.schedule);
       const vars = taskVars(c);
       const m = blockMetrics(shift, b);
+      const compact = m.heightH < 1.2;
+      const bKey = blockKey(d.dayIdx, b, idx);
+      const selected = (viewMode === 'day' && selectedBlockKey === bKey) ? 'is-selected' : '';
+      const status = blockStatus(d.iso, b);
+      const checklist = extractChecklistItems(b, label);
       const localRange = (localTZ && localTZ !== tzManila) ? localRangeLabel(d.iso, b.start, b.end) : '';
       const audit = findAuditForBlock(d.dayIdx, b);
       const auditLine = audit ? `Assigned by ${audit.actorName || '—'} • ${formatTs(audit.ts)}` : '';
@@ -720,18 +777,28 @@
 
       return `
         <div
-          class="schedule-block schx-block"
+          class="schedule-block schx-block ${selected} ${compact ? 'compact' : ''}"
           data-task-type="${esc(taskTypeAttr(b.schedule))}"
+          data-block-key="${esc(bKey)}"
+          data-day="${d.dayIdx}"
           style="top:calc(${m.topH} * var(--schx-row-h));height:calc(${m.heightH} * var(--schx-row-h));--task-color:${esc(vars.color)};--task-text:${esc(vars.text)}"
           role="button"
           tabindex="0"
           data-tooltip="${esc(tooltipLines.join('\n'))}"
           aria-label="${esc(label)}"
         >
+          <div class="schx-bmeta">
+            <span class="schx-time-range">${esc(`${b.start} - ${b.end}`)}</span>
+            <span class="schx-status-tag">${esc(status)}</span>
+          </div>
           <div class="schx-btop minimal">
             <span class="schx-status-icon" aria-hidden="true">${esc(taskIcon(label))}</span>
             <span class="schx-block-title">${esc(label)}</span>
           </div>
+          <ul class="schx-subtasks" aria-label="${esc(label)} subtasks">
+            ${checklist.map(item => `<li>${esc(item)}</li>`).join('')}
+          </ul>
+          <div class="schx-bfoot">${esc(status)}</div>
         </div>
       `;
     }).join('');
@@ -750,6 +817,33 @@
           ${blocksHtml || `<div class="schx-empty small muted">No blocks</div>`}
         </div>
       </section>
+    `;
+  }
+
+  function renderDayContextPanel(day) {
+    const d = day || { dayIdx: focusDay, blocks: [], iso: isoForDay(focusDay), dayLabel: DAYS[focusDay] || 'Day' };
+    const blocks = (d.blocks || []).map(normalizeBlock);
+    if (!selectedBlockKey && blocks.length) selectedBlockKey = blockKey(d.dayIdx, blocks[0], 0);
+    const idx = blocks.findIndex((b, i) => blockKey(d.dayIdx, b, i) === selectedBlockKey);
+    const activeIdx = idx >= 0 ? idx : (blocks.length ? 0 : -1);
+    const block = activeIdx >= 0 ? blocks[activeIdx] : null;
+    const label = block ? (taskLabel(block.schedule) || 'Block') : 'No selected task';
+    const status = block ? blockStatus(d.iso, block) : 'N/A';
+    const subtasks = block ? extractChecklistItems(block, label) : [];
+    return `
+      <aside class="schx-context" aria-label="Task context panel">
+        <div class="schx-context-head">
+          <div class="small muted">Context panel</div>
+          <div class="schx-context-date">${esc(formatDateLong(d.iso || isoForDay(focusDay)))}</div>
+        </div>
+        <div class="schx-context-card">
+          <div class="schx-context-title">${esc(label)}</div>
+          <div class="small muted">${block ? esc(`${block.start} - ${block.end} • ${status}`) : 'Select a block to see details.'}</div>
+          <ul class="schx-context-list">
+            ${(subtasks.length ? subtasks : ['N/A']).map(item => `<li>${esc(item)}</li>`).join('')}
+          </ul>
+        </div>
+      </aside>
     `;
   }
 
@@ -949,6 +1043,22 @@
       el.addEventListener('blur', hide);
       el.addEventListener('keydown', (ev) => {
         if (ev.key === 'Escape') hide();
+      });
+    });
+  }
+
+  function bindBlockSelection(host) {
+    host.querySelectorAll('.schx-block[data-block-key]').forEach(el => {
+      const select = () => {
+        selectedBlockKey = String(el.getAttribute('data-block-key') || '');
+        render();
+      };
+      el.addEventListener('click', select);
+      el.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          select();
+        }
       });
     });
   }
