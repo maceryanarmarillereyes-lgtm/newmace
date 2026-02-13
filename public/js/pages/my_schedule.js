@@ -1114,13 +1114,52 @@
   function startTickLoop(host, shift) {
     if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
     const el = host.querySelector('#schxCountdown');
-    if (!el) return;
-    tickTimer = setInterval(() => {
+    const tick = () => {
+      placeTeamNowLine(host, shift);
+      if (!el) return;
       try {
         const c = computeCountdown(shift);
         el.textContent = c.label || '—';
       } catch (_) { }
+    };
+    tick();
+    if (!el) return;
+    tickTimer = setInterval(() => {
+      tick();
     }, 1000);
+  }
+
+  function placeTeamNowLine(host, shift) {
+    try {
+      if (viewMode !== 'team') return;
+      const line = host.querySelector('.tsg-nowline');
+      if (!line) return;
+
+      const nameCol = host.querySelector('.team-schedule-header .tsg-h.ts-name');
+      const timelineGrid = host.querySelector('.team-schedule-header .tsg-timeline-head .tsg-hour-grid');
+      const firstHourCell = timelineGrid ? timelineGrid.querySelector('.tsg-hour-cell') : null;
+      const badge = line.querySelector('span');
+      if (badge) badge.textContent = formatNowTimeBadge();
+
+      const nowOffset = currentTimeOffsetMinutes(shift);
+      if (nowOffset == null || !nameCol || !timelineGrid || !firstHourCell) {
+        line.style.display = 'none';
+        return;
+      }
+
+      const nameWidth = Number(nameCol.getBoundingClientRect().width) || 0;
+      const hourWidth = Number(firstHourCell.getBoundingClientRect().width) || 0;
+      const timelineWidth = Number(timelineGrid.scrollWidth || timelineGrid.getBoundingClientRect().width) || 0;
+      if (nameWidth <= 0 || hourWidth <= 0 || timelineWidth <= 0) {
+        line.style.display = 'none';
+        return;
+      }
+
+      const offsetInTimeline = (nowOffset / 60) * hourWidth;
+      const clampedOffset = Math.max(0, Math.min(timelineWidth, offsetInTimeline));
+      line.style.left = `${nameWidth + clampedOffset}px`;
+      line.style.display = '';
+    } catch (_) { }
   }
 
   async function refreshMemberScheduleTheme() {
