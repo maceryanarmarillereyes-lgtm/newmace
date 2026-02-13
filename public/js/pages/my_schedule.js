@@ -367,6 +367,16 @@
     };
   }
 
+  function collectBlockActionShortLabels(block) {
+    const list = Array.isArray(block && block.actionItems) ? block.actionItems : [];
+    const labels = list
+      .map(normalizeActionItem)
+      .map(item => String(item.shortDescription || item.description || '').trim())
+      .filter(Boolean)
+      .slice(0, 3);
+    return labels;
+  }
+
   function getBlocksForUserDay(userId, dayIdx) {
     try {
       if (window.Store && Store.getUserDayBlocks) {
