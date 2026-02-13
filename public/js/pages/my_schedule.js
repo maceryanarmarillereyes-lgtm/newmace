@@ -880,6 +880,7 @@
     const colLabels = Array.from({ length: cols }, (_, i) => hm(shift.startMin + i * 60));
     const hourPx = 120;
     const timelineWidth = cols * hourPx;
+    const nowOffset = currentTimeOffsetMinutes(shift);
     const coverage = computeTeamCoverage(members, shift, cols, focusDay);
 
     const header = `
@@ -903,7 +904,7 @@
           <div class="team-schedule-body">
             ${members.map(m => renderTeamRow(m, shift, focusDay, focusISO, timelineWidth)).join('') || `<div class="small muted" style="padding:12px">No team members found.</div>`}
             ${renderCoverageRow(coverage, shift, timelineWidth)}
-            <div class="tsg-nowline" aria-hidden="true"><span>${esc(formatNowTimeBadge())}</span></div>
+            ${nowOffset != null ? `<div class="tsg-nowline" aria-hidden="true" style="left:calc(var(--tsg-name-w) + ${(nowOffset / shift.lenMin) * 100}%);"><span>${esc(formatNowTimeBadge())}</span></div>` : ''}
           </div>
         </div>
       </div>
