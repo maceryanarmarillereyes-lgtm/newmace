@@ -331,11 +331,30 @@
 
   function normalizeBlock(b) {
     const o = b || {};
+    const actionItemsRaw = Array.isArray(o.actionItems) ? o.actionItems : (Array.isArray(o.subTasks) ? o.subTasks : []);
+    const actionItems = actionItemsRaw
+      .map(normalizeActionItem)
+      .filter(item => !!item.description);
     return {
       start: String(o.start || o.s || '00:00'),
       end: String(o.end || o.e || '00:00'),
       schedule: String(o.schedule || o.task || o.role || o.label || ''),
       notes: String(o.notes || ''),
+      actionItems,
+    };
+  }
+
+  function normalizeActionItem(raw) {
+    const item = raw && typeof raw === 'object' ? raw : {};
+    const description = String(item.description || item.detail || item.text || '').trim().slice(0, 120);
+    const priorityRaw = String(item.priority || 'normal').trim().toLowerCase();
+    const priority = (priorityRaw === 'low' || priorityRaw === 'high') ? priorityRaw : 'normal';
+    return {
+      id: String(item.id || `ai_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`),
+      description,
+      completed: !!(item.completed || item.done || item.status === 'completed'),
+      priority,
+      createdAt: Number(item.createdAt || Date.now()),
     };
   }
 
@@ -553,6 +572,15 @@
   }
 
   function extractChecklistItems(block, label) {
+    const actionItems = Array.isArray(block && block.actionItems) ? block.actionItems : [];
+    const normalizedActionItems = actionItems.map(normalizeActionItem).filter(item => !!item.description);
+    if (normalizedActionItems.length) {
+      return normalizedActionItems.slice(0, 4).map(item => {
+        const stateIcon = item.completed ? '☑' : '☐';
+        const priorityMark = item.priority === 'high' ? ' ❗' : '';
+        return `${stateIcon} ${item.description}${priorityMark}`;
+      });
+    }
     const noteText = String((block && block.notes) || '').trim();
     if (noteText) {
       const bits = noteText
@@ -640,6 +668,10 @@
             <span class="ux-chip"><span class="dot"></span>${esc(role || '')}${teamLabel ? ` • ${esc(teamLabel)}` : ''}</span>
             <a class="btn" href="/my_attendance">Attendance</a>
             <a class="btn" href="/mailbox">Mailbox</a>
+            <button class="btn schx-header-cta" type="button" data-act="new-action-item" aria-label="New Action Item">
+              <span class="schx-action-cta-icon" aria-hidden="true">＋</span>
+              <span>New Action Item</span>
+            </button>
           </div>
         </div>
 
@@ -670,10 +702,6 @@
           <div class="schx-legend-items">
             ${scheduleLegendItems().map(item => `<span class="legend-item"><span class="legend-dot" style="background:${esc(item.color)}"></span>${esc(item.label)}</span>`).join('')}
           </div>
-          <a class="btn schx-action-cta" href="/mailbox" aria-label="Add Action Item">
-            <span class="schx-action-cta-icon" aria-hidden="true">＋</span>
-            <span>Add Action Item</span>
-          </a>
         </div>
 
         ${(mode === 'day' || mode === 'team') ? renderDayTabs(week) : ''}
@@ -725,8 +753,188 @@
     bindDayTabs(host);
     bindTooltip(host);
     bindBlockSelection(host);
+    bindNewActionItem(host, week);
     bindSwipe(host);
     startTickLoop(host, shift);
+  }
+
+  function formatBlockOptionDate(iso) {
+    try {
+      const d = new Date(`${iso}T00:00:00Z`);
+      return new Intl.DateTimeFormat('en-US', { month: 'short', day: '2-digit', timeZone: tzManila }).format(d);
+    } catch (_) {
+      return String(iso || '').slice(5);
+    }
+  }
+
+  function collectWeekBlockOptions(week) {
+    const list = [];
+    (Array.isArray(week) ? week : []).forEach(day => {
+      const blocks = Array.isArray(day && day.blocks) ? day.blocks : [];
+      blocks.forEach((raw, idx) => {
+        const block = normalizeBlock(raw);
+        const dayIso = String(day && day.iso || '');
+        const task = taskLabel(block.schedule) || 'Block';
+        const dateText = formatBlockOptionDate(dayIso);
+        list.push({
+          key: `${Number(day.dayIdx)}|${idx}`,
+          dayIdx: Number(day.dayIdx),
+          blockIndex: idx,
+          label: `[${dateText} ${block.start}-${block.end} ${task}]`,
+        });
+      });
+    });
+    return list;
+  }
+
+  function buildActionItemModal(options) {
+    return `
+      <div class="modal" id="schxActionModal" aria-hidden="true" role="dialog" aria-label="New Action Item">
+        <div class="panel schx-modal-panel">
+          <div class="head">
+            <strong>New Action Item</strong>
+            <button class="btn ghost tiny" type="button" data-act="close-action-modal" aria-label="Close">✕</button>
+          </div>
+          <div class="body">
+            <form id="schxActionForm" class="schx-action-form" novalidate>
+              <label class="small muted" for="schxParentBlock">Link to Schedule Block (Parent Task)</label>
+              <select id="schxParentBlock" required>
+                <option value="">Select a schedule block</option>
+                ${options.map(opt => `<option value="${esc(opt.key)}">${esc(opt.label)}</option>`).join('')}
+              </select>
+
+              <label class="small muted" for="schxActionDetails">Action Details (Description)</label>
+              <textarea id="schxActionDetails" maxlength="120" rows="3" placeholder="Enter action details (max 120 characters)" required></textarea>
+              <div class="small muted"><span id="schxDetailsCount">0</span>/120</div>
+
+              <label class="schx-checkline" for="schxCompleted">
+                <input id="schxCompleted" type="checkbox">
+                <span>Mark as Completed?</span>
+              </label>
+
+              <label class="small muted" for="schxPriority">Priority (Optional)</label>
+              <select id="schxPriority">
+                <option value="low">Low</option>
+                <option value="normal" selected>Normal</option>
+                <option value="high">High</option>
+              </select>
+
+              <div class="ux-row" style="justify-content:flex-end; margin-top:8px;">
+                <button class="btn ghost" type="button" data-act="close-action-modal">Cancel</button>
+                <button class="btn primary" type="submit">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function bindNewActionItem(host, week) {
+    const openBtn = host.querySelector('[data-act="new-action-item"]');
+    if (!openBtn) return;
+
+    const staleModal = document.getElementById('schxActionModal');
+    if (staleModal) {
+      staleModal.remove();
+      document.body.classList.remove('modal-open');
+    }
+
+    const options = collectWeekBlockOptions(week);
+    const modalWrap = document.createElement('div');
+    modalWrap.innerHTML = buildActionItemModal(options);
+    const modal = modalWrap.firstElementChild;
+    if (!modal) return;
+    document.body.appendChild(modal);
+
+    const close = () => {
+      document.body.classList.remove('modal-open');
+      modal.remove();
+    };
+
+    const show = () => {
+      if (!options.length) {
+        if (window.UI && UI.toast) UI.toast('No schedule blocks available this week.', 'warn');
+        return;
+      }
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('modal-open');
+      const first = modal.querySelector('#schxParentBlock');
+      if (first) first.focus();
+    };
+
+    openBtn.addEventListener('click', show);
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) close();
+    });
+    modal.querySelectorAll('[data-act="close-action-modal"]').forEach(btn => btn.addEventListener('click', close));
+
+    const detailsEl = modal.querySelector('#schxActionDetails');
+    const countEl = modal.querySelector('#schxDetailsCount');
+    if (detailsEl && countEl) {
+      detailsEl.addEventListener('input', () => {
+        const len = String(detailsEl.value || '').slice(0, 120).length;
+        countEl.textContent = String(len);
+      });
+    }
+
+    const form = modal.querySelector('#schxActionForm');
+    if (!form) return;
+    form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const parentKey = String((modal.querySelector('#schxParentBlock') || {}).value || '').trim();
+      const details = String((modal.querySelector('#schxActionDetails') || {}).value || '').trim();
+      const completed = !!((modal.querySelector('#schxCompleted') || {}).checked);
+      const priorityRaw = String((modal.querySelector('#schxPriority') || {}).value || 'normal').trim().toLowerCase();
+      const priority = (priorityRaw === 'low' || priorityRaw === 'high') ? priorityRaw : 'normal';
+
+      if (!parentKey) {
+        if (window.UI && UI.toast) UI.toast('Please select a parent schedule block.', 'warn');
+        return;
+      }
+      if (!details) {
+        if (window.UI && UI.toast) UI.toast('Action details are required.', 'warn');
+        return;
+      }
+      if (details.length > 120) {
+        if (window.UI && UI.toast) UI.toast('Action details must be 120 characters or less.', 'warn');
+        return;
+      }
+
+      const [dayIdxRaw, blockIndexRaw] = parentKey.split('|');
+      const dayIdx = Number(dayIdxRaw);
+      const blockIndex = Number(blockIndexRaw);
+      if (!Number.isInteger(dayIdx) || !Number.isInteger(blockIndex)) {
+        if (window.UI && UI.toast) UI.toast('Invalid parent block selection.', 'warn');
+        return;
+      }
+
+      const current = getMyBlocks(dayIdx).map(normalizeBlock);
+      const target = current[blockIndex];
+      if (!target) {
+        if (window.UI && UI.toast) UI.toast('Selected block could not be found.', 'warn');
+        return;
+      }
+
+      const nextBlocks = current.map((b, idx) => {
+        if (idx !== blockIndex) return b;
+        const existing = Array.isArray(b.actionItems) ? b.actionItems.map(normalizeActionItem).filter(item => !!item.description) : [];
+        const appended = normalizeActionItem({ description: details, completed, priority });
+        return {
+          ...b,
+          actionItems: [...existing, appended],
+        };
+      });
+
+      if (window.Store && Store.setUserDayBlocks) {
+        Store.setUserDayBlocks(me.id, me.teamId, dayIdx, nextBlocks);
+      }
+      if (window.UI && UI.toast) UI.toast('Action item added.', 'ok');
+      close();
+      render();
+    });
   }
 
   function renderDayTabs(week) {
