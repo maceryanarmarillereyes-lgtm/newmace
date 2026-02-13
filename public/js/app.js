@@ -1497,6 +1497,48 @@ function updateClocksPreviewTimes(){
         localStorage.setItem(`nav_group_${id}`, open ? '0' : '1');
       };
     });
+
+    // Bind direct nav handling on the sidebar itself to avoid delayed page transitions
+    // caused by document-level bubbling handlers and duplicate route invocations.
+    if(!nav.__routeBound){
+      nav.__routeBound = true;
+      nav.__lastNavAt = 0;
+      nav.__lastNavPage = '';
+      nav.addEventListener('click', (e)=>{
+        const a = e.target && e.target.closest ? e.target.closest('a.nav-item') : null;
+        if(!a) return;
+
+        const href = String(a.getAttribute('href') || '');
+        if(!(href.startsWith('/') || href.startsWith('#'))) return;
+
+        if(e.defaultPrevented) return;
+        if(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if(typeof e.button === 'number' && e.button !== 0) return;
+
+        const pageId = _routePageIdFromHref(href);
+        if(!pageId) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const now = Date.now();
+        const isDuplicate = (nav.__lastNavPage === pageId) && (now - Number(nav.__lastNavAt || 0) < 200);
+        nav.__lastNavAt = now;
+        nav.__lastNavPage = pageId;
+        if(isDuplicate) return;
+
+        try{ setActiveNav(pageId); }catch(_){ }
+
+        if(href.startsWith('#') || String(window.location.protocol||'') === 'file:'){
+          window.location.hash = '#' + pageId;
+        }else{
+          navigateToPageId(pageId);
+        }
+
+        // Mobile: close drawers immediately after explicit navigation.
+        try{ if(_isMobileViewport()) closeMobileDrawers(); }catch(_){ }
+      });
+    }
   }
 
   function renderUserCard(user){
