@@ -877,10 +877,12 @@
   function renderTeamView(shift, hours, focusISO, focusLong) {
     const members = getTeamMembers();
     const cols = hours;
-
-    const colLabels = Array.from({ length: cols }, (_, i) => hmShort(shift.startMin + i * 60));
-
-    const gridTemplate = `240px repeat(${cols}, minmax(72px, 1fr))`;
+    const colLabels = Array.from({ length: cols }, (_, i) => hm(shift.startMin + i * 60));
+    const hourPx = 120;
+    const timelineWidth = cols * hourPx;
+    const nowOffset = currentTimeOffsetMinutes(shift);
+    const nowOffsetPx = nowOffset == null ? null : Math.max(0, Math.min(timelineWidth, (nowOffset / 60) * hourPx));
+    const coverage = computeTeamCoverage(members, shift, cols, focusDay);
 
     const header = `
       <div class="team-schedule-head">
@@ -891,12 +893,20 @@
       </div>
 
       <div class="team-schedule-wrap" role="table" aria-label="Team schedule table">
-        <div class="team-schedule-grid" style="grid-template-columns:${gridTemplate}" role="rowgroup">
+        <div class="team-schedule-grid" role="rowgroup" style="--tsg-hours:${cols};--tsg-hour-px:${hourPx}px;--tsg-timeline-w:${timelineWidth}px">
           <div class="team-schedule-row team-schedule-header" role="row">
             <div class="tsg-h ts-name" role="columnheader">MEMBER</div>
-            ${colLabels.map(t => `<div class="tsg-h" role="columnheader">${esc(t)}</div>`).join('')}
+            <div class="tsg-timeline-head" role="columnheader" aria-label="Timeline header">
+              <div class="tsg-hour-grid" style="width:${timelineWidth}px">
+                ${colLabels.map(t => `<div class="tsg-hour-cell">${esc(t)}</div>`).join('')}
+              </div>
+            </div>
           </div>
-          ${members.map(m => renderTeamRow(m, shift, cols, focusDay, focusISO, gridTemplate)).join('') || `<div class="small muted" style="padding:12px">No team members found.</div>`}
+          <div class="team-schedule-body">
+            ${members.map(m => renderTeamRow(m, shift, focusDay, focusISO, timelineWidth)).join('') || `<div class="small muted" style="padding:12px">No team members found.</div>`}
+            ${renderCoverageRow(coverage, shift, timelineWidth)}
+            ${nowOffsetPx != null ? `<div class="tsg-nowline" aria-hidden="true" style="left:calc(var(--tsg-name-w) + ${nowOffsetPx}px);"><span>${esc(formatNowTimeBadge())}</span></div>` : ''}
+          </div>
         </div>
       </div>
     `;
@@ -904,72 +914,91 @@
     return header;
   }
 
-  function renderTeamRow(member, shift, cols, dayIdx, iso, gridTemplate) {
+  function renderTeamRow(member, shift, dayIdx, iso, timelineWidth) {
     const nameOf = (u) => String(u.fullName || u.name || u.displayName || u.username || u.email || u.id || '');
-    const memberName = nameOf(member);
-
-    const blocks = getBlocksForUserDay(member.id, dayIdx).map(normalizeBlock);
-
-    // Build hour slots
-    const slots = Array.from({ length: cols }, () => null);
-    blocks.forEach(raw => {
-      const b = normalizeBlock(raw);
+    const memberName = nameOf(member) || 'N/A';
+    const blocks = getBlocksForUserDay(member.id, dayIdx).map(normalizeBlock).sort((a, b) => parseHM(a.start) - parseHM(b.start));
+    const bars = blocks.map((b) => {
       const startOff = computeOffset(shift, b.start);
       const endOff = computeOffset(shift, b.end);
       const r = clampShiftRange(shift, startOff, endOff);
-      const c0 = Math.max(0, Math.floor(r.s / 60));
-      const c1 = Math.min(cols, Math.ceil(r.e / 60));
-      for (let i = c0; i < c1; i++) {
-        // Prefer earlier block if overlap occurs
-        if (!slots[i]) slots[i] = { taskId: b.schedule, b };
-      }
-    });
-
-    const cells = [];
-    for (let i = 0; i < cols; i++) {
-      const slot = slots[i];
-      if (!slot) {
-        cells.push(`<div class="tsg-cell" role="cell" aria-label="${esc(memberName)} empty"></div>`);
-        continue;
-      }
-      const taskId = slot.taskId;
-      const label = taskLabel(taskId);
+      const widthPct = (r.dur / shift.lenMin) * 100;
+      if (widthPct <= 0) return '';
+      const leftPct = (r.s / shift.lenMin) * 100;
+      const taskId = b.schedule;
+      const label = taskLabel(taskId) || 'N/A';
       const color = taskColor(taskId);
       const vars = taskVars(color);
-
-      const prev = i > 0 ? slots[i - 1] : null;
-      const showLabel = !prev || !prev.taskId || prev.taskId !== taskId;
-
-      const hourStart = hm(shift.startMin + i * 60);
-      const hourEnd = hm(shift.startMin + (i + 1) * 60);
-
       const tooltip = [
-        `${memberName}`,
-        `${label}`,
-        `${formatDateLong(iso)}`,
-        `${slot.b.start}–${slot.b.end} (Manila)`,
-        `Hour cell: ${hourStart}–${hourEnd}`,
+        memberName,
+        label,
+        formatDateLong(iso),
+        `${b.start}–${b.end} (Manila)`,
       ].join('\n');
-
-      cells.push(`
+      return `
         <div
-          class="tsg-cell has-task"
+          class="tsg-block"
           role="cell"
           tabindex="0"
           data-task-type="${esc(taskTypeAttr(taskId))}"
-          style="--task-color:${esc(vars.color)};--task-text:${esc(vars.text)}"
+          style="left:${leftPct}%;width:${widthPct}%;--task-color:${esc(vars.color)};--task-text:${esc(vars.text)}"
           data-tooltip="${esc(tooltip)}"
-          aria-label="${esc(memberName)} ${esc(label)} ${esc(hourStart)} to ${esc(hourEnd)}"
+          aria-label="${esc(memberName)} ${esc(label)} ${esc(b.start)} to ${esc(b.end)}"
         >
-          ${showLabel ? `<span class="task-label tsg-badge" style="--task-color:${esc(vars.color)};--task-bg:color-mix(in srgb, var(--task-color) 22%, transparent);--task-border:var(--task-color);--task-text:#fff"><span class="task-color" style="background:${esc(vars.color)}"></span>${esc(label)}</span>` : ''}
+          <span class="tsg-block-label">${esc(label)}</span>
         </div>
-      `);
-    }
+      `;
+    }).filter(Boolean).join('');
 
     return `
-      <div class="team-schedule-row member-row" role="row" style="grid-template-columns:${gridTemplate}">
+      <div class="team-schedule-row member-row" role="row">
         <div class="tsg-name" role="rowheader">${esc(memberName)}</div>
-        ${cells.join('')}
+        <div class="tsg-timeline" role="cell" aria-label="${esc(memberName)} timeline">
+          <div class="tsg-hour-grid" style="width:${timelineWidth}px">
+            ${bars}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function isCoverageActiveTask(taskId) {
+    const key = normalizeTaskKey(taskLabel(taskId) || taskId);
+    return !(key.includes('lunch') || key.includes('break'));
+  }
+
+  function computeTeamCoverage(members, shift, cols, dayIdx) {
+    const counts = Array.from({ length: cols }, () => 0);
+    (members || []).forEach(member => {
+      const blocks = getBlocksForUserDay(member.id, dayIdx).map(normalizeBlock);
+      const slots = Array.from({ length: cols }, () => false);
+      blocks.forEach((b) => {
+        if (!isCoverageActiveTask(b.schedule)) return;
+        const startOff = computeOffset(shift, b.start);
+        const endOff = computeOffset(shift, b.end);
+        const r = clampShiftRange(shift, startOff, endOff);
+        const c0 = Math.max(0, Math.floor(r.s / 60));
+        const c1 = Math.min(cols, Math.ceil(r.e / 60));
+        for (let i = c0; i < c1; i++) slots[i] = true;
+      });
+      slots.forEach((active, i) => {
+        if (active) counts[i] += 1;
+      });
+    });
+    return counts;
+  }
+
+  function renderCoverageRow(coverage, shift, timelineWidth) {
+    const cells = (coverage || []).map((count, idx) => {
+      const label = hm(shift.startMin + idx * 60);
+      return `<div class="tsg-coverage-cell">${esc(label)}: <strong>${Number(count || 0)}</strong> Active</div>`;
+    }).join('');
+    return `
+      <div class="team-schedule-row tsg-coverage" role="row">
+        <div class="tsg-name" role="rowheader">Total Active Agents</div>
+        <div class="tsg-timeline" role="cell" aria-label="Coverage summary">
+          <div class="tsg-hour-grid tsg-coverage-grid" style="width:${timelineWidth}px">${cells}</div>
+        </div>
       </div>
     `;
   }
