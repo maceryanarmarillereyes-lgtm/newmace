@@ -666,8 +666,14 @@
           </div>
         </div>
 
-        <div class="schx-legend" aria-label="Schedule legend">
-          ${scheduleLegendItems().map(item => `<span class="legend-item"><span class="legend-dot" style="background:${esc(item.color)}"></span>${esc(item.label)}</span>`).join('')}
+        <div class="schx-legend" aria-label="Schedule legend and actions">
+          <div class="schx-legend-items">
+            ${scheduleLegendItems().map(item => `<span class="legend-item"><span class="legend-dot" style="background:${esc(item.color)}"></span>${esc(item.label)}</span>`).join('')}
+          </div>
+          <a class="btn schx-action-cta" href="/mailbox" aria-label="Add Action Item">
+            <span class="schx-action-cta-icon" aria-hidden="true">＋</span>
+            <span>Add Action Item</span>
+          </a>
         </div>
 
         ${(mode === 'day' || mode === 'team') ? renderDayTabs(week) : ''}
