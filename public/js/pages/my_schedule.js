@@ -100,6 +100,10 @@
   const todayWD = weekdayFromISO(todayISO);
   const weekStartSunISO = addDaysISO(todayISO, -todayWD);
 
+  function isTodayISO(iso) {
+    return String(iso || '') === String(todayISO || '');
+  }
+
   function isoForDay(dayIdx) {
     return addDaysISO(weekStartSunISO, Number(dayIdx || 0));
   }
@@ -521,10 +525,9 @@
     const stored = String(localStorage.getItem('mums_sched_view') || '').toLowerCase();
     if (stored === 'day' || stored === 'week' || stored === 'team') viewMode = stored;
   } catch (_) { }
-  try {
-    const fd = Number(localStorage.getItem('mums_sched_day'));
-    if (!Number.isNaN(fd)) focusDay = Math.max(0, Math.min(6, fd));
-  } catch (_) { }
+  // Always start on the current Manila day when the page opens.
+  // This avoids stale focus from previous sessions and reduces date confusion.
+  focusDay = todayWD;
 
   let tickTimer = null;
   let storeListener = null;
@@ -725,9 +728,10 @@
       <div class="schx-daytabs" role="tablist" aria-label="Focus day">
         ${week.map(d => {
       const active = d.dayIdx === focusDay ? 'active' : '';
+      const today = isTodayISO(d.iso) ? 'is-today' : '';
       const dot = d.blocks.length ? '<span class="dot" aria-hidden="true"></span>' : '';
       const date = String(d.iso || '').slice(-2);
-      return `<button class="schx-daytab ${active}" type="button" data-day="${d.dayIdx}" role="tab" aria-selected="${d.dayIdx === focusDay}"><span class="schx-daytab-date">${esc(date)}</span> <span>${esc(d.dayLabel.slice(0, 3))}</span>${dot}</button>`;
+      return `<button class="schx-daytab ${active} ${today}" type="button" data-day="${d.dayIdx}" role="tab" aria-selected="${d.dayIdx === focusDay}"><span class="schx-daytab-date">${esc(date)}</span> <span>${esc(d.dayLabel.slice(0, 3))}</span>${dot}</button>`;
     }).join('')}
       </div>
     `;
@@ -750,6 +754,7 @@
 
   function renderDay(day, shift, hours) {
     const d = day;
+    const todayClass = isTodayISO(d.iso) ? 'is-today' : '';
     const blocks = (d.blocks || []).map(normalizeBlock);
 
     const blocksHtml = blocks.map((b, idx) => {
@@ -806,8 +811,8 @@
     const lines = renderGridLines(hours);
 
     return `
-      <section class="schx-day" aria-label="${esc(d.dayLabel)} schedule">
-        <header class="schx-dayhead">
+      <section class="schx-day ${todayClass}" aria-label="${esc(d.dayLabel)} schedule">
+        <header class="schx-dayhead ${todayClass}">
           <div class="schx-dayname">${esc(d.dayLabel.slice(0, 3))}</div>
           <div class="schx-daydate">${esc(formatDateLong(d.iso))}</div>
         </header>
