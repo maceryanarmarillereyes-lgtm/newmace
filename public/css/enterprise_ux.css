@@ -1448,6 +1448,32 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   gap:12px;
   flex-wrap:wrap;
   align-items:center;
+  justify-content:space-between;
+}
+.schx-legend-items{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+.schx-action-cta{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  margin-left:auto;
+  border:1px solid rgba(96,165,250,.55);
+  background:rgba(59,130,246,.14);
+  color:#dbeafe;
+  font-weight:900;
+}
+.schx-action-cta:hover{
+  border-color:rgba(147,197,253,.75);
+  background:rgba(59,130,246,.22);
+}
+.schx-action-cta-icon{
+  font-size:15px;
+  line-height:1;
+  font-weight:900;
 }
 .schx-legend .legend-item{
   display:inline-flex;
@@ -1690,6 +1716,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   .schx-ruler, .schedule-ruler{ display:none; }
   .schx-day{ min-width:0; }
   .schx-kpis{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .schx-action-cta{ margin-left:0; }
   /* reduce hour height on mobile to avoid excessive scrolling */
   .schx{ --schx-row-h: 48px; }
 }
