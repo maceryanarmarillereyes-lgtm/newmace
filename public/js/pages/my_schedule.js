@@ -771,13 +771,7 @@
     const shortValue = String(shortText || '').trim();
     const fullValue = String(fullText || '').trim();
     const detail = composeActionItemDescription(shortValue, fullValue);
-    const actionItem = normalizeActionItem({
-      description: detail,
-      shortDescription: shortValue,
-      fullDescription: fullValue,
-      completed: false,
-      priority: 'normal',
-    });
+    const actionItem = normalizeActionItem({ description: detail, completed: false, priority: 'normal' });
     return normalizeBlock({
       start: minutesToTimeInput(startMin),
       end: minutesToTimeInput(endMin),
@@ -785,15 +779,6 @@
       notes: fullValue,
       actionItems: [actionItem],
     });
-  }
-
-  function blockActionItemShortList(block) {
-    const actionItems = Array.isArray(block && block.actionItems) ? block.actionItems : [];
-    return actionItems
-      .map(normalizeActionItem)
-      .map(item => String(item.shortDescription || item.description || '').trim())
-      .filter(Boolean)
-      .slice(0, 3);
   }
 
   function buildActionItemModal() {
@@ -922,7 +907,7 @@
       const minuteValue = parseHM(actionTime);
       const matchIndex = current.findIndex(block => isWithinBlockWindow(block, minuteValue));
       const combined = composeActionItemDescription(shortDescription, fullDescription);
-      const appended = normalizeActionItem({ description: combined, shortDescription, fullDescription, completed: false, priority: 'normal' });
+      const appended = normalizeActionItem({ description: combined, completed: false, priority: 'normal' });
 
       let nextBlocks = [];
       if (matchIndex >= 0) {
@@ -996,7 +981,6 @@
       const bKey = blockKey(d.dayIdx, b, idx);
       const selected = (viewMode === 'day' && selectedBlockKey === bKey) ? 'is-selected' : '';
       const status = blockStatus(d.iso, b);
-      const shortItems = blockActionItemShortList(b);
       const localRange = (localTZ && localTZ !== tzManila) ? localRangeLabel(d.iso, b.start, b.end) : '';
       const audit = findAuditForBlock(d.dayIdx, b);
       const auditLine = audit ? `Assigned by ${audit.actorName || '—'} • ${formatTs(audit.ts)}` : '';
@@ -1030,7 +1014,6 @@
             <span class="schx-status-icon" aria-hidden="true">${esc(taskIcon(label))}</span>
             <span class="schx-block-title">${esc(label)}</span>
           </div>
-          ${shortItems.length ? `<ul class="schx-subtasks" aria-label="Action items">${shortItems.map(item => `<li>${esc(item)}</li>`).join('')}</ul>` : ''}
           <div class="schx-bfoot">${esc(status)}</div>
         </div>
       `;
