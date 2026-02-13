@@ -1456,24 +1456,49 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   flex-wrap:wrap;
   align-items:center;
 }
-.schx-action-cta{
+.schx-header-cta{
   display:inline-flex;
   align-items:center;
   gap:8px;
-  margin-left:auto;
-  border:1px solid rgba(96,165,250,.55);
-  background:rgba(59,130,246,.14);
-  color:#dbeafe;
+  margin-left:0;
+  border:1px solid rgba(59,130,246,.95);
+  background:linear-gradient(180deg, #3b82f6, #2563eb);
+  color:#ffffff;
   font-weight:900;
+  box-shadow:0 8px 20px rgba(37,99,235,.35);
 }
-.schx-action-cta:hover{
-  border-color:rgba(147,197,253,.75);
-  background:rgba(59,130,246,.22);
+.schx-header-cta:hover{
+  border-color:rgba(96,165,250,.98);
+  background:linear-gradient(180deg, #4f8bff, #2f6fff);
+  color:#ffffff;
+}
+.schx-header-cta:focus-visible{
+  outline:2px solid rgba(147,197,253,.92);
+  outline-offset:2px;
 }
 .schx-action-cta-icon{
   font-size:15px;
   line-height:1;
   font-weight:900;
+}
+.schx-modal-panel{
+  width:min(560px,100%);
+}
+.schx-action-form{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.schx-action-form select,
+.schx-action-form textarea{
+  width:100%;
+}
+.schx-checkline{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  font-size:13px;
+  color:rgba(255,255,255,.9);
 }
 .schx-legend .legend-item{
   display:inline-flex;
@@ -1716,7 +1741,7 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   .schx-ruler, .schedule-ruler{ display:none; }
   .schx-day{ min-width:0; }
   .schx-kpis{ grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .schx-action-cta{ margin-left:0; }
+  .schx-header-cta{ margin-left:0; }
   /* reduce hour height on mobile to avoid excessive scrolling */
   .schx{ --schx-row-h: 48px; }
 }
