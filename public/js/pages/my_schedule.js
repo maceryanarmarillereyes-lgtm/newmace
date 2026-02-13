@@ -346,12 +346,21 @@
 
   function normalizeActionItem(raw) {
     const item = raw && typeof raw === 'object' ? raw : {};
-    const description = String(item.description || item.detail || item.text || '').trim().slice(0, 120);
+    const descriptionRaw = String(item.description || item.detail || item.text || '').trim();
+    const shortRaw = String(item.shortDescription || item.short || '').trim();
+    const fullRaw = String(item.fullDescription || item.full || '').trim();
+    const autoShort = shortRaw || String(descriptionRaw.split(':')[0] || '').trim();
+    const autoFull = fullRaw || String(descriptionRaw.includes(':') ? descriptionRaw.split(':').slice(1).join(':') : descriptionRaw).trim();
+    const description = String(descriptionRaw || composeActionItemDescription(autoShort, autoFull)).trim().slice(0, 500);
+    const shortDescription = String(autoShort || descriptionRaw || '').trim().slice(0, 80);
+    const fullDescription = String(autoFull || description).trim().slice(0, 500);
     const priorityRaw = String(item.priority || 'normal').trim().toLowerCase();
     const priority = (priorityRaw === 'low' || priorityRaw === 'high') ? priorityRaw : 'normal';
     return {
       id: String(item.id || `ai_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`),
       description,
+      shortDescription,
+      fullDescription,
       completed: !!(item.completed || item.done || item.status === 'completed'),
       priority,
       createdAt: Number(item.createdAt || Date.now()),
