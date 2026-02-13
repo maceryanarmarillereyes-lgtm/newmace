@@ -2864,6 +2864,16 @@ function updateClocksPreviewTimes(){
   // - Supports clean URLs like /dashboard while preserving legacy hash routing.
   // - Hash takes precedence when present (supports file:// mode and deep-links).
   // ----------------------
+  function _normalizeRouteSegment(raw){
+    try{
+      let s = String(raw||'').trim();
+      if(!s) return '';
+      if(s.startsWith('#')) s = s.slice(1);
+      if(s.startsWith('/')) s = s.slice(1);
+      return s.split('?')[0].split('#')[0].split('/')[0] || '';
+    }catch(_){ return ''; }
+  }
+
   function _routePageIdFromHref(href){
     try{
       const h = String(href||'').trim();
@@ -2872,12 +2882,10 @@ function updateClocksPreviewTimes(){
         // Support legacy hash routes both with and without a leading slash:
         //   #my_schedule   ✅
         //   #/my_schedule  ✅
-        let s = h.slice(1).split('?')[0].split('#')[0];
-        if(s.startsWith('/')) s = s.slice(1);
-        return s.split('/')[0] || '';
+        return _normalizeRouteSegment(h);
       }
       if(h[0] === '/'){
-        return h.slice(1).split('?')[0].split('#')[0].split('/')[0];
+        return _normalizeRouteSegment(h);
       }
       return '';
     }catch(_){ return ''; }
@@ -2886,18 +2894,19 @@ function updateClocksPreviewTimes(){
   function resolveRoutePageId(){
     try{
       const pages = window.Pages || {};
-      let h = String(window.location.hash||'').replace(/^#/, '').trim();
-      // Support legacy hash routes both with and without a leading slash:
-      //   #my_schedule   ✅
-      //   #/my_schedule  ✅
-      if(h.startsWith('/')) h = h.slice(1);
-      if(h && pages[h]) return h;
+      const hashId = _normalizeRouteSegment(window.location.hash||'');
 
       const proto = String(window.location.protocol||'');
       if(proto !== 'file:'){
-        const p = String(window.location.pathname||'/');
-        const seg = (p.split('/').filter(Boolean)[0] || '').trim();
+        const seg = _normalizeRouteSegment(window.location.pathname||'/');
+        // In hosted mode (http/https), clean path is canonical.
+        // This avoids stale hashes from previous pages (e.g. #my_schedule)
+        // overriding explicit sidebar navigation to another page.
         if(seg && !seg.includes('.') && pages[seg]) return seg;
+        if(hashId && pages[hashId]) return hashId;
+      }else{
+        // file:// mode still relies on hash routing.
+        if(hashId && pages[hashId]) return hashId;
       }
 
       if(pages['dashboard']) return 'dashboard';
@@ -2923,6 +2932,9 @@ function updateClocksPreviewTimes(){
       const url = '/' + id;
       if(opts && opts.replace) history.replaceState({},'', url);
       else history.pushState({},'', url);
+      // In hosted mode, keep clean URLs authoritative. Remove any stale hash
+      // left behind by legacy hash-based links/pages to prevent route mismatch.
+      try{ if(window.location.hash) history.replaceState({},'', url); }catch(_){ }
       // pushState/replaceState does not trigger navigation handlers
       try{ route(); }catch(_){ }
     }catch(_){
