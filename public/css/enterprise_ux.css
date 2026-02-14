@@ -3314,6 +3314,8 @@ body:not(.members-fullscreen-active) .members-enterprise-grid{
   color:#f4f4f5;
   background: rgba(24,24,27,0.65);
   backdrop-filter: blur(8px);
+  z-index: 2;
+  pointer-events: none;
 }
 
 .members-inspector{ padding:12px; }
@@ -3658,7 +3660,7 @@ body.members-fullscreen-active .members-topbar,
 
 /* Modal must be above sticky header */
 .members-page .modal{
-  z-index:11000;
+  z-index:17000;
 }
 .members-page .modal .panel{
   max-height: 82vh;
@@ -4661,4 +4663,27 @@ body.members-fullscreen-active .tooltip{
 }
 .members-row + .members-row{
   margin-top: 8px;
+}
+
+
+.members-page .confirm-modal,
+.members-page #autoPreviewModal,
+.members-page #autoSettingsModal,
+.members-page #taskSettingsModal,
+.members-page #auditModal,
+.members-page #ackModal,
+.members-page #memberSchedModal,
+.members-page #trendModal{
+  z-index: 18000 !important;
+}
+.members-page .confirm-modal .panel,
+.members-page #autoPreviewModal .panel,
+.members-page #autoSettingsModal .panel,
+.members-page #taskSettingsModal .panel,
+.members-page #auditModal .panel,
+.members-page #ackModal .panel,
+.members-page #memberSchedModal .panel,
+.members-page #trendModal .panel{
+  position: relative;
+  z-index: 18001 !important;
 }
