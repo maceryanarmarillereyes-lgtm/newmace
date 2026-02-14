@@ -21,80 +21,6 @@ overrideLabel(override){
     return '';
   }
 },
-    // Profile helpers
-    initials(name){
-      const parts = String(name||'').trim().split(/\s+/).filter(Boolean);
-      if(!parts.length) return 'U';
-      const a = (parts[0]||'')[0]||'';
-      const b = (parts[1]||parts[0]||'')[0]||'';
-      return (a+b).toUpperCase();
-    },
-
-    // Read image file as a compressed data URL. maxSize is the max dimension (px).
-    readImageAsDataUrl(file, maxSize){
-      return new Promise((resolve, reject)=>{
-        try{
-          const reader = new FileReader();
-          reader.onload = ()=>{
-            const raw = String(reader.result||'');
-            const img = new Image();
-            img.onload = ()=>{
-              const m = Math.max(img.width, img.height) || 1;
-              const scale = Math.min(1, (Number(maxSize||480)) / m);
-              const w = Math.max(1, Math.round(img.width * scale));
-              const h = Math.max(1, Math.round(img.height * scale));
-              const canvas = document.createElement('canvas');
-              canvas.width = w; canvas.height = h;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0, w, h);
-              resolve(canvas.toDataURL('image/jpeg', 0.85));
-            };
-            img.onerror = ()=>resolve(raw);
-            img.src = raw;
-          };
-          reader.onerror = ()=>reject(reader.error);
-          reader.readAsDataURL(file);
-        }catch(e){ resolve(''); }
-      });
-    },
-    // Profile helpers
-    initials(name){
-      const parts = String(name||'').trim().split(/\s+/).filter(Boolean);
-      if(!parts.length) return 'U';
-      const a = (parts[0]||'')[0]||'';
-      const b = (parts[1]||parts[0]||'')[0]||'';
-      return (a+b).toUpperCase();
-    },
-
-    // Read image file as a compressed data URL. maxSize is the max dimension (px).
-    readImageAsDataUrl(file, maxSize){
-      return new Promise((resolve, reject)=>{
-        try{
-          const reader = new FileReader();
-          reader.onerror = ()=>reject(new Error('Failed to read image.'));
-          reader.onload = ()=>{
-            const img = new Image();
-            img.onerror = ()=>reject(new Error('Invalid image file.'));
-            img.onload = ()=>{
-              const m = Number(maxSize||480);
-              const scale = Math.min(1, m / Math.max(img.width, img.height));
-              const w = Math.round(img.width * scale);
-              const h = Math.round(img.height * scale);
-              const canvas = document.createElement('canvas');
-              canvas.width = w; canvas.height = h;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0, w, h);
-              // use jpeg for smaller payload unless transparency likely
-              const type = 'image/jpeg';
-              const quality = 0.86;
-              resolve(canvas.toDataURL(type, quality));
-            };
-            img.src = String(reader.result||'');
-          };
-          reader.readAsDataURL(file);
-        }catch(err){ reject(err); }
-      });
-    },
     initials(name){
       const parts = String(name||"").trim().split(/\s+/).filter(Boolean);
       if(!parts.length) return "U";
@@ -137,7 +63,10 @@ overrideLabel(override){
 
     openModal(id){
       const m = UI.el('#'+id);
-      if(m) m.classList.add('open');
+      if(m){
+        UI.bringToFront(m);
+        m.classList.add('open');
+      }
       try{ document.body.classList.add('modal-open'); }catch(_){ }
     },
     closeModal(id){
@@ -147,6 +76,29 @@ overrideLabel(override){
       try{
         const any = document.querySelector('.modal.open');
         if(!any) document.body.classList.remove('modal-open');
+      }catch(_){ }
+    },
+    // Ensure reused dialogs always render above existing UI layers.
+    bringToFront(modal, opts){
+      try{
+        const m = modal;
+        if(!m || !(m instanceof HTMLElement)) return;
+        // Move to end of <body> to win same-z-index stacking ties.
+        if(document.body && m.parentElement === document.body){
+          document.body.appendChild(m);
+        }
+
+        const o = Object.assign({
+          baseZ: 2147483000,
+          panelOffset: 1,
+          headOffset: 2
+        }, opts || {});
+
+        m.style.zIndex = String(Math.max(10000, Number(o.baseZ)||2147483000));
+        const panel = m.querySelector('.panel');
+        if(panel) panel.style.zIndex = String((Number(m.style.zIndex)||2147483000) + Number(o.panelOffset||1));
+        const head = m.querySelector('.head, .modal-head');
+        if(head) head.style.zIndex = String((Number(m.style.zIndex)||2147483000) + Number(o.headOffset||2));
       }catch(_){ }
     },
     // Toast notifications (enterprise-style, theme-adaptive)
@@ -285,6 +237,7 @@ toast(message, variant){
         cancelBtn.onclick = ()=>done(false);
         xBtn.onclick = ()=>done(false);
 
+        UI.bringToFront(modal, { baseZ: 2147483200, panelOffset: 1, headOffset: 2 });
         modal.addEventListener('click', onBackdrop);
         document.addEventListener('keydown', onKey, true);
 
@@ -359,6 +312,7 @@ toast(message, variant){
 
         // lock the app while modal open
         document.body.classList.add('attendance-locked');
+        UI.bringToFront(modal, { baseZ: 2147483300, panelOffset: 1, headOffset: 2 });
 
         const name = String(u.name || u.fullName || u.username || 'User');
         const sub = modal.querySelector('#attSub');

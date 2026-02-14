@@ -2478,6 +2478,19 @@ body.sidebar-collapsed.rightbar-collapsed .app{grid-template-columns:72px 1fr 0p
 .modal .head{position:relative;z-index:10002}
 .modal .head .btn{position:relative;z-index:10003;pointer-events:auto}
 
+/* Global modal stack safety: keep active dialogs above sticky bars/overlays across pages */
+.modal.open,
+.confirm-modal.open,
+.attendance-modal.open{
+  z-index: 2147483000;
+}
+.modal.open .panel,
+.confirm-modal.open .panel,
+.attendance-modal.open .panel{
+  position: relative;
+  z-index: 2147483001;
+}
+
 
 /* Native cursor baseline (always visible) */
 body{cursor:default}
