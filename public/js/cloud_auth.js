@@ -500,12 +500,21 @@ async function login(usernameOrEmail, password){
         email: user.email || (prev.user && prev.user.email) || ''
       };
       writeSession({ access_token, refresh_token: refresh_token || (prev.refresh_token || ''), expires_at, user: mergedUser });
+      try { localStorage.removeItem('mums_login_flash'); } catch (_) {}
       emitToken();
       scheduleRefresh(readSession());
       try{
         const clean = window.location.pathname + window.location.search;
         window.history.replaceState({}, document.title, clean);
       }catch(_){ }
+
+      // Successful OAuth callback on login page should continue to app shell.
+      try {
+        const p = String(window.location.pathname || '').toLowerCase();
+        if (p.endsWith('/login.html') || p.endsWith('/login')) {
+          window.location.replace('./dashboard');
+        }
+      } catch (_) {}
       return true;
     }catch(_){
       return false;

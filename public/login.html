@@ -263,9 +263,17 @@
         if(!(window.CloudAuth && CloudAuth.signInWithAzure)){
           return showErr('Microsoft OAuth is unavailable in this environment.');
         }
+        let oauthRedirectTo = '';
+        try{
+          oauthRedirectTo = window.location.origin + window.location.pathname;
+        }catch(_){
+          oauthRedirectTo = window.location.origin;
+        }
         const out = await CloudAuth.signInWithAzure({
           scopes: 'email',
-          redirectTo: window.location.origin
+          // Always return to login page callback handler so hash tokens/errors
+          // are absorbed before any root/index redirect guard runs.
+          redirectTo: oauthRedirectTo
         });
         if(out && out.ok===false){
           return showErr(out.message || 'Microsoft sign-in failed.');
