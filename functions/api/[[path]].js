@@ -74,7 +74,14 @@ async function getRoutes(env) {
     'mailbox/confirm': unwrapCjs(await import('../../server/routes/mailbox/confirm.js')),
     'mailbox/case_action': unwrapCjs(await import('../../server/routes/mailbox/case_action.js')),
 
-    'member/schedule': unwrapCjs(await import('../../server/routes/member_schedule.js'))
+    'member/schedule': unwrapCjs(await import('../../server/routes/member_schedule.js')),
+
+    'tasks/assigned': unwrapCjs(await import('../../server/routes/tasks/assigned.js')),
+    'tasks/distributions': unwrapCjs(await import('../../server/routes/tasks/distributions.js')),
+    'tasks/distribution_items': unwrapCjs(await import('../../server/routes/tasks/distribution_items.js')),
+    'tasks/item_status': unwrapCjs(await import('../../server/routes/tasks/item_status.js')),
+    'tasks/workload_matrix': unwrapCjs(await import('../../server/routes/tasks/workload_matrix.js')),
+    'tasks/members': unwrapCjs(await import('../../server/routes/tasks/members.js'))
   };
 
   return ROUTES;

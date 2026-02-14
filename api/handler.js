@@ -60,7 +60,14 @@ const ROUTES = {
   'users/remove_avatar': require('../server/routes/users/remove_avatar'),
   'users/delete': require('../server/routes/users/delete'),
 
-  'member/schedule': require('../server/routes/member_schedule')
+  'member/schedule': require('../server/routes/member_schedule'),
+
+  'tasks/assigned': require('../server/routes/tasks/assigned'),
+  'tasks/distributions': require('../server/routes/tasks/distributions'),
+  'tasks/distribution_items': require('../server/routes/tasks/distribution_items'),
+  'tasks/item_status': require('../server/routes/tasks/item_status'),
+  'tasks/workload_matrix': require('../server/routes/tasks/workload_matrix'),
+  'tasks/members': require('../server/routes/tasks/members'),
 };
 
 const DYNAMIC_ROUTES = [
