@@ -461,8 +461,29 @@ async function login(usernameOrEmail, password){
   function absorbOAuthCallbackSession(){
     try{
       const hash = String(window.location.hash || '').replace(/^#/, '');
-      if(!hash || !hash.includes('access_token=')) return false;
+      if(!hash) return false;
       const params = new URLSearchParams(hash);
+
+      // OAuth provider/database-trigger failures are returned in the callback hash.
+      // Surface the exact description so login UI can show the real failure reason
+      // instead of silently looping back to the login page.
+      if (params.get('error')) {
+        const error = String(params.get('error') || 'oauth_error');
+        const errorDescription = String(params.get('error_description') || params.get('errorDescription') || error || 'OAuth sign-in failed.');
+        try {
+          localStorage.setItem('mums_login_flash', errorDescription);
+        } catch (_) {}
+        try {
+          window.dispatchEvent(new CustomEvent('mums:oauth_error', { detail: { error, error_description: errorDescription } }));
+        } catch (_) {}
+        try {
+          const cleanError = window.location.pathname + window.location.search;
+          window.history.replaceState({}, document.title, cleanError);
+        } catch (_) {}
+        return false;
+      }
+
+      if(!hash.includes('access_token=')) return false;
       const access_token = String(params.get('access_token') || '');
       if(!access_token) return false;
       const refresh_token = String(params.get('refresh_token') || '');

@@ -138,6 +138,40 @@
     const showErr = (msg)=>{ const e=$("err"); e.textContent=msg; e.style.display="block"; };
     const hideErr = ()=>{ const e=$("err"); e.style.display="none"; e.textContent=""; };
 
+    function parseAuthErrorFromUrl(){
+      try{
+        const out = { error: '', error_description: '' };
+        const read = (paramSource)=>{
+          if(!paramSource) return;
+          const err = String(paramSource.get('error') || '').trim();
+          const desc = String(paramSource.get('error_description') || paramSource.get('errorDescription') || '').trim();
+          if(err && !out.error) out.error = err;
+          if(desc && !out.error_description) out.error_description = desc;
+        };
+
+        const hashRaw = String(window.location.hash || '').replace(/^#/, '');
+        if(hashRaw) read(new URLSearchParams(hashRaw));
+        read(new URLSearchParams(window.location.search || ''));
+
+        if(!out.error && !out.error_description) return null;
+        if(!out.error_description) out.error_description = out.error || 'Microsoft sign-in failed.';
+        return out;
+      }catch(_){
+        return null;
+      }
+    }
+
+    function consumeAuthErrorFromUrl(){
+      const parsed = parseAuthErrorFromUrl();
+      if(!parsed) return;
+      showErr(parsed.error_description);
+      try{ localStorage.setItem('mums_login_flash', parsed.error_description); }catch(_){ }
+      try{
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }catch(_){ }
+    }
+
     // One-time flash error (used when a deleted account is forcibly logged out).
     try{
       const flash = localStorage.getItem('mums_login_flash');
@@ -146,6 +180,21 @@
         showErr(String(flash));
       }
     }catch(_){}
+
+    // Show exact OAuth/database-trigger error returned in URL hash/query.
+    consumeAuthErrorFromUrl();
+
+    // Mirror auth state failures on login screen instead of silent loops.
+    try{
+      window.addEventListener('mums:oauth_error', (ev)=>{
+        const msg = String((ev && ev.detail && ev.detail.error_description) || 'Microsoft sign-in failed.');
+        showErr(msg);
+      });
+      window.addEventListener('mums:auth_invalid', (ev)=>{
+        const reason = String((ev && ev.detail && ev.detail.reason) || 'Session invalid');
+        showErr('Authentication error: ' + reason);
+      });
+    }catch(_){ }
 
     // Save details (username/email, optional password)
     const SAVE_KEY = 'mums_login_saved_v1';
