@@ -467,10 +467,7 @@ async function login(usernameOrEmail, password){
       // OAuth provider/database-trigger failures are returned in the callback hash.
       // Surface the exact description so login UI can show the real failure reason
       // instead of silently looping back to the login page.
-      const hasAccessToken = !!String(params.get('access_token') || '').trim();
-      // Prefer token success payload when present. Some providers can include
-      // legacy error-like fields in edge cases; access_token is authoritative.
-      if (!hasAccessToken && params.get('error')) {
+      if (params.get('error')) {
         const error = String(params.get('error') || 'oauth_error');
         const errorDescription = String(params.get('error_description') || params.get('errorDescription') || error || 'OAuth sign-in failed.');
         try {
@@ -486,7 +483,7 @@ async function login(usernameOrEmail, password){
         return false;
       }
 
-      if(!hasAccessToken) return false;
+      if(!hash.includes('access_token=')) return false;
       const access_token = String(params.get('access_token') || '');
       if(!access_token) return false;
       const refresh_token = String(params.get('refresh_token') || '');
