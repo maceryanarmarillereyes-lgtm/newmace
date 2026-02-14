@@ -2216,7 +2216,8 @@ container.innerHTML = `
       </div>
     `;
     document.body.appendChild(modal);
-    if(UI && UI.bringToFront) UI.bringToFront(modal, { baseZ: 2147483260, panelOffset: 1, headOffset: 2 });
+    // Keep preview below global confirmation dialogs so Approve/Apply prompts are never hidden.
+    if(UI && UI.bringToFront) UI.bringToFront(modal, { baseZ: 2147483100, panelOffset: 1, headOffset: 2 });
     modal.classList.add('open');
 
     const close = ()=>{ modal.classList.remove('open'); modal.remove(); };
