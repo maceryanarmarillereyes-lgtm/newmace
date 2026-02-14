@@ -2073,7 +2073,7 @@ container.innerHTML = `
       };
     };
 
-    if(UI && UI.bringToFront) UI.bringToFront(modal, { baseZ: 2147481900, panelOffset: 1, headOffset: 2 });
+    if(UI && UI.bringToFront) UI.bringToFront(modal, { baseZ: 2147483250, panelOffset: 1, headOffset: 2 });
     modal.classList.add('open');
     bind();
   }
@@ -2216,7 +2216,7 @@ container.innerHTML = `
       </div>
     `;
     document.body.appendChild(modal);
-    if(UI && UI.bringToFront) UI.bringToFront(modal, { baseZ: 2147481950, panelOffset: 1, headOffset: 2 });
+    if(UI && UI.bringToFront) UI.bringToFront(modal, { baseZ: 2147483260, panelOffset: 1, headOffset: 2 });
     modal.classList.add('open');
 
     const close = ()=>{ modal.classList.remove('open'); modal.remove(); };

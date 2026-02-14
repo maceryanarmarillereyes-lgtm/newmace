@@ -79,34 +79,26 @@ overrideLabel(override){
       }catch(_){ }
     },
     // Ensure reused dialogs always render above existing UI layers.
-    // Uses a monotonic z-index cursor so newer dialogs (e.g., confirm over preview)
-    // always appear on top without relying on hard-coded per-modal values.
-    _modalZCursor: 2147482000,
     bringToFront(modal, opts){
       try{
         const m = modal;
         if(!m || !(m instanceof HTMLElement)) return;
-
-        const o = Object.assign({
-          baseZ: 2147482000,
-          panelOffset: 1,
-          headOffset: 2
-        }, opts || {});
-
-        const requestedBase = Math.max(10000, Number(o.baseZ)||2147482000);
-        UI._modalZCursor = Math.max(requestedBase, Number(UI._modalZCursor||2147482000) + 1);
-        const modalZ = UI._modalZCursor;
-
         // Move to end of <body> to win same-z-index stacking ties.
         if(document.body && m.parentElement === document.body){
           document.body.appendChild(m);
         }
 
-        m.style.zIndex = String(modalZ);
+        const o = Object.assign({
+          baseZ: 2147483000,
+          panelOffset: 1,
+          headOffset: 2
+        }, opts || {});
+
+        m.style.zIndex = String(Math.max(10000, Number(o.baseZ)||2147483000));
         const panel = m.querySelector('.panel');
-        if(panel) panel.style.zIndex = String(modalZ + Number(o.panelOffset||1));
+        if(panel) panel.style.zIndex = String((Number(m.style.zIndex)||2147483000) + Number(o.panelOffset||1));
         const head = m.querySelector('.head, .modal-head');
-        if(head) head.style.zIndex = String(modalZ + Number(o.headOffset||2));
+        if(head) head.style.zIndex = String((Number(m.style.zIndex)||2147483000) + Number(o.headOffset||2));
       }catch(_){ }
     },
     // Toast notifications (enterprise-style, theme-adaptive)
@@ -245,7 +237,7 @@ toast(message, variant){
         cancelBtn.onclick = ()=>done(false);
         xBtn.onclick = ()=>done(false);
 
-        UI.bringToFront(modal, { baseZ: 2147482000, panelOffset: 1, headOffset: 2 });
+        UI.bringToFront(modal, { baseZ: 2147483200, panelOffset: 1, headOffset: 2 });
         modal.addEventListener('click', onBackdrop);
         document.addEventListener('keydown', onKey, true);
 
@@ -320,7 +312,7 @@ toast(message, variant){
 
         // lock the app while modal open
         document.body.classList.add('attendance-locked');
-        UI.bringToFront(modal, { baseZ: 2147482050, panelOffset: 1, headOffset: 2 });
+        UI.bringToFront(modal, { baseZ: 2147483300, panelOffset: 1, headOffset: 2 });
 
         const name = String(u.name || u.fullName || u.username || 'User');
         const sub = modal.querySelector('#attSub');
