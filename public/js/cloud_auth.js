@@ -461,8 +461,32 @@ async function login(usernameOrEmail, password){
   function absorbOAuthCallbackSession(){
     try{
       const hash = String(window.location.hash || '').replace(/^#/, '');
-      if(!hash || !hash.includes('access_token=')) return false;
+      if(!hash) return false;
       const params = new URLSearchParams(hash);
+
+      // OAuth provider/database-trigger failures are returned in the callback hash.
+      // Surface the exact description so login UI can show the real failure reason
+      // instead of silently looping back to the login page.
+      const hasAccessToken = !!String(params.get('access_token') || '').trim();
+      // Prefer token success payload when present. Some providers can include
+      // legacy error-like fields in edge cases; access_token is authoritative.
+      if (!hasAccessToken && params.get('error')) {
+        const error = String(params.get('error') || 'oauth_error');
+        const errorDescription = String(params.get('error_description') || params.get('errorDescription') || error || 'OAuth sign-in failed.');
+        try {
+          localStorage.setItem('mums_login_flash', errorDescription);
+        } catch (_) {}
+        try {
+          window.dispatchEvent(new CustomEvent('mums:oauth_error', { detail: { error, error_description: errorDescription } }));
+        } catch (_) {}
+        try {
+          const cleanError = window.location.pathname + window.location.search;
+          window.history.replaceState({}, document.title, cleanError);
+        } catch (_) {}
+        return false;
+      }
+
+      if(!hasAccessToken) return false;
       const access_token = String(params.get('access_token') || '');
       if(!access_token) return false;
       const refresh_token = String(params.get('refresh_token') || '');
@@ -479,12 +503,21 @@ async function login(usernameOrEmail, password){
         email: user.email || (prev.user && prev.user.email) || ''
       };
       writeSession({ access_token, refresh_token: refresh_token || (prev.refresh_token || ''), expires_at, user: mergedUser });
+      try { localStorage.removeItem('mums_login_flash'); } catch (_) {}
       emitToken();
       scheduleRefresh(readSession());
       try{
         const clean = window.location.pathname + window.location.search;
         window.history.replaceState({}, document.title, clean);
       }catch(_){ }
+
+      // Successful OAuth callback on login page should continue to app shell.
+      try {
+        const p = String(window.location.pathname || '').toLowerCase();
+        if (p.endsWith('/login.html') || p.endsWith('/login')) {
+          window.location.replace('./dashboard');
+        }
+      } catch (_) {}
       return true;
     }catch(_){
       return false;
