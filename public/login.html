@@ -52,6 +52,14 @@
               <button class="btn primary" id="loginBtn" type="submit">Login</button>
             </div>
           </div>
+
+          <div style="display:flex;align-items:center;gap:10px;margin-top:16px;margin-bottom:12px;">
+            <div style="flex:1;height:1px;background:rgba(255,255,255,0.2);"></div>
+            <div class="small" style="letter-spacing:0.08em;">OR</div>
+            <div style="flex:1;height:1px;background:rgba(255,255,255,0.2);"></div>
+          </div>
+
+          <button class="btn" id="azureLoginBtn" type="button" style="width:100%;background:#2F2F2F;color:#fff;border-color:#4a4a4a;">🪟 Sign in with Microsoft</button>
         </form>
         <div class="err" id="err" style="display:none"></div>
 
@@ -200,6 +208,23 @@
         window.location.replace("./index.html#dashboard");
       }
     }
+    async function doMicrosoftLogin(){
+      hideErr();
+      try{
+        if(!(window.CloudAuth && CloudAuth.signInWithAzure)){
+          return showErr('Microsoft OAuth is unavailable in this environment.');
+        }
+        const out = await CloudAuth.signInWithAzure({
+          scopes: 'email',
+          redirectTo: window.location.origin
+        });
+        if(out && out.ok===false){
+          return showErr(out.message || 'Microsoft sign-in failed.');
+        }
+      }catch(e){
+        return showErr((e && e.message) ? e.message : 'Microsoft sign-in failed.');
+      }
+    }
 
     // Use a form submit handler so password managers/autofill behave properly.
     // Prevent default navigation to keep the app SPA-style.
@@ -209,6 +234,10 @@
         try{ e.preventDefault(); }catch(_){ }
         doLogin();
       });
+    }
+    const azureLoginBtn = $("azureLoginBtn");
+    if(azureLoginBtn){
+      azureLoginBtn.addEventListener('click', ()=>{ doMicrosoftLogin(); });
     }
 
     // Save details UI wiring
