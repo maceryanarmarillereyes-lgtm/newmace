@@ -3314,6 +3314,8 @@ body:not(.members-fullscreen-active) .members-enterprise-grid{
   color:#f4f4f5;
   background: rgba(24,24,27,0.65);
   backdrop-filter: blur(8px);
+  z-index: 2;
+  pointer-events: none;
 }
 
 .members-inspector{ padding:12px; }
@@ -3658,7 +3660,7 @@ body.members-fullscreen-active .members-topbar,
 
 /* Modal must be above sticky header */
 .members-page .modal{
-  z-index:11000;
+  z-index:17000;
 }
 .members-page .modal .panel{
   max-height: 82vh;
@@ -4661,4 +4663,43 @@ body.members-fullscreen-active .tooltip{
 }
 .members-row + .members-row{
   margin-top: 8px;
+}
+
+/* Locked day overlay must only cover schedule timeline, never member names/actions. */
+.members-page .members-row .members-meta,
+.members-page .members-row .member-actions{
+  position: relative;
+  z-index: 3;
+}
+.members-page .members-row .timeline,
+.members-page .members-row .timeline-wrap{
+  position: relative;
+  z-index: 1;
+}
+
+
+/* Global overlay safety: Members action windows are appended to <body>,
+   so do not scope these selectors under `.members-page`. */
+#mumsConfirmModal,
+#autoPreviewModal,
+#autoSettingsModal,
+#taskSettingsModal,
+#auditModal,
+#ackModal,
+#memberSchedModal,
+#trendModal,
+.modal.confirm-modal{
+  z-index: 22000 !important;
+}
+#mumsConfirmModal .panel,
+#autoPreviewModal .panel,
+#autoSettingsModal .panel,
+#taskSettingsModal .panel,
+#auditModal .panel,
+#ackModal .panel,
+#memberSchedModal .panel,
+#trendModal .panel,
+.modal.confirm-modal .panel{
+  position: relative;
+  z-index: 22001 !important;
 }
