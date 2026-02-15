@@ -20,9 +20,10 @@ module.exports = async (req, res) => {
         const items = itemRes.ok && Array.isArray(itemRes.json) ? itemRes.json : [];
         stats = items.reduce((acc, it) => {
           const key = String(it.distribution_id || '');
-          if (!acc[key]) acc[key] = { total: 0, done: 0 };
+          if (!acc[key]) acc[key] = { total: 0, done: 0, pending: 0 };
           acc[key].total += 1;
           if (String(it.status || '').toUpperCase() === 'DONE') acc[key].done += 1;
+          else acc[key].pending += 1;
           return acc;
         }, {});
       }
@@ -30,8 +31,8 @@ module.exports = async (req, res) => {
       return sendJson(res, 200, {
         ok: true,
         rows: rows.map((row) => {
-          const x = stats[String(row.id)] || { total: 0, done: 0 };
-          return Object.assign({}, row, { total_items: x.total, done_items: x.done });
+          const x = stats[String(row.id)] || { total: 0, done: 0, pending: 0 };
+          return Object.assign({}, row, { total_items: x.total, done_items: x.done, pending_items: x.pending });
         })
       });
     }
@@ -52,17 +53,23 @@ module.exports = async (req, res) => {
 
       const payload = items
         .map((item) => {
+          const caseNumber = String((item && item.case_number) || '').trim() || null;
+          const site = String((item && item.site) || '').trim() || null;
           const description = String((item && item.description) || '').trim();
           const assignedTo = String((item && item.assigned_to) || '').trim();
-          const deadline = item && item.deadline ? String(item.deadline) : null;
-          const referenceUrl = String((item && item.reference_url) || '').trim() || null;
+          const deadline = item && item.deadline ? String(item.deadline).trim() : null;
+          const referenceUrl = String((item && item.reference_url) || '').trim();
+          const normalizedReferenceUrl = /^https?:\/\//i.test(referenceUrl) ? referenceUrl : null;
           if (!description || !assignedTo) return null;
+
           return {
             distribution_id: distributionId,
+            case_number: caseNumber,
+            site,
             description,
             assigned_to: assignedTo,
             deadline,
-            reference_url: referenceUrl,
+            reference_url: normalizedReferenceUrl,
             status: 'PENDING',
             remarks: ''
           };

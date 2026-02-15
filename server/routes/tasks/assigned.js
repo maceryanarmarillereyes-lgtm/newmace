@@ -56,6 +56,7 @@ module.exports = async (req, res) => {
           distribution_id: distributionId,
           project_title: String(dist.title || 'Untitled Distribution'),
           assigner_name: creatorName,
+          assigned_at: dist.created_at || row.created_at || null,
           pending_count: 0,
           total_count: 0,
           done_count: 0,
@@ -71,16 +72,25 @@ module.exports = async (req, res) => {
 
       acc[distributionId].items.push(item);
       acc[distributionId].total_count += 1;
-      if (status !== 'DONE') acc[distributionId].pending_count += 1;
       if (status === 'DONE') acc[distributionId].done_count += 1;
+      if (status !== 'DONE') acc[distributionId].pending_count += 1;
       return acc;
     }, {});
 
-    const groups = Object.values(grouped).sort((a, b) => {
-      const aDate = new Date((a.items[0] && (a.items[0].deadline || a.items[0].created_at)) || 0).getTime();
-      const bDate = new Date((b.items[0] && (b.items[0].deadline || b.items[0].created_at)) || 0).getTime();
-      return aDate - bDate;
-    });
+    const groups = Object.values(grouped)
+      .map((group) => {
+        group.items.sort((a, b) => {
+          const aTime = new Date(a.deadline || a.created_at || 0).getTime();
+          const bTime = new Date(b.deadline || b.created_at || 0).getTime();
+          return aTime - bTime;
+        });
+        return group;
+      })
+      .sort((a, b) => {
+        const aDate = new Date(a.assigned_at || (a.items[0] && a.items[0].created_at) || 0).getTime();
+        const bDate = new Date(b.assigned_at || (b.items[0] && b.items[0].created_at) || 0).getTime();
+        return bDate - aDate;
+      });
 
     return sendJson(res, 200, { ok: true, groups });
   } catch (err) {

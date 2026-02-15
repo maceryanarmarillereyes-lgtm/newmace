@@ -13,10 +13,14 @@
     distributionItems: [],
     members: [],
     expandedGroupId: '',
-    gridRows: []
+    gridRows: [],
+    uploadMeta: { fileName: '', sheetCount: 0, rowCount: 0 },
+    parserReady: false,
+    parserError: ''
   };
 
-  const GRID_COLUMNS = ['case_number', 'site', 'description', 'assigned_name', 'deadline', 'reference_url'];
+  const MATCH_THRESHOLD = 0.72;
+  const STRONG_MATCH_THRESHOLD = 0.95;
 
   function fmtDate(v) {
     if (!v) return 'N/A';
@@ -77,6 +81,18 @@
     return `${year}-${month}-${day}T${hour}:${minute}`;
   }
 
+  function hasUrl(value) {
+    return /^https?:\/\//i.test(String(value || '').trim());
+  }
+
+  function looksLikeDate(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return false;
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw) || /^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/.test(raw)) return true;
+    const d = new Date(raw);
+    return !Number.isNaN(d.getTime());
+  }
+
   function createGridRow(value) {
     const row = Object.assign({
       case_number: '',
@@ -90,17 +106,14 @@
       match_state: 'none'
     }, value || {});
 
-    if (row.assigned_name && !row.assigned_to) {
-      applyNameMatch(row, row.assigned_name);
-    }
-
+    if (row.assigned_name && !row.assigned_to) applyNameMatch(row, row.assigned_name);
     return row;
   }
 
   function applyNameMatch(row, assignedName) {
     const picked = findMemberMatch(assignedName);
     row.assigned_name = String(assignedName || '').trim();
-    if (!picked || picked.score < 0.72) {
+    if (!picked || picked.score < MATCH_THRESHOLD) {
       row.assigned_to = '';
       row.match_score = picked ? picked.score : 0;
       row.match_state = 'none';
@@ -108,17 +121,19 @@
     }
     row.assigned_to = String(picked.member.user_id || '');
     row.match_score = picked.score;
-    row.match_state = picked.score >= 0.95 ? 'high' : 'good';
+    row.match_state = picked.score >= STRONG_MATCH_THRESHOLD ? 'high' : 'good';
   }
 
-  function rowMatchBadge(row) {
-    if (!row) return '';
-    if (row.match_state === 'high' || row.match_state === 'good') return '<span style="color:#22c55e;font-weight:600">GREEN • Matched</span>';
-    return '<span style="color:#ef4444;font-weight:600">RED • Select member</span>';
+  function memberOptions(selectedUid) {
+    return state.members.map((m) => {
+      const label = safe(m.name || m.username, m.user_id);
+      const selected = String(selectedUid || '') === String(m.user_id || '') ? 'selected' : '';
+      return `<option value="${esc(m.user_id || '')}" ${selected}>${esc(label)}</option>`;
+    }).join('');
   }
 
-  function hasUrl(value) {
-    return /^https?:\/\//i.test(String(value || '').trim());
+  function unresolvedRowsCount() {
+    return state.gridRows.filter((row) => row.description && !row.assigned_to).length;
   }
 
   function renderIncomingGroups() {
@@ -132,14 +147,14 @@
       const progress = pct(done, total);
       const expanded = state.expandedGroupId === id;
       return `
-        <div class="card pad" style="margin-bottom:10px;border:1px solid rgba(255,255,255,.12)">
-          <button class="btn" data-group-toggle="${esc(id)}" type="button" style="width:100%;text-align:left;padding:10px 12px">
+        <div class="card pad" style="margin-bottom:12px;border:1px solid rgba(255,255,255,.12)">
+          <button class="btn" data-group-toggle="${esc(id)}" type="button" style="width:100%;text-align:left;padding:12px">
             <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
               <div>
-                <div style="font-weight:700">${esc(safe(group.project_title, 'Untitled Distribution'))}</div>
-                <div class="small muted">Assigned by ${esc(safe(group.assigner_name, 'N/A'))}</div>
+                <div style="font-weight:800;font-size:15px">${esc(safe(group.project_title, 'Untitled Distribution'))}</div>
+                <div class="small muted">Assigned by: ${esc(safe(group.assigner_name, 'N/A'))} | Date: ${esc(fmtDate(group.assigned_at || group.created_at || group.updated_at))}</div>
               </div>
-              <div style="text-align:right">
+              <div style="text-align:right;min-width:140px">
                 <div style="font-weight:700;color:${pending > 0 ? '#ef4444' : '#22c55e'}">🔴 ${esc(pending)} Pending</div>
                 <div class="small muted">${esc(done)} / ${esc(total)} complete</div>
               </div>
@@ -161,9 +176,7 @@
                       <td>${esc(safe(item.site, 'N/A'))}</td>
                       <td>${esc(safe(item.description, 'N/A'))}</td>
                       <td>${esc(fmtDate(item.deadline || item.deadline_at || item.due_at))}</td>
-                      <td>
-                        ${hasUrl(item.reference_url) ? `<a href="${esc(item.reference_url)}" target="_blank" rel="noopener" title="Open work instruction">📎</a>` : '<span class="muted">—</span>'}
-                      </td>
+                      <td>${hasUrl(item.reference_url) ? `<a href="${esc(item.reference_url)}" target="_blank" rel="noopener" title="Open work instruction">📎</a>` : '<span class="muted">—</span>'}</td>
                       <td>
                         <select data-item-status="${esc(item.id)}" class="ux-focusable">
                           <option value="PENDING" ${statusBadgeText(item) === 'PENDING' ? 'selected' : ''}>PENDING</option>
@@ -183,34 +196,27 @@
     }).join('');
   }
 
-  function memberOptions(selectedUid) {
-    return state.members.map((m) => {
-      const label = safe(m.name || m.username, m.user_id);
-      const selected = String(selectedUid || '') === String(m.user_id || '') ? 'selected' : '';
-      return `<option value="${esc(m.user_id || '')}" ${selected}>${esc(label)}</option>`;
-    }).join('');
-  }
-
   function renderDistributionGridRows() {
-    if (!state.gridRows.length) return '';
+    if (!state.gridRows.length) return '<tr><td colspan="8" class="small muted">Upload a file to preview parsed rows.</td></tr>';
     return state.gridRows.map((row, idx) => `
-      <tr data-grid-row="${idx}" style="background:${row.match_state === 'none' ? 'rgba(239,68,68,.08)' : 'rgba(34,197,94,.08)'}">
+      <tr data-grid-row="${idx}" style="background:${row.assigned_to ? 'rgba(34,197,94,.08)' : 'rgba(239,68,68,.08)'}">
         <td><input data-grid-input="${idx}" data-col="case_number" value="${esc(row.case_number)}" placeholder="Case #" style="width:100%" /></td>
         <td><input data-grid-input="${idx}" data-col="site" value="${esc(row.site)}" placeholder="Site" style="width:100%" /></td>
         <td><input data-grid-input="${idx}" data-col="description" value="${esc(row.description)}" placeholder="Description" style="width:100%" /></td>
-        <td>
-          <input data-grid-input="${idx}" data-col="assigned_name" value="${esc(row.assigned_name)}" placeholder="Assigned To" style="width:100%;margin-bottom:4px" />
+        <td style="background:${row.assigned_to ? 'rgba(34,197,94,.15)' : 'rgba(239,68,68,.18)'}">
+          <input data-grid-input="${idx}" data-col="assigned_name" value="${esc(row.assigned_name)}" placeholder="Assignee" style="width:100%;margin-bottom:4px" />
           <select data-grid-assignee="${idx}" style="width:100%"><option value="">Select Assignee</option>${memberOptions(row.assigned_to)}</select>
         </td>
         <td><input data-grid-input="${idx}" data-col="deadline" value="${esc(row.deadline)}" placeholder="YYYY-MM-DDTHH:mm" style="width:100%" /></td>
         <td><input data-grid-input="${idx}" data-col="reference_url" value="${esc(row.reference_url)}" placeholder="https://..." style="width:100%" /></td>
-        <td>${rowMatchBadge(row)}</td>
+        <td>${row.assigned_to ? '<span style="color:#22c55e;font-weight:700">GREEN • Matched</span>' : '<span style="color:#ef4444;font-weight:700">RED • Resolve</span>'}</td>
         <td><button class="btn" data-grid-remove="${idx}" type="button">Remove</button></td>
       </tr>
     `).join('');
   }
 
   function render() {
+    const unresolved = unresolvedRowsCount();
     root.innerHTML = `
       <h2 style="margin:0 0 10px">My Task</h2>
       <div class="row" style="gap:8px;flex-wrap:wrap">
@@ -218,9 +224,7 @@
         <button class="btn ${state.tab === 'outgoing' ? 'primary' : ''}" id="tabOutgoing" type="button">Task Distributions</button>
       </div>
 
-      <div id="incomingView" style="display:${state.tab === 'incoming' ? 'block' : 'none'};margin-top:12px">
-        ${renderIncomingGroups()}
-      </div>
+      <div id="incomingView" style="display:${state.tab === 'incoming' ? 'block' : 'none'};margin-top:12px">${renderIncomingGroups()}</div>
 
       <div id="outgoingView" style="display:${state.tab === 'outgoing' ? 'block' : 'none'};margin-top:12px">
         <div class="row" style="justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
@@ -250,21 +254,33 @@
       </div>
 
       <div class="modal" id="taskDistributionModal" style="display:none">
-        <div class="panel" style="max-width:1200px">
+        <div class="panel" style="max-width:1260px">
           <div class="head"><div class="announce-title">Create New Distribution</div><button class="btn ghost" data-close-task-modal="1" type="button">✕</button></div>
           <div class="body">
             <label class="small muted">Project Title</label>
-            <input id="distributionTitleInput" placeholder="Billing Help" style="width:100%;margin-bottom:8px" />
-            <div class="small muted" style="margin-bottom:6px">Excel Bulk Paste supported (Case #, Site, Description, Assigned To, Deadline, Link/WI)</div>
+            <input id="distributionTitleInput" placeholder="Billing Help" style="width:100%;margin-bottom:10px" />
+
+            <div id="uploadZone" style="border:2px dashed rgba(255,255,255,.2);border-radius:12px;padding:24px;text-align:center;background:rgba(255,255,255,.02)">
+              <div style="font-weight:700;margin-bottom:6px">Upload .xlsx or .csv</div>
+              <div class="small muted" style="margin-bottom:8px">Drag-and-drop file here, or choose file manually. Assignee and links are auto-detected from content.</div>
+              <input type="file" id="distributionFileInput" accept=".xlsx,.xls,.csv" />
+              <div class="small muted" id="uploadMeta" style="margin-top:8px">${esc(state.uploadMeta.fileName ? `${state.uploadMeta.fileName} • ${state.uploadMeta.sheetCount} sheet(s) • ${state.uploadMeta.rowCount} row(s)` : 'No file parsed yet.')}</div>
+              ${state.parserError ? `<div class="small" style="color:#ef4444;margin-top:8px">${esc(state.parserError)}</div>` : ''}
+            </div>
+
+            <div class="row" style="justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 6px">
+              <div class="small muted">Validation Preview (GREEN matched / RED unresolved)</div>
+              <button class="btn" id="addGridRowBtn" type="button">+ Add Row</button>
+            </div>
             <table class="table" id="distributionGrid">
               <thead><tr><th>Case #</th><th>Site</th><th>Description</th><th>Assigned To</th><th>Deadline</th><th>Link/WI</th><th>Match</th><th></th></tr></thead>
               <tbody id="distributionGridBody">${renderDistributionGridRows()}</tbody>
             </table>
-            <div class="row" style="gap:8px"><button class="btn" id="addGridRowBtn" type="button">+ Add Row</button></div>
+            ${unresolved > 0 ? `<div class="small" style="color:#ef4444;margin-top:6px">Resolve ${esc(unresolved)} unmatched assignee row(s) before submitting.</div>` : ''}
           </div>
           <div class="foot">
             <button class="btn" data-close-task-modal="1" type="button">Cancel</button>
-            <button class="btn primary" id="submitDistributionBtn" type="button">Submit Distribution</button>
+            <button class="btn primary" id="submitDistributionBtn" type="button" ${unresolved > 0 ? 'disabled' : ''}>Submit Distribution</button>
           </div>
         </div>
       </div>
@@ -273,13 +289,14 @@
     bindEvents();
   }
 
-  function openModal() {
-    if (!state.gridRows.length) state.gridRows = [createGridRow({}), createGridRow({})];
+  function keepModalOpenAfterRender() {
     const modal = root.querySelector('#taskDistributionModal');
     if (modal) modal.style.display = 'flex';
+  }
+
+  function openModal() {
     render();
-    const reopened = root.querySelector('#taskDistributionModal');
-    if (reopened) reopened.style.display = 'flex';
+    keepModalOpenAfterRender();
   }
 
   function closeModal() {
@@ -287,30 +304,205 @@
     if (modal) modal.style.display = 'none';
   }
 
-  function applyPasteData(startRow, startCol, rawText) {
-    const rows = String(rawText || '').replace(/\r/g, '').split('\n').filter((line) => line.length > 0);
-    rows.forEach((line, rowOffset) => {
-      const cells = line.split('\t');
-      const targetIndex = startRow + rowOffset;
-      while (!state.gridRows[targetIndex]) state.gridRows.push(createGridRow({}));
-      const row = state.gridRows[targetIndex];
-
-      cells.forEach((cell, colOffset) => {
-        const col = GRID_COLUMNS[startCol + colOffset];
-        if (!col) return;
-        const trimmed = String(cell || '').trim();
-        if (col === 'assigned_name') {
-          applyNameMatch(row, trimmed);
-        } else if (col === 'deadline') {
-          row.deadline = normalizeDeadlineInput(trimmed);
+  function parseCsvLine(line) {
+    const out = [];
+    let cur = '';
+    let inQuote = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuote && line[i + 1] === '"') {
+          cur += '"';
+          i += 1;
         } else {
-          row[col] = trimmed;
+          inQuote = !inQuote;
         }
-        if (hasUrl(trimmed) && !row.reference_url) row.reference_url = trimmed;
+      } else if (ch === ',' && !inQuote) {
+        out.push(cur);
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+
+  async function ensureSheetJs() {
+    if (window.XLSX) {
+      state.parserReady = true;
+      state.parserError = '';
+      return true;
+    }
+
+    return new Promise((resolve) => {
+      const existing = document.querySelector('script[data-sheetjs="1"]');
+      if (existing) {
+        existing.addEventListener('load', () => {
+          state.parserReady = Boolean(window.XLSX);
+          state.parserError = state.parserReady ? '' : 'SheetJS failed to load. CSV upload is still supported.';
+          resolve(state.parserReady);
+        }, { once: true });
+        existing.addEventListener('error', () => {
+          state.parserReady = false;
+          state.parserError = 'SheetJS failed to load. CSV upload is still supported.';
+          resolve(false);
+        }, { once: true });
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      script.async = true;
+      script.setAttribute('data-sheetjs', '1');
+      script.onload = () => {
+        state.parserReady = Boolean(window.XLSX);
+        state.parserError = state.parserReady ? '' : 'SheetJS loaded unexpectedly without XLSX global. CSV upload is still supported.';
+        resolve(state.parserReady);
+      };
+      script.onerror = () => {
+        state.parserReady = false;
+        state.parserError = 'Could not load SheetJS in this environment. Upload CSV or refresh and retry .xlsx.';
+        resolve(false);
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(reader.error || new Error('Failed to read file.'));
+      reader.readAsText(file);
+    });
+  }
+
+  function readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('Failed to read file.'));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function matrixFromWorkbook(workbook) {
+    const rows = [];
+    (workbook.SheetNames || []).forEach((sheetName) => {
+      const sheet = workbook.Sheets[sheetName];
+      if (!sheet) return;
+      const matrix = window.XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+      matrix.forEach((r) => rows.push(Array.isArray(r) ? r : []));
+    });
+    return rows;
+  }
+
+  function detectColumnRoles(matrix) {
+    const maxCols = matrix.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0);
+    const roleByIndex = {};
+    const info = [];
+
+    for (let col = 0; col < maxCols; col += 1) {
+      const samples = [];
+      for (let row = 0; row < Math.min(matrix.length, 10); row += 1) {
+        const value = matrix[row] && typeof matrix[row][col] !== 'undefined' ? String(matrix[row][col]).trim() : '';
+        if (value) samples.push(value);
+      }
+
+      const total = samples.length || 1;
+      let memberMatches = 0;
+      let urlMatches = 0;
+      let dateLike = 0;
+
+      samples.forEach((value) => {
+        const candidate = findMemberMatch(value);
+        if (candidate && candidate.score >= MATCH_THRESHOLD) memberMatches += 1;
+        if (hasUrl(value)) urlMatches += 1;
+        if (looksLikeDate(value)) dateLike += 1;
       });
 
-      if (row.assigned_name && !row.assigned_to) applyNameMatch(row, row.assigned_name);
+      info.push({
+        col,
+        assigneeRatio: memberMatches / total,
+        urlRatio: urlMatches / total,
+        dateRatio: dateLike / total
+      });
+    }
+
+    const assigneeBest = info.slice().sort((a, b) => b.assigneeRatio - a.assigneeRatio)[0];
+    if (assigneeBest && assigneeBest.assigneeRatio > 0.3) roleByIndex[assigneeBest.col] = 'assigned_name';
+
+    const linkBest = info
+      .filter((i) => roleByIndex[i.col] !== 'assigned_name')
+      .sort((a, b) => b.urlRatio - a.urlRatio)[0];
+    if (linkBest && linkBest.urlRatio > 0.3) roleByIndex[linkBest.col] = 'reference_url';
+
+    const deadlineBest = info
+      .filter((i) => !roleByIndex[i.col])
+      .sort((a, b) => b.dateRatio - a.dateRatio)[0];
+    if (deadlineBest && deadlineBest.dateRatio > 0.4) roleByIndex[deadlineBest.col] = 'deadline';
+
+    return roleByIndex;
+  }
+
+  function rowsFromMatrix(matrix) {
+    const roleByIndex = detectColumnRoles(matrix);
+    const parsed = [];
+
+    matrix.forEach((cells) => {
+      if (!Array.isArray(cells)) return;
+      if (!cells.some((v) => String(v || '').trim())) return;
+
+      const row = createGridRow({});
+      const descParts = [];
+
+      cells.forEach((cell, colIdx) => {
+        const value = String(cell || '').trim();
+        if (!value) return;
+        const role = roleByIndex[colIdx] || 'description';
+
+        if (role === 'assigned_name') {
+          applyNameMatch(row, value);
+        } else if (role === 'reference_url') {
+          if (hasUrl(value)) row.reference_url = value;
+          else descParts.push(value);
+        } else if (role === 'deadline') {
+          row.deadline = normalizeDeadlineInput(value);
+        } else {
+          descParts.push(value);
+        }
+      });
+
+      if (!row.reference_url) {
+        const fromDesc = descParts.find((part) => hasUrl(part));
+        if (fromDesc) row.reference_url = fromDesc;
+      }
+
+      row.description = descParts.join(' | ').slice(0, 1000);
+      if (!row.description && row.assigned_name) row.description = `Task assigned to ${row.assigned_name}`;
+      if (row.description || row.assigned_name || row.reference_url) parsed.push(row);
     });
+
+    return parsed;
+  }
+
+  async function parseFileToRows(file) {
+    const ext = (String(file && file.name || '').split('.').pop() || '').toLowerCase();
+
+    if (ext === 'csv') {
+      const text = await readFileAsText(file);
+      const matrix = text.replace(/\r/g, '').split('\n').filter(Boolean).map((line) => parseCsvLine(line));
+      return { rows: rowsFromMatrix(matrix), sheetCount: 1 };
+    }
+
+    const ready = await ensureSheetJs();
+    if (!ready || !window.XLSX) throw new Error(state.parserError || 'SheetJS is unavailable for .xlsx parsing.');
+
+    const buffer = await readFileAsArrayBuffer(file);
+    const workbook = window.XLSX.read(buffer, { type: 'array' });
+    const matrix = matrixFromWorkbook(workbook);
+    return { rows: rowsFromMatrix(matrix), sheetCount: (workbook.SheetNames || []).length || 1 };
   }
 
   async function refreshDistributionItems(distributionId) {
@@ -320,6 +512,30 @@
     }
     const out = await CloudTasks.distributionItems(distributionId);
     state.distributionItems = out.ok && Array.isArray(out.data.rows) ? out.data.rows : [];
+  }
+
+  async function handleFileUpload(file) {
+    if (!file) return;
+    try {
+      state.parserError = '';
+      const parsed = await parseFileToRows(file);
+      state.gridRows = parsed.rows;
+      state.uploadMeta = {
+        fileName: String(file.name || ''),
+        rowCount: state.gridRows.length,
+        sheetCount: parsed.sheetCount || 1
+      };
+      if (!state.gridRows.length) {
+        UI.toast && UI.toast('No task rows detected from file. Please verify content.', 'warn');
+      }
+      render();
+      keepModalOpenAfterRender();
+    } catch (err) {
+      state.parserError = String(err && err.message ? err.message : err || 'File parse failed.');
+      render();
+      keepModalOpenAfterRender();
+      UI.toast && UI.toast(state.parserError, 'warn');
+    }
   }
 
   function bindEvents() {
@@ -335,17 +551,18 @@
         const remarks = remarksEl ? String(remarksEl.value || '') : '';
         const out = await CloudTasks.updateItemStatus({ task_item_id: taskItemId, status: sel.value, remarks });
         if (!out.ok) {
-          UI.toast && UI.toast(`Failed to update task: ${out.message}`, 'warn');
+          UI.toast && UI.toast(`Failed to update status: ${out.message}`, 'warn');
           return;
         }
-        await loadData(false);
+        UI.toast && UI.toast('Task status updated.');
+        await loadData(true);
       };
     });
 
     (root.querySelectorAll('[data-group-toggle]') || []).forEach((btn) => {
       btn.onclick = () => {
-        const groupId = String(btn.getAttribute('data-group-toggle') || '');
-        state.expandedGroupId = state.expandedGroupId === groupId ? '' : groupId;
+        const id = String(btn.getAttribute('data-group-toggle') || '');
+        state.expandedGroupId = state.expandedGroupId === id ? '' : id;
         render();
       };
     });
@@ -360,8 +577,8 @@
 
     (root.querySelectorAll('[data-share-link]') || []).forEach((btn) => {
       btn.onclick = async () => {
-        const id = btn.getAttribute('data-share-link');
-        const shareUrl = `${location.origin}/my_task?distribution=${encodeURIComponent(String(id || ''))}&readonly=1`;
+        const id = String(btn.getAttribute('data-share-link') || '');
+        const shareUrl = `${location.origin}${location.pathname}?page=my_task&distribution=${encodeURIComponent(id)}`;
         try {
           await navigator.clipboard.writeText(shareUrl);
           UI.toast && UI.toast('Share link copied to clipboard.');
@@ -383,28 +600,37 @@
       addGridRowBtn.onclick = () => {
         state.gridRows.push(createGridRow({}));
         render();
-        const modal = root.querySelector('#taskDistributionModal');
-        if (modal) modal.style.display = 'flex';
+        keepModalOpenAfterRender();
+      };
+    }
+
+    const uploadZone = root.querySelector('#uploadZone');
+    const fileInput = root.querySelector('#distributionFileInput');
+    if (fileInput) {
+      fileInput.onchange = async (event) => {
+        const file = event.target && event.target.files ? event.target.files[0] : null;
+        await handleFileUpload(file);
+      };
+    }
+
+    if (uploadZone) {
+      uploadZone.ondragover = (event) => {
+        event.preventDefault();
+        uploadZone.style.borderColor = 'rgba(34,197,94,.7)';
+      };
+      uploadZone.ondragleave = () => {
+        uploadZone.style.borderColor = 'rgba(255,255,255,.2)';
+      };
+      uploadZone.ondrop = async (event) => {
+        event.preventDefault();
+        uploadZone.style.borderColor = 'rgba(255,255,255,.2)';
+        const file = event.dataTransfer && event.dataTransfer.files ? event.dataTransfer.files[0] : null;
+        await handleFileUpload(file);
       };
     }
 
     const gridBody = root.querySelector('#distributionGridBody');
     if (gridBody) {
-      gridBody.onpaste = (event) => {
-        const target = event.target;
-        if (!target || !target.getAttribute) return;
-        const rowIndex = Number(target.getAttribute('data-grid-input') || 0);
-        const col = String(target.getAttribute('data-col') || 'case_number');
-        const colIndex = Math.max(0, GRID_COLUMNS.indexOf(col));
-        const clipboardText = event.clipboardData ? event.clipboardData.getData('text/plain') : '';
-        if (!clipboardText) return;
-        event.preventDefault();
-        applyPasteData(rowIndex, colIndex, clipboardText);
-        render();
-        const modal = root.querySelector('#taskDistributionModal');
-        if (modal) modal.style.display = 'flex';
-      };
-
       gridBody.oninput = (event) => {
         const target = event.target;
         if (!target || !target.getAttribute) return;
@@ -412,6 +638,7 @@
         const col = String(target.getAttribute('data-col') || '');
         if (!Number.isFinite(idx) || !state.gridRows[idx] || !col) return;
         const value = String(target.value || '');
+
         if (col === 'assigned_name') {
           applyNameMatch(state.gridRows[idx], value);
         } else if (col === 'deadline') {
@@ -419,6 +646,7 @@
         } else {
           state.gridRows[idx][col] = value;
         }
+
         if (hasUrl(value)) state.gridRows[idx].reference_url = value;
       };
 
@@ -430,8 +658,7 @@
         state.gridRows[idx].assigned_to = String(target.value || '');
         state.gridRows[idx].match_state = state.gridRows[idx].assigned_to ? 'good' : 'none';
         render();
-        const modal = root.querySelector('#taskDistributionModal');
-        if (modal) modal.style.display = 'flex';
+        keepModalOpenAfterRender();
       };
 
       (root.querySelectorAll('[data-grid-remove]') || []).forEach((btn) => {
@@ -439,10 +666,8 @@
           const idx = Number(btn.getAttribute('data-grid-remove'));
           if (!Number.isFinite(idx)) return;
           state.gridRows.splice(idx, 1);
-          if (!state.gridRows.length) state.gridRows.push(createGridRow({}));
           render();
-          const modal = root.querySelector('#taskDistributionModal');
-          if (modal) modal.style.display = 'flex';
+          keepModalOpenAfterRender();
         };
       });
     }
@@ -452,6 +677,13 @@
       submitBtn.onclick = async () => {
         const titleEl = root.querySelector('#distributionTitleInput');
         const title = titleEl ? String(titleEl.value || '').trim() : '';
+
+        const unresolved = unresolvedRowsCount();
+        if (unresolved > 0) {
+          UI.toast && UI.toast('Resolve all red assignee rows before submit.', 'warn');
+          return;
+        }
+
         const items = state.gridRows
           .map((row) => ({
             case_number: String(row.case_number || '').trim(),
@@ -464,7 +696,7 @@
           .filter((row) => row.description && row.assigned_to);
 
         if (!items.length) {
-          UI.toast && UI.toast('Please add at least one valid row with Description + Assignee.', 'warn');
+          UI.toast && UI.toast('Please upload or add valid rows with Description + Assignee.', 'warn');
           return;
         }
 
@@ -475,6 +707,7 @@
         }
 
         state.gridRows = [];
+        state.uploadMeta = { fileName: '', sheetCount: 0, rowCount: 0 };
         closeModal();
         UI.toast && UI.toast('Distribution created successfully.');
         await loadData(true);
@@ -500,8 +733,8 @@
     if (!state.selectedDistributionId && state.distributions[0]) {
       state.selectedDistributionId = String(state.distributions[0].id || '');
     }
-    if (reloadSelectedItems !== false) await refreshDistributionItems(state.selectedDistributionId);
 
+    if (reloadSelectedItems !== false) await refreshDistributionItems(state.selectedDistributionId);
     render();
   }
 
