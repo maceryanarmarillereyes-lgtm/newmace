@@ -8,15 +8,7 @@
   const state = {
     loading: false,
     creating: false,
-    distributions: [],
-    members: [],
-    expandedDistributionId: '',
-    distributionItemsById: {},
-    modalOpen: false,
-    dragActive: false,
-    parseError: '',
-    dragActive: false,
-    isSheetJsReady: false,
+    activeTab: 'assigned',
 
     assignedGroups: [],
     expandedAssignedId: '',
@@ -28,6 +20,8 @@
     members: [],
 
     modalOpen: false,
+    parseError: '',
+    dragActive: false,
     uploadMeta: { name: '', rows: 0, sheets: 0 },
     parsedRows: [],
     assigneeColumnIndex: -1,
@@ -36,6 +30,7 @@
       description: '',
       reference_url: ''
     },
+
     isSheetJsReady: false
   };
 
@@ -103,11 +98,14 @@
       .task-empty{padding:24px 12px;text-align:center;color:#9ca3af;border:1px dashed rgba(255,255,255,.2);border-radius:8px}
       .task-meta{font-size:12px;color:#9ca3af}
       .task-title{font-size:16px;font-weight:800;line-height:1.3;margin-bottom:4px}
+      .task-tabs{display:flex;gap:8px;flex-wrap:wrap}
+      .task-tab{border:1px solid rgba(148,163,184,.35);border-radius:999px;background:rgba(15,23,42,.45);padding:6px 12px;color:#cbd5e1;cursor:pointer}
+      .task-tab.active{background:rgba(56,189,248,.24);border-color:rgba(56,189,248,.65);color:#e0f2fe}
       .task-ref{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid rgba(148,163,184,.45);border-radius:999px;text-decoration:none;color:#22d3ee;margin-left:8px}
       .task-progress-rail{height:8px;background:rgba(148,163,184,.24);border-radius:999px;overflow:hidden}
       .task-progress-fill{height:100%;background:linear-gradient(90deg,#10b981,#06b6d4)}
       .task-grid-wrap{max-height:0;overflow:hidden;opacity:0;transition:max-height .24s ease, opacity .2s ease;margin-top:0}
-      .task-grid-wrap.open{max-height:500px;opacity:1;margin-top:10px}
+      .task-grid-wrap.open{max-height:550px;opacity:1;margin-top:10px}
       .task-grid table{width:100%;border-collapse:collapse}
       .task-grid th,.task-grid td{padding:9px;border-bottom:1px solid rgba(148,163,184,.16);font-size:13px;text-align:left;vertical-align:top}
       .task-grid tbody tr:hover{background:rgba(148,163,184,.08)}
@@ -125,6 +123,56 @@
     `;
 
     document.head.appendChild(style);
+  }
+
+  function renderAssignedCard(group) {
+    const id = String(group.distribution_id || 'unassigned');
+    const total = Number(group.total_count || (Array.isArray(group.items) ? group.items.length : 0));
+    const done = Number(group.done_count || 0);
+    const assignedAt = safeDate(group.assigned_at);
+    const isOpen = state.expandedAssignedId === id;
+    const items = Array.isArray(group.items) ? group.items : [];
+
+    return `
+      <article class="task-card">
+        <button class="task-accordion" type="button" data-toggle-assigned="${esc(id)}" aria-expanded="${isOpen ? 'true' : 'false'}">
+          <div class="task-title">${esc(safeText(group.project_title, 'Untitled Distribution'))}</div>
+          <div class="task-meta">Assigned by: ${esc(safeText(group.assigner_name, 'N/A'))} • ${esc(assignedAt)}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap">
+            <div class="task-meta">${esc(done)} / ${esc(total)} complete</div>
+            <div class="task-meta">${esc(percent(done, total))}%</div>
+          </div>
+          <div class="task-progress-rail" style="margin-top:6px"><div class="task-progress-fill" style="width:${percent(done, total)}%"></div></div>
+        </button>
+
+        <div class="task-grid-wrap ${isOpen ? 'open' : ''}">
+          <div class="task-grid" style="overflow:auto">
+            <table>
+              <thead><tr><th>Case #</th><th>Site</th><th>Status</th><th>Deadline</th></tr></thead>
+              <tbody>
+                ${items.map((item) => `
+                  <tr>
+                    <td>${esc(safeText(item.case_number || item.case_no, 'N/A'))}</td>
+                    <td>${esc(safeText(item.site, 'N/A'))}</td>
+                    <td>${esc(safeText(item.status, 'PENDING'))}</td>
+                    <td>${esc(safeDate(item.deadline || item.deadline_at || item.due_at))}</td>
+                  </tr>
+                `).join('') || '<tr><td colspan="4" class="task-meta">No assigned items</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  function renderAssignedPanel() {
+    return `
+      <section class="task-section">
+        <div class="task-section-title">📥 My Assigned Tasks</div>
+        ${state.assignedGroups.length ? state.assignedGroups.map(renderAssignedCard).join('') : '<div class="task-empty">No assigned tasks yet</div>'}
+      </section>
+    `;
   }
 
   function renderDistributionCard(dist) {
@@ -172,7 +220,7 @@
     `;
   }
 
-  function renderDistributionSections() {
+  function renderDistributionPanel() {
     const ongoing = [];
     const completed = [];
 
@@ -283,29 +331,13 @@
     root.innerHTML = `
       <section class="task-shell">
         ${state.loading || state.creating ? '<div class="task-overlay"><div class="task-spinner" aria-label="Loading"></div></div>' : ''}
-        <header class="task-header">
-          <h2 style="margin:0">Distribution Management</h2>
-          <button type="button" class="btn primary" id="openDistributionModal">+ Create Distribution</button>
-        </header>
-
-        ${renderDistributionSections()}
-        ${state.modalOpen ? renderModal() : ''}
-      </section>
-    `;
-  }
-
-  function render() {
-    ensureStyleTag();
-
-    root.innerHTML = `
-      <section class="task-shell">
-        ${state.loading || state.creating ? '<div class="task-overlay"><div class="task-spinner" aria-label="Loading"></div></div>' : ''}
 
         <header class="task-header">
           <h2 class="task-title-main">My Task</h2>
           <nav class="task-tabs" aria-label="My Task Views">
             <button type="button" class="task-tab ${state.activeTab === 'assigned' ? 'active' : ''}" id="tabAssigned">📥 My Assigned Tasks</button>
             <button type="button" class="task-tab ${state.activeTab === 'distribution' ? 'active' : ''}" id="tabDistribution">🚀 Distribution Management</button>
+            <button type="button" class="btn primary" id="openDistributionModal" ${state.activeTab === 'distribution' ? '' : 'style="display:none"'}>+ Create Distribution</button>
           </nav>
         </header>
 
@@ -482,22 +514,6 @@
     render();
   }
 
-  async function loadBaseData() {
-    state.loading = true;
-    render();
-
-    const [distRes, membersRes] = await Promise.all([
-      CloudTasks.distributions(),
-      CloudTasks.members()
-    ]);
-
-    state.distributions = distRes.ok && Array.isArray(distRes.data.rows) ? distRes.data.rows : [];
-    state.members = membersRes.ok && Array.isArray(membersRes.data.rows) ? membersRes.data.rows : [];
-
-    state.loading = false;
-    render();
-  }
-
   async function loadDistributionItems(distributionId) {
     const id = String(distributionId || '');
     if (!id) return;
@@ -526,6 +542,23 @@
   }
 
   function bindEvents() {
+    const tabAssigned = root.querySelector('#tabAssigned');
+    const tabDistribution = root.querySelector('#tabDistribution');
+
+    if (tabAssigned) {
+      tabAssigned.onclick = () => {
+        state.activeTab = 'assigned';
+        render();
+      };
+    }
+
+    if (tabDistribution) {
+      tabDistribution.onclick = () => {
+        state.activeTab = 'distribution';
+        render();
+      };
+    }
+
     const openBtn = root.querySelector('#openDistributionModal');
     if (openBtn) {
       openBtn.onclick = () => {
@@ -533,6 +566,14 @@
         render();
       };
     }
+
+    root.querySelectorAll('[data-toggle-assigned]').forEach((button) => {
+      button.onclick = () => {
+        const id = String(button.getAttribute('data-toggle-assigned') || '');
+        state.expandedAssignedId = state.expandedAssignedId === id ? '' : id;
+        render();
+      };
+    });
 
     root.querySelectorAll('[data-toggle-dist]').forEach((button) => {
       button.onclick = async () => {
@@ -565,6 +606,7 @@
         if (event.target === backdrop) closeModal();
       };
     }
+
     if (closeBtn) closeBtn.onclick = closeModal;
     if (cancelBtn) cancelBtn.onclick = closeModal;
 
@@ -579,6 +621,7 @@
         if (submitBtn) submitBtn.disabled = !state.form.title.trim() || unresolvedRowsCount() > 0 || !state.parsedRows.length || state.creating;
       };
     }
+
     if (descriptionInput) descriptionInput.oninput = () => { state.form.description = String(descriptionInput.value || ''); };
     if (referenceInput) referenceInput.oninput = () => { state.form.reference_url = String(referenceInput.value || ''); };
 
