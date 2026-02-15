@@ -1,5 +1,21 @@
 const { sendJson, requireAuthedUser, roleFlags, serviceSelect } = require('./_common');
 
+const OWNER_COLUMNS = ['created_by', 'created_by_user_id', 'owner_id', 'user_id'];
+
+function ownerIdFromDistribution(distribution) {
+  const row = distribution && typeof distribution === 'object' ? distribution : {};
+  for (const key of OWNER_COLUMNS) {
+    const value = String(row[key] || '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
+function isSchemaShapeError(out) {
+  const errorText = JSON.stringify((out && (out.json || out.text)) || '').toLowerCase();
+  return errorText.includes('column') || errorText.includes('relation') || errorText.includes('does not exist');
+}
+
 module.exports = async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
@@ -12,16 +28,29 @@ module.exports = async (req, res) => {
     if (!distributionId) return sendJson(res, 400, { ok: false, error: 'missing_distribution_id' });
 
     const d = await serviceSelect('task_distributions', `select=*&id=eq.${encodeURIComponent(distributionId)}&limit=1`);
-    if (!d.ok) return sendJson(res, 500, { ok: false, error: 'distribution_fetch_failed', details: d.json || d.text });
+    if (!d.ok) {
+      if (isSchemaShapeError(d)) return sendJson(res, 200, { ok: true, distribution: null, rows: [] });
+      return sendJson(res, 500, { ok: false, error: 'distribution_fetch_failed', details: d.json || d.text });
+    }
+
     const distribution = Array.isArray(d.json) && d.json[0] ? d.json[0] : null;
     if (!distribution) return sendJson(res, 404, { ok: false, error: 'distribution_not_found' });
 
     const flags = roleFlags(auth.profile && auth.profile.role);
-    const isOwner = String(distribution.created_by || '') === String(auth.authed.id || '');
+    const ownerId = ownerIdFromDistribution(distribution);
+    const isOwner = !ownerId || ownerId === String(auth.authed.id || '');
     if (!isOwner && !flags.isAdmin && !flags.isLead) return sendJson(res, 403, { ok: false, error: 'forbidden' });
 
-    const out = await serviceSelect('task_items', `select=*&distribution_id=eq.${encodeURIComponent(distributionId)}&order=created_at.desc`);
-    if (!out.ok) return sendJson(res, 500, { ok: false, error: 'items_fetch_failed', details: out.json || out.text });
+    let out = await serviceSelect('task_items', `select=*&distribution_id=eq.${encodeURIComponent(distributionId)}&order=created_at.desc`);
+    if (!out.ok) {
+      const fallback = await serviceSelect('task_items', `select=*&task_distribution_id=eq.${encodeURIComponent(distributionId)}&order=created_at.desc`);
+      out = fallback.ok ? fallback : out;
+    }
+
+    if (!out.ok) {
+      if (isSchemaShapeError(out)) return sendJson(res, 200, { ok: true, distribution, rows: [] });
+      return sendJson(res, 500, { ok: false, error: 'items_fetch_failed', details: out.json || out.text });
+    }
 
     return sendJson(res, 200, { ok: true, distribution, rows: Array.isArray(out.json) ? out.json : [] });
   } catch (err) {

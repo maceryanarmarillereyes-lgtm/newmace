@@ -20,7 +20,9 @@
     wizardRows: [],
     uploadMeta: { fileName: '', sheetCount: 0, rowCount: 0 },
     parserReady: false,
-    parserError: ''
+    parserError: '',
+    isSubmittingDistribution: false,
+    isDeletingDistributionId: ''
   };
 
   const MATCH_THRESHOLD = 0.72;
@@ -166,6 +168,16 @@
     return state.gridRows.filter((row) => row.description && !row.assigned_to).length;
   }
 
+  function dedupeDistributions(rows) {
+    const seen = new Set();
+    return (Array.isArray(rows) ? rows : []).filter((row) => {
+      const id = String((row && row.id) || '').trim();
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }
+
   function renderIncomingGroups() {
     if (!state.assignedGroups.length) return '<div class="card pad"><div class="small muted">No assigned tasks.</div></div>';
 
@@ -309,7 +321,7 @@
                     <button class="btn" data-distribution-open="${esc(d.id)}" type="button">${esc(safe(d.title, 'Untitled Distribution'))}</button>
                     <span class="small muted">${esc(localDone)} / ${esc(localItems.length)} done (${esc(localPct)}%)</span>
                   </div>
-                  ${isSelected ? `<div style="margin-top:8px" class="row"><button class="btn" data-share-link="${esc(d.id)}" type="button">Share Link</button></div>` : ''}
+                  ${isSelected ? `<div style="margin-top:8px" class="row" data-distribution-actions="${esc(d.id)}"><button class="btn" data-share-link="${esc(d.id)}" type="button">Share Link</button><button class="btn" data-distribution-delete="${esc(d.id)}" type="button" ${state.isDeletingDistributionId === String(d.id) ? 'disabled' : ''}>${state.isDeletingDistributionId === String(d.id) ? 'Deleting…' : 'Delete'}</button></div>` : ''}
                 </div>
               `;
             }).join('') || '<div class="small muted">No task distributions yet.</div>'}
@@ -347,7 +359,7 @@
           </div>
           <div class="foot">
             <button class="btn" data-close-task-modal="1" type="button">Cancel</button>
-            <button class="btn primary" id="submitDistributionBtn" type="button" ${(unresolved > 0 || state.wizardOpen) ? 'disabled' : ''}>Submit Distribution</button>
+            <button class="btn primary" id="submitDistributionBtn" type="button" ${(unresolved > 0 || state.wizardOpen || state.isSubmittingDistribution) ? 'disabled' : ''}>${state.isSubmittingDistribution ? 'Submitting…' : 'Submit Distribution'}</button>
           </div>
         </div>
       </div>
@@ -682,6 +694,30 @@
       };
     });
 
+    (root.querySelectorAll('[data-distribution-delete]') || []).forEach((btn) => {
+      btn.onclick = async () => {
+        const id = String(btn.getAttribute('data-distribution-delete') || '');
+        if (!id || state.isDeletingDistributionId) return;
+        const ok = window.confirm ? window.confirm('Delete this distribution and all included task items?') : true;
+        if (!ok) return;
+
+        state.isDeletingDistributionId = id;
+        render();
+
+        const out = await CloudTasks.deleteDistribution(id);
+        state.isDeletingDistributionId = '';
+        if (!out.ok) {
+          UI.toast && UI.toast(`Failed to delete distribution: ${out.message}`, 'warn');
+          render();
+          return;
+        }
+
+        if (String(state.selectedDistributionId) === id) state.selectedDistributionId = '';
+        UI.toast && UI.toast('Distribution deleted.');
+        await loadData(true);
+      };
+    });
+
     const createBtn = root.querySelector('#createDistributionBtn');
     if (createBtn) createBtn.onclick = () => openModal();
 
@@ -801,6 +837,8 @@
     const submitBtn = root.querySelector('#submitDistributionBtn');
     if (submitBtn) {
       submitBtn.onclick = async () => {
+        if (state.isSubmittingDistribution) return;
+
         const titleEl = root.querySelector('#distributionTitleInput');
         const title = titleEl ? String(titleEl.value || '').trim() : '';
 
@@ -821,22 +859,41 @@
           }))
           .filter((row) => row.description && row.assigned_to);
 
+        if (!title) {
+          UI.toast && UI.toast('Please enter a project title before submit.', 'warn');
+          return;
+        }
+
         if (!items.length) {
           UI.toast && UI.toast('Please upload or add valid rows with Description + Assignee.', 'warn');
           return;
         }
 
-        const out = await CloudTasks.createDistribution({ title, items });
-        if (!out.ok) {
-          UI.toast && UI.toast(`Failed to create distribution: ${out.message}`, 'warn');
-          return;
-        }
+        state.isSubmittingDistribution = true;
+        render();
+        keepModalOpenAfterRender();
 
-        state.gridRows = [];
-        state.uploadMeta = { fileName: '', sheetCount: 0, rowCount: 0 };
-        closeModal();
-        UI.toast && UI.toast('Distribution created successfully.');
-        await loadData(true);
+        let submittedSuccessfully = false;
+        try {
+          const out = await CloudTasks.createDistribution({ title, items });
+          if (!out.ok) {
+            UI.toast && UI.toast(`Failed to create distribution: ${out.message}`, 'warn');
+            return;
+          }
+
+          submittedSuccessfully = true;
+          state.gridRows = [];
+          state.uploadMeta = { fileName: '', sheetCount: 0, rowCount: 0 };
+          closeModal();
+          UI.toast && UI.toast('Distribution created successfully.');
+          await loadData(true);
+        } finally {
+          state.isSubmittingDistribution = false;
+          if (!submittedSuccessfully) {
+            render();
+            keepModalOpenAfterRender();
+          }
+        }
       };
     }
   }
@@ -849,7 +906,7 @@
     ]);
 
     state.assignedGroups = assignedOut.ok && Array.isArray(assignedOut.data.groups) ? assignedOut.data.groups : [];
-    state.distributions = distributionsOut.ok ? (distributionsOut.data.rows || []) : [];
+    state.distributions = distributionsOut.ok ? dedupeDistributions(distributionsOut.data.rows || []) : [];
     state.members = membersOut.ok ? (membersOut.data.rows || []) : [];
 
     if (!state.expandedGroupId && state.assignedGroups[0]) {
