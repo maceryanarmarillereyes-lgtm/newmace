@@ -6,13 +6,10 @@
   };
 
   const state = {
-    activeTab: 'assigned',
     loading: false,
     creating: false,
-    assignedGroups: [],
     distributions: [],
     members: [],
-    expandedAssignedId: '',
     expandedDistributionId: '',
     distributionItemsById: {},
     modalOpen: false,
@@ -20,18 +17,13 @@
     parseError: '',
     uploadMeta: { name: '', rows: 0, sheets: 0 },
     parsedRows: [],
+    assigneeColumnIndex: -1,
     form: {
       title: '',
       description: '',
       reference_url: ''
     },
     isSheetJsReady: false
-  };
-
-  const badgeClass = {
-    PENDING: 'task-status-pill status-pending',
-    IN_PROGRESS: 'task-status-pill status-progress',
-    DONE: 'task-status-pill status-done'
   };
 
   function normalizeName(value) {
@@ -43,18 +35,6 @@
     return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
   }
 
-  function statusNorm(value) {
-    const s = String(value || 'PENDING').toUpperCase();
-    if (s === 'DONE' || s === 'IN_PROGRESS') return s;
-    return 'PENDING';
-  }
-
-  function normalizeDistributionStatus(value, pendingCount) {
-    const pending = Number(pendingCount || 0);
-    if (pending === 0) return 'COMPLETED';
-    return String(value || 'ONGOING').toUpperCase() === 'COMPLETED' ? 'COMPLETED' : 'ONGOING';
-  }
-
   function safeDate(value) {
     if (!value) return 'N/A';
     const d = new Date(value);
@@ -64,6 +44,13 @@
 
   function unresolvedRowsCount() {
     return state.parsedRows.filter((row) => !row.assigned_to).length;
+  }
+
+  function normalizeStatus(value, pendingCount) {
+    const pending = Number(pendingCount || 0);
+    if (pending === 0) return 'COMPLETED';
+    const text = String(value || 'ONGOING').toUpperCase();
+    return text === 'COMPLETED' ? 'COMPLETED' : 'ONGOING';
   }
 
   function guessMember(rawValue) {
@@ -95,12 +82,7 @@
     style.id = 'my-task-dashboard-style';
     style.textContent = `
       .task-shell{position:relative;display:flex;flex-direction:column;gap:14px}
-      .task-head{display:flex;flex-direction:column;gap:10px}
-      .task-title-main{margin:0}
-      .task-tabs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-      .task-tab{border:1px solid rgba(148,163,184,.25);background:rgba(15,23,42,.5);color:#cbd5e1;padding:8px 12px;border-radius:999px;font-weight:700;cursor:pointer}
-      .task-tab.active{background:linear-gradient(90deg,#1d4ed8,#2563eb);color:white;border-color:transparent;box-shadow:0 6px 20px rgba(37,99,235,.25)}
-      .task-header-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+      .task-header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
       .task-section{display:flex;flex-direction:column;gap:10px}
       .task-section-title{font-size:15px;font-weight:800;display:flex;align-items:center;gap:6px}
       .task-card{background:rgba(15,23,42,.7);border-radius:8px;padding:14px;border:1px solid rgba(148,163,184,.14)}
@@ -111,18 +93,14 @@
       .task-progress-rail{height:8px;background:rgba(148,163,184,.24);border-radius:999px;overflow:hidden}
       .task-progress-fill{height:100%;background:linear-gradient(90deg,#10b981,#06b6d4)}
       .task-grid-wrap{max-height:0;overflow:hidden;opacity:0;transition:max-height .24s ease, opacity .2s ease;margin-top:0}
-      .task-grid-wrap.open{max-height:560px;opacity:1;margin-top:10px}
+      .task-grid-wrap.open{max-height:500px;opacity:1;margin-top:10px}
       .task-grid table{width:100%;border-collapse:collapse}
       .task-grid th,.task-grid td{padding:9px;border-bottom:1px solid rgba(148,163,184,.16);font-size:13px;text-align:left;vertical-align:top}
       .task-grid tbody tr:hover{background:rgba(148,163,184,.08)}
       .task-overlay{position:absolute;inset:0;background:rgba(2,6,23,.56);display:flex;align-items:center;justify-content:center;z-index:40;border-radius:8px}
       .task-spinner{width:32px;height:32px;border-radius:999px;border:4px solid rgba(255,255,255,.25);border-top-color:#22d3ee;animation:taskSpin 1s linear infinite}
       .task-accordion{display:block;width:100%;text-align:left;border:none;background:transparent;color:inherit;padding:0;cursor:pointer}
-      .task-status-pill{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:700}
-      .status-pending{background:#fef3c7;color:#92400e}
-      .status-progress{background:#dbeafe;color:#1e40af}
-      .status-done{background:#10b981;color:white}
-      .task-modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.65);backdrop-filter:blur(5px);z-index:1050;display:flex;align-items:center;justify-content:center;padding:16px}
+      .task-modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.72);z-index:120;display:flex;align-items:center;justify-content:center;padding:16px}
       .task-modal{width:min(980px,95vw);max-height:88vh;overflow:auto;background:#0f172a;border:1px solid rgba(148,163,184,.2);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
       .task-field label{display:block;font-size:12px;color:#9ca3af;margin-bottom:4px}
       .task-field input,.task-field textarea{width:100%}
@@ -132,69 +110,6 @@
       @keyframes taskSpin{to{transform:rotate(360deg)}}
     `;
     document.head.appendChild(style);
-  }
-
-  function renderAssignedCards() {
-    if (!state.assignedGroups.length) {
-      return '<div class="task-empty">You have no pending tasks. Good job!</div>';
-    }
-
-    return state.assignedGroups.map((group) => {
-      const id = String(group.distribution_id || group.id || '');
-      const title = safeText(group.title || group.distribution_title || 'Untitled Project');
-      const total = Number(group.total_count || 0);
-      const done = Number(group.done_count || 0);
-      const pending = Number(group.pending_count || Math.max(0, total - done));
-      const due = safeDate(group.next_deadline || group.deadline || group.deadline_at || group.due_at);
-      const isOpen = state.expandedAssignedId === id;
-      const status = pending === 0 ? 'DONE' : (done > 0 ? 'IN_PROGRESS' : 'PENDING');
-
-      return `
-        <article class="task-card">
-          <button class="task-accordion" type="button" data-toggle-assigned="${esc(id)}" aria-expanded="${isOpen ? 'true' : 'false'}">
-            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
-              <div>
-                <div class="task-title">${esc(title)}</div>
-                <div class="task-meta">Due: ${esc(due)}</div>
-              </div>
-              <span class="${badgeClass[status] || badgeClass.PENDING}">${esc(status.replace('_', ' '))}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap">
-              <div class="task-meta">${esc(done)} / ${esc(total)} complete</div>
-              <div class="task-meta">${esc(percent(done, total))}%</div>
-            </div>
-            <div class="task-progress-rail" style="margin-top:6px"><div class="task-progress-fill" style="width:${percent(done, total)}%"></div></div>
-          </button>
-
-          <div class="task-grid-wrap ${isOpen ? 'open' : ''}">
-            <div class="task-grid" style="overflow:auto">
-              <table>
-                <thead><tr><th>Case #</th><th>Site</th><th>Description</th><th>Deadline</th><th>Reference</th><th>Status</th><th>Remarks</th></tr></thead>
-                <tbody>
-                  ${(group.items || []).map((item) => `
-                    <tr>
-                      <td>${esc(safeText(item.case_number || item.case_no, 'N/A'))}</td>
-                      <td>${esc(safeText(item.site, 'N/A'))}</td>
-                      <td>${esc(safeText(item.description, 'N/A'))}</td>
-                      <td>${esc(safeDate(item.deadline || item.deadline_at || item.due_at))}</td>
-                      <td>${/^https?:\/\//i.test(String(item.reference_url || '')) ? `<a href="${esc(item.reference_url)}" target="_blank" rel="noopener">Open</a>` : '<span class="task-meta">N/A</span>'}</td>
-                      <td>
-                        <select data-item-status="${esc(item.id)}" style="min-width:120px">
-                          <option value="PENDING" ${statusNorm(item.status) === 'PENDING' ? 'selected' : ''}>PENDING</option>
-                          <option value="IN_PROGRESS" ${statusNorm(item.status) === 'IN_PROGRESS' ? 'selected' : ''}>IN PROGRESS</option>
-                          <option value="DONE" ${statusNorm(item.status) === 'DONE' ? 'selected' : ''}>DONE</option>
-                        </select>
-                      </td>
-                      <td><input data-item-remarks="${esc(item.id)}" value="${esc(item.remarks || '')}" placeholder="Add remarks" style="width:100%" /></td>
-                    </tr>
-                  `).join('') || '<tr><td colspan="7" class="task-meta">No task items</td></tr>'}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </article>
-      `;
-    }).join('');
   }
 
   function renderDistributionCard(dist) {
@@ -242,36 +157,28 @@
     `;
   }
 
-  function renderDistributionManagement() {
+  function renderDistributionSections() {
     const ongoing = [];
     const completed = [];
 
     state.distributions.forEach((dist) => {
-      const status = normalizeDistributionStatus(dist.status, dist.pending_count || dist.pending_items);
+      const status = normalizeStatus(dist.status, dist.pending_count || dist.pending_items);
       if (status === 'COMPLETED') completed.push(dist);
       else ongoing.push(dist);
     });
 
     return `
       <section class="task-section">
-        <div class="task-header-row">
-          <h3 style="margin:0">Distribution Management</h3>
-          <button type="button" class="btn primary" id="openDistributionModal">+ Create Distribution</button>
-        </div>
-
-        <section class="task-section">
-          <div class="task-section-title">📌 ONGOING (Active Batches)</div>
-          ${ongoing.length ? ongoing.map(renderDistributionCard).join('') : '<div class="task-empty">No ongoing distributions</div>'}
-        </section>
-
-        <section class="task-section">
-          <details>
-            <summary class="task-section-title">✅ COMPLETED (100% Done)</summary>
-            <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
-              ${completed.length ? completed.map(renderDistributionCard).join('') : '<div class="task-empty">No completed distributions</div>'}
-            </div>
-          </details>
-        </section>
+        <div class="task-section-title">📌 ONGOING (Active Batches)</div>
+        ${ongoing.length ? ongoing.map(renderDistributionCard).join('') : '<div class="task-empty">No ongoing distributions</div>'}
+      </section>
+      <section class="task-section">
+        <details>
+          <summary class="task-section-title">✅ COMPLETED (100% Done)</summary>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+            ${completed.length ? completed.map(renderDistributionCard).join('') : '<div class="task-empty">No completed distributions</div>'}
+          </div>
+        </details>
       </section>
     `;
   }
@@ -361,18 +268,12 @@
     root.innerHTML = `
       <section class="task-shell">
         ${state.loading || state.creating ? '<div class="task-overlay"><div class="task-spinner" aria-label="Loading"></div></div>' : ''}
-        <header class="task-head">
-          <h2 class="task-title-main">My Task</h2>
-          <div class="task-tabs" role="tablist" aria-label="My Task Views">
-            <button class="task-tab ${state.activeTab === 'assigned' ? 'active' : ''}" type="button" data-tab="assigned" role="tab" aria-selected="${state.activeTab === 'assigned' ? 'true' : 'false'}">📥 My Assigned Tasks</button>
-            <button class="task-tab ${state.activeTab === 'distribution' ? 'active' : ''}" type="button" data-tab="distribution" role="tab" aria-selected="${state.activeTab === 'distribution' ? 'true' : 'false'}">🚀 Distribution Management</button>
-          </div>
+        <header class="task-header">
+          <h2 style="margin:0">Distribution Management</h2>
+          <button type="button" class="btn primary" id="openDistributionModal">+ Create Distribution</button>
         </header>
 
-        ${state.activeTab === 'assigned'
-          ? `<section class="task-section"><div class="task-section-title">📥 My Assigned Tasks</div>${renderAssignedCards()}</section>`
-          : renderDistributionManagement()}
-
+        ${renderDistributionSections()}
         ${state.modalOpen ? renderModal() : ''}
       </section>
     `;
@@ -520,6 +421,7 @@
       const split = splitMatrix(parsed.matrix);
       const detection = detectColumns(split.headers, split.rows);
       state.parsedRows = buildParsedRows(split.rows, detection);
+      state.assigneeColumnIndex = detection.assigneeColumnIndex;
       state.uploadMeta = { name: String(file.name || ''), rows: state.parsedRows.length, sheets: parsed.sheets };
     } catch (err) {
       state.parseError = String(err && err.message ? err.message : err);
@@ -528,15 +430,6 @@
       state.creating = false;
       render();
     }
-  }
-
-  async function loadDistributionItems(distributionId) {
-    const id = String(distributionId || '');
-    if (!id) return;
-    if (state.distributionItemsById[id]) return;
-
-    const out = await CloudTasks.distributionItems(id);
-    state.distributionItemsById[id] = out.ok && Array.isArray(out.data.rows) ? out.data.rows : [];
   }
 
   function closeModal() {
@@ -548,17 +441,29 @@
     render();
   }
 
-  function updateAssignedItemLocal(itemId, patch) {
-    state.assignedGroups.forEach((group) => {
-      group.items = (group.items || []).map((item) => {
-        if (String(item.id) !== String(itemId)) return item;
-        return Object.assign({}, item, patch);
-      });
-      const doneCount = (group.items || []).filter((item) => statusNorm(item.status) === 'DONE').length;
-      group.done_count = doneCount;
-      group.total_count = (group.items || []).length;
-      group.pending_count = Math.max(0, group.total_count - doneCount);
-    });
+  async function loadBaseData() {
+    state.loading = true;
+    render();
+
+    const [distRes, membersRes] = await Promise.all([
+      CloudTasks.distributions(),
+      CloudTasks.members()
+    ]);
+
+    state.distributions = distRes.ok && Array.isArray(distRes.data.rows) ? distRes.data.rows : [];
+    state.members = membersRes.ok && Array.isArray(membersRes.data.rows) ? membersRes.data.rows : [];
+
+    state.loading = false;
+    render();
+  }
+
+  async function loadDistributionItems(distributionId) {
+    const id = String(distributionId || '');
+    if (!id) return;
+    if (state.distributionItemsById[id]) return;
+
+    const out = await CloudTasks.distributionItems(id);
+    state.distributionItemsById[id] = out.ok && Array.isArray(out.data.rows) ? out.data.rows : [];
   }
 
   async function loadBaseData() {
@@ -580,51 +485,6 @@
   }
 
   function bindEvents() {
-    root.querySelectorAll('[data-tab]').forEach((tabBtn) => {
-      tabBtn.onclick = () => {
-        const tab = String(tabBtn.getAttribute('data-tab') || 'assigned');
-        state.activeTab = tab === 'distribution' ? 'distribution' : 'assigned';
-        render();
-      };
-    });
-
-    root.querySelectorAll('[data-toggle-assigned]').forEach((button) => {
-      button.onclick = () => {
-        const id = String(button.getAttribute('data-toggle-assigned') || '');
-        state.expandedAssignedId = state.expandedAssignedId === id ? '' : id;
-        render();
-      };
-    });
-
-    root.querySelectorAll('[data-item-status]').forEach((select) => {
-      select.onchange = async () => {
-        const itemId = String(select.getAttribute('data-item-status') || '');
-        const status = statusNorm(select.value);
-        const remarksInput = root.querySelector(`[data-item-remarks="${CSS.escape(itemId)}"]`);
-        const remarks = remarksInput ? remarksInput.value : '';
-
-        updateAssignedItemLocal(itemId, { status, remarks });
-        render();
-
-        const out = await CloudTasks.updateItemStatus({ item_id: itemId, status, remarks });
-        if (!out.ok) await loadBaseData();
-      };
-    });
-
-    root.querySelectorAll('[data-item-remarks]').forEach((input) => {
-      input.onblur = async () => {
-        const itemId = String(input.getAttribute('data-item-remarks') || '');
-        const group = state.assignedGroups.find((g) => (g.items || []).some((it) => String(it.id) === itemId));
-        const existing = group && group.items.find((it) => String(it.id) === itemId);
-        const status = statusNorm(existing && existing.status);
-        const remarks = input.value;
-
-        updateAssignedItemLocal(itemId, { remarks });
-        const out = await CloudTasks.updateItemStatus({ item_id: itemId, status, remarks });
-        if (!out.ok) await loadBaseData();
-      };
-    });
-
     const openBtn = root.querySelector('#openDistributionModal');
     if (openBtn) {
       openBtn.onclick = () => {
