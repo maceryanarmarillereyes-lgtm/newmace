@@ -112,8 +112,8 @@
       .task-overlay{position:absolute;inset:0;background:rgba(2,6,23,.56);display:flex;align-items:center;justify-content:center;z-index:40;border-radius:8px}
       .task-spinner{width:32px;height:32px;border-radius:999px;border:4px solid rgba(255,255,255,.25);border-top-color:#22d3ee;animation:taskSpin 1s linear infinite}
       .task-accordion{display:block;width:100%;text-align:left;border:none;background:transparent;color:inherit;padding:0;cursor:pointer}
-      .task-modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.72);z-index:120;display:flex;align-items:center;justify-content:center;padding:16px}
-      .task-modal{width:min(980px,95vw);max-height:88vh;overflow:auto;background:#0f172a;border:1px solid rgba(148,163,184,.2);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
+      .task-modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.72);z-index:14060;display:flex;align-items:center;justify-content:center;padding:16px 16px calc(16px + env(safe-area-inset-bottom) + 86px);overflow:auto}
+      .task-modal{width:min(980px,95vw);max-height:calc(100vh - 140px);overflow:auto;background:#0f172a;border:1px solid rgba(148,163,184,.2);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
       .task-field label{display:block;font-size:12px;color:#9ca3af;margin-bottom:4px}
       .task-field input,.task-field textarea{width:100%}
       .upload-zone{border:2px dashed rgba(148,163,184,.4);border-radius:8px;padding:22px;text-align:center;transition:all .2s ease}
