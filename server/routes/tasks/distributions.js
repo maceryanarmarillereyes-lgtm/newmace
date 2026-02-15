@@ -3,20 +3,6 @@ const { sendJson, requireAuthedUser, serviceFetch, serviceSelect, serviceInsert 
 const OWNER_COLUMNS = ['created_by', 'created_by_user_id', 'owner_id', 'user_id'];
 const ITEM_DISTRIBUTION_COLUMNS = ['distribution_id', 'task_distribution_id'];
 
-function mapColumns(item) {
-  const src = item && typeof item === 'object' ? item : {};
-  const normalized = {
-    caseNumber: String(src.case_number == null ? '' : src.case_number).trim(),
-    site: String(src.site == null ? '' : src.site).trim(),
-    description: String(src.description == null ? '' : src.description).trim(),
-    assignedTo: String(src.assigned_to == null ? '' : src.assigned_to).trim(),
-    deadline: String(src.deadline == null ? '' : src.deadline).trim(),
-    referenceUrl: String(src.reference_url == null ? '' : src.reference_url).trim()
-  };
-  normalized.normalizedReferenceUrl = /^https?:\/\//i.test(normalized.referenceUrl) ? normalized.referenceUrl : '';
-  return normalized;
-}
-
 function ownerIdFromDistribution(distribution) {
   const row = distribution && typeof distribution === 'object' ? distribution : {};
   for (const key of OWNER_COLUMNS) {
@@ -26,108 +12,150 @@ function ownerIdFromDistribution(distribution) {
   return '';
 }
 
-async function queryDistributionsByOwner(uid) {
-  for (const key of OWNER_COLUMNS) {
-    const out = await serviceSelect('task_distributions', `select=*&${encodeURIComponent(key)}=eq.${encodeURIComponent(uid)}&order=created_at.desc`);
-    if (out.ok) return { out, ownerColumn: key };
-  }
-  return { out: { ok: false, json: null, text: 'owner_column_not_found' }, ownerColumn: OWNER_COLUMNS[0] };
+function sanitizeCell(value, fallback = '') {
+  const out = String(value == null ? '' : value).trim();
+  return out || fallback;
 }
 
-async function queryItemsByDistributionIds(ids) {
-  if (!ids.length) return { out: { ok: true, json: [] }, distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
-
-  const encodedIds = ids.map((id) => encodeURIComponent(id)).join(',');
-  for (const key of ITEM_DISTRIBUTION_COLUMNS) {
-    const out = await serviceSelect('task_items', `select=id,${key},status&${encodeURIComponent(key)}=in.(${encodedIds})`);
-    if (out.ok) return { out, distributionColumn: key };
-  }
-
-  return { out: { ok: false, json: null, text: 'distribution_link_column_not_found' }, distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
+function normalizeReferenceUrl(value) {
+  const url = sanitizeCell(value);
+  return /^https?:\/\//i.test(url) ? url : '';
 }
 
 function dedupeRows(rows) {
   const seen = new Set();
-  const deduped = [];
-  rows.forEach((row) => {
-    const sig = [row.caseNumber, row.site, row.description, row.assignedTo, row.deadline, row.normalizedReferenceUrl]
+  return rows.filter((row) => {
+    const sig = [row.caseNumber, row.site, row.description, row.assignedTo, row.deadline, row.referenceUrl]
       .map((v) => String(v || '').toLowerCase())
       .join('||');
-    if (!sig || seen.has(sig)) return;
+    if (!sig || seen.has(sig)) return false;
     seen.add(sig);
-    deduped.push(row);
+    return true;
   });
-  return deduped;
+}
+
+function normalizeIncomingRows(items) {
+  const normalized = [];
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const src = item && typeof item === 'object' ? item : {};
+    const row = {
+      caseNumber: sanitizeCell(src.case_number, 'N/A'),
+      site: sanitizeCell(src.site, 'N/A'),
+      description: sanitizeCell(src.description, ''),
+      assignedTo: sanitizeCell(src.assigned_to, ''),
+      deadline: sanitizeCell(src.deadline, ''),
+      referenceUrl: normalizeReferenceUrl(src.reference_url)
+    };
+
+    if (!row.description || !row.assignedTo) return;
+    normalized.push(row);
+  });
+
+  return dedupeRows(normalized);
+}
+
+async function queryDistributionsByOwner(uid) {
+  for (const key of OWNER_COLUMNS) {
+    const out = await serviceSelect('task_distributions', `select=*&${encodeURIComponent(key)}=eq.${encodeURIComponent(uid)}&order=created_at.desc`);
+    if (out.ok) return out;
+  }
+  return { ok: false, json: null, text: 'owner_column_not_found' };
+}
+
+async function queryItemsForDistributionIds(ids) {
+  if (!ids.length) return { items: [], distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
+
+  const encodedIds = ids.map((id) => encodeURIComponent(id)).join(',');
+  for (const key of ITEM_DISTRIBUTION_COLUMNS) {
+    const out = await serviceSelect('task_items', `select=id,status,${key}&${encodeURIComponent(key)}=in.(${encodedIds})`);
+    if (out.ok) return { items: Array.isArray(out.json) ? out.json : [], distributionColumn: key };
+  }
+
+  return { items: [], distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
 }
 
 async function insertDistributionRow(title, uid) {
-  for (const key of OWNER_COLUMNS) {
-    const insertDist = await serviceInsert('task_distributions', [{ title, [key]: uid }]);
-    if (insertDist.ok) {
-      return { ok: true, row: insertDist.json && insertDist.json[0] ? insertDist.json[0] : null, ownerColumn: key };
-    }
-    const errorText = JSON.stringify(insertDist.json || insertDist.text || '').toLowerCase();
-    const isMissingColumn = errorText.includes('column') && errorText.includes(key.toLowerCase());
-    if (!isMissingColumn) return { ok: false, out: insertDist };
+  for (const ownerKey of OWNER_COLUMNS) {
+    const out = await serviceInsert('task_distributions', [{ title, [ownerKey]: uid }]);
+    if (out.ok) return { row: out.json && out.json[0] ? out.json[0] : null, ownerKey };
+
+    const errorText = JSON.stringify(out.json || out.text || '').toLowerCase();
+    const missingOwnerColumn = errorText.includes('column') && errorText.includes(ownerKey.toLowerCase());
+    if (!missingOwnerColumn) return { row: null, ownerKey, error: out.json || out.text || 'distribution_insert_failed' };
   }
-  return { ok: false, out: { json: null, text: 'distribution_owner_column_not_found' } };
+
+  return { row: null, ownerKey: OWNER_COLUMNS[0], error: 'distribution_owner_column_not_found' };
 }
 
-async function insertTaskItems(distributionId, normalizedRows) {
-  const baseRows = normalizedRows.map((row) => ({
+async function insertTaskItems(distributionId, rows) {
+  const payloadBase = rows.map((row) => ({
     case_number: row.caseNumber,
     site: row.site,
     description: row.description,
     assigned_to: row.assignedTo,
     deadline: row.deadline || null,
     deadline_at: row.deadline || null,
-    reference_url: row.normalizedReferenceUrl || '',
+    reference_url: row.referenceUrl,
     status: 'PENDING',
     remarks: ''
   }));
 
-  for (const linkKey of ITEM_DISTRIBUTION_COLUMNS) {
-    const payload = baseRows.map((row) => Object.assign({}, row, { [linkKey]: distributionId }));
-    let insertItems = await serviceInsert('task_items', payload);
-    if (insertItems.ok) return insertItems;
+  for (const distributionKey of ITEM_DISTRIBUTION_COLUMNS) {
+    const payload = payloadBase.map((row) => Object.assign({}, row, { [distributionKey]: distributionId }));
+    let out = await serviceInsert('task_items', payload);
+    if (out.ok) return { ok: true, out };
 
-    const errorText = JSON.stringify(insertItems.json || insertItems.text || '').toLowerCase();
-    const distributionColumnMissing = errorText.includes('column') && errorText.includes(linkKey.toLowerCase());
-    const deadlineColumnMissing = errorText.includes('column') && errorText.includes('deadline');
+    const err = JSON.stringify(out.json || out.text || '').toLowerCase();
+    const missingDistributionKey = err.includes('column') && err.includes(distributionKey.toLowerCase());
+    const missingDeadline = err.includes('column') && err.includes('deadline');
 
-    if (deadlineColumnMissing) {
+    if (missingDeadline) {
       const fallbackPayload = payload.map((row) => {
         const next = Object.assign({}, row);
         delete next.deadline;
         return next;
       });
-      insertItems = await serviceInsert('task_items', fallbackPayload);
-      if (insertItems.ok) return insertItems;
+      out = await serviceInsert('task_items', fallbackPayload);
+      if (out.ok) return { ok: true, out };
     }
 
-    if (!distributionColumnMissing) return insertItems;
+    if (!missingDistributionKey) return { ok: false, out };
   }
 
-  return { ok: false, json: null, text: 'task_item_distribution_column_not_found' };
+  return { ok: false, out: { json: null, text: 'task_item_distribution_column_not_found' } };
+}
+
+async function rollbackDistribution(distributionId) {
+  for (const key of ITEM_DISTRIBUTION_COLUMNS) {
+    await serviceFetch(`/rest/v1/task_items?${encodeURIComponent(key)}=eq.${encodeURIComponent(distributionId)}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' }
+    });
+  }
+
+  await serviceFetch(`/rest/v1/task_distributions?id=eq.${encodeURIComponent(distributionId)}`, {
+    method: 'DELETE',
+    headers: { Prefer: 'return=minimal' }
+  });
 }
 
 async function deleteDistribution(distributionId) {
   for (const key of ITEM_DISTRIBUTION_COLUMNS) {
-    const deleteItems = await serviceFetch(`/rest/v1/task_items?${encodeURIComponent(key)}=eq.${encodeURIComponent(distributionId)}`, {
+    const out = await serviceFetch(`/rest/v1/task_items?${encodeURIComponent(key)}=eq.${encodeURIComponent(distributionId)}`, {
       method: 'DELETE',
       headers: { Prefer: 'return=minimal' }
     });
-    if (deleteItems.ok) break;
-    const errorText = JSON.stringify(deleteItems.json || deleteItems.text || '').toLowerCase();
-    const missingColumn = errorText.includes('column') && errorText.includes(key.toLowerCase());
-    if (!missingColumn) return deleteItems;
+    if (out.ok) break;
+
+    const err = JSON.stringify(out.json || out.text || '').toLowerCase();
+    const missingColumn = err.includes('column') && err.includes(key.toLowerCase());
+    if (!missingColumn) return out;
   }
 
-  const deleteDistributionOut = await serviceFetch(`/rest/v1/task_distributions?id=eq.${encodeURIComponent(distributionId)}`, {
+  return serviceFetch(`/rest/v1/task_distributions?id=eq.${encodeURIComponent(distributionId)}`, {
     method: 'DELETE',
     headers: { Prefer: 'return=minimal' }
   });
-  return deleteDistributionOut;
 }
 
 module.exports = async (req, res) => {
@@ -138,80 +166,101 @@ module.exports = async (req, res) => {
     const uid = String(auth.authed.id || '');
 
     if (req.method === 'GET') {
-      const queryRes = await queryDistributionsByOwner(uid);
-      const out = queryRes.out;
+      const out = await queryDistributionsByOwner(uid);
       if (!out.ok) return sendJson(res, 500, { ok: false, error: 'distribution_query_failed', details: out.json || out.text });
 
-      const rows = Array.isArray(queryRes.out.json) ? queryRes.out.json : [];
+      const rows = Array.isArray(out.json) ? out.json : [];
       const ids = rows.map((r) => String(r.id || '')).filter(Boolean);
-      let stats = {};
+      const itemData = await queryItemsForDistributionIds(ids);
 
-      if (ids.length) {
-        const itemResData = await queryItemsByDistributionIds(ids);
-        const itemRes = itemResData.out;
-        const distributionColumn = itemResData.distributionColumn;
-        const items = itemRes.ok && Array.isArray(itemRes.json) ? itemRes.json : [];
-        stats = items.reduce((acc, it) => {
-          const key = String(it[distributionColumn] || '');
-          if (!acc[key]) acc[key] = { total: 0, done: 0, pending: 0 };
-          acc[key].total += 1;
-          if (String(it.status || '').toUpperCase() === 'DONE') acc[key].done += 1;
-          else acc[key].pending += 1;
-          return acc;
-        }, {});
-      }
+      const groupedStats = itemData.items.reduce((acc, item) => {
+        const distributionId = String(item[itemData.distributionColumn] || '');
+        if (!distributionId) return acc;
+
+        const status = String(item.status || 'PENDING').toUpperCase();
+        if (!acc[distributionId]) acc[distributionId] = { total_count: 0, pending_count: 0, done_count: 0 };
+        acc[distributionId].total_count += 1;
+        if (status === 'DONE') acc[distributionId].done_count += 1;
+        else acc[distributionId].pending_count += 1;
+        return acc;
+      }, {});
 
       return sendJson(res, 200, {
         ok: true,
         rows: rows.map((row) => {
-          const x = stats[String(row.id)] || { total: 0, done: 0, pending: 0 };
-          return Object.assign({}, row, { total_items: x.total, done_items: x.done, pending_items: x.pending });
+          const stats = groupedStats[String(row.id)] || { total_count: 0, pending_count: 0, done_count: 0 };
+          return Object.assign({}, row, {
+            distribution_id: String(row.id || ''),
+            total_count: stats.total_count,
+            pending_count: stats.pending_count,
+            done_count: stats.done_count,
+            total_items: stats.total_count,
+            pending_items: stats.pending_count,
+            done_items: stats.done_count
+          });
         })
       });
     }
 
     if (req.method === 'POST') {
       const body = req.body && typeof req.body === 'object' ? req.body : {};
-      const title = String(body.title || '').trim();
-      const items = Array.isArray(body.items) ? body.items : [];
+      const title = sanitizeCell(body.title);
+      const normalizedRows = normalizeIncomingRows(body.items);
+
       if (!title) return sendJson(res, 400, { ok: false, error: 'missing_title' });
-      if (!items.length) return sendJson(res, 400, { ok: false, error: 'missing_items' });
-
-      const normalizedRows = dedupeRows(items
-        .map((item) => mapColumns(item))
-        .filter((item) => item.description && item.assignedTo));
-
       if (!normalizedRows.length) return sendJson(res, 400, { ok: false, error: 'valid_items_required' });
 
-      const insertDist = await insertDistributionRow(title, uid);
-      if (!insertDist.ok) return sendJson(res, 500, { ok: false, error: 'distribution_create_failed', details: insertDist.out && (insertDist.out.json || insertDist.out.text) });
+      const created = await insertDistributionRow(title, uid);
+      if (!created.row) {
+        return sendJson(res, 500, {
+          ok: false,
+          error: 'distribution_create_failed',
+          details: created.error || 'distribution_insert_failed'
+        });
+      }
 
-      const distribution = insertDist.row;
-      const distributionId = distribution && distribution.id ? distribution.id : null;
-      if (!distributionId) return sendJson(res, 500, { ok: false, error: 'distribution_id_missing' });
+      const distributionId = String(created.row.id || '');
+      if (!distributionId) {
+        return sendJson(res, 500, {
+          ok: false,
+          error: 'distribution_id_missing'
+        });
+      }
 
-      const insertItems = await insertTaskItems(distributionId, normalizedRows);
-      if (!insertItems.ok) return sendJson(res, 500, { ok: false, error: 'task_items_create_failed', details: insertItems.json || insertItems.text });
+      const insertedItems = await insertTaskItems(distributionId, normalizedRows);
+      if (!insertedItems.ok) {
+        await rollbackDistribution(distributionId);
+        return sendJson(res, 500, {
+          ok: false,
+          error: 'task_items_create_failed',
+          details: insertedItems.out && (insertedItems.out.json || insertedItems.out.text)
+        });
+      }
 
-      return sendJson(res, 200, { ok: true, distribution, items: Array.isArray(insertItems.json) ? insertItems.json : [] });
+      return sendJson(res, 200, {
+        ok: true,
+        distribution: created.row,
+        items: Array.isArray(insertedItems.out.json) ? insertedItems.out.json : []
+      });
     }
 
     if (req.method === 'DELETE') {
       const body = req.body && typeof req.body === 'object' ? req.body : {};
       const queryId = req.query && req.query.distribution_id;
-      const distributionId = String(body.distribution_id || queryId || '').trim();
+      const distributionId = sanitizeCell(body.distribution_id || queryId);
       if (!distributionId) return sendJson(res, 400, { ok: false, error: 'missing_distribution_id' });
 
-      const d = await serviceSelect('task_distributions', `select=*&id=eq.${encodeURIComponent(distributionId)}&limit=1`);
-      if (!d.ok) return sendJson(res, 500, { ok: false, error: 'distribution_fetch_failed', details: d.json || d.text });
-      const distribution = Array.isArray(d.json) && d.json[0] ? d.json[0] : null;
+      const selected = await serviceSelect('task_distributions', `select=*&id=eq.${encodeURIComponent(distributionId)}&limit=1`);
+      if (!selected.ok) return sendJson(res, 500, { ok: false, error: 'distribution_fetch_failed', details: selected.json || selected.text });
+
+      const distribution = Array.isArray(selected.json) && selected.json[0] ? selected.json[0] : null;
       if (!distribution) return sendJson(res, 404, { ok: false, error: 'distribution_not_found' });
 
       const ownerId = ownerIdFromDistribution(distribution);
       if (ownerId && ownerId !== uid) return sendJson(res, 403, { ok: false, error: 'forbidden' });
 
-      const delOut = await deleteDistribution(distributionId);
-      if (!delOut.ok) return sendJson(res, 500, { ok: false, error: 'distribution_delete_failed', details: delOut.json || delOut.text });
+      const deleted = await deleteDistribution(distributionId);
+      if (!deleted.ok) return sendJson(res, 500, { ok: false, error: 'distribution_delete_failed', details: deleted.json || deleted.text });
 
       return sendJson(res, 200, { ok: true, deleted_distribution_id: distributionId });
     }
