@@ -15,6 +15,19 @@
     modalOpen: false,
     dragActive: false,
     parseError: '',
+    dragActive: false,
+    isSheetJsReady: false,
+
+    assignedGroups: [],
+    expandedAssignedId: '',
+
+    distributions: [],
+    expandedDistributionId: '',
+    distributionItemsById: {},
+
+    members: [],
+
+    modalOpen: false,
     uploadMeta: { name: '', rows: 0, sheets: 0 },
     parsedRows: [],
     assigneeColumnIndex: -1,
@@ -61,6 +74,7 @@
     state.members.forEach((member) => {
       const label = normalizeName(member.name || member.username || member.user_id);
       if (!label) return;
+
       let score = 0;
       if (label === input) score = 1;
       else if (label.includes(input) || input.includes(label)) score = 0.86;
@@ -109,6 +123,7 @@
       .task-invalid{background:rgba(239,68,68,.16)!important}
       @keyframes taskSpin{to{transform:rotate(360deg)}}
     `;
+
     document.head.appendChild(style);
   }
 
@@ -277,8 +292,55 @@
         ${state.modalOpen ? renderModal() : ''}
       </section>
     `;
+  }
+
+  function render() {
+    ensureStyleTag();
+
+    root.innerHTML = `
+      <section class="task-shell">
+        ${state.loading || state.creating ? '<div class="task-overlay"><div class="task-spinner" aria-label="Loading"></div></div>' : ''}
+
+        <header class="task-header">
+          <h2 class="task-title-main">My Task</h2>
+          <nav class="task-tabs" aria-label="My Task Views">
+            <button type="button" class="task-tab ${state.activeTab === 'assigned' ? 'active' : ''}" id="tabAssigned">📥 My Assigned Tasks</button>
+            <button type="button" class="task-tab ${state.activeTab === 'distribution' ? 'active' : ''}" id="tabDistribution">🚀 Distribution Management</button>
+          </nav>
+        </header>
+
+        ${state.activeTab === 'assigned' ? renderAssignedPanel() : renderDistributionPanel()}
+        ${state.modalOpen ? renderModal() : ''}
+      </section>
+    `;
 
     bindEvents();
+  }
+
+  function parseCsvLine(line) {
+    const cells = [];
+    let buf = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i += 1) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          buf += '"';
+          i += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (ch === ',' && !inQuotes) {
+        cells.push(buf.trim());
+        buf = '';
+      } else {
+        buf += ch;
+      }
+    }
+
+    cells.push(buf.trim());
+    return cells;
   }
 
   async function ensureSheetJs() {
@@ -301,30 +363,6 @@
     return state.isSheetJsReady;
   }
 
-  function parseCsvLine(line) {
-    const cells = [];
-    let buf = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i += 1) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          buf += '"';
-          i += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (ch === ',' && !inQuotes) {
-        cells.push(buf.trim());
-        buf = '';
-      } else {
-        buf += ch;
-      }
-    }
-    cells.push(buf.trim());
-    return cells;
-  }
-
   async function fileToMatrix(file) {
     const ext = String(file.name || '').split('.').pop().toLowerCase();
     if (ext === 'csv') {
@@ -344,12 +382,14 @@
     const buf = await file.arrayBuffer();
     const workbook = window.XLSX.read(buf, { type: 'array' });
     const matrix = [];
+
     (workbook.SheetNames || []).forEach((sheetName) => {
       const sheet = workbook.Sheets[sheetName];
       if (!sheet) return;
       const rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
       rows.forEach((row) => matrix.push(Array.isArray(row) ? row : []));
     });
+
     return { matrix, sheets: (workbook.SheetNames || []).length || 1 };
   }
 
@@ -359,6 +399,7 @@
     if (headerIndex < 0) return { headers: [], rows: [] };
     const headers = (Array.isArray(rows[headerIndex]) ? rows[headerIndex] : []).map((h, idx) => safeText(h, `Column ${idx + 1}`));
     const dataRows = rows.slice(headerIndex + 1).filter((row) => (Array.isArray(row) ? row : []).some((cell) => String(cell || '').trim()));
+
     return { headers, rows: dataRows };
   }
 
@@ -551,10 +592,12 @@
         state.dragActive = true;
         render();
       };
+
       uploadZone.ondragleave = () => {
         state.dragActive = false;
         render();
       };
+
       uploadZone.ondrop = (event) => {
         event.preventDefault();
         state.dragActive = false;
