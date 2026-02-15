@@ -22,6 +22,26 @@ function normalizeReferenceUrl(value) {
   return /^https?:\/\//i.test(url) ? url : '';
 }
 
+function normalizeDeadlineAt(value) {
+  const raw = sanitizeCell(value);
+  if (!raw) return null;
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+
+  const shortMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  if (shortMatch) {
+    const mm = Number(shortMatch[1]);
+    const dd = Number(shortMatch[2]);
+    const yyyy = shortMatch[3].length === 2 ? 2000 + Number(shortMatch[3]) : Number(shortMatch[3]);
+    const d = new Date(Date.UTC(yyyy, mm - 1, dd));
+    const valid = d.getUTCFullYear() === yyyy && d.getUTCMonth() + 1 === mm && d.getUTCDate() === dd;
+    if (valid) return d.toISOString();
+  }
+
+  return null;
+}
+
 function dedupeRows(rows) {
   const seen = new Set();
   return rows.filter((row) => {
@@ -88,38 +108,70 @@ async function insertDistributionRow(title, uid) {
 }
 
 async function insertTaskItems(distributionId, rows) {
-  const payloadBase = rows.map((row) => ({
-    case_number: row.caseNumber,
-    site: row.site,
-    description: row.description,
-    assigned_to: row.assignedTo,
-    deadline: row.deadline || null,
-    deadline_at: row.deadline || null,
-    reference_url: row.referenceUrl,
-    status: 'PENDING',
-    remarks: ''
-  }));
+  const payloadBase = rows.map((row) => {
+    const deadlineText = sanitizeCell(row.deadline);
+    return {
+      case_number: row.caseNumber,
+      case_no: row.caseNumber,
+      site: row.site,
+      description: row.description,
+      assigned_to: row.assignedTo,
+      assignee_user_id: row.assignedTo,
+      deadline: deadlineText || null,
+      due_at: normalizeDeadlineAt(deadlineText),
+      deadline_at: normalizeDeadlineAt(deadlineText),
+      reference_url: row.referenceUrl,
+      status: 'PENDING',
+      remarks: ''
+    };
+  });
+
+  const optionalColumns = ['case_no', 'assignee_user_id', 'deadline', 'due_at', 'deadline_at', 'reference_url', 'remarks'];
+  const requiredColumns = ['case_number', 'site', 'description', 'assigned_to', 'status'];
+  const buildPayload = (distributionKey, dropColumns) => payloadBase.map((item) => {
+    const next = {};
+    [...requiredColumns, ...optionalColumns].forEach((column) => {
+      if (dropColumns.has(column)) return;
+      if (!Object.prototype.hasOwnProperty.call(item, column)) return;
+      const value = item[column];
+      if (value === '') return;
+      next[column] = value;
+    });
+    next[distributionKey] = distributionId;
+    return next;
+  });
+
+  const extractMissingColumn = (errorText) => {
+    const match = errorText.match(/column\s+"?([a-zA-Z0-9_]+)"?\s+of\s+relation\s+"?task_items"?\s+does\s+not\s+exist/);
+    return match ? String(match[1] || '').trim() : '';
+  };
 
   for (const distributionKey of ITEM_DISTRIBUTION_COLUMNS) {
-    const payload = payloadBase.map((row) => Object.assign({}, row, { [distributionKey]: distributionId }));
-    let out = await serviceInsert('task_items', payload);
-    if (out.ok) return { ok: true, out };
-
-    const err = JSON.stringify(out.json || out.text || '').toLowerCase();
-    const missingDistributionKey = err.includes('column') && err.includes(distributionKey.toLowerCase());
-    const missingDeadline = err.includes('column') && err.includes('deadline');
-
-    if (missingDeadline) {
-      const fallbackPayload = payload.map((row) => {
-        const next = Object.assign({}, row);
-        delete next.deadline;
-        return next;
-      });
-      out = await serviceInsert('task_items', fallbackPayload);
+    const dropColumns = new Set();
+    while (true) {
+      const payload = buildPayload(distributionKey, dropColumns);
+      const out = await serviceInsert('task_items', payload);
       if (out.ok) return { ok: true, out };
-    }
 
-    if (!missingDistributionKey) return { ok: false, out };
+      const errText = JSON.stringify(out.json || out.text || '');
+      const err = errText.toLowerCase();
+      const missingDistributionKey = err.includes('column') && err.includes(distributionKey.toLowerCase());
+      if (missingDistributionKey) break;
+
+      const missingColumn = extractMissingColumn(errText);
+      if (missingColumn && !dropColumns.has(missingColumn)) {
+        dropColumns.add(missingColumn);
+        continue;
+      }
+
+      if ((err.includes('invalid input syntax') || err.includes('date/time field value out of range')) && !dropColumns.has('deadline_at')) {
+        dropColumns.add('deadline_at');
+        dropColumns.add('due_at');
+        continue;
+      }
+
+      return { ok: false, out };
+    }
   }
 
   return { ok: false, out: { json: null, text: 'task_item_distribution_column_not_found' } };
