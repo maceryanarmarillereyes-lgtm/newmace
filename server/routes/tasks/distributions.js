@@ -17,6 +17,12 @@ function sanitizeCell(value, fallback = '') {
   return out || fallback;
 }
 
+function normalizeStatus(value) {
+  const s = String(value || '').toUpperCase();
+  if (s === 'COMPLETED') return 'COMPLETED';
+  return 'ONGOING';
+}
+
 function normalizeReferenceUrl(value) {
   const url = sanitizeCell(value);
   return /^https?:\/\//i.test(url) ? url : '';
@@ -54,17 +60,20 @@ function dedupeRows(rows) {
   });
 }
 
-function normalizeIncomingRows(items) {
+function normalizeIncomingRows(items, globalDescription, globalReferenceUrl) {
   const normalized = [];
+  const defaultDescription = sanitizeCell(globalDescription, 'N/A');
+  const defaultReferenceUrl = normalizeReferenceUrl(globalReferenceUrl);
+
   (Array.isArray(items) ? items : []).forEach((item) => {
     const src = item && typeof item === 'object' ? item : {};
     const row = {
       caseNumber: sanitizeCell(src.case_number, 'N/A'),
       site: sanitizeCell(src.site, 'N/A'),
-      description: sanitizeCell(src.description, ''),
+      description: sanitizeCell(src.description, defaultDescription),
       assignedTo: sanitizeCell(src.assigned_to, ''),
       deadline: sanitizeCell(src.deadline, ''),
-      referenceUrl: normalizeReferenceUrl(src.reference_url)
+      referenceUrl: normalizeReferenceUrl(src.reference_url) || defaultReferenceUrl
     };
 
     if (!row.description || !row.assignedTo) return;
@@ -94,14 +103,51 @@ async function queryItemsForDistributionIds(ids) {
   return { items: [], distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
 }
 
-async function insertDistributionRow(title, uid) {
-  for (const ownerKey of OWNER_COLUMNS) {
-    const out = await serviceInsert('task_distributions', [{ title, [ownerKey]: uid }]);
-    if (out.ok) return { row: out.json && out.json[0] ? out.json[0] : null, ownerKey };
+async function insertDistributionRow(title, uid, metadata) {
+  const base = {
+    title,
+    description: sanitizeCell(metadata && metadata.description, ''),
+    reference_url: normalizeReferenceUrl(metadata && metadata.reference_url),
+    status: normalizeStatus(metadata && metadata.status)
+  };
 
-    const errorText = JSON.stringify(out.json || out.text || '').toLowerCase();
-    const missingOwnerColumn = errorText.includes('column') && errorText.includes(ownerKey.toLowerCase());
-    if (!missingOwnerColumn) return { row: null, ownerKey, error: out.json || out.text || 'distribution_insert_failed' };
+  const optionalColumns = ['description', 'reference_url', 'status'];
+
+  const extractMissingColumn = (errorText) => {
+    const match = errorText.match(/column\s+"?([a-zA-Z0-9_]+)"?\s+of\s+relation\s+"?task_distributions"?\s+does\s+not\s+exist/i);
+    return match ? String(match[1] || '').trim() : '';
+  };
+
+  for (const ownerKey of OWNER_COLUMNS) {
+    const dropColumns = new Set();
+
+    while (true) {
+      const row = { [ownerKey]: uid };
+      row.title = base.title;
+
+      optionalColumns.forEach((key) => {
+        if (dropColumns.has(key)) return;
+        const value = base[key];
+        if (!value) return;
+        row[key] = value;
+      });
+
+      const out = await serviceInsert('task_distributions', [row]);
+      if (out.ok) return { row: out.json && out.json[0] ? out.json[0] : null, ownerKey };
+
+      const errText = JSON.stringify(out.json || out.text || '');
+      const err = errText.toLowerCase();
+      const missingOwnerColumn = err.includes('column') && err.includes(ownerKey.toLowerCase());
+      if (missingOwnerColumn) break;
+
+      const missingColumn = extractMissingColumn(errText);
+      if (missingColumn && !dropColumns.has(missingColumn)) {
+        dropColumns.add(missingColumn);
+        continue;
+      }
+
+      return { row: null, ownerKey, error: out.json || out.text || 'distribution_insert_failed' };
+    }
   }
 
   return { row: null, ownerKey: OWNER_COLUMNS[0], error: 'distribution_owner_column_not_found' };
@@ -241,6 +287,7 @@ module.exports = async (req, res) => {
         ok: true,
         rows: rows.map((row) => {
           const stats = groupedStats[String(row.id)] || { total_count: 0, pending_count: 0, done_count: 0 };
+          const status = stats.pending_count === 0 ? 'COMPLETED' : 'ONGOING';
           return Object.assign({}, row, {
             distribution_id: String(row.id || ''),
             total_count: stats.total_count,
@@ -248,7 +295,8 @@ module.exports = async (req, res) => {
             done_count: stats.done_count,
             total_items: stats.total_count,
             pending_items: stats.pending_count,
-            done_items: stats.done_count
+            done_items: stats.done_count,
+            status
           });
         })
       });
@@ -257,12 +305,15 @@ module.exports = async (req, res) => {
     if (req.method === 'POST') {
       const body = req.body && typeof req.body === 'object' ? req.body : {};
       const title = sanitizeCell(body.title);
-      const normalizedRows = normalizeIncomingRows(body.items);
+      const description = sanitizeCell(body.description, '');
+      const referenceUrl = normalizeReferenceUrl(body.reference_url);
+      const status = normalizeStatus(body.status);
+      const normalizedRows = normalizeIncomingRows(body.items, description, referenceUrl);
 
       if (!title) return sendJson(res, 400, { ok: false, error: 'missing_title' });
       if (!normalizedRows.length) return sendJson(res, 400, { ok: false, error: 'valid_items_required' });
 
-      const created = await insertDistributionRow(title, uid);
+      const created = await insertDistributionRow(title, uid, { description, reference_url: referenceUrl, status });
       if (!created.row) {
         return sendJson(res, 500, {
           ok: false,
