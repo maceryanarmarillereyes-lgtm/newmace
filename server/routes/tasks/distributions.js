@@ -55,8 +55,17 @@ module.exports = async (req, res) => {
           const description = String((item && item.description) || '').trim();
           const assignedTo = String((item && item.assigned_to) || '').trim();
           const deadline = item && item.deadline ? String(item.deadline) : null;
+          const referenceUrl = String((item && item.reference_url) || '').trim() || null;
           if (!description || !assignedTo) return null;
-          return { distribution_id: distributionId, description, assigned_to: assignedTo, deadline, status: 'PENDING', remarks: '' };
+          return {
+            distribution_id: distributionId,
+            description,
+            assigned_to: assignedTo,
+            deadline,
+            reference_url: referenceUrl,
+            status: 'PENDING',
+            remarks: ''
+          };
         })
         .filter(Boolean);
 

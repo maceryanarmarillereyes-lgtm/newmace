@@ -1,5 +1,11 @@
 const { sendJson, requireAuthedUser, serviceSelect } = require('./_common');
 
+function normStatus(value) {
+  const status = String(value || 'PENDING').toUpperCase();
+  if (status === 'DONE' || status === 'IN_PROGRESS') return status;
+  return 'PENDING';
+}
+
 module.exports = async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
@@ -38,16 +44,45 @@ module.exports = async (req, res) => {
       }, {});
     }
 
-    const enriched = rows.map((row) => {
+    const grouped = rows.reduce((acc, row) => {
+      const distributionId = String(row.distribution_id || 'unassigned');
       const dist = distMap[String(row.distribution_id || '')] || {};
       const creatorId = String(dist.created_by || '');
-      return Object.assign({}, row, {
-        creator_name: nameByUid[creatorId] || creatorId || 'N/A',
+      const creatorName = nameByUid[creatorId] || creatorId || 'N/A';
+      const status = normStatus(row.status);
+
+      if (!acc[distributionId]) {
+        acc[distributionId] = {
+          distribution_id: distributionId,
+          project_title: String(dist.title || 'Untitled Distribution'),
+          assigner_name: creatorName,
+          pending_count: 0,
+          total_count: 0,
+          done_count: 0,
+          items: []
+        };
+      }
+
+      const item = Object.assign({}, row, {
+        status,
+        creator_name: creatorName,
         distribution_title: dist.title || ''
       });
+
+      acc[distributionId].items.push(item);
+      acc[distributionId].total_count += 1;
+      if (status !== 'DONE') acc[distributionId].pending_count += 1;
+      if (status === 'DONE') acc[distributionId].done_count += 1;
+      return acc;
+    }, {});
+
+    const groups = Object.values(grouped).sort((a, b) => {
+      const aDate = new Date((a.items[0] && (a.items[0].deadline || a.items[0].created_at)) || 0).getTime();
+      const bDate = new Date((b.items[0] && (b.items[0].deadline || b.items[0].created_at)) || 0).getTime();
+      return aDate - bDate;
     });
 
-    return sendJson(res, 200, { ok: true, rows: enriched });
+    return sendJson(res, 200, { ok: true, groups });
   } catch (err) {
     return sendJson(res, 500, { ok: false, error: 'assigned_failed', message: String(err && err.message ? err.message : err) });
   }
