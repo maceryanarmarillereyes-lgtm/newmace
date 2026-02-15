@@ -466,6 +466,24 @@
     state.distributionItemsById[id] = out.ok && Array.isArray(out.data.rows) ? out.data.rows : [];
   }
 
+  async function loadBaseData() {
+    state.loading = true;
+    render();
+
+    const [assignedRes, distRes, membersRes] = await Promise.all([
+      CloudTasks.assigned(),
+      CloudTasks.distributions(),
+      CloudTasks.members()
+    ]);
+
+    state.assignedGroups = assignedRes.ok && Array.isArray(assignedRes.data.groups) ? assignedRes.data.groups : [];
+    state.distributions = distRes.ok && Array.isArray(distRes.data.rows) ? distRes.data.rows : [];
+    state.members = membersRes.ok && Array.isArray(membersRes.data.rows) ? membersRes.data.rows : [];
+
+    state.loading = false;
+    render();
+  }
+
   function bindEvents() {
     const openBtn = root.querySelector('#openDistributionModal');
     if (openBtn) {
