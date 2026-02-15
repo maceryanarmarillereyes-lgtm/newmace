@@ -51,7 +51,7 @@ module.exports = async (req, res) => {
       const distributionId = distribution && distribution.id ? distribution.id : null;
       if (!distributionId) return sendJson(res, 500, { ok: false, error: 'distribution_id_missing' });
 
-      const payload = items
+      const normalizedRows = items
         .map((item) => {
           const caseNumber = String((item && item.case_number) || '').trim() || null;
           const site = String((item && item.site) || '').trim() || null;
@@ -62,23 +62,45 @@ module.exports = async (req, res) => {
           const normalizedReferenceUrl = /^https?:\/\//i.test(referenceUrl) ? referenceUrl : null;
           if (!description || !assignedTo) return null;
 
-          return {
-            distribution_id: distributionId,
-            case_number: caseNumber,
-            site,
-            description,
-            assigned_to: assignedTo,
-            deadline,
-            reference_url: normalizedReferenceUrl,
-            status: 'PENDING',
-            remarks: ''
-          };
+          return { caseNumber, site, description, assignedTo, deadline, normalizedReferenceUrl };
         })
         .filter(Boolean);
 
-      if (!payload.length) return sendJson(res, 400, { ok: false, error: 'valid_items_required' });
+      if (!normalizedRows.length) return sendJson(res, 400, { ok: false, error: 'valid_items_required' });
 
-      const insertItems = await serviceInsert('task_items', payload);
+      const payload = normalizedRows.map((row) => ({
+        distribution_id: distributionId,
+        case_number: row.caseNumber,
+        site: row.site,
+        description: row.description,
+        assigned_to: row.assignedTo,
+        deadline: row.deadline,
+        reference_url: row.normalizedReferenceUrl,
+        status: 'PENDING',
+        remarks: ''
+      }));
+
+      let insertItems = await serviceInsert('task_items', payload);
+      if (!insertItems.ok) {
+        const errorText = JSON.stringify(insertItems.json || insertItems.text || '').toLowerCase();
+        const deadlineColumnMissing = errorText.includes('deadline') && errorText.includes('column');
+
+        if (deadlineColumnMissing) {
+          const fallbackPayload = normalizedRows.map((row) => ({
+            distribution_id: distributionId,
+            case_number: row.caseNumber,
+            site: row.site,
+            description: row.description,
+            assigned_to: row.assignedTo,
+            deadline_at: row.deadline,
+            reference_url: row.normalizedReferenceUrl,
+            status: 'PENDING',
+            remarks: ''
+          }));
+          insertItems = await serviceInsert('task_items', fallbackPayload);
+        }
+      }
+
       if (!insertItems.ok) return sendJson(res, 500, { ok: false, error: 'task_items_create_failed', details: insertItems.json || insertItems.text });
 
       return sendJson(res, 200, { ok: true, distribution, items: Array.isArray(insertItems.json) ? insertItems.json : [] });
