@@ -32,9 +32,6 @@ function normalizeDeadlineAt(value) {
   const raw = sanitizeCell(value);
   if (!raw) return null;
 
-  const parsed = new Date(raw);
-  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
-
   const shortMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
   if (shortMatch) {
     const mm = Number(shortMatch[1]);
@@ -43,9 +40,19 @@ function normalizeDeadlineAt(value) {
     const d = new Date(Date.UTC(yyyy, mm - 1, dd));
     const valid = d.getUTCFullYear() === yyyy && d.getUTCMonth() + 1 === mm && d.getUTCDate() === dd;
     if (valid) return d.toISOString();
+    return null;
   }
 
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+
   return null;
+}
+
+function normalizeDeadlineDate(value) {
+  const iso = normalizeDeadlineAt(value);
+  if (!iso) return null;
+  return iso.slice(0, 10);
 }
 
 function dedupeRows(rows) {
@@ -111,7 +118,7 @@ async function insertDistributionRow(title, uid, metadata) {
     status: normalizeStatus(metadata && metadata.status)
   };
 
-  const optionalColumns = ['description', 'reference_url', 'status'];
+  const optionalColumns = ['title', 'description', 'reference_url', 'status'];
 
   const extractMissingColumn = (errorText) => {
     const match = errorText.match(/column\s+"?([a-zA-Z0-9_]+)"?\s+of\s+relation\s+"?task_distributions"?\s+does\s+not\s+exist/i);
@@ -123,7 +130,6 @@ async function insertDistributionRow(title, uid, metadata) {
 
     while (true) {
       const row = { [ownerKey]: uid };
-      row.title = base.title;
 
       optionalColumns.forEach((key) => {
         if (dropColumns.has(key)) return;
@@ -156,6 +162,8 @@ async function insertDistributionRow(title, uid, metadata) {
 async function insertTaskItems(distributionId, rows) {
   const payloadBase = rows.map((row) => {
     const deadlineText = sanitizeCell(row.deadline);
+    const deadlineAt = normalizeDeadlineAt(deadlineText);
+    const deadlineDate = normalizeDeadlineDate(deadlineText);
     return {
       case_number: row.caseNumber,
       case_no: row.caseNumber,
@@ -163,9 +171,9 @@ async function insertTaskItems(distributionId, rows) {
       description: row.description,
       assigned_to: row.assignedTo,
       assignee_user_id: row.assignedTo,
-      deadline: deadlineText || null,
-      due_at: normalizeDeadlineAt(deadlineText),
-      deadline_at: normalizeDeadlineAt(deadlineText),
+      deadline: deadlineDate,
+      due_at: deadlineAt,
+      deadline_at: deadlineAt,
       reference_url: row.referenceUrl,
       status: 'PENDING',
       remarks: ''
