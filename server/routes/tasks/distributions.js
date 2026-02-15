@@ -1,5 +1,19 @@
 const { sendJson, requireAuthedUser, serviceSelect, serviceInsert } = require('./_common');
 
+function mapColumns(item) {
+  const src = item && typeof item === 'object' ? item : {};
+  const normalized = {
+    caseNumber: String(src.case_number == null ? '' : src.case_number).trim(),
+    site: String(src.site == null ? '' : src.site).trim(),
+    description: String(src.description == null ? '' : src.description).trim(),
+    assignedTo: String(src.assigned_to == null ? '' : src.assigned_to).trim(),
+    deadline: String(src.deadline == null ? '' : src.deadline).trim(),
+    referenceUrl: String(src.reference_url == null ? '' : src.reference_url).trim()
+  };
+  normalized.normalizedReferenceUrl = /^https?:\/\//i.test(normalized.referenceUrl) ? normalized.referenceUrl : '';
+  return normalized;
+}
+
 module.exports = async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
@@ -52,19 +66,8 @@ module.exports = async (req, res) => {
       if (!distributionId) return sendJson(res, 500, { ok: false, error: 'distribution_id_missing' });
 
       const normalizedRows = items
-        .map((item) => {
-          const caseNumber = String((item && item.case_number) || '').trim() || null;
-          const site = String((item && item.site) || '').trim() || null;
-          const description = String((item && item.description) || '').trim();
-          const assignedTo = String((item && item.assigned_to) || '').trim();
-          const deadline = item && item.deadline ? String(item.deadline).trim() : null;
-          const referenceUrl = String((item && item.reference_url) || '').trim();
-          const normalizedReferenceUrl = /^https?:\/\//i.test(referenceUrl) ? referenceUrl : null;
-          if (!description || !assignedTo) return null;
-
-          return { caseNumber, site, description, assignedTo, deadline, normalizedReferenceUrl };
-        })
-        .filter(Boolean);
+        .map((item) => mapColumns(item))
+        .filter((item) => item.description && item.assignedTo);
 
       if (!normalizedRows.length) return sendJson(res, 400, { ok: false, error: 'valid_items_required' });
 
@@ -74,8 +77,8 @@ module.exports = async (req, res) => {
         site: row.site,
         description: row.description,
         assigned_to: row.assignedTo,
-        deadline: row.deadline,
-        reference_url: row.normalizedReferenceUrl,
+        deadline: row.deadline || null,
+        reference_url: row.normalizedReferenceUrl || '',
         status: 'PENDING',
         remarks: ''
       }));
@@ -92,8 +95,8 @@ module.exports = async (req, res) => {
             site: row.site,
             description: row.description,
             assigned_to: row.assignedTo,
-            deadline_at: row.deadline,
-            reference_url: row.normalizedReferenceUrl,
+            deadline_at: row.deadline || null,
+            reference_url: row.normalizedReferenceUrl || '',
             status: 'PENDING',
             remarks: ''
           }));
