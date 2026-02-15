@@ -14,6 +14,10 @@
     members: [],
     expandedGroupId: '',
     gridRows: [],
+    mappedHeaders: {},
+    wizardOpen: false,
+    wizardHeaders: [],
+    wizardRows: [],
     uploadMeta: { fileName: '', sheetCount: 0, rowCount: 0 },
     parserReady: false,
     parserError: ''
@@ -21,6 +25,22 @@
 
   const MATCH_THRESHOLD = 0.72;
   const STRONG_MATCH_THRESHOLD = 0.95;
+  const SYSTEM_FIELDS = [
+    { key: 'case_number', label: 'Case #' },
+    { key: 'site', label: 'Site' },
+    { key: 'assigned_name', label: 'Assignee' },
+    { key: 'deadline', label: 'Deadline' },
+    { key: 'reference_url', label: 'Link' },
+    { key: 'description', label: 'Description' }
+  ];
+  const HEADER_HINTS = {
+    case_number: ['case', 'case #', 'ticket', 'ticket no', 'ticket number', 'reference no', 'incident', 'id'],
+    site: ['site', 'location', 'store', 'branch', 'facility', 'plant'],
+    assigned_name: ['assignee', 'assigned', 'owner', 'agent', 'engineer', 'pic', 'name'],
+    deadline: ['deadline', 'due', 'sla', 'target', 'eta', 'date', 'schedule'],
+    reference_url: ['link', 'url', 'wi', 'work instruction', 'reference', 'sharepoint', 'drive'],
+    description: ['description', 'details', 'subject', 'title', 'issue', 'task', 'summary']
+  };
 
   function fmtDate(v) {
     if (!v) return 'N/A';
@@ -85,12 +105,22 @@
     return /^https?:\/\//i.test(String(value || '').trim());
   }
 
-  function looksLikeDate(value) {
-    const raw = String(value || '').trim();
-    if (!raw) return false;
-    if (/^\d{4}-\d{2}-\d{2}/.test(raw) || /^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/.test(raw)) return true;
-    const d = new Date(raw);
-    return !Number.isNaN(d.getTime());
+  function normalizeHeader(value) {
+    return normalizeName(value).replace(/\s+/g, ' ').trim();
+  }
+
+  function scoreHeaderMatch(header, hints) {
+    const normalized = normalizeHeader(header);
+    if (!normalized) return 0;
+    let best = 0;
+    (hints || []).forEach((hint) => {
+      const candidate = normalizeHeader(hint);
+      if (!candidate) return;
+      if (normalized === candidate) best = Math.max(best, 1);
+      else if (normalized.includes(candidate) || candidate.includes(normalized)) best = Math.max(best, 0.92);
+      else best = Math.max(best, scoreNameMatch(normalized, candidate));
+    });
+    return best;
   }
 
   function createGridRow(value) {
@@ -197,7 +227,7 @@
   }
 
   function renderDistributionGridRows() {
-    if (!state.gridRows.length) return '<tr><td colspan="8" class="small muted">Upload a file to preview parsed rows.</td></tr>';
+    if (!state.gridRows.length) return '<tr><td colspan="8" class="small muted">Upload a file and confirm mapping to preview parsed rows.</td></tr>';
     return state.gridRows.map((row, idx) => `
       <tr data-grid-row="${idx}" style="background:${row.assigned_to ? 'rgba(34,197,94,.08)' : 'rgba(239,68,68,.08)'}">
         <td><input data-grid-input="${idx}" data-col="case_number" value="${esc(row.case_number)}" placeholder="Case #" style="width:100%" /></td>
@@ -213,6 +243,40 @@
         <td><button class="btn" data-grid-remove="${idx}" type="button">Remove</button></td>
       </tr>
     `).join('');
+  }
+
+  function renderMappingWizard() {
+    if (!state.wizardOpen) return '';
+    const headers = state.wizardHeaders || [];
+
+    return `
+      <div class="card pad" id="mappingWizard" style="margin:10px 0;border:1px solid rgba(59,130,246,.35)">
+        <div style="font-weight:700">Import Wizard: Confirm Column Mapping</div>
+        <div class="small muted" style="margin:6px 0 10px">Match each system field with an uploaded Excel header before validation preview is generated.</div>
+        <div style="overflow:auto">
+          <table class="table">
+            <thead><tr><th>System Field</th><th>Excel Header</th></tr></thead>
+            <tbody>
+              ${SYSTEM_FIELDS.map((field) => `
+                <tr>
+                  <td>${esc(field.label)}</td>
+                  <td>
+                    <select data-map-field="${esc(field.key)}" style="width:100%">
+                      <option value="">(Unmapped)</option>
+                      ${headers.map((header, idx) => `<option value="${esc(idx)}" ${String(state.mappedHeaders[field.key] || '') === String(idx) ? 'selected' : ''}>${esc(header)}</option>`).join('')}
+                    </select>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="row" style="justify-content:flex-end;margin-top:8px;gap:8px">
+          <button class="btn" id="cancelMappingBtn" type="button">Cancel Mapping</button>
+          <button class="btn primary" id="confirmMappingBtn" type="button">Confirm Mapping</button>
+        </div>
+      </div>
+    `;
   }
 
   function render() {
@@ -262,25 +326,28 @@
 
             <div id="uploadZone" style="border:2px dashed rgba(255,255,255,.2);border-radius:12px;padding:24px;text-align:center;background:rgba(255,255,255,.02)">
               <div style="font-weight:700;margin-bottom:6px">Upload .xlsx or .csv</div>
-              <div class="small muted" style="margin-bottom:8px">Drag-and-drop file here, or choose file manually. Assignee and links are auto-detected from content.</div>
+              <div class="small muted" style="margin-bottom:8px">Drag-and-drop file here, or choose file manually. You will confirm Excel-to-system mapping before validation preview.</div>
               <input type="file" id="distributionFileInput" accept=".xlsx,.xls,.csv" />
               <div class="small muted" id="uploadMeta" style="margin-top:8px">${esc(state.uploadMeta.fileName ? `${state.uploadMeta.fileName} • ${state.uploadMeta.sheetCount} sheet(s) • ${state.uploadMeta.rowCount} row(s)` : 'No file parsed yet.')}</div>
               ${state.parserError ? `<div class="small" style="color:#ef4444;margin-top:8px">${esc(state.parserError)}</div>` : ''}
             </div>
 
-            <div class="row" style="justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 6px">
-              <div class="small muted">Validation Preview (GREEN matched / RED unresolved)</div>
-              <button class="btn" id="addGridRowBtn" type="button">+ Add Row</button>
-            </div>
-            <table class="table" id="distributionGrid">
-              <thead><tr><th>Case #</th><th>Site</th><th>Description</th><th>Assigned To</th><th>Deadline</th><th>Link/WI</th><th>Match</th><th></th></tr></thead>
-              <tbody id="distributionGridBody">${renderDistributionGridRows()}</tbody>
-            </table>
-            ${unresolved > 0 ? `<div class="small" style="color:#ef4444;margin-top:6px">Resolve ${esc(unresolved)} unmatched assignee row(s) before submitting.</div>` : ''}
+            ${renderMappingWizard()}
+            ${!state.wizardOpen ? `
+              <div class="row" style="justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 6px">
+                <div class="small muted">Validation Preview (GREEN matched / RED unresolved)</div>
+                <button class="btn" id="addGridRowBtn" type="button">+ Add Row</button>
+              </div>
+              <table class="table" id="distributionGrid">
+                <thead><tr><th>Case #</th><th>Site</th><th>Description</th><th>Assigned To</th><th>Deadline</th><th>Link/WI</th><th>Match</th><th></th></tr></thead>
+                <tbody id="distributionGridBody">${renderDistributionGridRows()}</tbody>
+              </table>
+              ${unresolved > 0 ? `<div class="small" style="color:#ef4444;margin-top:6px">Resolve ${esc(unresolved)} unmatched assignee row(s) before submitting.</div>` : ''}
+            ` : ''}
           </div>
           <div class="foot">
             <button class="btn" data-close-task-modal="1" type="button">Cancel</button>
-            <button class="btn primary" id="submitDistributionBtn" type="button" ${unresolved > 0 ? 'disabled' : ''}>Submit Distribution</button>
+            <button class="btn primary" id="submitDistributionBtn" type="button" ${(unresolved > 0 || state.wizardOpen) ? 'disabled' : ''}>Submit Distribution</button>
           </div>
         </div>
       </div>
@@ -302,6 +369,7 @@
   function closeModal() {
     const modal = root.querySelector('#taskDistributionModal');
     if (modal) modal.style.display = 'none';
+    resetWizardState();
   }
 
   function parseCsvLine(line) {
@@ -398,102 +466,110 @@
     return rows;
   }
 
-  function detectColumnRoles(matrix) {
-    const maxCols = matrix.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0);
-    const roleByIndex = {};
-    const info = [];
-
-    for (let col = 0; col < maxCols; col += 1) {
-      const samples = [];
-      for (let row = 0; row < Math.min(matrix.length, 10); row += 1) {
-        const value = matrix[row] && typeof matrix[row][col] !== 'undefined' ? String(matrix[row][col]).trim() : '';
-        if (value) samples.push(value);
+  function splitHeaderAndRows(matrix) {
+    const rows = Array.isArray(matrix) ? matrix : [];
+    let headerIndex = -1;
+    for (let i = 0; i < rows.length; i += 1) {
+      const row = Array.isArray(rows[i]) ? rows[i] : [];
+      if (row.some((cell) => String(cell == null ? '' : cell).trim())) {
+        headerIndex = i;
+        break;
       }
-
-      const total = samples.length || 1;
-      let memberMatches = 0;
-      let urlMatches = 0;
-      let dateLike = 0;
-
-      samples.forEach((value) => {
-        const candidate = findMemberMatch(value);
-        if (candidate && candidate.score >= MATCH_THRESHOLD) memberMatches += 1;
-        if (hasUrl(value)) urlMatches += 1;
-        if (looksLikeDate(value)) dateLike += 1;
-      });
-
-      info.push({
-        col,
-        assigneeRatio: memberMatches / total,
-        urlRatio: urlMatches / total,
-        dateRatio: dateLike / total
-      });
     }
 
-    const assigneeBest = info.slice().sort((a, b) => b.assigneeRatio - a.assigneeRatio)[0];
-    if (assigneeBest && assigneeBest.assigneeRatio > 0.3) roleByIndex[assigneeBest.col] = 'assigned_name';
+    if (headerIndex < 0) return { headers: [], dataRows: [] };
 
-    const linkBest = info
-      .filter((i) => roleByIndex[i.col] !== 'assigned_name')
-      .sort((a, b) => b.urlRatio - a.urlRatio)[0];
-    if (linkBest && linkBest.urlRatio > 0.3) roleByIndex[linkBest.col] = 'reference_url';
+    const headers = (rows[headerIndex] || []).map((cell, idx) => {
+      const base = String(cell == null ? '' : cell).trim();
+      return base || `Column ${idx + 1}`;
+    });
 
-    const deadlineBest = info
-      .filter((i) => !roleByIndex[i.col])
-      .sort((a, b) => b.dateRatio - a.dateRatio)[0];
-    if (deadlineBest && deadlineBest.dateRatio > 0.4) roleByIndex[deadlineBest.col] = 'deadline';
+    const dataRows = rows.slice(headerIndex + 1).filter((cells) => {
+      const line = Array.isArray(cells) ? cells : [];
+      return line.some((cell) => String(cell == null ? '' : cell).trim());
+    });
 
-    return roleByIndex;
+    return { headers, dataRows };
   }
 
-  function rowsFromMatrix(matrix) {
-    const roleByIndex = detectColumnRoles(matrix);
-    const parsed = [];
+  function prefillMapping(headers) {
+    const mapped = {};
+    const usedHeaderIdx = {};
 
-    matrix.forEach((cells) => {
-      if (!Array.isArray(cells)) return;
-      if (!cells.some((v) => String(v || '').trim())) return;
-
-      const row = createGridRow({});
-      const descParts = [];
-
-      cells.forEach((cell, colIdx) => {
-        const value = String(cell || '').trim();
-        if (!value) return;
-        const role = roleByIndex[colIdx] || 'description';
-
-        if (role === 'assigned_name') {
-          applyNameMatch(row, value);
-        } else if (role === 'reference_url') {
-          if (hasUrl(value)) row.reference_url = value;
-          else descParts.push(value);
-        } else if (role === 'deadline') {
-          row.deadline = normalizeDeadlineInput(value);
-        } else {
-          descParts.push(value);
+    SYSTEM_FIELDS.forEach((field) => {
+      let bestIdx = '';
+      let bestScore = 0;
+      headers.forEach((header, idx) => {
+        if (usedHeaderIdx[idx]) return;
+        const score = scoreHeaderMatch(header, HEADER_HINTS[field.key] || []);
+        if (field.key === 'assigned_name') {
+          const memberScore = findMemberMatch(header);
+          if (memberScore && memberScore.score > score) {
+            if (memberScore.score > bestScore) {
+              bestScore = memberScore.score;
+              bestIdx = idx;
+            }
+            return;
+          }
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          bestIdx = idx;
         }
       });
 
-      if (!row.reference_url) {
-        const fromDesc = descParts.find((part) => hasUrl(part));
-        if (fromDesc) row.reference_url = fromDesc;
+      if (bestScore >= 0.45 || field.key === 'description') {
+        mapped[field.key] = bestIdx === '' ? '' : String(bestIdx);
+        if (bestIdx !== '') usedHeaderIdx[bestIdx] = true;
+      } else {
+        mapped[field.key] = '';
       }
+    });
 
-      row.description = descParts.join(' | ').slice(0, 1000);
+    return mapped;
+  }
+
+  function rowsFromMapping(dataRows, mapping) {
+    const parsed = [];
+    const col = (key) => {
+      const idx = Number(mapping && mapping[key]);
+      return Number.isFinite(idx) && idx >= 0 ? idx : -1;
+    };
+
+    dataRows.forEach((cells) => {
+      const line = Array.isArray(cells) ? cells : [];
+      const row = createGridRow({});
+      const readAt = (index) => {
+        if (index < 0) return '';
+        return String(line[index] == null ? '' : line[index]).trim();
+      };
+
+      row.case_number = readAt(col('case_number'));
+      row.site = readAt(col('site'));
+      row.assigned_name = readAt(col('assigned_name'));
+      row.deadline = normalizeDeadlineInput(readAt(col('deadline')));
+      row.reference_url = readAt(col('reference_url'));
+      row.description = readAt(col('description'));
+
+      if (row.assigned_name) applyNameMatch(row, row.assigned_name);
+      if (!hasUrl(row.reference_url)) row.reference_url = '';
       if (!row.description && row.assigned_name) row.description = `Task assigned to ${row.assigned_name}`;
-      if (row.description || row.assigned_name || row.reference_url) parsed.push(row);
+
+      if (row.case_number || row.site || row.description || row.assigned_name || row.reference_url || row.deadline) {
+        parsed.push(row);
+      }
     });
 
     return parsed;
   }
 
-  async function parseFileToRows(file) {
+  async function parseFileToMatrix(file) {
     const ext = (String(file && file.name || '').split('.').pop() || '').toLowerCase();
 
     if (ext === 'csv') {
       const text = await readFileAsText(file);
       const matrix = text.replace(/\r/g, '').split('\n').filter(Boolean).map((line) => parseCsvLine(line));
-      return { rows: rowsFromMatrix(matrix), sheetCount: 1 };
+      return { matrix, sheetCount: 1 };
     }
 
     const ready = await ensureSheetJs();
@@ -502,7 +578,14 @@
     const buffer = await readFileAsArrayBuffer(file);
     const workbook = window.XLSX.read(buffer, { type: 'array' });
     const matrix = matrixFromWorkbook(workbook);
-    return { rows: rowsFromMatrix(matrix), sheetCount: (workbook.SheetNames || []).length || 1 };
+    return { matrix, sheetCount: (workbook.SheetNames || []).length || 1 };
+  }
+
+  function resetWizardState() {
+    state.wizardOpen = false;
+    state.wizardHeaders = [];
+    state.wizardRows = [];
+    state.mappedHeaders = {};
   }
 
   async function refreshDistributionItems(distributionId) {
@@ -518,19 +601,30 @@
     if (!file) return;
     try {
       state.parserError = '';
-      const parsed = await parseFileToRows(file);
-      state.gridRows = parsed.rows;
+      const parsed = await parseFileToMatrix(file);
+      const split = splitHeaderAndRows(parsed.matrix);
       state.uploadMeta = {
         fileName: String(file.name || ''),
-        rowCount: state.gridRows.length,
+        rowCount: split.dataRows.length,
         sheetCount: parsed.sheetCount || 1
       };
-      if (!state.gridRows.length) {
-        UI.toast && UI.toast('No task rows detected from file. Please verify content.', 'warn');
+
+      if (!split.headers.length) {
+        resetWizardState();
+        state.gridRows = [];
+        UI.toast && UI.toast('No header row detected from file. Please verify content.', 'warn');
+      } else {
+        state.wizardOpen = true;
+        state.wizardHeaders = split.headers;
+        state.wizardRows = split.dataRows;
+        state.mappedHeaders = prefillMapping(split.headers);
+        state.gridRows = [];
       }
+
       render();
       keepModalOpenAfterRender();
     } catch (err) {
+      resetWizardState();
       state.parserError = String(err && err.message ? err.message : err || 'File parse failed.');
       render();
       keepModalOpenAfterRender();
@@ -594,6 +688,38 @@
     (root.querySelectorAll('[data-close-task-modal]') || []).forEach((btn) => {
       btn.onclick = () => closeModal();
     });
+
+    (root.querySelectorAll('[data-map-field]') || []).forEach((sel) => {
+      sel.onchange = () => {
+        const key = String(sel.getAttribute('data-map-field') || '');
+        if (!key) return;
+        state.mappedHeaders[key] = String(sel.value || '');
+      };
+    });
+
+    const cancelMappingBtn = root.querySelector('#cancelMappingBtn');
+    if (cancelMappingBtn) {
+      cancelMappingBtn.onclick = () => {
+        resetWizardState();
+        state.gridRows = [];
+        render();
+        keepModalOpenAfterRender();
+      };
+    }
+
+    const confirmMappingBtn = root.querySelector('#confirmMappingBtn');
+    if (confirmMappingBtn) {
+      confirmMappingBtn.onclick = () => {
+        state.gridRows = rowsFromMapping(state.wizardRows, state.mappedHeaders);
+        state.uploadMeta.rowCount = state.gridRows.length;
+        state.wizardOpen = false;
+        if (!state.gridRows.length) {
+          UI.toast && UI.toast('No task rows produced from mapping. Adjust mapping and retry.', 'warn');
+        }
+        render();
+        keepModalOpenAfterRender();
+      };
+    }
 
     const addGridRowBtn = root.querySelector('#addGridRowBtn');
     if (addGridRowBtn) {
