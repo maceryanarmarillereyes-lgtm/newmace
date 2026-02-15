@@ -6,6 +6,10 @@ function normStatus(value) {
   return 'PENDING';
 }
 
+function itemDeadlineValue(item) {
+  return item && (item.deadline || item.deadline_at || item.due_at || item.created_at || 0);
+}
+
 module.exports = async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
@@ -15,7 +19,7 @@ module.exports = async (req, res) => {
     if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
     const uid = encodeURIComponent(String(auth.authed.id || ''));
-    const out = await serviceSelect('task_items', `select=*&assigned_to=eq.${uid}&order=deadline.asc.nullslast,created_at.desc`);
+    const out = await serviceSelect('task_items', `select=*&assigned_to=eq.${uid}&order=created_at.desc`);
     if (!out.ok) return sendJson(res, 500, { ok: false, error: 'assigned_query_failed', details: out.json || out.text });
 
     const rows = Array.isArray(out.json) ? out.json : [];
@@ -80,8 +84,8 @@ module.exports = async (req, res) => {
     const groups = Object.values(grouped)
       .map((group) => {
         group.items.sort((a, b) => {
-          const aTime = new Date(a.deadline || a.created_at || 0).getTime();
-          const bTime = new Date(b.deadline || b.created_at || 0).getTime();
+          const aTime = new Date(itemDeadlineValue(a)).getTime();
+          const bTime = new Date(itemDeadlineValue(b)).getTime();
           return aTime - bTime;
         });
         return group;
