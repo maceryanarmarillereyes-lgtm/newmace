@@ -22,6 +22,11 @@ const CloudTasks = (() => {
     body: JSON.stringify(payload || {})
   }));
 
+  const deleteDistribution = async (distributionId) => parse(await fetch(`/api/tasks/distributions?distribution_id=${encodeURIComponent(String(distributionId || ''))}`, {
+    method: 'DELETE',
+    headers: { ...authHeader() }
+  }));
+
   const updateItemStatus = async (payload) => parse(await fetch('/api/tasks/item_status', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...authHeader() },
@@ -33,7 +38,7 @@ const CloudTasks = (() => {
     return parse(await fetch(`/api/tasks/workload_matrix${q}`, { headers: { ...authHeader() } }));
   };
 
-  return { assigned, distributions, members, distributionItems, createDistribution, updateItemStatus, workloadMatrix };
+  return { assigned, distributions, members, distributionItems, createDistribution, deleteDistribution, updateItemStatus, workloadMatrix };
 })();
 
 window.CloudTasks = CloudTasks;

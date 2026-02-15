@@ -1,4 +1,7 @@
-const { sendJson, requireAuthedUser, serviceSelect, serviceInsert } = require('./_common');
+const { sendJson, requireAuthedUser, serviceFetch, serviceSelect, serviceInsert } = require('./_common');
+
+const OWNER_COLUMNS = ['created_by', 'created_by_user_id', 'owner_id', 'user_id'];
+const ITEM_DISTRIBUTION_COLUMNS = ['distribution_id', 'task_distribution_id'];
 
 function mapColumns(item) {
   const src = item && typeof item === 'object' ? item : {};
@@ -14,6 +17,119 @@ function mapColumns(item) {
   return normalized;
 }
 
+function ownerIdFromDistribution(distribution) {
+  const row = distribution && typeof distribution === 'object' ? distribution : {};
+  for (const key of OWNER_COLUMNS) {
+    const value = String(row[key] || '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
+async function queryDistributionsByOwner(uid) {
+  for (const key of OWNER_COLUMNS) {
+    const out = await serviceSelect('task_distributions', `select=*&${encodeURIComponent(key)}=eq.${encodeURIComponent(uid)}&order=created_at.desc`);
+    if (out.ok) return { out, ownerColumn: key };
+  }
+  return { out: { ok: false, json: null, text: 'owner_column_not_found' }, ownerColumn: OWNER_COLUMNS[0] };
+}
+
+async function queryItemsByDistributionIds(ids) {
+  if (!ids.length) return { out: { ok: true, json: [] }, distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
+
+  const encodedIds = ids.map((id) => encodeURIComponent(id)).join(',');
+  for (const key of ITEM_DISTRIBUTION_COLUMNS) {
+    const out = await serviceSelect('task_items', `select=id,${key},status&${encodeURIComponent(key)}=in.(${encodedIds})`);
+    if (out.ok) return { out, distributionColumn: key };
+  }
+
+  return { out: { ok: false, json: null, text: 'distribution_link_column_not_found' }, distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
+}
+
+function dedupeRows(rows) {
+  const seen = new Set();
+  const deduped = [];
+  rows.forEach((row) => {
+    const sig = [row.caseNumber, row.site, row.description, row.assignedTo, row.deadline, row.normalizedReferenceUrl]
+      .map((v) => String(v || '').toLowerCase())
+      .join('||');
+    if (!sig || seen.has(sig)) return;
+    seen.add(sig);
+    deduped.push(row);
+  });
+  return deduped;
+}
+
+async function insertDistributionRow(title, uid) {
+  for (const key of OWNER_COLUMNS) {
+    const insertDist = await serviceInsert('task_distributions', [{ title, [key]: uid }]);
+    if (insertDist.ok) {
+      return { ok: true, row: insertDist.json && insertDist.json[0] ? insertDist.json[0] : null, ownerColumn: key };
+    }
+    const errorText = JSON.stringify(insertDist.json || insertDist.text || '').toLowerCase();
+    const isMissingColumn = errorText.includes('column') && errorText.includes(key.toLowerCase());
+    if (!isMissingColumn) return { ok: false, out: insertDist };
+  }
+  return { ok: false, out: { json: null, text: 'distribution_owner_column_not_found' } };
+}
+
+async function insertTaskItems(distributionId, normalizedRows) {
+  const baseRows = normalizedRows.map((row) => ({
+    case_number: row.caseNumber,
+    site: row.site,
+    description: row.description,
+    assigned_to: row.assignedTo,
+    deadline: row.deadline || null,
+    deadline_at: row.deadline || null,
+    reference_url: row.normalizedReferenceUrl || '',
+    status: 'PENDING',
+    remarks: ''
+  }));
+
+  for (const linkKey of ITEM_DISTRIBUTION_COLUMNS) {
+    const payload = baseRows.map((row) => Object.assign({}, row, { [linkKey]: distributionId }));
+    let insertItems = await serviceInsert('task_items', payload);
+    if (insertItems.ok) return insertItems;
+
+    const errorText = JSON.stringify(insertItems.json || insertItems.text || '').toLowerCase();
+    const distributionColumnMissing = errorText.includes('column') && errorText.includes(linkKey.toLowerCase());
+    const deadlineColumnMissing = errorText.includes('column') && errorText.includes('deadline');
+
+    if (deadlineColumnMissing) {
+      const fallbackPayload = payload.map((row) => {
+        const next = Object.assign({}, row);
+        delete next.deadline;
+        return next;
+      });
+      insertItems = await serviceInsert('task_items', fallbackPayload);
+      if (insertItems.ok) return insertItems;
+    }
+
+    if (!distributionColumnMissing) return insertItems;
+  }
+
+  return { ok: false, json: null, text: 'task_item_distribution_column_not_found' };
+}
+
+async function deleteDistribution(distributionId) {
+  for (const key of ITEM_DISTRIBUTION_COLUMNS) {
+    const deleteItems = await serviceFetch(`/rest/v1/task_items?${encodeURIComponent(key)}=eq.${encodeURIComponent(distributionId)}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' }
+    });
+    if (deleteItems.ok) break;
+    const errorText = JSON.stringify(deleteItems.json || deleteItems.text || '').toLowerCase();
+    const missingColumn = errorText.includes('column') && errorText.includes(key.toLowerCase());
+    if (!missingColumn) return deleteItems;
+  }
+
+  const deleteDistributionOut = await serviceFetch(`/rest/v1/task_distributions?id=eq.${encodeURIComponent(distributionId)}`, {
+    method: 'DELETE',
+    headers: { Prefer: 'return=minimal' }
+  });
+  return deleteDistributionOut;
+}
+
 module.exports = async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
@@ -22,7 +138,8 @@ module.exports = async (req, res) => {
     const uid = String(auth.authed.id || '');
 
     if (req.method === 'GET') {
-      const out = await serviceSelect('task_distributions', `select=*&created_by=eq.${encodeURIComponent(uid)}&order=created_at.desc`);
+      const queryRes = await queryDistributionsByOwner(uid);
+      const out = queryRes.out;
       if (!out.ok) return sendJson(res, 500, { ok: false, error: 'distribution_query_failed', details: out.json || out.text });
 
       const rows = Array.isArray(out.json) ? out.json : [];
@@ -30,10 +147,12 @@ module.exports = async (req, res) => {
       let stats = {};
 
       if (ids.length) {
-        const itemRes = await serviceSelect('task_items', `select=id,distribution_id,status&distribution_id=in.(${ids.map((id) => encodeURIComponent(id)).join(',')})`);
+        const itemResData = await queryItemsByDistributionIds(ids);
+        const itemRes = itemResData.out;
+        const distributionColumn = itemResData.distributionColumn;
         const items = itemRes.ok && Array.isArray(itemRes.json) ? itemRes.json : [];
         stats = items.reduce((acc, it) => {
-          const key = String(it.distribution_id || '');
+          const key = String(it[distributionColumn] || '');
           if (!acc[key]) acc[key] = { total: 0, done: 0, pending: 0 };
           acc[key].total += 1;
           if (String(it.status || '').toUpperCase() === 'DONE') acc[key].done += 1;
@@ -58,55 +177,43 @@ module.exports = async (req, res) => {
       if (!title) return sendJson(res, 400, { ok: false, error: 'missing_title' });
       if (!items.length) return sendJson(res, 400, { ok: false, error: 'missing_items' });
 
-      const insertDist = await serviceInsert('task_distributions', [{ title, created_by: uid }]);
-      if (!insertDist.ok) return sendJson(res, 500, { ok: false, error: 'distribution_create_failed', details: insertDist.json || insertDist.text });
-
-      const distribution = insertDist.json && insertDist.json[0] ? insertDist.json[0] : null;
-      const distributionId = distribution && distribution.id ? distribution.id : null;
-      if (!distributionId) return sendJson(res, 500, { ok: false, error: 'distribution_id_missing' });
-
-      const normalizedRows = items
+      const normalizedRows = dedupeRows(items
         .map((item) => mapColumns(item))
-        .filter((item) => item.description && item.assignedTo);
+        .filter((item) => item.description && item.assignedTo));
 
       if (!normalizedRows.length) return sendJson(res, 400, { ok: false, error: 'valid_items_required' });
 
-      const payload = normalizedRows.map((row) => ({
-        distribution_id: distributionId,
-        case_number: row.caseNumber,
-        site: row.site,
-        description: row.description,
-        assigned_to: row.assignedTo,
-        deadline: row.deadline || null,
-        reference_url: row.normalizedReferenceUrl || '',
-        status: 'PENDING',
-        remarks: ''
-      }));
+      const insertDist = await insertDistributionRow(title, uid);
+      if (!insertDist.ok) return sendJson(res, 500, { ok: false, error: 'distribution_create_failed', details: insertDist.out && (insertDist.out.json || insertDist.out.text) });
 
-      let insertItems = await serviceInsert('task_items', payload);
-      if (!insertItems.ok) {
-        const errorText = JSON.stringify(insertItems.json || insertItems.text || '').toLowerCase();
-        const deadlineColumnMissing = errorText.includes('deadline') && errorText.includes('column');
+      const distribution = insertDist.row;
+      const distributionId = distribution && distribution.id ? distribution.id : null;
+      if (!distributionId) return sendJson(res, 500, { ok: false, error: 'distribution_id_missing' });
 
-        if (deadlineColumnMissing) {
-          const fallbackPayload = normalizedRows.map((row) => ({
-            distribution_id: distributionId,
-            case_number: row.caseNumber,
-            site: row.site,
-            description: row.description,
-            assigned_to: row.assignedTo,
-            deadline_at: row.deadline || null,
-            reference_url: row.normalizedReferenceUrl || '',
-            status: 'PENDING',
-            remarks: ''
-          }));
-          insertItems = await serviceInsert('task_items', fallbackPayload);
-        }
-      }
-
+      const insertItems = await insertTaskItems(distributionId, normalizedRows);
       if (!insertItems.ok) return sendJson(res, 500, { ok: false, error: 'task_items_create_failed', details: insertItems.json || insertItems.text });
 
       return sendJson(res, 200, { ok: true, distribution, items: Array.isArray(insertItems.json) ? insertItems.json : [] });
+    }
+
+    if (req.method === 'DELETE') {
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const queryId = req.query && req.query.distribution_id;
+      const distributionId = String(body.distribution_id || queryId || '').trim();
+      if (!distributionId) return sendJson(res, 400, { ok: false, error: 'missing_distribution_id' });
+
+      const d = await serviceSelect('task_distributions', `select=*&id=eq.${encodeURIComponent(distributionId)}&limit=1`);
+      if (!d.ok) return sendJson(res, 500, { ok: false, error: 'distribution_fetch_failed', details: d.json || d.text });
+      const distribution = Array.isArray(d.json) && d.json[0] ? d.json[0] : null;
+      if (!distribution) return sendJson(res, 404, { ok: false, error: 'distribution_not_found' });
+
+      const ownerId = ownerIdFromDistribution(distribution);
+      if (ownerId && ownerId !== uid) return sendJson(res, 403, { ok: false, error: 'forbidden' });
+
+      const delOut = await deleteDistribution(distributionId);
+      if (!delOut.ok) return sendJson(res, 500, { ok: false, error: 'distribution_delete_failed', details: delOut.json || delOut.text });
+
+      return sendJson(res, 200, { ok: true, deleted_distribution_id: distributionId });
     }
 
     return sendJson(res, 405, { ok: false, error: 'method_not_allowed' });
