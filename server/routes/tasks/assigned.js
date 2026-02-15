@@ -57,11 +57,12 @@ module.exports = async (req, res) => {
     if (distIds.length) {
       const list = distIds.map((id) => encodeURIComponent(id)).join(',');
       const d = await serviceSelect('task_distributions', `select=*&id=in.(${list})`);
-      const drows = d.ok && Array.isArray(d.json) ? d.json : [];
-      distMap = drows.reduce((acc, cur) => {
-        acc[String(cur.id)] = cur;
-        return acc;
-      }, {});
+      if (d.ok && Array.isArray(d.json)) {
+        distMap = d.json.reduce((acc, cur) => {
+          acc[String(cur.id)] = cur;
+          return acc;
+        }, {});
+      }
     }
 
     const creatorIds = Array.from(new Set(Object.values(distMap).map((d) => ownerIdFromDistribution(d)).filter(Boolean)));

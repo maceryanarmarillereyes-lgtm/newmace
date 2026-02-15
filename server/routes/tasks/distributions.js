@@ -142,7 +142,7 @@ module.exports = async (req, res) => {
       const out = queryRes.out;
       if (!out.ok) return sendJson(res, 500, { ok: false, error: 'distribution_query_failed', details: out.json || out.text });
 
-      const rows = Array.isArray(out.json) ? out.json : [];
+      const rows = Array.isArray(queryRes.out.json) ? queryRes.out.json : [];
       const ids = rows.map((r) => String(r.id || '')).filter(Boolean);
       let stats = {};
 

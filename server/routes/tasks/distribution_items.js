@@ -23,7 +23,11 @@ module.exports = async (req, res) => {
     if (!distributionId) return sendJson(res, 400, { ok: false, error: 'missing_distribution_id' });
 
     const d = await serviceSelect('task_distributions', `select=*&id=eq.${encodeURIComponent(distributionId)}&limit=1`);
-    if (!d.ok) return sendJson(res, 500, { ok: false, error: 'distribution_fetch_failed', details: d.json || d.text });
+    if (!d.ok) {
+      if (isSchemaShapeError(d)) return sendJson(res, 200, { ok: true, distribution: null, rows: [] });
+      return sendJson(res, 500, { ok: false, error: 'distribution_fetch_failed', details: d.json || d.text });
+    }
+
     const distribution = Array.isArray(d.json) && d.json[0] ? d.json[0] : null;
     if (!distribution) return sendJson(res, 404, { ok: false, error: 'distribution_not_found' });
 
