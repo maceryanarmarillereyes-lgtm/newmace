@@ -11,11 +11,6 @@ function ownerIdFromDistribution(distribution) {
   return '';
 }
 
-function isSchemaShapeError(out) {
-  const errorText = JSON.stringify((out && (out.json || out.text)) || '').toLowerCase();
-  return errorText.includes('column') || errorText.includes('relation') || errorText.includes('does not exist');
-}
-
 module.exports = async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
@@ -38,7 +33,7 @@ module.exports = async (req, res) => {
 
     const flags = roleFlags(auth.profile && auth.profile.role);
     const ownerId = ownerIdFromDistribution(distribution);
-    const isOwner = !ownerId || ownerId === String(auth.authed.id || '');
+    const isOwner = ownerId && ownerId === String(auth.authed.id || '');
     if (!isOwner && !flags.isAdmin && !flags.isLead) return sendJson(res, 403, { ok: false, error: 'forbidden' });
 
     let out = await serviceSelect('task_items', `select=*&distribution_id=eq.${encodeURIComponent(distributionId)}&order=created_at.desc`);
@@ -46,11 +41,7 @@ module.exports = async (req, res) => {
       const fallback = await serviceSelect('task_items', `select=*&task_distribution_id=eq.${encodeURIComponent(distributionId)}&order=created_at.desc`);
       out = fallback.ok ? fallback : out;
     }
-
-    if (!out.ok) {
-      if (isSchemaShapeError(out)) return sendJson(res, 200, { ok: true, distribution, rows: [] });
-      return sendJson(res, 500, { ok: false, error: 'items_fetch_failed', details: out.json || out.text });
-    }
+    if (!out.ok) return sendJson(res, 500, { ok: false, error: 'items_fetch_failed', details: out.json || out.text });
 
     return sendJson(res, 200, { ok: true, distribution, rows: Array.isArray(out.json) ? out.json : [] });
   } catch (err) {

@@ -873,7 +873,6 @@
         render();
         keepModalOpenAfterRender();
 
-        let submittedSuccessfully = false;
         try {
           const out = await CloudTasks.createDistribution({ title, items });
           if (!out.ok) {
@@ -881,7 +880,6 @@
             return;
           }
 
-          submittedSuccessfully = true;
           state.gridRows = [];
           state.uploadMeta = { fileName: '', sheetCount: 0, rowCount: 0 };
           closeModal();
@@ -889,10 +887,8 @@
           await loadData(true);
         } finally {
           state.isSubmittingDistribution = false;
-          if (!submittedSuccessfully) {
-            render();
-            keepModalOpenAfterRender();
-          }
+          render();
+          keepModalOpenAfterRender();
         }
       };
     }

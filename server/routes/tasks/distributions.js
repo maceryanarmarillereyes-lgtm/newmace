@@ -26,46 +26,24 @@ function ownerIdFromDistribution(distribution) {
   return '';
 }
 
-function isMissingColumnError(out, key) {
-  const errorText = JSON.stringify((out && (out.json || out.text)) || '').toLowerCase();
-  return errorText.includes('column') && errorText.includes(String(key || '').toLowerCase());
-}
-
-function isSchemaShapeError(out) {
-  const errorText = JSON.stringify((out && (out.json || out.text)) || '').toLowerCase();
-  return errorText.includes('column') || errorText.includes('relation') || errorText.includes('does not exist');
-}
-
 async function queryDistributionsByOwner(uid) {
   for (const key of OWNER_COLUMNS) {
     const out = await serviceSelect('task_distributions', `select=*&${encodeURIComponent(key)}=eq.${encodeURIComponent(uid)}&order=created_at.desc`);
-    if (out.ok) return { ok: true, out, ownerColumn: key };
-    if (!isMissingColumnError(out, key)) return { ok: false, out, ownerColumn: key };
+    if (out.ok) return { out, ownerColumn: key };
   }
-
-  // Last-resort fallback: fetch recent rows without owner filter and safely filter in-memory.
-  const fallback = await serviceSelect('task_distributions', 'select=*&order=created_at.desc&limit=300');
-  if (!fallback.ok) {
-    if (isSchemaShapeError(fallback)) return { ok: true, out: { ok: true, json: [] }, ownerColumn: '' };
-    return { ok: false, out: fallback, ownerColumn: '' };
-  }
-
-  const rows = Array.isArray(fallback.json) ? fallback.json : [];
-  const filtered = rows.filter((row) => ownerIdFromDistribution(row) === uid);
-  return { ok: true, out: { ok: true, json: filtered }, ownerColumn: '' };
+  return { out: { ok: false, json: null, text: 'owner_column_not_found' }, ownerColumn: OWNER_COLUMNS[0] };
 }
 
 async function queryItemsByDistributionIds(ids) {
-  if (!ids.length) return { ok: true, out: { ok: true, json: [] }, distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
+  if (!ids.length) return { out: { ok: true, json: [] }, distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
 
   const encodedIds = ids.map((id) => encodeURIComponent(id)).join(',');
   for (const key of ITEM_DISTRIBUTION_COLUMNS) {
     const out = await serviceSelect('task_items', `select=id,${key},status&${encodeURIComponent(key)}=in.(${encodedIds})`);
-    if (out.ok) return { ok: true, out, distributionColumn: key };
-    if (!isMissingColumnError(out, key)) return { ok: false, out, distributionColumn: key };
+    if (out.ok) return { out, distributionColumn: key };
   }
 
-  return { ok: true, out: { ok: true, json: [] }, distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
+  return { out: { ok: false, json: null, text: 'distribution_link_column_not_found' }, distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
 }
 
 function dedupeRows(rows) {
@@ -85,15 +63,14 @@ function dedupeRows(rows) {
 async function insertDistributionRow(title, uid) {
   for (const key of OWNER_COLUMNS) {
     const insertDist = await serviceInsert('task_distributions', [{ title, [key]: uid }]);
-    if (insertDist.ok) return { ok: true, row: insertDist.json && insertDist.json[0] ? insertDist.json[0] : null };
-    if (!isMissingColumnError(insertDist, key)) return { ok: false, out: insertDist };
+    if (insertDist.ok) {
+      return { ok: true, row: insertDist.json && insertDist.json[0] ? insertDist.json[0] : null, ownerColumn: key };
+    }
+    const errorText = JSON.stringify(insertDist.json || insertDist.text || '').toLowerCase();
+    const isMissingColumn = errorText.includes('column') && errorText.includes(key.toLowerCase());
+    if (!isMissingColumn) return { ok: false, out: insertDist };
   }
-
-  // Fallback when owner columns vary unexpectedly; rely on DB defaults/triggers if present.
-  const fallbackDist = await serviceInsert('task_distributions', [{ title }]);
-  if (fallbackDist.ok) return { ok: true, row: fallbackDist.json && fallbackDist.json[0] ? fallbackDist.json[0] : null };
-
-  return { ok: false, out: fallbackDist };
+  return { ok: false, out: { json: null, text: 'distribution_owner_column_not_found' } };
 }
 
 async function insertTaskItems(distributionId, normalizedRows) {
@@ -114,8 +91,9 @@ async function insertTaskItems(distributionId, normalizedRows) {
     let insertItems = await serviceInsert('task_items', payload);
     if (insertItems.ok) return insertItems;
 
-    const distributionColumnMissing = isMissingColumnError(insertItems, linkKey);
-    const deadlineColumnMissing = isMissingColumnError(insertItems, 'deadline');
+    const errorText = JSON.stringify(insertItems.json || insertItems.text || '').toLowerCase();
+    const distributionColumnMissing = errorText.includes('column') && errorText.includes(linkKey.toLowerCase());
+    const deadlineColumnMissing = errorText.includes('column') && errorText.includes('deadline');
 
     if (deadlineColumnMissing) {
       const fallbackPayload = payload.map((row) => {
@@ -125,7 +103,6 @@ async function insertTaskItems(distributionId, normalizedRows) {
       });
       insertItems = await serviceInsert('task_items', fallbackPayload);
       if (insertItems.ok) return insertItems;
-      if (!distributionColumnMissing && !isMissingColumnError(insertItems, linkKey)) return insertItems;
     }
 
     if (!distributionColumnMissing) return insertItems;
@@ -141,13 +118,16 @@ async function deleteDistribution(distributionId) {
       headers: { Prefer: 'return=minimal' }
     });
     if (deleteItems.ok) break;
-    if (!isMissingColumnError(deleteItems, key)) return deleteItems;
+    const errorText = JSON.stringify(deleteItems.json || deleteItems.text || '').toLowerCase();
+    const missingColumn = errorText.includes('column') && errorText.includes(key.toLowerCase());
+    if (!missingColumn) return deleteItems;
   }
 
-  return serviceFetch(`/rest/v1/task_distributions?id=eq.${encodeURIComponent(distributionId)}`, {
+  const deleteDistributionOut = await serviceFetch(`/rest/v1/task_distributions?id=eq.${encodeURIComponent(distributionId)}`, {
     method: 'DELETE',
     headers: { Prefer: 'return=minimal' }
   });
+  return deleteDistributionOut;
 }
 
 module.exports = async (req, res) => {
@@ -159,10 +139,8 @@ module.exports = async (req, res) => {
 
     if (req.method === 'GET') {
       const queryRes = await queryDistributionsByOwner(uid);
-      if (!queryRes.ok) {
-        if (isSchemaShapeError(queryRes.out)) return sendJson(res, 200, { ok: true, rows: [] });
-        return sendJson(res, 500, { ok: false, error: 'distribution_query_failed', details: queryRes.out.json || queryRes.out.text });
-      }
+      const out = queryRes.out;
+      if (!out.ok) return sendJson(res, 500, { ok: false, error: 'distribution_query_failed', details: out.json || out.text });
 
       const rows = Array.isArray(queryRes.out.json) ? queryRes.out.json : [];
       const ids = rows.map((r) => String(r.id || '')).filter(Boolean);
@@ -170,19 +148,17 @@ module.exports = async (req, res) => {
 
       if (ids.length) {
         const itemResData = await queryItemsByDistributionIds(ids);
-        if (itemResData.ok) {
-          const itemRes = itemResData.out;
-          const distributionColumn = itemResData.distributionColumn;
-          const items = itemRes.ok && Array.isArray(itemRes.json) ? itemRes.json : [];
-          stats = items.reduce((acc, it) => {
-            const key = String(it[distributionColumn] || '');
-            if (!acc[key]) acc[key] = { total: 0, done: 0, pending: 0 };
-            acc[key].total += 1;
-            if (String(it.status || '').toUpperCase() === 'DONE') acc[key].done += 1;
-            else acc[key].pending += 1;
-            return acc;
-          }, {});
-        }
+        const itemRes = itemResData.out;
+        const distributionColumn = itemResData.distributionColumn;
+        const items = itemRes.ok && Array.isArray(itemRes.json) ? itemRes.json : [];
+        stats = items.reduce((acc, it) => {
+          const key = String(it[distributionColumn] || '');
+          if (!acc[key]) acc[key] = { total: 0, done: 0, pending: 0 };
+          acc[key].total += 1;
+          if (String(it.status || '').toUpperCase() === 'DONE') acc[key].done += 1;
+          else acc[key].pending += 1;
+          return acc;
+        }, {});
       }
 
       return sendJson(res, 200, {
