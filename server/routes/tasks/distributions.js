@@ -131,7 +131,15 @@ async function insertDistributionRow(title, uid, metadata) {
   const optionalColumns = ['title', 'description', 'reference_url', 'status'];
 
   const extractMissingColumn = (errorText) => {
-    const match = errorText.match(/column\s+"?([a-zA-Z0-9_]+)"?\s+of\s+relation\s+"?task_distributions"?\s+does\s+not\s+exist/i);
+    const text = String(errorText || '');
+
+    // PostgREST schema cache error (PGRST204)
+    // Example: "Could not find the 'reference_url' column of 'task_distributions' in the schema cache"
+    let match = text.match(/Could\s+not\s+find\s+the\s+'([^']+)'\s+column\s+of\s+'task_distributions'/i);
+    if (match) return String(match[1] || '').trim();
+
+    // Postgres error text
+    match = text.match(/column\s+"?([a-zA-Z0-9_]+)"?\s+of\s+relation\s+"?task_distributions"?\s+does\s+not\s+exist/i);
     return match ? String(match[1] || '').trim() : '';
   };
 
@@ -184,6 +192,7 @@ async function insertTaskItems(distributionId, rows, createdBy) {
       owner_id: createdBy,
       assigned_to: row.assignedTo,
       assignee_user_id: row.assignedTo,
+      assigned_user_id: row.assignedTo,
       deadline: deadlineDate,
       due_at: deadlineAt,
       deadline_at: deadlineAt,
@@ -193,8 +202,26 @@ async function insertTaskItems(distributionId, rows, createdBy) {
     };
   });
 
-  const optionalColumns = ['case_no', 'assignee_user_id', 'created_by', 'created_by_user_id', 'owner_id', 'deadline', 'due_at', 'deadline_at', 'reference_url', 'remarks'];
-  const requiredColumns = ['case_number', 'site', 'description', 'assigned_to', 'status'];
+  // Schema-variant tolerant:
+  // - Some DBs use case_number, others case_no
+  // - Some DBs use assigned_to, others assignee_user_id / assigned_user_id
+  // We include all candidates and automatically drop missing columns based on PostgREST/Postgres errors.
+  const optionalColumns = [
+    'case_number',
+    'case_no',
+    'assigned_to',
+    'assignee_user_id',
+    'assigned_user_id',
+    'created_by',
+    'created_by_user_id',
+    'owner_id',
+    'deadline',
+    'due_at',
+    'deadline_at',
+    'reference_url',
+    'remarks'
+  ];
+  const requiredColumns = ['site', 'description', 'status'];
 
   const buildPayload = (distributionKey, dropColumns) => payloadBase.map((item) => {
     const next = {};
@@ -210,7 +237,15 @@ async function insertTaskItems(distributionId, rows, createdBy) {
   });
 
   const extractMissingColumn = (errorText) => {
-    const match = errorText.match(/column\s+"?([a-zA-Z0-9_]+)"?\s+of\s+relation\s+"?task_items"?\s+does\s+not\s+exist/);
+    const text = String(errorText || '');
+
+    // PostgREST schema cache error (PGRST204)
+    // Example: "Could not find the 'assignee_user_id' column of 'task_items' in the schema cache"
+    let match = text.match(/Could\s+not\s+find\s+the\s+'([^']+)'\s+column\s+of\s+'task_items'/i);
+    if (match) return String(match[1] || '').trim();
+
+    // Postgres error text
+    match = text.match(/column\s+"?([a-zA-Z0-9_]+)"?\s+of\s+relation\s+"?task_items"?\s+does\s+not\s+exist/i);
     return match ? String(match[1] || '').trim() : '';
   };
 

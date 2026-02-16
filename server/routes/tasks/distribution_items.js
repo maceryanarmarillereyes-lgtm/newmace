@@ -11,6 +11,18 @@ function ownerIdFromDistribution(distribution) {
   return '';
 }
 
+function isSchemaShapeError(out) {
+  // We treat "missing table/view/column" or "schema cache" issues as non-fatal,
+  // returning an empty list so the UI can still load.
+  const text = JSON.stringify((out && (out.json || out.text)) || '').toLowerCase();
+  return (
+    text.includes('pgrst204') ||
+    text.includes('schema cache') ||
+    (text.includes('relation') && text.includes('does not exist')) ||
+    (text.includes('column') && text.includes('does not exist'))
+  );
+}
+
 module.exports = async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
