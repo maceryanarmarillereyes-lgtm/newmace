@@ -1,22 +1,7 @@
 const { sendJson, requireAuthedUser, serviceFetch, serviceSelect, serviceInsert } = require('./_common');
 
-// NOTE: This endpoint intentionally supports multiple schema variants.
-// Some environments use different column names for "owner" and metadata.
-const OWNER_COLUMNS = [
-  'created_by',
-  'created_by_user_id',
-  'created_by_id',
-  'creator_id',
-  'owner_id',
-  'owner_uuid',
-  'user_id'
-];
-
-const TITLE_COLUMNS = ['title', 'project_title', 'project_name', 'name'];
-const DESCRIPTION_COLUMNS = ['description', 'project_description', 'details'];
-const REFERENCE_COLUMNS = ['reference_url', 'work_instruction_url', 'work_instruction_link', 'link', 'url'];
-const STATUS_COLUMNS = ['status', 'state'];
-const ITEM_DISTRIBUTION_COLUMNS = ['distribution_id', 'task_distribution_id', 'batch_id'];
+const OWNER_COLUMNS = ['created_by', 'created_by_user_id', 'owner_id', 'user_id'];
+const ITEM_DISTRIBUTION_COLUMNS = ['distribution_id', 'task_distribution_id'];
 
 function ownerIdFromDistribution(distribution) {
   const row = distribution && typeof distribution === 'object' ? distribution : {};
@@ -25,12 +10,6 @@ function ownerIdFromDistribution(distribution) {
     if (value) return value;
   }
   return '';
-}
-
-function isSchemaShapeError(out) {
-  const status = Number(out && out.status);
-  const text = JSON.stringify((out && (out.json || out.text)) || '').toLowerCase();
-  return status === 404 || text.includes('does not exist') || text.includes('undefined_table') || text.includes('relation');
 }
 
 function sanitizeCell(value, fallback = '') {
@@ -112,13 +91,11 @@ function normalizeIncomingRows(items, globalDescription, globalReferenceUrl) {
 }
 
 async function queryDistributionsByOwner(uid) {
-  let lastOut = null;
   for (const key of OWNER_COLUMNS) {
     const out = await serviceSelect('task_distributions', `select=*&${encodeURIComponent(key)}=eq.${encodeURIComponent(uid)}&order=created_at.desc`);
-    lastOut = out;
     if (out.ok) return out;
   }
-  return lastOut || { ok: false, json: null, text: 'owner_column_not_found' };
+  return { ok: false, json: null, text: 'owner_column_not_found' };
 }
 
 async function queryItemsForDistributionIds(ids) {
@@ -141,105 +118,41 @@ async function insertDistributionRow(title, uid, metadata) {
     status: normalizeStatus(metadata && metadata.status)
   };
 
-  const errTextOf = (out) => JSON.stringify(out && (out.json || out.text) ? (out.json || out.text) : '');
+  const optionalColumns = ['title', 'description', 'reference_url', 'status'];
 
   const extractMissingColumn = (errorText) => {
     const match = errorText.match(/column\s+"?([a-zA-Z0-9_]+)"?\s+of\s+relation\s+"?task_distributions"?\s+does\s+not\s+exist/i);
     return match ? String(match[1] || '').trim() : '';
   };
 
-  const extractNotNullColumn = (errorText) => {
-    const match = errorText.match(/null\s+value\s+in\s+column\s+"?([a-zA-Z0-9_]+)"?\s+violates\s+not-null\s+constraint/i);
-    return match ? String(match[1] || '').trim() : '';
-  };
-
-  const isSchemaMissing = (errorText) => {
-    const t = String(errorText || '').toLowerCase();
-    return t.includes('does not exist') || t.includes('undefined_table') || t.includes('relation') || t.includes('not found');
-  };
-
   for (const ownerKey of OWNER_COLUMNS) {
-    // Try multiple possible "title" columns (some DBs use project_title, etc.).
-    for (let titleIdx = 0; titleIdx < TITLE_COLUMNS.length; titleIdx += 1) {
-      const col = {
-        title: TITLE_COLUMNS[titleIdx],
-        description: DESCRIPTION_COLUMNS[0],
-        reference_url: REFERENCE_COLUMNS[0],
-        status: STATUS_COLUMNS[0]
-      };
+    const dropColumns = new Set();
 
-      const dropColumns = new Set();
-      const forced = {}; // columns forced by NOT NULL constraints
+    while (true) {
+      const row = { [ownerKey]: uid };
 
-      while (true) {
-        const row = { [ownerKey]: uid };
+      optionalColumns.forEach((key) => {
+        if (dropColumns.has(key)) return;
+        const value = base[key];
+        if (!value) return;
+        row[key] = value;
+      });
 
-        // Title is required.
-        if (!dropColumns.has(col.title)) row[col.title] = base.title;
+      const out = await serviceInsert('task_distributions', [row]);
+      if (out.ok) return { row: out.json && out.json[0] ? out.json[0] : null, ownerKey };
 
-        // Optional metadata.
-        if (base.description && !dropColumns.has(col.description)) row[col.description] = base.description;
-        if (base.reference_url && !dropColumns.has(col.reference_url)) row[col.reference_url] = base.reference_url;
-        if (base.status && !dropColumns.has(col.status)) row[col.status] = base.status;
+      const errText = JSON.stringify(out.json || out.text || '');
+      const err = errText.toLowerCase();
+      const missingOwnerColumn = err.includes('column') && err.includes(ownerKey.toLowerCase());
+      if (missingOwnerColumn) break;
 
-        // Apply forced columns (only if not already present).
-        Object.keys(forced).forEach((k) => {
-          if (dropColumns.has(k)) return;
-          if (Object.prototype.hasOwnProperty.call(row, k)) return;
-          const v = forced[k];
-          if (!v) return;
-          row[k] = v;
-        });
-
-        const out = await serviceInsert('task_distributions', [row]);
-        if (out.ok) return { row: out.json && out.json[0] ? out.json[0] : null, ownerKey };
-
-        const errText = errTextOf(out);
-        const errLower = errText.toLowerCase();
-
-        if (isSchemaMissing(errLower)) {
-          return { row: null, ownerKey, error: out.json || out.text || 'schema_missing' };
-        }
-
-        // Missing owner column -> try next owner column.
-        if (errLower.includes('column') && errLower.includes(ownerKey.toLowerCase())) break;
-
-        // Missing column on the relation -> either swap title column or drop optional.
-        const missingColumn = extractMissingColumn(errText);
-        if (missingColumn) {
-          if (missingColumn === col.title) {
-            // Try next possible title column.
-            break;
-          }
-          if (!dropColumns.has(missingColumn)) {
-            dropColumns.add(missingColumn);
-            continue;
-          }
-        }
-
-        // NOT NULL constraint -> attempt to populate known equivalents.
-        const notNullColumn = extractNotNullColumn(errText);
-        if (notNullColumn) {
-          if (TITLE_COLUMNS.includes(notNullColumn)) {
-            forced[notNullColumn] = base.title;
-            continue;
-          }
-          if (DESCRIPTION_COLUMNS.includes(notNullColumn) && base.description) {
-            forced[notNullColumn] = base.description;
-            continue;
-          }
-          if (REFERENCE_COLUMNS.includes(notNullColumn) && base.reference_url) {
-            forced[notNullColumn] = base.reference_url;
-            continue;
-          }
-          if (STATUS_COLUMNS.includes(notNullColumn) && base.status) {
-            forced[notNullColumn] = base.status;
-            continue;
-          }
-        }
-
-        return { row: null, ownerKey, error: out.json || out.text || 'distribution_insert_failed' };
+      const missingColumn = extractMissingColumn(errText);
+      if (missingColumn && !dropColumns.has(missingColumn)) {
+        dropColumns.add(missingColumn);
+        continue;
       }
+
+      return { row: null, ownerKey, error: out.json || out.text || 'distribution_insert_failed' };
     }
   }
 
@@ -258,8 +171,6 @@ async function insertTaskItems(distributionId, rows) {
       description: row.description,
       assigned_to: row.assignedTo,
       assignee_user_id: row.assignedTo,
-      assigned_user_id: row.assignedTo,
-      assignee_id: row.assignedTo,
       deadline: deadlineDate,
       due_at: deadlineAt,
       deadline_at: deadlineAt,
@@ -269,7 +180,7 @@ async function insertTaskItems(distributionId, rows) {
     };
   });
 
-  const optionalColumns = ['case_no', 'assignee_user_id', 'assigned_user_id', 'assignee_id', 'deadline', 'due_at', 'deadline_at', 'reference_url', 'remarks'];
+  const optionalColumns = ['case_no', 'assignee_user_id', 'deadline', 'due_at', 'deadline_at', 'reference_url', 'remarks'];
   const requiredColumns = ['case_number', 'site', 'description', 'assigned_to', 'status'];
   const buildPayload = (distributionKey, dropColumns) => payloadBase.map((item) => {
     const next = {};
@@ -362,11 +273,7 @@ module.exports = async (req, res) => {
 
     if (req.method === 'GET') {
       const out = await queryDistributionsByOwner(uid);
-      if (!out.ok) {
-        // If task tables aren't installed yet, return an empty list (prevents hard UI failure).
-        if (isSchemaShapeError(out)) return sendJson(res, 200, { ok: true, rows: [] });
-        return sendJson(res, 500, { ok: false, error: 'distribution_query_failed', details: out.json || out.text });
-      }
+      if (!out.ok) return sendJson(res, 500, { ok: false, error: 'distribution_query_failed', details: out.json || out.text });
 
       const rows = Array.isArray(out.json) ? out.json : [];
       const ids = rows.map((r) => String(r.id || '')).filter(Boolean);
@@ -416,14 +323,10 @@ module.exports = async (req, res) => {
 
       const created = await insertDistributionRow(title, uid, { description, reference_url: referenceUrl, status });
       if (!created.row) {
-        const details = created.error || 'distribution_insert_failed';
-        const detailsText = JSON.stringify(details || '').toLowerCase();
-        const schemaMissing = detailsText.includes('does not exist') || detailsText.includes('undefined_table') || detailsText.includes('relation');
         return sendJson(res, 500, {
           ok: false,
-          error: schemaMissing ? 'tasks_schema_missing' : 'distribution_create_failed',
-          message: schemaMissing ? 'Task tables/views are missing in Supabase. Apply the task migrations then redeploy.' : undefined,
-          details
+          error: 'distribution_create_failed',
+          details: created.error || 'distribution_insert_failed'
         });
       }
 
@@ -438,14 +341,10 @@ module.exports = async (req, res) => {
       const insertedItems = await insertTaskItems(distributionId, normalizedRows);
       if (!insertedItems.ok) {
         await rollbackDistribution(distributionId);
-        const details = insertedItems.out && (insertedItems.out.json || insertedItems.out.text);
-        const detailsText = JSON.stringify(details || '').toLowerCase();
-        const schemaMissing = detailsText.includes('does not exist') || detailsText.includes('undefined_table') || detailsText.includes('relation');
         return sendJson(res, 500, {
           ok: false,
-          error: schemaMissing ? 'tasks_schema_missing' : 'task_items_create_failed',
-          message: schemaMissing ? 'Task tables/views are missing in Supabase. Apply the task migrations then redeploy.' : undefined,
-          details
+          error: 'task_items_create_failed',
+          details: insertedItems.out && (insertedItems.out.json || insertedItems.out.text)
         });
       }
 

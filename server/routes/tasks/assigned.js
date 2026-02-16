@@ -23,21 +23,12 @@ function ownerIdFromDistribution(distribution) {
   return '';
 }
 
-function isSchemaShapeError(out) {
-  const status = Number(out && out.status);
-  const text = JSON.stringify((out && (out.json || out.text)) || '').toLowerCase();
-  return status === 404 || text.includes('does not exist') || text.includes('undefined_table') || text.includes('relation');
-}
-
 async function selectAssignedItems(uid) {
-  let lastOut = null;
   for (const key of ASSIGNEE_COLUMNS) {
     const out = await serviceSelect('task_items', `select=*&${encodeURIComponent(key)}=eq.${encodeURIComponent(uid)}&order=created_at.desc`);
-    lastOut = out;
     if (out.ok) return { out, assigneeColumn: key };
   }
-  // Preserve the final error payload for better diagnostics.
-  return { out: lastOut || { ok: false, json: null, text: 'assignee_column_not_found' }, assigneeColumn: ASSIGNEE_COLUMNS[0] };
+  return { out: { ok: false, json: null, text: 'assignee_column_not_found' }, assigneeColumn: ASSIGNEE_COLUMNS[0] };
 }
 
 module.exports = async (req, res) => {
@@ -51,11 +42,7 @@ module.exports = async (req, res) => {
     const uid = String(auth.authed.id || '');
     const assignedResult = await selectAssignedItems(uid);
     const out = assignedResult.out;
-    if (!out.ok) {
-      // If task tables are not installed yet, degrade gracefully (UI shows empty list).
-      if (isSchemaShapeError(out)) return sendJson(res, 200, { ok: true, groups: [] });
-      return sendJson(res, 500, { ok: false, error: 'assigned_query_failed', details: out.json || out.text });
-    }
+    if (!out.ok) return sendJson(res, 500, { ok: false, error: 'assigned_query_failed', details: out.json || out.text });
 
     const rows = Array.isArray(out.json) ? out.json : [];
     const distIds = Array.from(new Set(rows.map((r) => {

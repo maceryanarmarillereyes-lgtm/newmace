@@ -11,13 +11,6 @@ function ownerIdFromDistribution(distribution) {
   return '';
 }
 
-function isSchemaShapeError(out) {
-  const status = Number(out && out.status);
-  const text = JSON.stringify((out && (out.json || out.text)) || '').toLowerCase();
-  // Common PostgREST/Supabase "table/view missing" shapes
-  return status === 404 || text.includes('does not exist') || text.includes('undefined_table') || text.includes('relation');
-}
-
 module.exports = async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');

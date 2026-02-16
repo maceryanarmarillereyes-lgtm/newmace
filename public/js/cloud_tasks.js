@@ -6,17 +6,7 @@ const CloudTasks = (() => {
 
   const parse = async (res) => {
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const baseMsg = data.message || data.error || `Failed (${res.status})`;
-      // Surface server-provided "details" when available (common for Supabase/PostgREST errors)
-      // so the UI shows actionable diagnostics instead of a generic code like "distribution_create_failed".
-      let details = data.details;
-      if (details && typeof details === 'object') {
-        details = details.message || details.error || JSON.stringify(details);
-      }
-      const msg = details ? `${baseMsg}: ${String(details)}` : baseMsg;
-      return { ok: false, status: res.status, message: msg, data };
-    }
+    if (!res.ok) return { ok: false, status: res.status, message: data.message || data.error || `Failed (${res.status})`, data };
     return { ok: true, data };
   };
 
