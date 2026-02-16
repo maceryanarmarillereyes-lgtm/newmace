@@ -2,6 +2,10 @@ const { sendJson, requireAuthedUser, serviceFetch, serviceSelect, serviceInsert 
 
 const OWNER_COLUMNS = ['created_by', 'created_by_user_id', 'owner_id', 'user_id'];
 const ITEM_DISTRIBUTION_COLUMNS = ['distribution_id', 'task_distribution_id'];
+// Different deployments evolved with different assignee column names.
+// IMPORTANT: Do NOT include multiple assignee columns in the same insert payload,
+// otherwise PostgREST will hard-fail if any single column is missing.
+const ASSIGNEE_COLUMNS = ['assigned_to', 'assignee_user_id', 'assigned_user_id'];
 
 function formatErrorMessage(code, details) {
   if (!details) return String(code || 'error');
@@ -190,9 +194,9 @@ async function insertTaskItems(distributionId, rows, createdBy) {
       created_by: createdBy,
       created_by_user_id: createdBy,
       owner_id: createdBy,
+      // Keep a single canonical source value; we'll project it onto the real
+      // schema column (assigned_to / assignee_user_id / assigned_user_id) per attempt.
       assigned_to: row.assignedTo,
-      assignee_user_id: row.assignedTo,
-      assigned_user_id: row.assignedTo,
       deadline: deadlineDate,
       due_at: deadlineAt,
       deadline_at: deadlineAt,
@@ -205,13 +209,10 @@ async function insertTaskItems(distributionId, rows, createdBy) {
   // Schema-variant tolerant:
   // - Some DBs use case_number, others case_no
   // - Some DBs use assigned_to, others assignee_user_id / assigned_user_id
-  // We include all candidates and automatically drop missing columns based on PostgREST/Postgres errors.
+  //   NOTE: We must NOT include all assignee candidates at once.
   const optionalColumns = [
     'case_number',
     'case_no',
-    'assigned_to',
-    'assignee_user_id',
-    'assigned_user_id',
     'created_by',
     'created_by_user_id',
     'owner_id',
@@ -223,7 +224,7 @@ async function insertTaskItems(distributionId, rows, createdBy) {
   ];
   const requiredColumns = ['site', 'description', 'status'];
 
-  const buildPayload = (distributionKey, dropColumns) => payloadBase.map((item) => {
+  const buildPayload = (distributionKey, assigneeKey, dropColumns) => payloadBase.map((item) => {
     const next = {};
     [...requiredColumns, ...optionalColumns].forEach((column) => {
       if (dropColumns.has(column)) return;
@@ -232,6 +233,13 @@ async function insertTaskItems(distributionId, rows, createdBy) {
       if (value === '') return;
       next[column] = value;
     });
+
+    // Project the assignee value into exactly ONE assignee column.
+    if (!dropColumns.has(assigneeKey)) {
+      const val = item.assigned_to;
+      if (val && val !== '') next[assigneeKey] = val;
+    }
+
     next[distributionKey] = distributionId;
     return next;
   });
@@ -262,71 +270,77 @@ async function insertTaskItems(distributionId, rows, createdBy) {
   }
 
   for (const distributionKey of ITEM_DISTRIBUTION_COLUMNS) {
-    const dropColumns = new Set();
+    for (const assigneeKey of ASSIGNEE_COLUMNS) {
+      const dropColumns = new Set();
 
-    while (true) {
-      const payload = buildPayload(distributionKey, dropColumns);
-      const out = await serviceInsert('task_items', payload);
-      if (out.ok) return { ok: true, out, inserted_count: payload.length, skipped_count: 0, skipped: [] };
+      while (true) {
+        const payload = buildPayload(distributionKey, assigneeKey, dropColumns);
+        const out = await serviceInsert('task_items', payload);
+        if (out.ok) return { ok: true, out, inserted_count: payload.length, skipped_count: 0, skipped: [] };
 
-      const errText = JSON.stringify(out.json || out.text || '');
-      const err = errText.toLowerCase();
+        const errText = JSON.stringify(out.json || out.text || '');
+        const err = errText.toLowerCase();
 
-      // Column mismatch handling
-      const missingDistributionKey = err.includes('column') && err.includes(distributionKey.toLowerCase());
-      if (missingDistributionKey) break;
+        // Column mismatch handling
+        const missingDistributionKey = err.includes('column') && err.includes(distributionKey.toLowerCase());
+        if (missingDistributionKey) break;
 
-      const missingColumn = extractMissingColumn(errText);
-      if (missingColumn && !dropColumns.has(missingColumn)) {
-        dropColumns.add(missingColumn);
-        continue;
-      }
+        const missingAssigneeKey = err.includes('column') && err.includes(assigneeKey.toLowerCase());
+        if (missingAssigneeKey) break;
 
-      // Common bad date payload scenario
-      if ((err.includes('invalid input syntax') || err.includes('date/time field value out of range')) && !dropColumns.has('deadline_at')) {
-        dropColumns.add('deadline_at');
-        dropColumns.add('due_at');
-        continue;
-      }
-
-      // Bulk insert failed: fall back to row-by-row to surface the exact failing row.
-      const inserted = [];
-      const skipped = [];
-
-      for (let i = 0; i < payload.length; i += 1) {
-        const rowObj = payload[i];
-        const one = await insertOne(rowObj);
-        if (one.ok) {
-          inserted.push(one.row);
+        const missingColumn = extractMissingColumn(errText);
+        if (missingColumn && !dropColumns.has(missingColumn)) {
+          dropColumns.add(missingColumn);
           continue;
         }
 
-        const oneErr = JSON.stringify(one.out.json || one.out.text || '');
-        if (isDuplicate(oneErr)) {
-          skipped.push({ index: i, row: rowObj, reason: 'duplicate', details: one.out.json || one.out.text });
+        // Common bad date payload scenario
+        if ((err.includes('invalid input syntax') || err.includes('date/time field value out of range')) && !dropColumns.has('deadline_at')) {
+          dropColumns.add('deadline_at');
+          dropColumns.add('due_at');
           continue;
+        }
+
+        // Bulk insert failed: fall back to row-by-row (surfaces exact failing row)
+        const inserted = [];
+        const skipped = [];
+
+        for (let i = 0; i < payload.length; i += 1) {
+          const rowObj = payload[i];
+          const one = await insertOne(rowObj);
+          if (one.ok) {
+            inserted.push(one.row);
+            continue;
+          }
+
+          const oneErr = JSON.stringify(one.out.json || one.out.text || '');
+          if (isDuplicate(oneErr)) {
+            skipped.push({ index: i, row: rowObj, reason: 'duplicate', details: one.out.json || one.out.text });
+            continue;
+          }
+
+          return {
+            ok: false,
+            out: one.out,
+            failing: {
+              index: i,
+              case_number: rowObj.case_number || rowObj.case_no,
+              site: rowObj.site,
+              assigned_to: rowObj[assigneeKey] || rowObj.assigned_to,
+              assignee_column: assigneeKey,
+              distribution_key: distributionKey
+            }
+          };
         }
 
         return {
-          ok: false,
-          out: one.out,
-          failing: {
-            index: i,
-            case_number: rowObj.case_number || rowObj.case_no,
-            site: rowObj.site,
-            assigned_to: rowObj.assigned_to || rowObj.assignee_user_id,
-            distribution_key: distributionKey
-          }
+          ok: true,
+          out: { ok: true, json: inserted },
+          inserted_count: inserted.length,
+          skipped_count: skipped.length,
+          skipped
         };
       }
-
-      return {
-        ok: true,
-        out: { ok: true, json: inserted },
-        inserted_count: inserted.length,
-        skipped_count: skipped.length,
-        skipped
-      };
     }
   }
 
