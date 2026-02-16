@@ -39,6 +39,11 @@ function pruneLogs(list){
   const cutoff = Date.now() - (183*24*60*60*1000);
   return arr.filter(x => x && x.ts && Number(x.ts) >= cutoff).slice(0, 2500);
 }
+function pruneCases(list){
+  const arr = Array.isArray(list) ? list : [];
+  const cutoff = Date.now() - (366*24*60*60*1000);
+  return arr.filter(x => x && Number(x.createdAt || x.ts || 0) >= cutoff).slice(0, 5000);
+}
 
 module.exports = async (req, res) => {
   try{
@@ -106,11 +111,52 @@ module.exports = async (req, res) => {
     a.confirmedById = actor.id;
     a.confirmedByName = (profile && profile.name) ? profile.name : (actor.email || '');
 
-    allTables[shiftKey] = next;
-    const up = await upsertDoc('mums_mailbox_tables', allTables, actor, profile, clientId);
-    if(!up.ok){
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ ok:false, error:'Failed to update mailbox tables', details: up.details }));
+    let persistedTable = next;
+    let confirmed = false;
+    for(let attempt=0; attempt<4; attempt++){
+      let latestAll = allTables;
+      if(attempt > 0){
+        const latestDoc = await getDocValue('mums_mailbox_tables');
+        latestAll = (latestDoc.ok && latestDoc.value && typeof latestDoc.value === 'object') ? latestDoc.value : {};
+      }
+      const latestTable = (latestAll[shiftKey] && typeof latestAll[shiftKey] === 'object') ? latestAll[shiftKey] : {};
+      const merged = JSON.parse(JSON.stringify(latestTable));
+      merged.assignments = Array.isArray(merged.assignments) ? merged.assignments : [];
+      const idx = merged.assignments.findIndex(x=>x && String(x.id||'') === assignmentId);
+      if(idx < 0){
+        res.statusCode = 404;
+        return res.end(JSON.stringify({ ok:false, error:'Assignment not found' }));
+      }
+      const item = merged.assignments[idx];
+      if(item.confirmedAt){
+        persistedTable = merged;
+        confirmed = true;
+      }else{
+        item.confirmedAt = a.confirmedAt;
+        item.confirmedById = actor.id;
+        item.confirmedByName = (profile && profile.name) ? profile.name : (actor.email || '');
+        const payloadAll = Object.assign({}, latestAll, { [shiftKey]: merged });
+        const up = await upsertDoc('mums_mailbox_tables', payloadAll, actor, profile, clientId);
+        if(!up.ok){
+          res.statusCode = 500;
+          return res.end(JSON.stringify({ ok:false, error:'Failed to update mailbox tables', details: up.details }));
+        }
+        const verify = await getDocValue('mums_mailbox_tables');
+        const verifyAll = (verify.ok && verify.value && typeof verify.value === 'object') ? verify.value : {};
+        const verifyTable = verifyAll[shiftKey];
+        if(verifyTable && Array.isArray(verifyTable.assignments)){
+          const v = verifyTable.assignments.find(x=>x && String(x.id||'') === assignmentId);
+          if(v && Number(v.confirmedAt || 0) > 0){
+            persistedTable = verifyTable;
+            confirmed = true;
+          }
+        }
+      }
+      if(confirmed) break;
+    }
+    if(!confirmed){
+      res.statusCode = 409;
+      return res.end(JSON.stringify({ ok:false, error:'Confirm write conflict. Please try again.', code:'MAILBOX_CONFIRM_CONFLICT' }));
     }
 
     // Audit log
@@ -119,7 +165,7 @@ module.exports = async (req, res) => {
       const prevLogs = (logsDoc.ok && Array.isArray(logsDoc.value)) ? logsDoc.value : [];
       const logEntry = {
         ts: a.confirmedAt,
-        teamId: safeString(next?.meta?.teamId, 40),
+        teamId: safeString(persistedTable?.meta?.teamId, 40),
         actorId: actor.id,
         actorName: a.confirmedByName,
         action: 'MAILBOX_CASE_CONFIRM',
@@ -136,8 +182,31 @@ module.exports = async (req, res) => {
       await upsertDoc('ums_activity_logs', nextLogs, actor, profile, clientId);
     }catch(_){}
 
+    // Keep canonical case entries consistent with mailbox confirmation.
+    try{
+      const casesDoc = await getDocValue('ums_cases');
+      const prevCases = (casesDoc.ok && Array.isArray(casesDoc.value)) ? casesDoc.value : [];
+      const caseNoLower = String(a.caseNo || '').trim().toLowerCase();
+      const confirmedAt = Number(a.confirmedAt || Date.now()) || Date.now();
+      const confirmerName = (profile && profile.name) ? profile.name : (actor.email || '');
+      const nextCases = prevCases.map((c)=>{
+        if(!c || typeof c !== 'object') return c;
+        const sameAssignee = String(c.assigneeId || '') === String(a.assigneeId || '');
+        const sameShift = String(c.shiftKey || '') === String(shiftKey || '');
+        const sameCaseNo = String(c.caseNo || c.title || '').trim().toLowerCase() === caseNoLower;
+        if(!sameAssignee || !sameShift || !sameCaseNo) return c;
+        return Object.assign({}, c, {
+          status: 'Accepted',
+          confirmedAt,
+          confirmedById: actor.id,
+          confirmedByName: confirmerName
+        });
+      });
+      await upsertDoc('ums_cases', pruneCases(nextCases), actor, profile, clientId);
+    }catch(_){}
+
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok:true, shiftKey, table: next }));
+    return res.end(JSON.stringify({ ok:true, shiftKey, table: persistedTable }));
   }catch(e){
     res.statusCode = 500;
     res.setHeader('Content-Type', 'application/json');

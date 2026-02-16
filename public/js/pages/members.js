@@ -1948,7 +1948,7 @@ container.innerHTML = `
     if(!activeTeamId) activeTeamId = (Config.TEAMS && Config.TEAMS[0] ? Config.TEAMS[0].id : 'A');
 
     const modal = document.createElement('div');
-    modal.className = 'modal';
+    modal.className = 'modal confirm-modal';
     modal.id = 'autoSettingsModal';
 
     const buildPanel = (teamId)=>{
@@ -2073,6 +2073,7 @@ container.innerHTML = `
       };
     };
 
+    if(UI && UI.bringToFront) UI.bringToFront(modal, { baseZ: 2147483250, panelOffset: 1, headOffset: 2 });
     modal.classList.add('open');
     bind();
   }
@@ -2185,7 +2186,7 @@ container.innerHTML = `
     const existing = document.getElementById('autoPreviewModal');
     if(existing) existing.remove();
     const modal = document.createElement('div');
-    modal.className = 'modal';
+    modal.className = 'modal confirm-modal';
     modal.id = 'autoPreviewModal';
     modal.innerHTML = `
       <div class="panel max-w-5xl">
@@ -2215,6 +2216,8 @@ container.innerHTML = `
       </div>
     `;
     document.body.appendChild(modal);
+    // Keep preview below global confirmation dialogs so Approve/Apply prompts are never hidden.
+    if(UI && UI.bringToFront) UI.bringToFront(modal, { baseZ: 2147483100, panelOffset: 1, headOffset: 2 });
     modal.classList.add('open');
 
     const close = ()=>{ modal.classList.remove('open'); modal.remove(); };

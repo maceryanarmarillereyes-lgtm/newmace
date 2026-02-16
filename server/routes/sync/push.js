@@ -94,6 +94,77 @@ function mergeObjects(existing, incoming) {
   return base;
 }
 
+function mergeMailboxAssignments(existing, incoming){
+  const byId = new Map();
+  const toArr = (x)=>Array.isArray(x) ? x : [];
+  const add = (item)=>{
+    if(!item || typeof item !== 'object') return;
+    const id = idForItem(item);
+    if(!id) return;
+    const prev = byId.get(id);
+    if(!prev){
+      byId.set(id, Object.assign({}, item));
+      return;
+    }
+    const merged = Object.assign({}, prev, item);
+    const prevConf = Number(prev.confirmedAt||0);
+    const nextConf = Number(item.confirmedAt||0);
+    if(prevConf > nextConf){
+      merged.confirmedAt = prevConf;
+      if(prev.confirmedById) merged.confirmedById = prev.confirmedById;
+      if(prev.confirmedByName) merged.confirmedByName = prev.confirmedByName;
+    }
+    byId.set(id, merged);
+  };
+  toArr(existing).forEach(add);
+  toArr(incoming).forEach(add);
+  return Array.from(byId.values()).sort((a,b)=>Number(b?.assignedAt||0)-Number(a?.assignedAt||0));
+}
+
+function rebuildMailboxCounts(table){
+  const out = isObject(table) ? Object.assign({}, table) : {};
+  const counts = {};
+  for(const a of (Array.isArray(out.assignments) ? out.assignments : [])){
+    const uid = String(a?.assigneeId||'');
+    const bid = String(a?.bucketId||'');
+    if(!uid || !bid) continue;
+    counts[uid] = counts[uid] || {};
+    counts[uid][bid] = (Number(counts[uid][bid]) || 0) + 1;
+  }
+  out.counts = counts;
+  return out;
+}
+
+function mergeMailboxTables(existing, incoming){
+  const base = isObject(existing) ? existing : {};
+  const inc = isObject(incoming) ? incoming : {};
+  const out = Object.assign({}, base);
+  const keys = new Set([...Object.keys(base), ...Object.keys(inc)]);
+  for(const shiftKey of keys){
+    const a = isObject(base[shiftKey]) ? base[shiftKey] : null;
+    const b = isObject(inc[shiftKey]) ? inc[shiftKey] : null;
+    if(!a && b){
+      out[shiftKey] = rebuildMailboxCounts(Object.assign({}, b));
+      continue;
+    }
+    if(a && !b){
+      out[shiftKey] = rebuildMailboxCounts(Object.assign({}, a));
+      continue;
+    }
+    if(!a && !b){
+      continue;
+    }
+
+    const merged = Object.assign({}, a, b);
+    merged.meta = mergeObjects(a.meta, b.meta);
+    merged.members = Array.isArray(b.members) ? b.members.slice() : (Array.isArray(a.members) ? a.members.slice() : []);
+    merged.buckets = Array.isArray(b.buckets) ? b.buckets.slice() : (Array.isArray(a.buckets) ? a.buckets.slice() : []);
+    merged.assignments = mergeMailboxAssignments(a.assignments, b.assignments);
+    out[shiftKey] = rebuildMailboxCounts(merged);
+  }
+  return out;
+}
+
 module.exports = async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
@@ -139,7 +210,9 @@ module.exports = async (req, res) => {
 
     let nextValue = incomingValue;
     if (op === 'merge') {
-      if (Array.isArray(current) || Array.isArray(incomingValue)) {
+      if (key === 'mums_mailbox_tables') {
+        nextValue = mergeMailboxTables(current, incomingValue);
+      } else if (Array.isArray(current) || Array.isArray(incomingValue)) {
         nextValue = mergeArrays(current, incomingValue, removedIds);
       } else if (isObject(current) || isObject(incomingValue)) {
         nextValue = mergeObjects(current, incomingValue);

@@ -21,80 +21,6 @@ overrideLabel(override){
     return '';
   }
 },
-    // Profile helpers
-    initials(name){
-      const parts = String(name||'').trim().split(/\s+/).filter(Boolean);
-      if(!parts.length) return 'U';
-      const a = (parts[0]||'')[0]||'';
-      const b = (parts[1]||parts[0]||'')[0]||'';
-      return (a+b).toUpperCase();
-    },
-
-    // Read image file as a compressed data URL. maxSize is the max dimension (px).
-    readImageAsDataUrl(file, maxSize){
-      return new Promise((resolve, reject)=>{
-        try{
-          const reader = new FileReader();
-          reader.onload = ()=>{
-            const raw = String(reader.result||'');
-            const img = new Image();
-            img.onload = ()=>{
-              const m = Math.max(img.width, img.height) || 1;
-              const scale = Math.min(1, (Number(maxSize||480)) / m);
-              const w = Math.max(1, Math.round(img.width * scale));
-              const h = Math.max(1, Math.round(img.height * scale));
-              const canvas = document.createElement('canvas');
-              canvas.width = w; canvas.height = h;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0, w, h);
-              resolve(canvas.toDataURL('image/jpeg', 0.85));
-            };
-            img.onerror = ()=>resolve(raw);
-            img.src = raw;
-          };
-          reader.onerror = ()=>reject(reader.error);
-          reader.readAsDataURL(file);
-        }catch(e){ resolve(''); }
-      });
-    },
-    // Profile helpers
-    initials(name){
-      const parts = String(name||'').trim().split(/\s+/).filter(Boolean);
-      if(!parts.length) return 'U';
-      const a = (parts[0]||'')[0]||'';
-      const b = (parts[1]||parts[0]||'')[0]||'';
-      return (a+b).toUpperCase();
-    },
-
-    // Read image file as a compressed data URL. maxSize is the max dimension (px).
-    readImageAsDataUrl(file, maxSize){
-      return new Promise((resolve, reject)=>{
-        try{
-          const reader = new FileReader();
-          reader.onerror = ()=>reject(new Error('Failed to read image.'));
-          reader.onload = ()=>{
-            const img = new Image();
-            img.onerror = ()=>reject(new Error('Invalid image file.'));
-            img.onload = ()=>{
-              const m = Number(maxSize||480);
-              const scale = Math.min(1, m / Math.max(img.width, img.height));
-              const w = Math.round(img.width * scale);
-              const h = Math.round(img.height * scale);
-              const canvas = document.createElement('canvas');
-              canvas.width = w; canvas.height = h;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0, w, h);
-              // use jpeg for smaller payload unless transparency likely
-              const type = 'image/jpeg';
-              const quality = 0.86;
-              resolve(canvas.toDataURL(type, quality));
-            };
-            img.src = String(reader.result||'');
-          };
-          reader.readAsDataURL(file);
-        }catch(err){ reject(err); }
-      });
-    },
     initials(name){
       const parts = String(name||"").trim().split(/\s+/).filter(Boolean);
       if(!parts.length) return "U";
@@ -137,7 +63,10 @@ overrideLabel(override){
 
     openModal(id){
       const m = UI.el('#'+id);
-      if(m) m.classList.add('open');
+      if(m){
+        UI.bringToFront(m);
+        m.classList.add('open');
+      }
       try{ document.body.classList.add('modal-open'); }catch(_){ }
     },
     closeModal(id){
@@ -147,6 +76,29 @@ overrideLabel(override){
       try{
         const any = document.querySelector('.modal.open');
         if(!any) document.body.classList.remove('modal-open');
+      }catch(_){ }
+    },
+    // Ensure reused dialogs always render above existing UI layers.
+    bringToFront(modal, opts){
+      try{
+        const m = modal;
+        if(!m || !(m instanceof HTMLElement)) return;
+        // Move to end of <body> to win same-z-index stacking ties.
+        if(document.body && m.parentElement === document.body){
+          document.body.appendChild(m);
+        }
+
+        const o = Object.assign({
+          baseZ: 2147483000,
+          panelOffset: 1,
+          headOffset: 2
+        }, opts || {});
+
+        m.style.zIndex = String(Math.max(10000, Number(o.baseZ)||2147483000));
+        const panel = m.querySelector('.panel');
+        if(panel) panel.style.zIndex = String((Number(m.style.zIndex)||2147483000) + Number(o.panelOffset||1));
+        const head = m.querySelector('.head, .modal-head');
+        if(head) head.style.zIndex = String((Number(m.style.zIndex)||2147483000) + Number(o.headOffset||2));
       }catch(_){ }
     },
     // Toast notifications (enterprise-style, theme-adaptive)
@@ -285,6 +237,7 @@ toast(message, variant){
         cancelBtn.onclick = ()=>done(false);
         xBtn.onclick = ()=>done(false);
 
+        UI.bringToFront(modal, { baseZ: 2147483200, panelOffset: 1, headOffset: 2 });
         modal.addEventListener('click', onBackdrop);
         document.addEventListener('keydown', onKey, true);
 
@@ -359,6 +312,7 @@ toast(message, variant){
 
         // lock the app while modal open
         document.body.classList.add('attendance-locked');
+        UI.bringToFront(modal, { baseZ: 2147483300, panelOffset: 1, headOffset: 2 });
 
         const name = String(u.name || u.fullName || u.username || 'User');
         const sub = modal.querySelector('#attSub');
@@ -1659,42 +1613,128 @@ toast(message, variant){
           if(start) el.textContent = formatAssignTimer(start);
         });
       };
-      const renderMailboxAssign = (n)=>{
-        const desc = String(n && n.desc ? n.desc : '').trim();
-        const assignedAt = Number((n && (n.assignedAt || n.ts)) || 0);
-        const timer = formatAssignTimer(assignedAt);
-        const caseNo = String(n && n.caseNo ? n.caseNo : '').trim();
-        const caseNoDisplay = caseNo || 'N/A';
-        const canCopy = !!caseNo;
-        const copiedLabel = String((n && n.copiedLabel) || 'COPY ID').trim() || 'COPY ID';
-        const fromName = String((n && n.fromName) || 'Mailbox Manager').trim() || 'Mailbox Manager';
-        const assignedTs = new Date((n && n.ts) || Date.now()).toLocaleTimeString();
-        return `
-          <div class="mbx-assign-grid">
-            <div class="mbx-assign-top">
-              <div>
-                <div class="mbx-assign-title">Case Assigned Notification</div>
-                <div class="mbx-assign-from">${esc(fromName)}</div>
-                <div class="mbx-assign-meta">From: ${esc(fromName)} • ${esc(assignedTs)}</div>
-              </div>
-              <div class="mbx-assign-timer">
-                <div class="mbx-assign-timer-label">Live Elapsed</div>
-                <div class="mbx-assign-timer-value" data-assign-timer="${esc(assignedAt)}">${esc(timer)}</div>
-              </div>
+      const formatAssignTimestamp = (ts)=>{
+        const ms = Number(ts) || 0;
+        if(!ms) return 'N/A';
+        try{
+          const d = new Date(ms);
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          const yyyy = String(d.getFullYear());
+          const hour24 = d.getHours();
+          const mins = String(d.getMinutes()).padStart(2, '0');
+          const hour12 = String(hour24 % 12 || 12).padStart(2, '0');
+          const meridiem = hour24 >= 12 ? 'PM' : 'AM';
+          return `${mm}/${dd}/${yyyy} ${hour12}:${mins} ${meridiem}`;
+        }catch(_){
+          return 'N/A';
+        }
+      };
+      const truncate = (v, max=50)=>{
+        const s = String(v || '').trim();
+        if(!s) return '';
+        if(s.length <= max) return s;
+        return `${s.slice(0, max-1)}…`;
+      };
+      const renderAssignedBy = (n)=>{
+        const name = String((n && n.fromName) || 'Mailbox Manager').trim() || 'Mailbox Manager';
+        const avatar = String((n && (n.fromAvatar || n.fromAvatarUrl || n.avatarUrl)) || '').trim();
+        if(avatar){
+          return `
+            <div class="mbx-assign-by-wrap">
+              <span class="mini-avatar"><img src="${esc(avatar)}" alt="${esc(name)} avatar" loading="lazy"/></span>
+              <span class="mbx-assign-by-name">${esc(name)}</span>
             </div>
-            <div class="mbx-assign-card">
-              <div class="mbx-assign-label">Brief Description</div>
-              <div class="mbx-assign-desc">${desc ? esc(desc) : '<span class="muted">N/A</span>'}</div>
-            </div>
-            <div class="mbx-assign-card case-zone">
-              <div class="mbx-assign-label">Unique Case ID</div>
-              <div class="mbx-assign-case">
-                <span class="mbx-assign-case-no">${esc(caseNoDisplay)}</span>
-                <button class="btn sm mbx-assign-copy" type="button" data-copy-case="${esc(caseNo)}" data-copy-label="${esc(copiedLabel)}" ${canCopy ? '' : 'disabled aria-disabled="true"'}>
-                  <span aria-hidden="true" style="margin-right:8px;">📋</span><span class="mbx-copy-label">${esc(copiedLabel)}</span>
+          `;
+        }
+        return `<span class="mbx-assign-by-name">${esc(name)}</span>`;
+      };
+      const mailboxAssignmentIdFromNotif = (n)=>{
+        try{
+          const explicit = String((n && n.assignmentId) || '').trim();
+          if(explicit) return explicit;
+          const id = String((n && n.id) || '').trim();
+          if(id.startsWith('mbx_assign_')) return id.slice('mbx_assign_'.length);
+        }catch(_){ }
+        return '';
+      };
+      const confirmMailboxAssignmentFromNotif = async (n)=>{
+        try{
+          if(!n || String(n.type||'') !== 'MAILBOX_ASSIGN') return { ok:true, skipped:true };
+          const shiftKey = String((n && n.shiftKey) || '').trim();
+          const assignmentId = mailboxAssignmentIdFromNotif(n);
+          if(!shiftKey || !assignmentId) return { ok:false, message:'Missing mailbox assignment reference.' };
+
+          const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+          if(!jwt) return { ok:false, message:'Session expired. Please log in again.' };
+
+          const res = await fetch('/api/mailbox/confirm', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${jwt}`
+            },
+            body: JSON.stringify({ shiftKey, assignmentId })
+          });
+          const data = await res.json().catch(()=>null);
+          if(!res.ok || !data || !data.ok){
+            const msg = (data && (data.message || data.error)) ? String(data.message || data.error) : `Failed (${res.status})`;
+            return { ok:false, message: msg };
+          }
+          try{
+            if(data.table && window.Store && Store.saveMailboxTable){
+              Store.saveMailboxTable(shiftKey, data.table, { fromRealtime:true });
+            }
+          }catch(_){ }
+          return { ok:true };
+        }catch(e){
+          return { ok:false, message: String(e && (e.message || e) || 'Confirm failed') };
+        }
+      };
+      const renderMailboxAssignTable = (list)=>{
+        const rows = (Array.isArray(list) ? list : []).map((n, index)=>{
+          const assignedAt = Number((n && (n.assignedAt || n.ts)) || 0);
+          const ts = formatAssignTimestamp(assignedAt);
+          const caseNo = String((n && (n.caseNo || n.ticketNumber || n.id)) || '').trim() || 'N/A';
+          const desc = String((n && n.desc) || '').trim();
+          const descDisplay = truncate(desc, 50) || 'N/A';
+          const timer = formatAssignTimer(assignedAt);
+          return `
+            <tr class="mbx-assign-row-item" data-ack-row="${esc(n.id)}">
+              <td>${index + 1}</td>
+              <td class="mbx-assign-ts">${esc(ts)}</td>
+              <td><strong class="mbx-assign-case-cell">${esc(caseNo)}</strong></td>
+              <td title="${esc(desc || 'N/A')}">${esc(descDisplay)}</td>
+              <td>${renderAssignedBy(n)}</td>
+              <td class="mbx-assign-live" data-assign-timer="${esc(assignedAt)}">${esc(timer)}</td>
+              <td>
+                <button class="btn dashx-ack mbx-accept-btn" data-ack="${esc(n.id)}" type="button" aria-label="Accept case assignment">
+                  <span class="dashx-spin" aria-hidden="true"></span>
+                  <span class="dashx-acklbl">ACCEPT</span>
                 </button>
-              </div>
-            </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+        if(!rows){
+          return '<div class="muted">No pending cases.</div>';
+        }
+        return `
+          <div class="mbx-assign-table-wrap" role="region" aria-label="Pending case assignments">
+            <table class="mbx-assign-table" role="table">
+              <thead>
+                <tr>
+                  <th>No.</th>
+                  <th>TIMESTAMP</th>
+                  <th>CASE#</th>
+                  <th>DESCRIPTION</th>
+                  <th>ASSIGNED BY</th>
+                  <th>TIME ELAPSED</th>
+                  <th>STATUS</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
           </div>
         `;
       };
@@ -1703,6 +1743,7 @@ toast(message, variant){
       let lastBeepedId = null;
       const pendingKeyFor = (n)=>{
         if(!n) return '';
+        if(String(n.type||'') === 'MAILBOX_ASSIGN') return `id:${String(n.id||'')}`;
         if(n.snapshotDigest) return `digest:${String(n.snapshotDigest)}`;
         return `id:${String(n.id||'')}`;
       };
@@ -1715,8 +1756,10 @@ toast(message, variant){
       };
       const renderPendingNotifs = (list)=>{
         if(!list.length){
-          return '<div class="muted">No notifications pending.</div>';
+          return '<div class="muted">No pending cases.</div>';
         }
+        const allMailbox = list.every(n=>String(n && n.type || '') === 'MAILBOX_ASSIGN');
+        if(allMailbox) return renderMailboxAssignTable(list);
         // Resilience: a single bad/malformed notif should not crash the entire modal.
         return list.map(n=>{
           try{
@@ -1724,7 +1767,6 @@ toast(message, variant){
               return `
                 <div class="notif-item mailbox-assign">
                   <div class="notif-item-head">
-                    <div class="notif-item-title">Case Assigned Notification</div>
                     <button class="btn dashx-ack" data-ack="${esc(n.id)}" type="button" aria-label="Acknowledge case assignment notification">
                       <span class="dashx-spin" aria-hidden="true"></span>
                       <span class="dashx-acklbl">Acknowledge</span>
@@ -1799,6 +1841,8 @@ toast(message, variant){
         }
 
         const allMailbox = deduped.length && deduped.every(n=>String(n.type||'')==='MAILBOX_ASSIGN');
+        const compactMailboxMode = false;
+        const mailboxTableMode = !!allMailbox;
         const headerLabel = allMailbox
           ? `Case Assigned Notification${deduped.length===1?'':'s'}`
           : 'Schedule Notifications';
@@ -1810,29 +1854,24 @@ toast(message, variant){
         UI.el('#schedNotifMeta').textContent = metaLabel;
         const countEl = UI.el('#schedNotifCount');
         if(countEl) countEl.textContent = String(deduped.length);
-        UI.el('#schedNotifBody').innerHTML = renderPendingNotifs(deduped);
+        const visibleList = deduped;
+        UI.el('#schedNotifBody').innerHTML = renderPendingNotifs(visibleList);
 
-        if(!modal._ackBound){
+        const panelEl = modal ? modal.querySelector('.notification-popout') : null;
+        if(panelEl){
+          panelEl.classList.toggle('mailbox-compact-mode', compactMailboxMode);
+          panelEl.classList.toggle('mailbox-table-mode', mailboxTableMode);
+          if(compactMailboxMode || mailboxTableMode) panelEl.scrollTop = 0;
+        }
+
+        if(modal && !modal._ackBound){
           modal._ackBound = true;
-          modal.addEventListener('click', (e)=>{
+          modal.addEventListener('click', async (e)=>{
             const btn = e && e.target ? e.target.closest('[data-ack]') : null;
-            const copyBtn = e && e.target ? e.target.closest('[data-copy-case]') : null;
-            if(copyBtn){
-              const val = String(copyBtn.getAttribute('data-copy-case')||'').trim();
-              const copiedLabel = String(copyBtn.getAttribute('data-copy-label') || 'COPY ID').trim() || 'COPY ID';
-              if(val){
-                navigator.clipboard.writeText(val).then(()=>{ UI.toast && UI.toast('Case number copied.'); }).catch(()=>{});
-                const copyLbl = copyBtn.querySelector('.mbx-copy-label');
-                if(copyLbl){
-                  copyLbl.textContent = 'COPIED';
-                  setTimeout(()=>{ try{ copyLbl.textContent = copiedLabel; }catch(_){ copyLbl.textContent = copiedLabel; } }, 1300);
-                }
-              }
-              return;
-            }
             if(!btn) return;
             const id = String(btn.getAttribute('data-ack')||'');
             if(!id) return;
+            const row = btn.closest('[data-ack-row]');
             try{
               if(btn.dataset.busy==='1') return;
               btn.dataset.busy='1';
@@ -1840,11 +1879,33 @@ toast(message, variant){
               const spin = btn.querySelector('.dashx-spin');
               const lbl = btn.querySelector('.dashx-acklbl');
               if(spin) spin.classList.add('on');
-              if(lbl) lbl.textContent = 'Acknowledging…';
+              if(lbl) lbl.textContent = 'ACCEPTING…';
             }catch(_){ }
             const n = lastPending.find(x=>String(x.id||'')===id);
-            ackNotif(n);
-            ping();
+            try{
+              const confirmResult = await confirmMailboxAssignmentFromNotif(n);
+              if(confirmResult && !confirmResult.ok){
+                UI.toast(confirmResult.message || 'Unable to accept case assignment.', 'warn');
+                try{
+                  btn.dataset.busy='0';
+                  btn.disabled = false;
+                  const spin = btn.querySelector('.dashx-spin');
+                  const lbl = btn.querySelector('.dashx-acklbl');
+                  if(spin) spin.classList.remove('on');
+                  if(lbl) lbl.textContent = 'ACCEPT';
+                }catch(_){ }
+                return;
+              }
+              ackNotif(n);
+              if(row){
+                row.classList.add('is-removing');
+                setTimeout(()=>{ ping(); }, 200);
+              }else{
+                ping();
+              }
+            }catch(_){
+              ping();
+            }
           });
         }
 

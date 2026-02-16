@@ -214,6 +214,15 @@ function _mbxMemberSortKey(u){
   return { w, name: String(u?.name||u?.username||'').toLowerCase() };
 }
 
+function _mbxDutyTone(label){
+  const t = String(label||'').toLowerCase();
+  if(!t || t === '—' || t === 'n/a') return 'idle';
+  if(t.includes('mailbox manager')) return 'manager';
+  if(t.includes('mailbox call')) return 'call';
+  if(t.includes('break') || t.includes('lunch')) return 'break';
+  return 'active';
+}
+
 (window.Pages=window.Pages||{}, window.Pages.mailbox = function(root){
   const me = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
   let isManager = false;
@@ -611,10 +620,12 @@ root.innerHTML = `
       <div class="mbx-card" style="margin-top:12px">
         <div class="mbx-card-head">
           <div class="mbx-title">
-            <div class="mbx-shift-title">${UI.esc(table.meta.teamLabel)}</div>
-            <div class="small muted">MAILBOX COUNTER • Shift key: <span class="mono">${UI.esc(shiftKey)}</span></div>
+            <div class="mbx-shift-title">${UI.esc(table.meta.teamLabel)} <span class="mbx-shift-subtitle">Mailbox Counter</span></div>
+            <div class="small muted">Live assignment counts for the active shift.
+              <button class="mbx-info-btn" type="button" title="Shift key: ${UI.esc(shiftKey)}" aria-label="View shift key metadata">ℹ️</button>
+            </div>
           </div>
-          <div class="mbx-tools">
+          <div class="mbx-tools mbx-tools-right">
             <span class="badge" id="mbxMgrBadge" title="Mailbox Manager">${UI.esc(mbxMgrName)}</span>
             <div class="small muted">Active mailbox time:</div>
             <span class="badge">${UI.esc((_mbxBucketLabel((table.buckets||[]).find(b=>b.id===activeBucketId)||table.buckets?.[0]||{startMin:0,endMin:0})))}</span>
@@ -653,10 +664,12 @@ root.innerHTML = `
           </div>
         </div>
         <div class="mbx-monitor-wrap">
-          ${renderCaseMonitoring(table)}
+          ${renderCaseMonitoring(table, shiftKey)}
         </div>
       </div>
     `;
+
+    refreshMemberDutyPills(root);
 
     // toggle prev
     const tBtn = UI.el('#mbxTogglePrev');
@@ -672,8 +685,10 @@ root.innerHTML = `
     }
 
 
-    // Ensure Assign Case modal is mounted outside the mailbox root so it survives re-renders.
+    // Ensure mailbox modals are mounted outside the root so they survive re-renders.
     ensureAssignModalMounted();
+    ensureCaseActionMenuMounted();
+    ensureReassignModalMounted();
 
     // export
     UI.el('#mbxExportCsv').onclick = ()=>exportCSV(table);
@@ -711,15 +726,77 @@ root.innerHTML = `
         }
         openAssignModal(uid);
       };
-}
+    }
+
+    // dblclick on monitoring case cell -> action menu
+    const monitorWrap = root.querySelector('.mbx-monitor-wrap');
+    if(monitorWrap){
+      monitorWrap.ondblclick = (e)=>{
+        const cell = e && e.target ? e.target.closest('td[data-case-action="1"]') : null;
+        if(!cell) return;
+        if(!canAssignNow()){
+          UI.toast('You do not have permission to manage cases right now.', 'warn');
+          return;
+        }
+        openCaseActionMenu({
+          shiftKey,
+          assignmentId: String(cell.getAttribute('data-assignment-id') || ''),
+          caseNo: String(cell.getAttribute('data-case-no') || ''),
+          ownerId: String(cell.getAttribute('data-owner-id') || ''),
+          ownerName: String(cell.getAttribute('data-owner-name') || '')
+        });
+      };
+    }
 
     // timer init + override pill
     startTimerLoop();
   }
 
+  function resolveMemberDutyLabel(member, nowParts){
+    try{
+      const all = (Store.getUsers ? Store.getUsers() : []) || [];
+      const live = all.find(u=>u && String(u.id||'') === String(member?.id||''));
+      const label = _mbxDutyLabelForUser(live || member, nowParts);
+      const safe = String(label||'').trim();
+      return safe || '—';
+    }catch(_){
+      return '—';
+    }
+  }
+
+  function refreshMemberDutyPills(scopeRoot){
+    try{
+      const host = scopeRoot || root;
+      if(!host) return;
+      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+      host.querySelectorAll('[data-mbx-duty-user]').forEach(node=>{
+        const uid = String(node.getAttribute('data-mbx-duty-user') || '').trim();
+        if(!uid) return;
+        const member = { id: uid };
+        const duty = resolveMemberDutyLabel(member, nowParts);
+        const dutyText = (duty && duty !== '—') ? duty : 'No active duty';
+        node.textContent = dutyText;
+        node.dataset.tone = _mbxDutyTone(dutyText);
+        node.title = `Current duty: ${dutyText}`;
+      });
+    }catch(_){ }
+  }
+
   function renderTable(table, activeBucketId, totals, interactive){
     const buckets = table.buckets || [];
     const members = table.members || [];
+    const bucketManagers = buckets.map(b=>({ bucket:b, name:getBucketManagerName(b) }));
+    const groupedManagers = [];
+
+    for(const item of bucketManagers){
+      const last = groupedManagers[groupedManagers.length-1];
+      if(last && last.name === item.name){
+        last.colspan += 1;
+      }else{
+        groupedManagers.push({ name:item.name, colspan:1 });
+      }
+    }
+
     // Mailbox Manager (per time bucket) shown above the time range.
     function _mbxHeaderFontPx(name){
       const n = String(name||'').trim();
@@ -761,50 +838,71 @@ root.innerHTML = `
       return '—';
     }
 
+    function _mbxInitials(name){
+      const raw = String(name||'').trim();
+      if(!raw) return 'NA';
+      const parts = raw.split(/\s+/).filter(Boolean);
+      if(!parts.length) return 'NA';
+      const first = parts[0][0] || '';
+      const second = (parts.length > 1 ? parts[1][0] : (parts[0][1] || '')) || '';
+      return (first + second).toUpperCase();
+    }
+
 
     const rows = members.map(m=>{
       const cells = buckets.map(b=>{
         const v = safeGetCount(table, m.id, b.id);
         const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
-        return `<td class="${cls} mbx-count-td"><span class="mbx-num">${v}</span></td>`;
+        return `<td class="${cls} mbx-count-td"><span class="mbx-num" data-zero="${v===0 ? '1' : '0'}">${v}</span></td>`;
       }).join('');
       const total = totals.rowTotals[m.id] || 0;
 
-      const duty = (m.dutyLabel && m.dutyLabel !== '—') ? m.dutyLabel : '—';
       const role = (m.roleLabel || _mbxRoleLabel(m.role) || '').trim();
+      const dutyLabel = resolveMemberDutyLabel(m, (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null)));
+      const safeDutyLabel = (dutyLabel && dutyLabel !== '—') ? dutyLabel : 'No active duty';
 
       return `<tr class="mbx-tr ${interactive ? 'mbx-assignable' : ''}" ${interactive ? `data-assign-member="${m.id}"` : ''} title="${interactive ? 'Double-click anywhere on this row to assign a case' : ''}">
         <td class="mbx-name">
           <div class="mbx-member-grid">
+            <div class="mbx-avatar" aria-hidden="true">${UI.esc(_mbxInitials(m.name))}</div>
             <div class="mbx-name-col">
               <div class="mbx-name-main">${UI.esc(m.name)}</div>
               <div class="mbx-name-sub">${UI.esc(role || '—')}</div>
             </div>
-            <div class="mbx-duty-col ${duty==='—' ? 'muted' : ''}">${UI.esc(duty)}</div>
           </div>
         </td>
+        <td class="mbx-duty-col">
+          <span class="mbx-duty-pill" data-mbx-duty-user="${UI.esc(m.id)}" data-tone="${_mbxDutyTone(safeDutyLabel)}" title="Current duty: ${UI.esc(safeDutyLabel)}">${UI.esc(safeDutyLabel)}</span>
+        </td>
         ${cells}
-        <td class="mbx-total mbx-count-td"><span class="mbx-num">${total}</span></td>
+        <td class="mbx-total mbx-count-td"><span class="mbx-num" data-zero="${total===0 ? '1' : '0'}">${total}</span></td>
       </tr>`;
     }).join('');
 
     const footCells = buckets.map(b=>{
       const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
-      return `<td class="${cls} mbx-count-td"><span class="mbx-num">${totals.colTotals[b.id]||0}</span></td>`;
+      const vv = totals.colTotals[b.id]||0;
+      return `<td class="${cls} mbx-count-td"><span class="mbx-num" data-zero="${vv===0 ? '1' : '0'}">${vv}</span></td>`;
     }).join('');
 
     return `
       <table class="table mbx-table">
         <thead>
+          <tr class="mbx-group-row">
+            <th colspan="2"></th>
+            ${groupedManagers.map(g=>{
+              const fs = _mbxHeaderFontPx(g.name);
+              const label = g.name && g.name !== '—' ? UI.esc(g.name) : '';
+              return `<th colspan="${g.colspan}" class="mbx-group-th"><span class="mbx-th-top" style="font-size:${fs}px">${label}</span></th>`;
+            }).join('')}
+            <th></th>
+          </tr>
           <tr>
             <th style="min-width:260px">Member</th>
-            ${buckets.map(b=>{
+            <th style="min-width:170px" class="mbx-time-th">Current Duty</th>
+            ${bucketManagers.map(({ bucket:b })=>{
               const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
-              const mgr = getBucketManagerName(b);
-              // Show only the assigned user's name (no label). If none yet, keep blank.
-              const mgrLabel = mgr ? UI.esc(mgr) : '';
-              const fs = _mbxHeaderFontPx(mgr);
-              return `<th class="${cls} mbx-time-th"><div class="mbx-th"><div class="mbx-th-top" style="font-size:${fs}px" title="${mgr ? UI.esc(mgr) : 'Mailbox Manager'}">${mgrLabel}</div><div class="mbx-th-time">${UI.esc(_mbxBucketLabel(b))}</div></div></th>`;
+              return `<th class="${cls} mbx-time-th"><div class="mbx-th"><div class="mbx-th-time">${UI.esc(_mbxBucketLabel(b))}</div></div></th>`;
             }).join('')}
             <th style="width:110px" class="mbx-time-th">Total</th>
           </tr>
@@ -813,8 +911,9 @@ root.innerHTML = `
         <tfoot>
           <tr>
             <td class="mbx-foot">TOTAL</td>
+            <td class="mbx-foot">—</td>
             ${footCells}
-            <td class="mbx-foot mbx-count-td"><span class="mbx-num">${totals.shiftTotal||0}</span></td>
+            <td class="mbx-foot mbx-count-td"><span class="mbx-num" data-zero="${(totals.shiftTotal||0)===0 ? '1' : '0'}">${totals.shiftTotal||0}</span></td>
           </tr>
         </tfoot>
       </table>
@@ -824,6 +923,11 @@ root.innerHTML = `
   // Assignment modal
   let _assignUserId = null;
   let _assignSending = false;
+
+  // Case action menu / reassign modal state
+  let _caseActionCtx = null;
+  let _caseActionBusy = false;
+  let _reassignBusy = false;
 
   function _mbxAuthHeader(){
     const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
@@ -1018,6 +1122,242 @@ root.innerHTML = `
   }
 
 
+  function getReassignCandidates(table, previousOwnerId){
+    try{
+      const teamId = String(table?.meta?.teamId || '');
+      const users = (Store.getUsers ? Store.getUsers() : []) || [];
+      return users
+        .filter(u=>u && u.status==='active' && String(u.teamId||'')===teamId && String(u.role||'')==='MEMBER' && String(u.id||'')!==String(previousOwnerId||''))
+        .map(u=>({ id:String(u.id||''), name:String(u.name||u.username||u.id||'N/A') }))
+        .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+    }catch(_){
+      return [];
+    }
+  }
+
+  function ensureCaseActionMenuMounted(){
+    try{
+      if(document.getElementById('mbxCaseActionModal')) return;
+      const host = document.createElement('div');
+      host.className = 'modal';
+      host.id = 'mbxCaseActionModal';
+      host.innerHTML = `
+        <div class="panel" style="max-width:480px">
+          <div class="head">
+            <div>
+              <div class="announce-title">Case Action Menu</div>
+              <div class="small muted" id="mbxCaseActionMeta">Select action for this case.</div>
+            </div>
+            <button class="btn ghost" type="button" data-close="mbxCaseActionModal">✕</button>
+          </div>
+          <div class="body" style="display:grid;gap:10px">
+            <button class="btn" id="mbxActionReassign" type="button">Transfer / Reassign Case</button>
+            <button class="btn danger" id="mbxActionDelete" type="button">Delete</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(host);
+      host.querySelectorAll('[data-close="mbxCaseActionModal"]').forEach(b=>{
+        b.onclick = ()=>{ if(!_caseActionBusy) UI.closeModal('mbxCaseActionModal'); };
+      });
+      host.addEventListener('click', (e)=>{
+        try{ if(e && e.target === host && !_caseActionBusy) UI.closeModal('mbxCaseActionModal'); }catch(_){ }
+      });
+      const reassignBtn = host.querySelector('#mbxActionReassign');
+      if(reassignBtn) reassignBtn.onclick = ()=>openReassignModal();
+      const deleteBtn = host.querySelector('#mbxActionDelete');
+      if(deleteBtn) deleteBtn.onclick = ()=>confirmDeleteCase();
+    }catch(e){ console.error('Failed to mount case action menu', e); }
+  }
+
+  function ensureReassignModalMounted(){
+    try{
+      if(document.getElementById('mbxReassignModal')) return;
+      const host = document.createElement('div');
+      host.className = 'modal';
+      host.id = 'mbxReassignModal';
+      host.innerHTML = `
+        <div class="panel" style="max-width:560px">
+          <div class="head">
+            <div>
+              <div class="announce-title">Reassign Form</div>
+              <div class="small muted">Select new assignee from the same team mailbox member list.</div>
+            </div>
+            <button class="btn ghost" type="button" data-close="mbxReassignModal">✕</button>
+          </div>
+          <div class="body" style="display:grid;gap:10px">
+            <div>
+              <label class="small">Case #</label>
+              <input class="input" id="mbxReassignCaseNo" disabled />
+            </div>
+            <div>
+              <label class="small">Previous Case Owner</label>
+              <input class="input" id="mbxPrevOwner" disabled />
+            </div>
+            <div>
+              <label class="small">Select Reassign to</label>
+              <select class="input" id="mbxReassignTo"></select>
+            </div>
+            <div class="err" id="mbxReassignErr" style="display:none"></div>
+            <div class="row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
+              <button class="btn" type="button" data-close="mbxReassignModal">Cancel</button>
+              <button class="btn primary" type="button" id="mbxReassignSubmit">Save</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(host);
+      host.querySelectorAll('[data-close="mbxReassignModal"]').forEach(b=>{
+        b.onclick = ()=>{ if(!_reassignBusy) UI.closeModal('mbxReassignModal'); };
+      });
+      host.addEventListener('click', (e)=>{
+        try{ if(e && e.target === host && !_reassignBusy) UI.closeModal('mbxReassignModal'); }catch(_){ }
+      });
+      const submit = host.querySelector('#mbxReassignSubmit');
+      if(submit) submit.onclick = ()=>submitReassign();
+    }catch(e){ console.error('Failed to mount reassign modal', e); }
+  }
+
+  function openCaseActionMenu(ctx){
+    ensureCaseActionMenuMounted();
+    const assignmentId = String(ctx?.assignmentId || '');
+    const caseNo = String(ctx?.caseNo || '').trim();
+    const ownerId = String(ctx?.ownerId || '');
+    if(!assignmentId || !caseNo) return;
+    _caseActionCtx = {
+      shiftKey: String(ctx?.shiftKey || ''),
+      assignmentId,
+      caseNo,
+      ownerId,
+      ownerName: String(ctx?.ownerName || ownerId || 'N/A')
+    };
+    const meta = UI.el('#mbxCaseActionMeta');
+    if(meta) meta.textContent = `Case #${_caseActionCtx.caseNo} • Owner: ${_caseActionCtx.ownerName}`;
+    UI.openModal('mbxCaseActionModal');
+  }
+
+  function openReassignModal(){
+    const ctx = _caseActionCtx;
+    if(!ctx) return;
+    const { shiftKey } = ensureShiftTables();
+    const table = Store.getMailboxTable ? Store.getMailboxTable(ctx.shiftKey || shiftKey) : null;
+    const candidates = getReassignCandidates(table || {}, ctx.ownerId);
+
+    const caseEl = UI.el('#mbxReassignCaseNo');
+    const prevEl = UI.el('#mbxPrevOwner');
+    const sel = UI.el('#mbxReassignTo');
+    const err = UI.el('#mbxReassignErr');
+    if(caseEl) caseEl.value = ctx.caseNo || 'N/A';
+    if(prevEl) prevEl.value = ctx.ownerName || 'N/A';
+    if(err){ err.style.display='none'; err.textContent=''; }
+
+    if(sel){
+      sel.innerHTML = candidates.length
+        ? `<option value="">Select member</option>${candidates.map(c=>`<option value="${UI.esc(c.id)}">${UI.esc(c.name)}</option>`).join('')}`
+        : '<option value="">No eligible member found</option>';
+    }
+
+    UI.closeModal('mbxCaseActionModal');
+    UI.openModal('mbxReassignModal');
+  }
+
+  async function submitReassign(){
+    if(_reassignBusy) return;
+    const ctx = _caseActionCtx;
+    if(!ctx) return;
+
+    const sel = UI.el('#mbxReassignTo');
+    const newAssigneeId = String(sel && sel.value || '').trim();
+    const errEl = UI.el('#mbxReassignErr');
+    const setErr = (msg)=>{
+      if(!errEl) return UI.toast(msg, 'warn');
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    };
+    if(!newAssigneeId) return setErr('Please select a member for reassignment.');
+
+    _reassignBusy = true;
+    const btn = UI.el('#mbxReassignSubmit');
+    if(btn) btn.disabled = true;
+
+    try{
+      const { res, data } = await mbxPost('/api/mailbox/case_action', {
+        action: 'reassign',
+        shiftKey: ctx.shiftKey,
+        assignmentId: ctx.assignmentId,
+        newAssigneeId,
+        clientId: _mbxClientId() || undefined
+      });
+
+      if(res.status === 401){
+        UI.toast('Session expired. Please log in again.', 'warn');
+        try{ window.Auth && Auth.forceLogout && Auth.forceLogout('Session expired. Please log in again.'); }catch(_){ }
+        return;
+      }
+
+      if(!res.ok || !data || !data.ok){
+        const msg = (data && (data.error || data.message)) ? String(data.error||data.message) : `Failed (${res.status})`;
+        return setErr(msg);
+      }
+
+      try{ if(data.table && Store.saveMailboxTable) Store.saveMailboxTable(ctx.shiftKey, data.table, { fromRealtime:true }); }catch(_){ }
+      UI.closeModal('mbxReassignModal');
+      UI.toast(`Case ${ctx.caseNo} reassigned.`);
+      scheduleRender('case-reassign-success');
+    }catch(e){
+      setErr(String(e?.message||e));
+    }finally{
+      _reassignBusy = false;
+      if(btn) btn.disabled = false;
+    }
+  }
+
+  async function confirmDeleteCase(){
+    const ctx = _caseActionCtx;
+    if(!ctx || _caseActionBusy) return;
+
+    const ok = await UI.confirm({
+      title: 'Delete Case',
+      message: `Are you sure you want to Delete this case number ${ctx.caseNo}?`,
+      okText: 'Yes',
+      cancelText: 'Cancel',
+      danger: true
+    });
+    if(!ok) return;
+
+    _caseActionBusy = true;
+    try{
+      const { res, data } = await mbxPost('/api/mailbox/case_action', {
+        action: 'delete',
+        shiftKey: ctx.shiftKey,
+        assignmentId: ctx.assignmentId,
+        clientId: _mbxClientId() || undefined
+      });
+
+      if(res.status === 401){
+        UI.toast('Session expired. Please log in again.', 'warn');
+        try{ window.Auth && Auth.forceLogout && Auth.forceLogout('Session expired. Please log in again.'); }catch(_){ }
+        return;
+      }
+
+      if(!res.ok || !data || !data.ok){
+        const msg = (data && (data.error || data.message)) ? String(data.error||data.message) : `Failed (${res.status})`;
+        UI.toast(msg, 'warn');
+        return;
+      }
+
+      try{ if(data.table && Store.saveMailboxTable) Store.saveMailboxTable(ctx.shiftKey, data.table, { fromRealtime:true }); }catch(_){ }
+      UI.closeModal('mbxCaseActionModal');
+      UI.toast(`Case ${ctx.caseNo} deleted.`);
+      scheduleRender('case-delete-success');
+    }catch(e){
+      UI.toast(String(e?.message||e), 'warn');
+    }finally{
+      _caseActionBusy = false;
+    }
+  }
+
+
   // Exports
   function exportCSV(table){
     const buckets = table.buckets || [];
@@ -1195,7 +1535,8 @@ const onMailboxStoreEvent = (e)=>{
       k === 'mums_schedule_blocks' ||
       k === 'ums_users' ||
       k === 'mums_team_config' ||
-      k === 'ums_activity_logs'
+      k === 'ums_activity_logs' ||
+      k === 'ums_cases'
     ){
       scheduleRender('mailbox-sync');
     }
@@ -1212,7 +1553,7 @@ const onMailboxStorageEvent = (e)=>{
       k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override' ||
       k === 'mums_mailbox_tables' || k === 'mums_mailbox_state' ||
       k === 'ums_weekly_schedules' || k === 'mums_schedule_blocks' || k === 'ums_users' ||
-      k === 'mums_team_config' || k === 'ums_activity_logs'
+      k === 'mums_team_config' || k === 'ums_activity_logs' || k === 'ums_cases'
     ){
       // Override keys still use the explicit override sync helper for cloud reconciliation.
       try{
@@ -1275,6 +1616,7 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
 
       // Update pending assignment timers in monitoring table (if present).
       try{
+        refreshMemberDutyPills(root);
         const timerEls = root.querySelectorAll('[data-assign-at]');
         if(timerEls && timerEls.length){
           const now = Date.now();
@@ -1284,31 +1626,23 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
             const sec = Math.floor(Math.max(0, now - ts) / 1000);
             const label = (UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`;
             el.setAttribute('title', label);
-            const lbl = el.querySelector('.mbx-mon-wait-label');
-            if(lbl) lbl.textContent = label;
           });
         }
       }catch(_){ }
 
       // shift transition detect + re-render on change
       const { state } = ensureShiftTables();
-      // highlight active bucket by toggling classes without full re-render (best effort)
+      // highlight only the active time header (avoid full-column flashing)
       try{
         const { table } = ensureShiftTables();
         const active = computeActiveBucketId(table);
-        const ths = root.querySelectorAll('.mbx-table thead th');
         const idxMap = {};
         (table.buckets||[]).forEach((b,i)=>idxMap[b.id]=i);
         const activeIdx = idxMap[active];
-        // columns: Member is 0, buckets start at 1
-        const bucketStartCol = 1;
-        root.querySelectorAll('.mbx-table .active-col').forEach(n=>n.classList.remove('active-col'));
+        root.querySelectorAll('.mbx-table thead th.active-head-col').forEach(n=>n.classList.remove('active-head-col'));
         if(activeIdx !== undefined){
-          const col = bucketStartCol + activeIdx;
-          root.querySelectorAll(`.mbx-table tr`).forEach(tr=>{
-            const cell = tr.children && tr.children[col];
-            if(cell) cell.classList.add('active-col');
-          });
+          const timeHeads = root.querySelectorAll('.mbx-table thead tr:last-child th.mbx-time-th');
+          if(timeHeads && timeHeads[activeIdx]) timeHeads[activeIdx].classList.add('active-head-col');
         }
       }catch(_){ }
 
@@ -1545,17 +1879,75 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
     }
   }
 
-  function buildCaseMonitoringMatrix(table){
+  function buildCaseMonitoringMatrix(table, shiftKey){
     const members = (table.members||[]).slice();
     const by = {};
-    for(const m of members){ by[m.id] = []; }
-    for(const a of (table.assignments||[])){
+    const memberById = {};
+    for(const m of members){ by[m.id] = []; memberById[m.id] = m; }
+
+    const mergedByCase = new Map();
+    function normalizedCaseKey(assigneeId, caseNo){
+      return `${String(assigneeId||'').trim()}|${String(caseNo||'').trim().toLowerCase()}`;
+    }
+    function upsertMerged(raw){
+      if(!raw) return;
+      const assigneeId = String(raw.assigneeId||'').trim();
+      const caseNo = String(raw.caseNo||raw.title||'').trim();
+      if(!assigneeId || !caseNo || !by[assigneeId]) return;
+      const key = normalizedCaseKey(assigneeId, caseNo);
+      const assignedAt = Number(raw.assignedAt||raw.createdAt||raw.ts||Date.now()) || Date.now();
+      const confirmedAt = Number(raw.confirmedAt||0) || 0;
+      const existing = mergedByCase.get(key);
+      if(!existing){
+        mergedByCase.set(key, {
+          id: String(raw.id || `merged_${assigneeId}_${caseNo}`),
+          caseNo,
+          assigneeId,
+          assignedAt,
+          confirmedAt,
+          assigneeName: String(raw.assigneeName || memberById[assigneeId]?.name || assigneeId || '').slice(0,120)
+        });
+        return;
+      }
+      // Deduplicate by logical case key while preserving freshest timestamps and accepted status.
+      existing.assignedAt = Math.max(Number(existing.assignedAt||0), assignedAt);
+      existing.confirmedAt = Math.max(Number(existing.confirmedAt||0), confirmedAt);
+      if(String(existing.id||'').startsWith('fallback_') && raw.id){
+        existing.id = String(raw.id);
+      }
+      if(!existing.assigneeName){
+        existing.assigneeName = String(raw.assigneeName || memberById[assigneeId]?.name || assigneeId || '').slice(0,120);
+      }
+    }
+
+    for(const a of (table.assignments||[])) upsertMerged(a);
+
+    // Resilience: when assignment docs lag or were created by older payloads,
+    // supplement from canonical cases list for the same shift.
+    try{
+      const allCases = (window.Store && Store.getCases) ? (Store.getCases()||[]) : [];
+      const key = String(shiftKey||'').trim();
+      for(const c of allCases){
+        if(!c || String(c.shiftKey||'').trim() !== key) continue;
+        upsertMerged({
+          id: String(c.id || ''),
+          caseNo: String(c.caseNo||c.title||'').trim(),
+          assigneeId: String(c.assigneeId||'').trim(),
+          assigneeName: String(c.assigneeName || c.assignee || '').trim(),
+          assignedAt: Number(c.createdAt||c.ts||Date.now()) || Date.now(),
+          confirmedAt: Number(c.confirmedAt||0) || 0
+        });
+      }
+    }catch(_){ }
+
+    for(const a of mergedByCase.values()){
       if(!a || !by[a.assigneeId]) continue;
       by[a.assigneeId].push(a);
     }
+
     const cols = members.map(m=>{
       const list = by[m.id] || [];
-      return { id:m.id, name:m.name, count:list.length, list:list.slice().reverse() };
+      return { id:m.id, name:m.name, count:list.length, list:list.slice().sort((a,b)=>(Number(b.assignedAt||b.ts||0)-Number(a.assignedAt||a.ts||0))) };
     });
     cols.sort((a,b)=>{
       if(a.count !== b.count) return a.count - b.count;
@@ -1569,9 +1961,9 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
     return { cols, rows };
   }
 
-  function renderCaseMonitoring(table){
+  function renderCaseMonitoring(table, shiftKey){
     const esc = UI.esc;
-    const m = buildCaseMonitoringMatrix(table);
+    const m = buildCaseMonitoringMatrix(table, shiftKey);
     if(!m.cols.length){
       return `<div class="small muted" style="padding:14px">No members found for this shift.</div>`;
     }
@@ -1587,12 +1979,16 @@ try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
         const assignedAt = Number(a.assignedAt||0);
         const sec = assignedAt ? Math.floor(Math.max(0, Date.now() - assignedAt) / 1000) : 0;
         const timer = assignedAt ? ((UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`) : '';
-        const waitIcon = a.confirmedAt ? '' : `
-          <span class="mbx-mon-wait" data-assign-at="${esc(assignedAt)}" title="${esc(timer)}" aria-label="Waiting for acknowledgement">
-            <span class="mbx-mon-wait-label">${esc(timer)}</span>
-          </span>
-        `;
-        return `<td class="${cls}"><span class="mbx-mon-case">${esc(a.caseNo||'')}</span>${waitIcon}</td>`;
+        const statusIcon = a.confirmedAt
+          ? `<span class="mbx-mon-status mbx-mon-done" title="Accepted" aria-label="Accepted">✓</span>`
+          : `<span class="mbx-mon-status mbx-mon-wait" data-assign-at="${esc(assignedAt)}" title="${esc(timer)}" aria-label="Waiting for acknowledgement">
+              <span class="mbx-mon-wait-dot" aria-hidden="true"></span>
+            </span>`;
+        const aid = esc(String(a.id||''));
+        const caseNo = esc(String(a.caseNo||''));
+        const ownerId = esc(String(a.assigneeId||''));
+        const ownerName = esc(String(a.assigneeName||''));
+        return `<td class="${cls}" data-case-action="1" data-assignment-id="${aid}" data-case-no="${caseNo}" data-owner-id="${ownerId}" data-owner-name="${ownerName}" title="Double-click to open action menu"><span class="mbx-mon-case">${caseNo}</span>${statusIcon}</td>`;
       }).join('');
       return `<tr><td class="mono" style="text-align:center">${idx+1}</td>${tds}</tr>`;
     }).join('');

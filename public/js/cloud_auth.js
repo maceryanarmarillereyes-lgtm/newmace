@@ -328,6 +328,31 @@ function installResumeGuards(){
 
 installResumeGuards();
 
+function buildOAuthAuthorizeUrl(provider, opts){
+  const e = env();
+  const base = String(e.SUPABASE_URL || '').replace(/\/$/, '');
+  const anon = String(e.SUPABASE_ANON_KEY || '');
+  if(!base || !anon) return '';
+  const options = opts || {};
+  const url = new URL(base + '/auth/v1/authorize');
+  url.searchParams.set('provider', String(provider || '').trim());
+  url.searchParams.set('scopes', String(options.scopes || 'email'));
+  url.searchParams.set('redirect_to', String(options.redirectTo || window.location.origin));
+  url.searchParams.set('skip_http_redirect', 'false');
+  return url.toString();
+}
+
+async function signInWithAzure(opts){
+  try{
+    const url = buildOAuthAuthorizeUrl('azure', opts || {});
+    if(!url) return { ok:false, message:'Supabase env missing (SUPABASE_URL/SUPABASE_ANON_KEY)' };
+    window.location.assign(url);
+    return { ok:true };
+  }catch(e){
+    return { ok:false, message:String(e && e.message ? e.message : e) };
+  }
+}
+
 async function login(usernameOrEmail, password){
   const e = env();
   const domain = String(e.USERNAME_EMAIL_DOMAIN || 'mums.local');
@@ -433,6 +458,69 @@ async function login(usernameOrEmail, password){
     return false;
   }
 
+  function absorbOAuthCallbackSession(){
+    try{
+      const hash = String(window.location.hash || '').replace(/^#/, '');
+      if(!hash) return false;
+      const params = new URLSearchParams(hash);
+
+      // OAuth provider/database-trigger failures are returned in the callback hash.
+      // Surface the exact description so login UI can show the real failure reason
+      // instead of silently looping back to the login page.
+      if (params.get('error')) {
+        const error = String(params.get('error') || 'oauth_error');
+        const errorDescription = String(params.get('error_description') || params.get('errorDescription') || error || 'OAuth sign-in failed.');
+        try {
+          localStorage.setItem('mums_login_flash', errorDescription);
+        } catch (_) {}
+        try {
+          window.dispatchEvent(new CustomEvent('mums:oauth_error', { detail: { error, error_description: errorDescription } }));
+        } catch (_) {}
+        try {
+          const cleanError = window.location.pathname + window.location.search;
+          window.history.replaceState({}, document.title, cleanError);
+        } catch (_) {}
+        return false;
+      }
+
+      if(!hash.includes('access_token=')) return false;
+      const access_token = String(params.get('access_token') || '');
+      if(!access_token) return false;
+      const refresh_token = String(params.get('refresh_token') || '');
+      const expires_in = parseInt(String(params.get('expires_in') || '0'), 10) || 0;
+      const expires_at = expires_in > 0 ? (Math.floor(Date.now()/1000) + expires_in) : null;
+      const payload = decodeJwtPayload(access_token) || {};
+      const user = {
+        id: String(payload.sub || params.get('user_id') || ''),
+        email: String(payload.email || params.get('email') || '')
+      };
+      const prev = readSession() || {};
+      const mergedUser = {
+        id: user.id || (prev.user && prev.user.id) || '',
+        email: user.email || (prev.user && prev.user.email) || ''
+      };
+      writeSession({ access_token, refresh_token: refresh_token || (prev.refresh_token || ''), expires_at, user: mergedUser });
+      try { localStorage.removeItem('mums_login_flash'); } catch (_) {}
+      emitToken();
+      scheduleRefresh(readSession());
+      try{
+        const clean = window.location.pathname + window.location.search;
+        window.history.replaceState({}, document.title, clean);
+      }catch(_){ }
+
+      // Successful OAuth callback on login page should continue to app shell.
+      try {
+        const p = String(window.location.pathname || '').toLowerCase();
+        if (p.endsWith('/login.html') || p.endsWith('/login')) {
+          window.location.replace('./dashboard');
+        }
+      } catch (_) {}
+      return true;
+    }catch(_){
+      return false;
+    }
+  }
+
   // Backward-compatible wrappers
   async function signIn(usernameOrEmail, password){
     const out = await login(usernameOrEmail, password);
@@ -454,12 +542,15 @@ async function login(usernameOrEmail, password){
     getUser,
     refreshSession,
     ensureFreshSession,
+    signInWithAzure,
 
     // Compatibility
     isEnabled: enabled,
     signIn,
     signOut
   };
+
+  try { absorbOAuthCallbackSession(); } catch (_) {}
 
   // If a session is already present (page reload / new tab), validate/refresh it
 // immediately so realtime/polling does not resume with a stale/invalid JWT.

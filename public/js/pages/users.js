@@ -141,7 +141,7 @@ function canCreateRole(actor, targetRole) {
         <div class="head">
           <div>
             <div class="announce-title" id="userModalTitle">Add User</div>
-            <div class="small">Create credentials so members can log in.</div>
+            <div class="small">Whitelist users for Microsoft invite-only sign-in.</div>
           </div>
           <button class="btn ghost" data-close="userModal">✕</button>
         </div>
@@ -156,12 +156,8 @@ function canCreateRole(actor, targetRole) {
               <input class="input" id="u_username" placeholder="jdelacruz" />
             </div>
             <div>
-              <label class="small">Email (generated)</label>
-              <input class="input" id="u_email" placeholder="username@mums.local" readonly />
-            </div>
-            <div>
-              <label class="small">Password</label>
-              <input class="input" id="u_password" type="password" placeholder="••••••••" />
+              <label class="small">Microsoft Email Address</label>
+              <input class="input" id="u_email" type="text" placeholder="user@copeland.com" />
             </div>
             <div>
               <label class="small">Role</label>
@@ -399,24 +395,6 @@ if (!createAllowed) {
   root.querySelectorAll('[data-close="profileModal"]').forEach(b=>b.onclick=()=>UI.closeModal('profileModal'));
 
 
-function getUsernameDomain(){
-  let domain = 'mums.local';
-  try {
-    const env = (window.EnvRuntime && typeof EnvRuntime.env === 'function') ? EnvRuntime.env() : (window.MUMS_ENV || {});
-    domain = String(env.USERNAME_EMAIL_DOMAIN || domain).trim() || domain;
-  } catch (_) {}
-  try {
-    if (window.Config && Config.USERNAME_EMAIL_DOMAIN) domain = String(Config.USERNAME_EMAIL_DOMAIN).trim() || domain;
-  } catch (_) {}
-  return domain;
-}
-
-function canonicalEmail(username){
-  const u = String(username || '').trim();
-  if (!u) return '';
-  return `${u}@${getUsernameDomain()}`.toLowerCase();
-}
-
 function applyDevOptionForRole(role){
   const isSuper = String(role || '').toUpperCase() === String(Config.ROLES.SUPER_ADMIN);
   const sel = UI.el('#u_team');
@@ -436,21 +414,14 @@ function openUserModal(actor, user){
 
   UI.el('#u_name').value = user?.name || '';
   UI.el('#u_username').value = user?.username || '';
-  UI.el('#u_password').value = '';
   UI.el('#u_role').value = user?.role || roleSel.value;
 
   // Team: SUPER_ADMIN may be Developer Access (empty string); others must be shift team.
   UI.el('#u_team').value = (user && (user.teamId !== undefined && user.teamId !== null)) ? user.teamId : ((Config.TEAMS[0] && Config.TEAMS[0].id) || 'morning');
 
-  // Email is read-only: generated for new users; preserved for existing users.
-  const setEmail = () => {
-    const uname = UI.el('#u_username').value.trim();
-    const gen = canonicalEmail(uname);
-    const cur = (user && user.email) ? String(user.email).trim() : '';
-    UI.el('#u_email').value = isEdit ? (cur || gen) : gen;
-  };
-  setEmail();
-  UI.el('#u_email').readOnly = true;
+  // Email is required and explicitly managed as the Microsoft identity.
+  UI.el('#u_email').value = (user && user.email) ? String(user.email).trim() : '';
+  UI.el('#u_email').readOnly = false;
 
   // Cloud mode: prevent editing username/email for existing users to avoid breaking auth mapping.
   UI.el('#u_username').readOnly = (isCloud && isEdit);
@@ -474,18 +445,6 @@ function openUserModal(actor, user){
 
   applyDevOptionForRole(UI.el('#u_role').value);
   UI.el('#u_role').onchange = ()=>applyDevOptionForRole(UI.el('#u_role').value);
-
-  // Username -> email live generation (only for new users)
-  UI.el('#u_username').oninput = ()=>{ if(!isEdit){ setEmail(); } };
-
-  // Cloud mode: password changes are not supported from this UI (use Supabase admin).
-  if(isCloud && isEdit){
-    UI.el('#u_password').disabled = true;
-    UI.el('#u_password').placeholder = 'Password changes via Supabase Admin';
-  } else {
-    UI.el('#u_password').disabled = false;
-    UI.el('#u_password').placeholder = '••••••••';
-  }
 
   // Permission hardening: only SUPER_ADMIN can edit SUPER_ADMIN
   if(isEdit && user?.role===Config.ROLES.SUPER_ADMIN && actor.role!==Config.ROLES.SUPER_ADMIN){
@@ -553,13 +512,15 @@ function openUserModal(actor, user){
     try {
       const name = UI.el('#u_name').value.trim();
       const username = UI.el('#u_username').value.trim();
-      const password = UI.el('#u_password').value;
+      const email = UI.el('#u_email').value.trim().toLowerCase();
       const role = UI.el('#u_role').value;
       const teamId = UI.el('#u_team').value;
 
       if(!name) return err('Name is required.');
       if(!username) return err('Username is required.');
       if(!/^[a-zA-Z0-9._-]{3,}$/.test(username)) return err('Username must be at least 3 characters and use letters/numbers/._-');
+      if(!email) return err('Microsoft Email Address is required.');
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return err('Enter a valid Microsoft Email Address.');
 
       // Role restrictions
       if(!canCreateRole(actor, role) && (user?.role!==role)) return err('You do not have permission to set that role.');
@@ -570,7 +531,6 @@ function openUserModal(actor, user){
         return err('Developer Access is reserved for Super Admin. Choose Morning/Mid/Night shift.');
       }
 
-      if(!isEdit && !password) return err('Password is required for new users.');
 
       let createdEvent = null;
 
@@ -610,8 +570,7 @@ function openUserModal(actor, user){
             if(!out.ok) return err(out.message || 'Update failed.');
           }
         } else {
-          const email = canonicalEmail(username);
-          const out = await CloudUsers.create({ email, username, full_name: name, name, password, role, team_id: teamId, team: teamId });
+          const out = await CloudUsers.create({ email, username, full_name: name, name, role, team_id: teamId, team: teamId });
           if(!out.ok) {
             let msg = out.message || 'Create failed.';
 
@@ -656,11 +615,8 @@ function openUserModal(actor, user){
       }
 
       // Local/offline persistence
-      const email = canonicalEmail(username);
-
       if(isEdit){
-        const patch = { name, username, email: (user?.email || email), role, teamId };
-        if(password) patch.passwordHash = Auth.hash(password);
+        const patch = { name, username, email: (email || user?.email || ''), role, teamId };
         Store.updateUser(user.id, patch);
       } else {
         const newUser = {
@@ -669,7 +625,7 @@ function openUserModal(actor, user){
           role, teamId,
           schedule: null,
           status: 'active',
-          passwordHash: Auth.hash(password),
+          passwordHash: '',
           createdAt: Date.now(),
         };
         Store.addUser(newUser);

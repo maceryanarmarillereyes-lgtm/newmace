@@ -923,6 +923,14 @@ function renderWorldClocksBar(){
     return (a + b).toUpperCase();
   }
 
+  function _normalizeDailyWorkMode(modeRaw){
+    const mode = String(modeRaw || '').trim().toUpperCase();
+    if(!mode) return '';
+    if(mode === 'OFFICE' || mode === 'IN_OFFICE' || mode === 'IN OFFICE') return 'OFFICE';
+    if(mode === 'WFH' || mode === 'WFM' || mode === 'WORK_FROM_HOME' || mode === 'WORK FROM HOME') return 'WFH';
+    return '';
+  }
+
   function renderOnlineUsersBar(){
     const host = document.getElementById('onlineUsersBar');
     if(!host) return;
@@ -931,6 +939,18 @@ function renderWorldClocksBar(){
 
     let list = [];
     try{ list = (window.Store && Store.getOnlineUsers) ? Store.getOnlineUsers() : []; }catch(_){ list=[]; }
+    const latestModeByUser = {};
+    try{
+      const attendance = (window.Store && Store.getAttendance) ? Store.getAttendance() : [];
+      (Array.isArray(attendance) ? attendance : []).forEach(rec=>{
+        if(!rec) return;
+        const uid = String(rec.userId || rec.id || '').trim();
+        if(!uid || latestModeByUser[uid]) return;
+        const normalized = _normalizeDailyWorkMode(rec.mode);
+        if(normalized) latestModeByUser[uid] = normalized;
+      });
+    }catch(_){ }
+
     const buckets = { morning:[], mid:[], night:[], dev:[] };
     list.forEach(u=>{
       const b = _bucketForUser(u);
@@ -939,7 +959,8 @@ function renderWorldClocksBar(){
 
     function pills(arr){
       return (arr||[]).slice(0, 18).map(u=>{
-        const mode = String(u.mode||'').toUpperCase();
+        const uid = String(u.userId || u.id || '').trim();
+        const mode = _normalizeDailyWorkMode(u.mode) || (uid ? latestModeByUser[uid] : '');
         const red = mode === 'WFH';
         const photo = u.photo ? String(u.photo) : '';
         const nm = String(u.name||u.username||'User');
@@ -1355,7 +1376,7 @@ function updateClocksPreviewTimes(){
     const iconFor = (id)=>{
       const map = {
         dashboard: 'dashboard',
-	        gmt_overview: 'dashboard',
+            gmt_overview: 'dashboard',
         mailbox: 'mailbox',
         team: 'members',
         members: 'members',
@@ -1381,9 +1402,10 @@ function updateClocksPreviewTimes(){
       const padVal = (12 + depth*12);
       const pad = `style="padding-left:${padVal}px"`;
       const hasKids = Array.isArray(n.children) && n.children.length;
+      const depthClass = depth > 0 ? ' nav-subitem' : '';
 
       if(!hasKids){
-        return `<a class="nav-item" href="/${n.id}" data-page="${n.id}" data-label="${UI.esc(n.label)}" ${pad} title="${UI.esc(n.label)}">
+        return `<a class="nav-item depth-${depth}${depthClass}" href="/${n.id}" data-page="${n.id}" data-label="${UI.esc(n.label)}" ${pad} title="${UI.esc(n.label)}">
           <span class="nav-ico" data-ico="${iconFor(n.id)}" aria-hidden="true"></span>
           <span class="nav-label">${UI.esc(n.label)}</span>
         </a>`;
@@ -1398,19 +1420,33 @@ function updateClocksPreviewTimes(){
         .join('');
       if(!kidsHtml) return '';
 
+      const special = n.id === 'my_record' ? ' is-record-group' : '';
       return `
-        <div class="nav-group" data-group="${n.id}">
-          <button class="nav-group-head" type="button" data-toggle="${n.id}" aria-expanded="${isOpen?'true':'false'}" ${pad} data-label="${UI.esc(n.label)}" title="${UI.esc(n.label)}">
+        <div class="nav-group${special}" data-group="${n.id}">
+          <button class="nav-group-head depth-${depth}" type="button" data-toggle="${n.id}" aria-expanded="${isOpen?'true':'false'}" ${pad} data-label="${UI.esc(n.label)}" title="${UI.esc(n.label)}">
             <span class="nav-ico" data-ico="${iconFor(n.id)}" aria-hidden="true"></span>
             <span class="nav-label">${UI.esc(n.label)}</span>
             <span class="chev">▾</span>
           </button>
-          <div class="nav-group-kids" style="display:${isOpen?'block':'none'}">${kidsHtml}</div>
+          <div class="nav-group-kids depth-${depth+1}" style="display:${isOpen?'block':'none'}">${kidsHtml}</div>
         </div>
       `;
     }
 
-    nav.innerHTML = Config.NAV.map(n=>renderItem(n,0)).filter(Boolean).join('');
+    function sectionFor(item){
+      const id = String(item && item.id || '');
+      if(id === 'my_record') return 'records';
+      if(id === 'my_reminders' || id === 'team_reminders') return 'notifications';
+      return 'main';
+    }
+
+    const sectionLabel = {
+      main: 'MAIN',
+      records: 'RECORDS',
+      notifications: 'NOTIFICATIONS'
+    };
+
+    const navItems = Array.isArray(Config.NAV) ? [...Config.NAV] : [];
 
     // --- dynamic Commands menu (delegated privileges per-user) ---
     try{
@@ -1421,13 +1457,23 @@ function updateClocksPreviewTimes(){
         if(extras.includes('view_master_schedule')) kids.push({ id: 'master_schedule', label: 'Master Schedule', icon: '📅', perm: 'view_master_schedule' });
         if(extras.includes('create_users')) kids.push({ id: 'users', label: 'User Management', icon: '👤', perm: 'create_users' });
         if(extras.includes('manage_announcements')) kids.push({ id: 'announcements', label: 'Announcement', icon: '📣', perm: 'manage_announcements' });
-
-        const cmdGroup = { id: 'commands_group', label: 'Commands', icon: '⚡', perm: 'view_dashboard', children: kids };
-        const html = renderItem(cmdGroup, 0);
-        if(html) nav.innerHTML += html;
+        navItems.push({ id: 'commands_group', label: 'Commands', icon: '⚡', perm: 'view_dashboard', children: kids });
       }
-    }catch(_){}
+    }catch(_){ }
 
+    const visible = navItems.map(item=>({ item, html: renderItem(item,0) })).filter(x=>x.html);
+    let navHtml = '';
+    let lastSection = '';
+    visible.forEach(({ item, html })=>{
+      const section = sectionFor(item);
+      if(section !== lastSection){
+        navHtml += `<div class="nav-section-label" data-section="${section}">${sectionLabel[section] || 'MAIN'}</div>`;
+        lastSection = section;
+      }
+      navHtml += html;
+    });
+
+    nav.innerHTML = navHtml;
 
     if(!nav.innerHTML.trim()){
       nav.innerHTML = `
@@ -1451,116 +1497,105 @@ function updateClocksPreviewTimes(){
         localStorage.setItem(`nav_group_${id}`, open ? '0' : '1');
       };
     });
+
+    // Bind direct nav handling on the sidebar itself to avoid delayed page transitions
+    // caused by document-level bubbling handlers and duplicate route invocations.
+    if(!nav.__routeBound){
+      nav.__routeBound = true;
+      nav.__lastNavAt = 0;
+      nav.__lastNavPage = '';
+      nav.addEventListener('click', (e)=>{
+        const a = e.target && e.target.closest ? e.target.closest('a.nav-item') : null;
+        if(!a) return;
+
+        const href = String(a.getAttribute('href') || '');
+        if(!(href.startsWith('/') || href.startsWith('#'))) return;
+
+        if(e.defaultPrevented) return;
+        if(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if(typeof e.button === 'number' && e.button !== 0) return;
+
+        const pageId = _routePageIdFromHref(href);
+        if(!pageId) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const now = Date.now();
+        const isDuplicate = (nav.__lastNavPage === pageId) && (now - Number(nav.__lastNavAt || 0) < 200);
+        nav.__lastNavAt = now;
+        nav.__lastNavPage = pageId;
+        if(isDuplicate) return;
+
+        try{ setActiveNav(pageId); }catch(_){ }
+
+        if(href.startsWith('#') || String(window.location.protocol||'') === 'file:'){
+          window.location.hash = '#' + pageId;
+        }else{
+          navigateToPageId(pageId);
+        }
+
+        // Mobile: close drawers immediately after explicit navigation.
+        try{ if(_isMobileViewport()) closeMobileDrawers(); }catch(_){ }
+      });
+    }
   }
 
   function renderUserCard(user){
     const el = UI.el('#userCard');
     if(!el) return;
     const team = Config.teamById(user.teamId);
-    // Current duty for the logged-in user (Manila time).
-    // Uses the weekly schedule blocks for today's Manila date.
-    const duty = (function(){
-      const todayISO = UI.manilaTodayISO();
-
-      // 1) Leaves override duty
-      const lv = Store.getLeave(user.id, todayISO);
-      if(lv && lv.type){
-        const map = { SICK:'ON SICK LEAVE', EMERGENCY:'ON EMERGENCY LEAVE', VACATION:'ON VACATION LEAVE', HOLIDAY:'ON HOLIDAY LEAVE' };
-        return { roleId: null, label: map[lv.type] || 'ON LEAVE' };
-      }
-
-      // 2) Rest day override duty (based on master schedule cycle)
-      try{
-        const mm = Store.getMasterMember(user.teamId, user.id);
-        const tm = Store.getTeamMaster(user.teamId) || {};
-        const freq = Number(tm.frequencyMonths || 1) || 1;
-        if(mm && Array.isArray(mm.restWeekdays) && mm.restWeekdays.length){
-          const dow = UI.weekdayFromISO(todayISO);
-          // month-difference cycle check (Manila calendar, ISO-safe)
-          const s = String(mm.startISO || todayISO);
-          const sy = parseInt(s.slice(0,4),10), sm = parseInt(s.slice(5,7),10);
-          const ty = parseInt(todayISO.slice(0,4),10), tm0 = parseInt(todayISO.slice(5,7),10);
-          if(Number.isFinite(sy) && Number.isFinite(sm) && Number.isFinite(ty) && Number.isFinite(tm0)){
-            const monthsDiff = (ty - sy) * 12 + (tm0 - sm);
-            const inCycle = monthsDiff >= 0 ? (monthsDiff % freq === 0) : false;
-            if(inCycle && mm.restWeekdays.includes(dow)){
-              return { roleId: null, label: 'ON REST DAY' };
-            }
-          }
-        }
-      }catch(e){ /* ignore */ }
-
-      // 3) Otherwise, compute duty from the currently active scheduled block
-      const dow = UI.weekdayFromISO(todayISO);
-      if(dow === null) return { roleId: null, label: '—' };
-
-      const p = UI.manilaNow();
-      const nowMin = UI.minutesOfDay(p);
-      const blocks = Store.getUserDayBlocks(user.id, dow) || [];
-      for(const b of blocks){
-        const s = UI.parseHM(b.start);
-        const e = UI.parseHM(b.end);
-        if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
-        const wraps = e <= s;
-        const hit = (!wraps && nowMin >= s && nowMin < e) || (wraps && (nowMin >= s || nowMin < e));
-        if(hit){
-          const sc = Config.scheduleById(b.role);
-          return { roleId: b.role, label: (sc && sc.label) ? sc.label : String(b.role||'—') };
-        }
-      }
-      return { roleId: null, label: '—' };
-    })();
     const prof = Store.getProfile(user.id) || {};
     const initials = UI.initials(user.name||user.username);
     const avatarHtml = prof.photoDataUrl
       ? `<img src="${prof.photoDataUrl}" alt="User photo" />`
       : `<div class="initials">${UI.esc(initials)}</div>`;
 
-    // Sidebar profile: compact by default to maximize vertical space for the menu list.
-    // (Users can still edit profile via Settings.)
-    let shiftLabel = (team && team.label) ? String(team.label).toUpperCase() : '';
-    // Developer Access label parity (matches Online Users Bar + backend normalization):
-    // SUPER roles default to Developer Access when teamOverride is false and teamId is empty.
+    let shiftLabel = (team && team.label) ? String(team.label) : '';
     try{
       const r = String(user.role||'').toUpperCase();
       const isSuper = (window.Config && Config.ROLES) ? (r === String(Config.ROLES.SUPER_ADMIN) || r === String(Config.ROLES.SUPER_USER)) : (r === 'SUPER_ADMIN' || r === 'SUPER_USER');
       const override = !!(user.teamOverride ?? user.team_override ?? false);
       const tid = (user.teamId === null || user.teamId === undefined) ? '' : String(user.teamId);
       if(isSuper && !override && !tid){
-        shiftLabel = 'DEVELOPER ACCESS';
+        shiftLabel = 'Developer Access';
       }
-    }catch(_){}
+    }catch(_){ }
+
+    let isActive = true;
+    try{
+      const online = (window.Store && Store.getOnlineUsers) ? Store.getOnlineUsers() : [];
+      isActive = online.some(rec => String(rec.userId || rec.id || '') === String(user.id));
+    }catch(_){ }
+
     const roleLabel = String(user.role||'').replaceAll('_',' ');
+    const safeRole = UI.esc(roleLabel || 'Member');
+    const safeShift = UI.esc(shiftLabel || 'N/A');
+    const subtitle = `${safeRole} • ${safeShift}`;
+
     el.innerHTML = `
-      <div class="sp-compact sp-compact-v2" role="group" aria-label="User profile">
-        <div class="sp-name sp-name-sm sp-name-top">${UI.esc(user.name||user.username)}</div>
+      <div class="sp-compact sp-compact-v3" role="group" aria-label="User profile">
         <div class="sp-row">
-          <div class="sp-photo sp-photo-sm" aria-hidden="true">${avatarHtml}</div>
+          <div class="sp-photo sp-photo-sm sp-photo-circle" aria-hidden="true">
+            ${avatarHtml}
+            <span class="sp-presence-dot ${isActive ? 'is-active' : 'is-idle'}" title="${isActive ? 'Active' : 'Away'}"></span>
+          </div>
           <div class="sp-info sp-info-row">
-            <div class="sp-meta">
-              <span class="sp-role">${UI.esc(roleLabel||'')}</span>
-              <span class="sp-dot" aria-hidden="true">•</span>
-              <span class="sp-shift-sm">${UI.esc(shiftLabel||'')}</span>
-            </div>
-            <div class="sp-dutyline"><span class="muted">Duty:</span> <span class="sp-dutyvalue">${UI.esc(duty.label||'—')}</span></div>
-            <div class="sp-tz small muted">Asia/Manila</div>
+            <div class="sp-name sp-name-strong">${UI.esc(user.name||user.username||'Unknown User')}</div>
+            <div class="sp-meta sp-meta-subtitle" title="Timezone: Asia/Manila">${subtitle}</div>
           </div>
         </div>
       </div>
     `;
 
-    // Auto-fit text so long names/duty are still readable within the allocated sidebar width.
     const nm = el.querySelector('.sp-name');
-    const dutyEl = el.querySelector('.sp-dutyline');
-    // Run after layout
+    const sub = el.querySelector('.sp-meta-subtitle');
     requestAnimationFrame(()=>{
       try{
-        if(nm) fitText(nm, 14, 22);
-        if(dutyEl) fitText(dutyEl, 11, 12);
+        if(nm) fitText(nm, 15, 24);
+        if(sub) fitText(sub, 11, 14);
       }catch(err){ console.error('Profile RAF error', err); }
     });
-
-    // no inline edit button
   }
 
   function cloudProfileEnabled(){
@@ -2012,11 +2047,15 @@ function updateClocksPreviewTimes(){
     const box = UI.el('#sideLogs');
     const list = UI.el('#sideLogsList');
     const hint = UI.el('#sideLogsHint');
-    const btn = UI.el('#openLogs');
-    if(!box || !list || !btn) return;
-    btn.onclick = ()=>{ window.location.hash = '#logs'; };
-    const logs = Store.getLogs().filter(l=>canSeeLog(user,l)).slice(0,5);
-    hint.textContent = logs.length ? `Showing ${logs.length} recent` : 'No activity';
+    const viewAllBtn = UI.el('#sideLogsViewAll');
+    if(!box || !list) return;
+
+    const openLogs = ()=>{ window.location.hash = '#logs'; };
+    if(viewAllBtn) viewAllBtn.onclick = openLogs;
+
+    const logs = Store.getLogs().filter(l=>canSeeLog(user,l)).slice(0,6);
+    if(hint) hint.textContent = logs.length ? `Updated ${logs.length} item${logs.length>1?'s':''}` : 'No activity';
+
     const fmt = (ts)=>{
       try{
         const p = UI.manilaParts(new Date(ts));
@@ -2030,11 +2069,19 @@ function updateClocksPreviewTimes(){
         return `${hh}:${mm}`;
       }
     };
-    list.innerHTML = logs.map(e=>{
+
+    if(!logs.length){
+      list.innerHTML = '<div class="log-empty">No recent activity.</div>';
+      return;
+    }
+
+    list.innerHTML = logs.map((e, idx)=>{
       const teamClass = `team-${e.teamId}`;
+      const msg = UI.esc(e.msg||e.action||'Activity updated');
       return `<div class="logline ${teamClass}" title="${UI.esc(e.detail||'')}">
-        <span class="t">[${fmt(e.ts)}]</span>
-        <span class="m">${UI.esc(e.msg||e.action||'')}</span>
+        <span class="t">${fmt(e.ts)}</span>
+        <span class="tl-dot" aria-hidden="true"></span>
+        <span class="m">${msg}</span>
       </div>`;
     }).join('');
   }
@@ -2817,6 +2864,16 @@ function updateClocksPreviewTimes(){
   // - Supports clean URLs like /dashboard while preserving legacy hash routing.
   // - Hash takes precedence when present (supports file:// mode and deep-links).
   // ----------------------
+  function _normalizeRouteSegment(raw){
+    try{
+      let s = String(raw||'').trim();
+      if(!s) return '';
+      if(s.startsWith('#')) s = s.slice(1);
+      if(s.startsWith('/')) s = s.slice(1);
+      return s.split('?')[0].split('#')[0].split('/')[0] || '';
+    }catch(_){ return ''; }
+  }
+
   function _routePageIdFromHref(href){
     try{
       const h = String(href||'').trim();
@@ -2825,12 +2882,10 @@ function updateClocksPreviewTimes(){
         // Support legacy hash routes both with and without a leading slash:
         //   #my_schedule   ✅
         //   #/my_schedule  ✅
-        let s = h.slice(1).split('?')[0].split('#')[0];
-        if(s.startsWith('/')) s = s.slice(1);
-        return s.split('/')[0] || '';
+        return _normalizeRouteSegment(h);
       }
       if(h[0] === '/'){
-        return h.slice(1).split('?')[0].split('#')[0].split('/')[0];
+        return _normalizeRouteSegment(h);
       }
       return '';
     }catch(_){ return ''; }
@@ -2839,18 +2894,19 @@ function updateClocksPreviewTimes(){
   function resolveRoutePageId(){
     try{
       const pages = window.Pages || {};
-      let h = String(window.location.hash||'').replace(/^#/, '').trim();
-      // Support legacy hash routes both with and without a leading slash:
-      //   #my_schedule   ✅
-      //   #/my_schedule  ✅
-      if(h.startsWith('/')) h = h.slice(1);
-      if(h && pages[h]) return h;
+      const hashId = _normalizeRouteSegment(window.location.hash||'');
 
       const proto = String(window.location.protocol||'');
       if(proto !== 'file:'){
-        const p = String(window.location.pathname||'/');
-        const seg = (p.split('/').filter(Boolean)[0] || '').trim();
+        const seg = _normalizeRouteSegment(window.location.pathname||'/');
+        // In hosted mode (http/https), clean path is canonical.
+        // This avoids stale hashes from previous pages (e.g. #my_schedule)
+        // overriding explicit sidebar navigation to another page.
         if(seg && !seg.includes('.') && pages[seg]) return seg;
+        if(hashId && pages[hashId]) return hashId;
+      }else{
+        // file:// mode still relies on hash routing.
+        if(hashId && pages[hashId]) return hashId;
       }
 
       if(pages['dashboard']) return 'dashboard';
@@ -2876,6 +2932,9 @@ function updateClocksPreviewTimes(){
       const url = '/' + id;
       if(opts && opts.replace) history.replaceState({},'', url);
       else history.pushState({},'', url);
+      // In hosted mode, keep clean URLs authoritative. Remove any stale hash
+      // left behind by legacy hash-based links/pages to prevent route mismatch.
+      try{ if(window.location.hash) history.replaceState({},'', url); }catch(_){ }
       // pushState/replaceState does not trigger navigation handlers
       try{ route(); }catch(_){ }
     }catch(_){

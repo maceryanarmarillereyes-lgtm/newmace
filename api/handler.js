@@ -39,6 +39,7 @@ const ROUTES = {
 
   'mailbox/assign': require('../server/routes/mailbox/assign'),
   'mailbox/confirm': require('../server/routes/mailbox/confirm'),
+  'mailbox/case_action': require('../server/routes/mailbox/case_action'),
 
   'presence/heartbeat': require('../server/routes/presence/heartbeat'),
   'presence/list': require('../server/routes/presence/list'),
@@ -57,8 +58,36 @@ const ROUTES = {
   'users/update_user': require('../server/routes/users/update_user'),
   'users/upload_avatar': require('../server/routes/users/upload_avatar'),
   'users/remove_avatar': require('../server/routes/users/remove_avatar'),
-  'users/delete': require('../server/routes/users/delete')
+  'users/delete': require('../server/routes/users/delete'),
+
+  'member/schedule': require('../server/routes/member_schedule'),
+
+  'tasks/assigned': require('../server/routes/tasks/assigned'),
+  'tasks/distributions': require('../server/routes/tasks/distributions'),
+  'tasks/distribution_items': require('../server/routes/tasks/distribution_items'),
+  'tasks/item_status': require('../server/routes/tasks/item_status'),
+  'tasks/workload_matrix': require('../server/routes/tasks/workload_matrix'),
+  'tasks/members': require('../server/routes/tasks/members'),
 };
+
+const DYNAMIC_ROUTES = [
+  {
+    pattern: /^member\/([^/]+)\/schedule$/,
+    handler: ROUTES['member/schedule'],
+    paramMap: (m) => ({ memberId: decodeURIComponent(m[1] || '') })
+  }
+];
+
+function resolveRoute(routePath) {
+  const exact = ROUTES[routePath];
+  if (exact) return { handler: exact, params: {} };
+  for (const entry of DYNAMIC_ROUTES) {
+    const hit = routePath.match(entry.pattern);
+    if (!hit) continue;
+    return { handler: entry.handler, params: entry.paramMap(hit) };
+  }
+  return { handler: null, params: {} };
+}
 
 module.exports = async (req, res) => {
   try {
@@ -74,14 +103,15 @@ module.exports = async (req, res) => {
     }
 
     const routePath = normalizePath(p);
-    const handler = ROUTES[routePath];
+    const resolved = resolveRoute(routePath);
+    const handler = resolved.handler;
 
     if (!handler) {
       res.setHeader('Cache-Control', 'no-store');
       return sendJson(res, 404, { ok: false, error: 'not_found', path: routePath });
     }
 
-    return await handler(req, res);
+    return await handler(req, res, resolved.params);
   } catch (err) {
     return sendJson(res, 500, { ok: false, error: 'router_failed', message: String(err && err.message ? err.message : err) });
   }

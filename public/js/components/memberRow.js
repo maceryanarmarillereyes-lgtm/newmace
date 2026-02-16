@@ -100,8 +100,8 @@
                 ${ticksHtml}
                 ${segsHtml}
                 ${isInactive ? `<div class="timeline-overlay">${esc(inactiveText)}</div>`:''}
-              </div>
                 ${dayLocked ? `<div class="locked-below" aria-label="Locked day" title="Locked"><span class="lock-ic" aria-hidden="true"></span></div>`:''}
+              </div>
               </div>
             </div>
 
