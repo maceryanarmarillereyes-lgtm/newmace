@@ -3,6 +3,16 @@ const { sendJson, requireAuthedUser, serviceFetch, serviceSelect, serviceInsert 
 const OWNER_COLUMNS = ['created_by', 'created_by_user_id', 'owner_id', 'user_id'];
 const ITEM_DISTRIBUTION_COLUMNS = ['distribution_id', 'task_distribution_id'];
 
+function formatErrorMessage(code, details) {
+  if (!details) return String(code || 'error');
+  try {
+    const asText = typeof details === 'string' ? details : JSON.stringify(details);
+    return asText ? `${code}: ${asText}` : String(code || 'error');
+  } catch (_) {
+    return String(code || 'error');
+  }
+}
+
 function ownerIdFromDistribution(distribution) {
   const row = distribution && typeof distribution === 'object' ? distribution : {};
   for (const key of OWNER_COLUMNS) {
@@ -159,7 +169,7 @@ async function insertDistributionRow(title, uid, metadata) {
   return { row: null, ownerKey: OWNER_COLUMNS[0], error: 'distribution_owner_column_not_found' };
 }
 
-async function insertTaskItems(distributionId, rows) {
+async function insertTaskItems(distributionId, rows, createdBy) {
   const payloadBase = rows.map((row) => {
     const deadlineText = sanitizeCell(row.deadline);
     const deadlineAt = normalizeDeadlineAt(deadlineText);
@@ -169,6 +179,9 @@ async function insertTaskItems(distributionId, rows) {
       case_no: row.caseNumber,
       site: row.site,
       description: row.description,
+      created_by: createdBy,
+      created_by_user_id: createdBy,
+      owner_id: createdBy,
       assigned_to: row.assignedTo,
       assignee_user_id: row.assignedTo,
       deadline: deadlineDate,
@@ -180,8 +193,9 @@ async function insertTaskItems(distributionId, rows) {
     };
   });
 
-  const optionalColumns = ['case_no', 'assignee_user_id', 'deadline', 'due_at', 'deadline_at', 'reference_url', 'remarks'];
+  const optionalColumns = ['case_no', 'assignee_user_id', 'created_by', 'created_by_user_id', 'owner_id', 'deadline', 'due_at', 'deadline_at', 'reference_url', 'remarks'];
   const requiredColumns = ['case_number', 'site', 'description', 'assigned_to', 'status'];
+
   const buildPayload = (distributionKey, dropColumns) => payloadBase.map((item) => {
     const next = {};
     [...requiredColumns, ...optionalColumns].forEach((column) => {
@@ -200,15 +214,30 @@ async function insertTaskItems(distributionId, rows) {
     return match ? String(match[1] || '').trim() : '';
   };
 
+  const isDuplicate = (errText) => {
+    const e = String(errText || '').toLowerCase();
+    return e.includes('duplicate key value') || e.includes('unique constraint') || e.includes('conflict');
+  };
+
+  async function insertOne(rowObj) {
+    const out = await serviceInsert('task_items', [rowObj]);
+    if (!out.ok) return { ok: false, out };
+    const inserted = Array.isArray(out.json) ? out.json : [];
+    return { ok: true, row: inserted[0] || null, out };
+  }
+
   for (const distributionKey of ITEM_DISTRIBUTION_COLUMNS) {
     const dropColumns = new Set();
+
     while (true) {
       const payload = buildPayload(distributionKey, dropColumns);
       const out = await serviceInsert('task_items', payload);
-      if (out.ok) return { ok: true, out };
+      if (out.ok) return { ok: true, out, inserted_count: payload.length, skipped_count: 0, skipped: [] };
 
       const errText = JSON.stringify(out.json || out.text || '');
       const err = errText.toLowerCase();
+
+      // Column mismatch handling
       const missingDistributionKey = err.includes('column') && err.includes(distributionKey.toLowerCase());
       if (missingDistributionKey) break;
 
@@ -218,13 +247,51 @@ async function insertTaskItems(distributionId, rows) {
         continue;
       }
 
+      // Common bad date payload scenario
       if ((err.includes('invalid input syntax') || err.includes('date/time field value out of range')) && !dropColumns.has('deadline_at')) {
         dropColumns.add('deadline_at');
         dropColumns.add('due_at');
         continue;
       }
 
-      return { ok: false, out };
+      // Bulk insert failed: fall back to row-by-row to surface the exact failing row.
+      const inserted = [];
+      const skipped = [];
+
+      for (let i = 0; i < payload.length; i += 1) {
+        const rowObj = payload[i];
+        const one = await insertOne(rowObj);
+        if (one.ok) {
+          inserted.push(one.row);
+          continue;
+        }
+
+        const oneErr = JSON.stringify(one.out.json || one.out.text || '');
+        if (isDuplicate(oneErr)) {
+          skipped.push({ index: i, row: rowObj, reason: 'duplicate', details: one.out.json || one.out.text });
+          continue;
+        }
+
+        return {
+          ok: false,
+          out: one.out,
+          failing: {
+            index: i,
+            case_number: rowObj.case_number || rowObj.case_no,
+            site: rowObj.site,
+            assigned_to: rowObj.assigned_to || rowObj.assignee_user_id,
+            distribution_key: distributionKey
+          }
+        };
+      }
+
+      return {
+        ok: true,
+        out: { ok: true, json: inserted },
+        inserted_count: inserted.length,
+        skipped_count: skipped.length,
+        skipped
+      };
     }
   }
 
@@ -326,6 +393,7 @@ module.exports = async (req, res) => {
         return sendJson(res, 500, {
           ok: false,
           error: 'distribution_create_failed',
+          message: formatErrorMessage('distribution_create_failed', created.error || 'distribution_insert_failed'),
           details: created.error || 'distribution_insert_failed'
         });
       }
@@ -338,20 +406,27 @@ module.exports = async (req, res) => {
         });
       }
 
-      const insertedItems = await insertTaskItems(distributionId, normalizedRows);
+      const insertedItems = await insertTaskItems(distributionId, normalizedRows, uid);
       if (!insertedItems.ok) {
         await rollbackDistribution(distributionId);
         return sendJson(res, 500, {
           ok: false,
           error: 'task_items_create_failed',
-          details: insertedItems.out && (insertedItems.out.json || insertedItems.out.text)
+          message: formatErrorMessage('task_items_create_failed', {
+            details: insertedItems.out && (insertedItems.out.json || insertedItems.out.text),
+            failing: insertedItems.failing || null
+          }),
+          details: insertedItems.out && (insertedItems.out.json || insertedItems.out.text),
+          failing: insertedItems.failing || null
         });
       }
 
       return sendJson(res, 200, {
         ok: true,
         distribution: created.row,
-        items: Array.isArray(insertedItems.out.json) ? insertedItems.out.json : []
+        items: Array.isArray(insertedItems.out.json) ? insertedItems.out.json : [],
+        inserted_count: insertedItems.inserted_count || (Array.isArray(insertedItems.out.json) ? insertedItems.out.json.length : 0),
+        skipped_count: insertedItems.skipped_count || 0
       });
     }
 
