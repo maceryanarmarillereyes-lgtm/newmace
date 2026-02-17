@@ -108,71 +108,13 @@
     'mums_schedule_notifs'
   ]);
 
-  // Persisted suppression for server-forbidden keys.
-  // If the server returns 403 for a key, continuing to attempt pushes creates
-  // request storms and console spam (especially on dashboards that emit
-  // frequent log updates). We remember forbidden keys per-browser and skip
-  // subsequent pushes for those keys.
-  const FORBIDDEN_PUSH_KEYS_STORAGE = 'mums_forbidden_push_keys_v1';
-  // If a user's role changes (e.g., promoted to Team Lead), we should not
-  // permanently suppress keys forever. We expire the suppression periodically.
-  const FORBIDDEN_PUSH_KEYS_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
-  const forbiddenPushKeys = new Set();
-
-  function loadForbiddenPushKeys(){
-    try{
-      const raw = localStorage.getItem(FORBIDDEN_PUSH_KEYS_STORAGE);
-      const parsed = raw ? JSON.parse(raw) : null;
-
-      // Back-compat: older builds stored a raw array.
-      let keys = [];
-      let ts = 0;
-      if(Array.isArray(parsed)){
-        keys = parsed;
-      } else if(parsed && typeof parsed === 'object'){
-        keys = Array.isArray(parsed.keys) ? parsed.keys : [];
-        ts = Number(parsed.ts || 0);
-      }
-
-      if(ts && (Date.now() - ts) > FORBIDDEN_PUSH_KEYS_TTL_MS){
-        try{ localStorage.removeItem(FORBIDDEN_PUSH_KEYS_STORAGE); }catch(_){ }
-        return;
-      }
-
-      keys.forEach((k)=>{ if(k) forbiddenPushKeys.add(String(k)); });
-    }catch(_){ }
-  }
-  function saveForbiddenPushKeys(){
-    try{
-      localStorage.setItem(
-        FORBIDDEN_PUSH_KEYS_STORAGE,
-        JSON.stringify({ v: 1, ts: Date.now(), keys: Array.from(forbiddenPushKeys) })
-      );
-    }catch(_){ }
-  }
-  function markForbiddenPushKey(key){
-    try{
-      const k = String(key||'').trim();
-      if(!k) return;
-      if(forbiddenPushKeys.has(k)) return;
-      forbiddenPushKeys.add(k);
-      saveForbiddenPushKeys();
-      try{ if(window.Store && Store.addLog) Store.addLog({ action: 'SYNC_PUSH_FORBIDDEN', detail: k }); }catch(_){ }
-    }catch(_){ }
-  }
-
-  // Load once on module init.
-  loadForbiddenPushKeys();
-
   function canPushKey(key){
     try{
-      const k = String(key||'');
-      if(forbiddenPushKeys.has(k)) return false;
       if (!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled())) return false;
       if (!(CloudAuth.accessToken && CloudAuth.accessToken())) return false;
       const u = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
       const role = String(u.role || 'MEMBER');
-      if (role === 'MEMBER' && !MEMBER_PUSH_KEYS.has(k)) return false;
+      if (role === 'MEMBER' && !MEMBER_PUSH_KEYS.has(String(key||''))) return false;
       return true;
     }catch(_){
       return false;
@@ -292,7 +234,6 @@
             // - 403 indicates the current role is not allowed to push this key.
             //   Keeping it in the queue causes repeated 403 spam on resume.
             if(st === 403){
-              try{ markForbiddenPushKey(item.key || k); }catch(_){ }
               try{ if (window.Store && Store.addLog) Store.addLog({ action: 'SYNC_QUEUE_DROP_FORBIDDEN', detail: String(item.key||k) + ' status=403' }); }catch(_){}
               delete q[k];
               continue;
@@ -612,19 +553,6 @@ function applyRemoteKey(key, value){
         method: 'POST',
         body: JSON.stringify(body)
       });
-
-      // RBAC mismatch hardening:
-      // If the server forbids this key, permanently suppress further attempts
-      // to prevent repeated 403 request storms and console spam.
-      if (!out.ok && out.status === 403) {
-        const code = String(out && out.json && out.json.code ? out.json.code : '').trim();
-        if (code === 'forbidden_key' || code === 'forbidden_member_write' || !code) {
-          try{ markForbiddenPushKey(key); }catch(_){ }
-          dispatchStatus(cloudMode, `Push forbidden (${String(key||'')})`);
-          return;
-        }
-      }
-
       if (!out.ok) {
         try { enqueue(key, value, removedIds, op, 'push_failed', 'http_' + String(out.status)); } catch(_){}
         // Do not change mode on push failures; surface detail only.

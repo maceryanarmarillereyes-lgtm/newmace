@@ -130,102 +130,11 @@ overrideLabel(override){
       return String(message);
     },
 
-// High-visibility error alerts (Upper Center + Red Overlay)
-_ensureHighAlertHosts(){
-  let overlay = document.getElementById('highAlertOverlay');
-  if(!overlay){
-    overlay = document.createElement('div');
-    overlay.id = 'highAlertOverlay';
-    overlay.className = 'high-alert-overlay';
-    overlay.style.display = 'none';
-    document.body.appendChild(overlay);
-  }
-
-  let host = document.getElementById('highAlertHost');
-  if(!host){
-    host = document.createElement('div');
-    host.id = 'highAlertHost';
-    host.className = 'high-alert-host';
-    host.style.display = 'none';
-    host.innerHTML = `
-      <div class="high-alert-box" role="alert" aria-live="assertive">
-        <div class="high-alert-title">⚠️ Error</div>
-        <div class="high-alert-message" id="highAlertMessage"></div>
-        <div class="high-alert-actions">
-          <button class="btn danger" type="button" id="highAlertCloseBtn">Close</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(host);
-  }
-  return { overlay, host };
-},
-
-alertError(message, opts){
-  try{
-    const msg = UI._normalizeToastMessage(message);
-    const o = Object.assign({ title: '⚠️ Error', autoCloseMs: 7000 }, (opts||{}));
-    const hosts = UI._ensureHighAlertHosts();
-    const overlay = hosts.overlay;
-    const host = hosts.host;
-    const titleEl = host.querySelector('.high-alert-title');
-    const msgEl = host.querySelector('#highAlertMessage');
-    const closeBtn = host.querySelector('#highAlertCloseBtn');
-
-    if(titleEl) titleEl.textContent = String(o.title || '⚠️ Error');
-    if(msgEl) msgEl.textContent = String(msg || 'Unknown error');
-
-    overlay.style.display = 'block';
-    host.style.display = 'flex';
-
-    // Ensure this sits above app modals.
-    overlay.style.zIndex = '2147483645';
-    host.style.zIndex = '2147483646';
-
-    if(closeBtn && !closeBtn._mumsBound){
-      closeBtn._mumsBound = true;
-      closeBtn.onclick = () => UI.closeAlertError();
-    }
-    if(!host._mumsBound){
-      host._mumsBound = true;
-      host.addEventListener('click', (ev)=>{
-        // Clicking outside the box closes the alert.
-        if(ev.target === host) UI.closeAlertError();
-      });
-    }
-
-    if(host._mumsTimer) clearTimeout(host._mumsTimer);
-    const ms = Number(o.autoCloseMs || 0);
-    if(ms > 0){
-      host._mumsTimer = setTimeout(()=>UI.closeAlertError(), ms);
-    }
-  }catch(err){
-    try{ console.error('UI.alertError failed', err); }catch(_){}
-  }
-},
-
-closeAlertError(){
-  try{
-    const overlay = document.getElementById('highAlertOverlay');
-    const host = document.getElementById('highAlertHost');
-    if(host && host._mumsTimer){
-      clearTimeout(host._mumsTimer);
-      host._mumsTimer = null;
-    }
-    if(overlay) overlay.style.display = 'none';
-    if(host) host.style.display = 'none';
-  }catch(_){}
-},
-
 toast(message, variant){
       try{
-        const v = String(variant||'').toLowerCase();
-        if(v==='danger' || v==='error' || v==='invalid'){
-          UI.alertError(message);
-          return;
-        }
         const host = UI._ensureToastHost();
         const t = document.createElement('div');
+        const v = String(variant||'').toLowerCase();
         t.className = 'toast' + (v ? ` ${v}` : '');
         const msg = UI._normalizeToastMessage(message);
         t.textContent = msg;

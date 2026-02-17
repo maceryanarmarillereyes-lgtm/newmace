@@ -772,7 +772,7 @@
         const next = normalizeItemStatus(selectEl.value);
         const { item } = findTaskItem(taskItemId);
         if (!item) {
-          UI && UI.toast && UI.toast('Task item not found.', 'danger');
+          UI && UI.toast && UI.toast('Task item not found.', 'warn');
           return;
         }
 
@@ -803,7 +803,7 @@
           delete state.pendingStatusByItemId[taskItemId];
           delete state.savingStatusByItemId[taskItemId];
           render();
-          UI && UI.toast && UI.toast(out.message || 'Failed to update status.', 'danger');
+          UI && UI.toast && UI.toast(out.message || 'Failed to update status.', 'warn');
           return;
         }
 
@@ -853,7 +853,6 @@
           if (!taskItemId) return cancel();
           if (!notes) {
             state.problemModal.error = 'Notes are required for “With Problem”.';
-            try{ UI && UI.toast && UI.toast(state.problemModal.error, 'danger'); }catch(_){ }
             render();
             return;
           }
@@ -865,7 +864,6 @@
           const out = await CloudTasks.updateItemStatus({ task_item_id: taskItemId, status: 'With Problem', problem_notes: notes });
           if (!out.ok) {
             state.problemModal.error = out.message || 'Failed to update status.';
-            try{ UI && UI.toast && UI.toast(state.problemModal.error, 'danger'); }catch(_){ }
             delete state.savingStatusByItemId[taskItemId];
             render();
             return;
