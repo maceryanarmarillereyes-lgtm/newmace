@@ -10,6 +10,22 @@
     creating: false,
     activeTab: 'assigned',
 
+    // Member experience: status editing
+    pendingStatusByItemId: {},
+    savingStatusByItemId: {},
+    problemModal: {
+      open: false,
+      taskItemId: '',
+      prevStatus: 'Pending',
+      notes: '',
+      error: ''
+    },
+
+    // Deep-link support: /my_task?dist=<distribution_id>
+    deepLinkDistId: '',
+    deepLinkApplied: false,
+    deepLinkScrolled: false,
+
     assignedGroups: [],
     expandedAssignedId: '',
 
@@ -34,6 +50,88 @@
 
     isSheetJsReady: false
   };
+
+  const STATUS_OPTIONS = ['Pending', 'Ongoing', 'Completed', 'With Problem'];
+
+  function normalizeItemStatus(value) {
+    const s = String(value == null ? '' : value).trim().toLowerCase();
+    if (!s) return 'Pending';
+    if (s === 'pending' || s === 'p' || s === 'new') return 'Pending';
+    if (s === 'ongoing' || s === 'in progress' || s === 'in_progress') return 'Ongoing';
+    if (s === 'completed' || s === 'done' || s === 'complete') return 'Completed';
+    if (s === 'with problem' || s === 'with_problem' || s === 'problem') return 'With Problem';
+    // Back-compat for legacy uppercase statuses
+    if (s === 'pending') return 'Pending';
+    if (s === 'ongoing') return 'Ongoing';
+    if (s === 'completed') return 'Completed';
+    if (s === 'with problem') return 'With Problem';
+    return 'Pending';
+  }
+
+  function statusClass(label) {
+    const s = normalizeItemStatus(label).toLowerCase();
+    if (s === 'completed') return 'status-completed';
+    if (s === 'ongoing') return 'status-ongoing';
+    if (s === 'with problem') return 'status-problem';
+    return 'status-pending';
+  }
+
+  function getQueryParam(name) {
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      return params.get(name);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function findTaskItem(taskItemId) {
+    const id = String(taskItemId || '');
+    for (const group of state.assignedGroups) {
+      const rows = Array.isArray(group.items) ? group.items : [];
+      const hit = rows.find((r) => String(r.id || '') === id);
+      if (hit) return { group, item: hit };
+    }
+    return { group: null, item: null };
+  }
+
+  function applyDeepLinkIfNeeded() {
+    if (state.deepLinkApplied) return;
+    const dist = String(getQueryParam('dist') || '').trim();
+    if (!dist) return;
+    state.deepLinkApplied = true;
+    state.deepLinkDistId = dist;
+    state.activeTab = 'assigned';
+    state.expandedAssignedId = dist;
+  }
+
+  function requestDeepLinkScroll() {
+    if (!state.deepLinkDistId || state.deepLinkScrolled) return;
+    state.deepLinkScrolled = true;
+    setTimeout(() => {
+      const el = document.getElementById(`assignedGroup_${state.deepLinkDistId}`);
+      if (el && el.scrollIntoView) {
+        try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { el.scrollIntoView(); }
+      }
+    }, 50);
+  }
+
+  // Allow notifications to expand a distribution without page reload
+  const onOpenTaskDistribution = (ev) => {
+    try {
+      const distId = String(ev && ev.detail ? ev.detail.distribution_id || '' : '');
+      if (!distId) return;
+      state.activeTab = 'assigned';
+      state.expandedAssignedId = distId;
+      state.deepLinkDistId = distId;
+      state.deepLinkApplied = true;
+      state.deepLinkScrolled = false;
+      render();
+    } catch (_) {
+      // no-op
+    }
+  };
+  window.addEventListener('mums:open_task_distribution', onOpenTaskDistribution);
 
   function normalizeName(value) {
     return String(value || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -120,6 +218,15 @@
       .upload-zone{border:2px dashed rgba(148,163,184,.4);border-radius:8px;padding:22px;text-align:center;transition:all .2s ease}
       .upload-zone.drag{border-color:#22d3ee;background:rgba(34,211,238,.08)}
       .task-invalid{background:rgba(239,68,68,.16)!important}
+      .task-status-select{width:max-content;max-width:220px;padding:6px 10px;border-radius:999px;font-weight:800;font-size:12px;border:1px solid rgba(148,163,184,.28);background:rgba(15,23,42,.55);color:#e2e8f0;outline:none}
+      .task-status-select:disabled{opacity:.65;cursor:not-allowed}
+      .task-status-select.status-pending{border-color:rgba(245,158,11,.55);background:rgba(245,158,11,.14);color:#fde68a}
+      .task-status-select.status-ongoing{border-color:rgba(59,130,246,.55);background:rgba(59,130,246,.14);color:#bfdbfe}
+      .task-status-select.status-completed{border-color:rgba(16,185,129,.55);background:rgba(16,185,129,.14);color:#a7f3d0}
+      .task-status-select.status-problem{border-color:rgba(239,68,68,.55);background:rgba(239,68,68,.14);color:#fecaca}
+      .task-problem-notes{font-size:12px;color:#fecaca;line-height:1.3;word-break:break-word;opacity:.95}
+      .task-modal-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+      .task-modal-error{font-size:12px;color:#fecaca;background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.25);padding:10px 12px;border-radius:8px}
       @keyframes taskSpin{to{transform:rotate(360deg)}}
     `;
 
@@ -135,7 +242,7 @@
     const items = Array.isArray(group.items) ? group.items : [];
 
     return `
-      <article class="task-card">
+      <article class="task-card" id="assignedGroup_${esc(id)}">
         <button class="task-accordion" type="button" data-toggle-assigned="${esc(id)}" aria-expanded="${isOpen ? 'true' : 'false'}">
           <div class="task-title">${esc(safeText(group.project_title, 'Untitled Distribution'))}</div>
           <div class="task-meta">Assigned by: ${esc(safeText(group.assigner_name, 'N/A'))} • ${esc(assignedAt)}</div>
@@ -155,7 +262,23 @@
                   <tr>
                     <td>${esc(safeText(item.case_number || item.case_no, 'N/A'))}</td>
                     <td>${esc(safeText(item.site, 'N/A'))}</td>
-                    <td>${esc(safeText(item.status, 'PENDING'))}</td>
+                    <td>
+                      ${(() => {
+                        const raw = normalizeItemStatus(item.status);
+                        const pending = state.pendingStatusByItemId[String(item.id || '')];
+                        const shown = pending ? normalizeItemStatus(pending) : raw;
+                        const isSaving = !!state.savingStatusByItemId[String(item.id || '')];
+                        const notes = String(item.problem_notes || '');
+                        return `
+                          <div style="display:flex;flex-direction:column;gap:6px">
+                            <select class="task-status-select ${statusClass(shown)}" data-item-status="${esc(String(item.id || ''))}" ${isSaving ? 'disabled' : ''}>
+                              ${STATUS_OPTIONS.map((opt) => `<option value="${esc(opt)}" ${normalizeItemStatus(opt) === shown ? 'selected' : ''}>${esc(opt)}</option>`).join('')}
+                            </select>
+                            ${normalizeItemStatus(shown) === 'With Problem' && notes ? `<div class="task-problem-notes" title="Problem Notes">📝 ${esc(notes)}</div>` : ''}
+                          </div>
+                        `;
+                      })()}
+                    </td>
                     <td>${esc(safeDate(item.deadline || item.deadline_at || item.due_at))}</td>
                   </tr>
                 `).join('') || '<tr><td colspan="4" class="task-meta">No assigned items</td></tr>'}
@@ -331,6 +454,40 @@
     `;
   }
 
+  function renderProblemModal() {
+    const taskItemId = String(state.problemModal.taskItemId || '');
+    const { item } = findTaskItem(taskItemId);
+    const title = item ? `Report a Problem — Case ${safeText(item.case_number || item.case_no, 'N/A')}` : 'Report a Problem';
+    const subtitle = item ? safeText(item.site, '') : '';
+    const err = String(state.problemModal.error || '').trim();
+    const notes = String(state.problemModal.notes || '');
+
+    return `
+      <div class="task-modal-backdrop" id="problemModalBackdrop">
+        <div class="task-modal" role="dialog" aria-modal="true" aria-label="With Problem Notes">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+            <div>
+              <h3 style="margin:0">${esc(title)}</h3>
+              ${subtitle ? `<div class="task-meta">${esc(subtitle)}</div>` : ''}
+            </div>
+            <button class="task-btn task-btn-ghost" type="button" id="problemModalClose">Close</button>
+          </div>
+
+          <div style="margin-top:10px">
+            <div class="task-meta" style="margin-bottom:8px">Status “With Problem” requires notes before it can be saved.</div>
+            <textarea id="problemModalNotes" rows="4" placeholder="Enter the reason / problem details…" style="width:100%;resize:vertical">${esc(notes)}</textarea>
+            ${err ? `<div class="task-modal-error" style="margin-top:10px">${esc(err)}</div>` : ''}
+          </div>
+
+          <div class="task-modal-actions" style="margin-top:14px">
+            <button class="task-btn task-btn-ghost" type="button" id="problemModalCancel">Cancel</button>
+            <button class="task-btn task-btn-primary" type="button" id="problemModalSave">Save</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function render() {
     ensureStyleTag();
 
@@ -349,10 +506,12 @@
 
         ${state.activeTab === 'assigned' ? renderAssignedPanel() : renderDistributionPanel()}
         ${state.modalOpen ? renderModal() : ''}
+        ${state.problemModal && state.problemModal.open ? renderProblemModal() : ''}
       </section>
     `;
 
     bindEvents();
+    requestDeepLinkScroll();
   }
 
   function parseCsvLine(line) {
@@ -544,6 +703,9 @@
     state.distributions = distRes.ok && Array.isArray(distRes.data.rows) ? distRes.data.rows : [];
     state.members = membersRes.ok && Array.isArray(membersRes.data.rows) ? membersRes.data.rows : [];
 
+    // Apply /my_task?dist=<distribution_id> deep-link once base data is available.
+    applyDeepLinkIfNeeded();
+
     state.loading = false;
     render();
   }
@@ -601,6 +763,121 @@
         render();
       };
     });
+
+    // --- Phase 2: Interactive status controls (My Assigned Tasks) ---
+    root.querySelectorAll('[data-item-status]').forEach((selectEl) => {
+      selectEl.onchange = async () => {
+        const taskItemId = String(selectEl.getAttribute('data-item-status') || '');
+        if (!taskItemId) return;
+        const next = normalizeItemStatus(selectEl.value);
+        const { item } = findTaskItem(taskItemId);
+        if (!item) {
+          UI && UI.toast && UI.toast('Task item not found.', 'warn');
+          return;
+        }
+
+        const prev = normalizeItemStatus(item.status);
+        if (next === prev) return;
+
+        // With Problem requires notes (modal).
+        if (next === 'With Problem') {
+          state.pendingStatusByItemId[taskItemId] = 'With Problem';
+          state.problemModal = {
+            open: true,
+            taskItemId,
+            prevStatus: prev,
+            notes: String(item.problem_notes || ''),
+            error: ''
+          };
+          render();
+          return;
+        }
+
+        // Normal status update
+        state.savingStatusByItemId[taskItemId] = true;
+        state.pendingStatusByItemId[taskItemId] = next;
+        render();
+
+        const out = await CloudTasks.updateItemStatus({ task_item_id: taskItemId, status: next });
+        if (!out.ok) {
+          delete state.pendingStatusByItemId[taskItemId];
+          delete state.savingStatusByItemId[taskItemId];
+          render();
+          UI && UI.toast && UI.toast(out.message || 'Failed to update status.', 'warn');
+          return;
+        }
+
+        item.status = next;
+        item.problem_notes = null;
+        delete state.pendingStatusByItemId[taskItemId];
+        delete state.savingStatusByItemId[taskItemId];
+        render();
+      };
+    });
+
+    // Problem notes modal
+    if (state.problemModal && state.problemModal.open) {
+      const backdrop = root.querySelector('#problemModalBackdrop');
+      const cancelBtn = root.querySelector('#problemModalCancel');
+      const closeBtn = root.querySelector('#problemModalClose');
+      const saveBtn = root.querySelector('#problemModalSave');
+      const notesEl = root.querySelector('#problemModalNotes');
+
+      const cancel = () => {
+        const taskItemId = String(state.problemModal.taskItemId || '');
+        if (taskItemId) delete state.pendingStatusByItemId[taskItemId];
+        state.problemModal = { open: false, taskItemId: '', prevStatus: 'Pending', notes: '', error: '' };
+        render();
+      };
+
+      if (backdrop) {
+        backdrop.onclick = (event) => {
+          // Treat close/backdrop as cancel.
+          if (event.target === backdrop) cancel();
+        };
+      }
+      if (cancelBtn) cancelBtn.onclick = cancel;
+      if (closeBtn) closeBtn.onclick = cancel;
+      if (notesEl) {
+        notesEl.oninput = () => {
+          state.problemModal.notes = String(notesEl.value || '');
+          const btn = root.querySelector('#problemModalSave');
+          if (btn) btn.disabled = !String(state.problemModal.notes || '').trim();
+        };
+      }
+      if (saveBtn) {
+        saveBtn.disabled = !String(state.problemModal.notes || '').trim();
+        saveBtn.onclick = async () => {
+          const taskItemId = String(state.problemModal.taskItemId || '');
+          const notes = String(state.problemModal.notes || '').trim();
+          if (!taskItemId) return cancel();
+          if (!notes) {
+            state.problemModal.error = 'Notes are required for “With Problem”.';
+            render();
+            return;
+          }
+          const { item } = findTaskItem(taskItemId);
+          if (!item) return cancel();
+
+          state.savingStatusByItemId[taskItemId] = true;
+          render();
+          const out = await CloudTasks.updateItemStatus({ task_item_id: taskItemId, status: 'With Problem', problem_notes: notes });
+          if (!out.ok) {
+            state.problemModal.error = out.message || 'Failed to update status.';
+            delete state.savingStatusByItemId[taskItemId];
+            render();
+            return;
+          }
+
+          item.status = 'With Problem';
+          item.problem_notes = notes;
+          delete state.pendingStatusByItemId[taskItemId];
+          delete state.savingStatusByItemId[taskItemId];
+          state.problemModal = { open: false, taskItemId: '', prevStatus: 'Pending', notes: '', error: '' };
+          render();
+        };
+      }
+    }
 
     if (!state.modalOpen) return;
 

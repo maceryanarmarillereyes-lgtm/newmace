@@ -247,6 +247,109 @@ toast(message, variant){
       });
     },
 
+    // Text prompt modal (supports textarea). Resolves with string, or null if cancelled.
+    promptText(opts){
+      const o = Object.assign({
+        title: 'Input required',
+        message: '',
+        detail: '',
+        placeholder: 'Type here...',
+        okText: 'Save',
+        cancelText: 'Cancel',
+        required: true,
+        maxLen: 500
+      }, (opts||{}));
+
+      return new Promise((resolve)=>{
+        let modal = document.getElementById('mumsPromptTextModal');
+        if(!modal){
+          modal = document.createElement('div');
+          modal.id = 'mumsPromptTextModal';
+          modal.className = 'modal prompt-modal';
+          modal.innerHTML = `
+            <div class="panel" style="max-width:560px">
+              <div class="head">
+                <div>
+                  <div class="announce-title" id="mptTitle"></div>
+                  <div class="small muted" id="mptDetail" style="margin-top:2px"></div>
+                </div>
+                <button class="btn ghost" type="button" id="mptX" aria-label="Close">✕</button>
+              </div>
+              <div class="body" style="display:grid;gap:10px">
+                <div class="h3" id="mptMsg" style="margin:0"></div>
+                <textarea id="mptTextarea" class="input" style="min-height:110px;resize:vertical" maxlength="${o.maxLen}"></textarea>
+                <div class="row" style="justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
+                  <div class="small muted" id="mptHint"></div>
+                  <div class="row" style="gap:8px">
+                    <button class="btn" id="mptCancel" type="button"></button>
+                    <button class="btn primary" id="mptOk" type="button"></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(modal);
+        }
+
+        const titleEl = modal.querySelector('#mptTitle');
+        const detailEl = modal.querySelector('#mptDetail');
+        const msgEl = modal.querySelector('#mptMsg');
+        const ta = modal.querySelector('#mptTextarea');
+        const hintEl = modal.querySelector('#mptHint');
+        const okBtn = modal.querySelector('#mptOk');
+        const cancelBtn = modal.querySelector('#mptCancel');
+        const xBtn = modal.querySelector('#mptX');
+
+        titleEl.textContent = String(o.title||'Input required');
+        detailEl.textContent = String(o.detail||'');
+        msgEl.textContent = String(o.message||'');
+        ta.value = String(o.value||'');
+        ta.placeholder = String(o.placeholder||'');
+        okBtn.textContent = String(o.okText||'Save');
+        cancelBtn.textContent = String(o.cancelText||'Cancel');
+        hintEl.textContent = o.required ? `Required (max ${o.maxLen} chars)` : `Optional (max ${o.maxLen} chars)`;
+
+        const cleanup = ()=>{
+          try{
+            modal.classList.remove('open');
+            modal.removeEventListener('click', onBackdrop);
+            document.removeEventListener('keydown', onKey, true);
+            okBtn.onclick = null;
+            cancelBtn.onclick = null;
+            xBtn.onclick = null;
+          }catch(_){ }
+        };
+        const done = (v)=>{ cleanup(); resolve(v); };
+
+        const onBackdrop = (e)=>{ if(e.target === modal) done(null); };
+        const onKey = (e)=>{
+          if(e.key === 'Escape'){ e.preventDefault(); done(null); }
+          if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){
+            e.preventDefault();
+            okBtn.click();
+          }
+        };
+
+        okBtn.onclick = ()=>{
+          const v = String(ta.value||'').trim();
+          if(o.required && !v){
+            UI.toast('Please enter a reason before saving.', 'warn');
+            try{ ta.focus(); }catch(_){ }
+            return;
+          }
+          done(v);
+        };
+        cancelBtn.onclick = ()=>done(null);
+        xBtn.onclick = ()=>done(null);
+
+        UI.bringToFront(modal, { baseZ: 2147483200, panelOffset: 1, headOffset: 2 });
+        modal.addEventListener('click', onBackdrop);
+        document.addEventListener('keydown', onKey, true);
+        modal.classList.add('open');
+        setTimeout(()=>{ try{ ta.focus(); }catch(_){ } }, 0);
+      });
+    },
+
     // Mandatory attendance modal (non-cancelable). Resolves with record object.
     attendancePrompt(user, team){
       return new Promise((resolve)=>{
@@ -1779,20 +1882,26 @@ toast(message, variant){
             const perUser = (n.userMessages && n.userMessages[user.id]) ? n.userMessages[user.id] : '';
             const bodyMsg = perUser || n.body || 'Your schedule has been updated.';
             const summary = (n.userSummaries && n.userSummaries[user.id]) ? n.userSummaries[user.id] : null;
-            const meta = (String(n.type||'')==='MAILBOX_ASSIGN')
-              ? `From: ${n.fromName||'Mailbox Manager'} • ${new Date(n.ts||Date.now()).toLocaleString()} • Mailbox`
-              : `From: ${n.fromName||'Team Lead'} • Week of ${n.weekStartISO||'—'}`;
+            const isTaskDist = String(n.type||'') === 'TASK_DISTRIBUTION';
+            const meta = isTaskDist
+              ? `From: ${n.fromName||'Team Lead'} • ${new Date(n.ts||Date.now()).toLocaleString()} • Tasks`
+              : (String(n.type||'')==='MAILBOX_ASSIGN')
+                ? `From: ${n.fromName||'Mailbox Manager'} • ${new Date(n.ts||Date.now()).toLocaleString()} • Mailbox`
+                : `From: ${n.fromName||'Team Lead'} • Week of ${n.weekStartISO||'—'}`;
             return `
-              <div class="notif-item">
+              <div class="notif-item" ${isTaskDist ? `data-view-tasks="${esc(n.id)}" style="cursor:pointer"` : ''}>
                 <div class="notif-item-head">
                   <div>
                     <div class="notif-item-title">${esc(n.title || 'Schedule Updated')}</div>
                     <div class="small muted">${esc(meta)}</div>
                   </div>
-                  <button class="btn dashx-ack" data-ack="${esc(n.id)}" type="button" aria-label="Acknowledge schedule notification">
-                    <span class="dashx-spin" aria-hidden="true"></span>
-                    <span class="dashx-acklbl">Acknowledge</span>
-                  </button>
+                  <div class="row" style="gap:8px">
+                    ${isTaskDist ? `<button class="btn" data-view-tasks="${esc(n.id)}" type="button">View All Details</button>` : ''}
+                    <button class="btn dashx-ack" data-ack="${esc(n.id)}" type="button" aria-label="Acknowledge schedule notification">
+                      <span class="dashx-spin" aria-hidden="true"></span>
+                      <span class="dashx-acklbl">Acknowledge</span>
+                    </button>
+                  </div>
                 </div>
                 <div class="notif-item-body">${renderNotifBody(bodyMsg, summary)}</div>
               </div>
@@ -1867,6 +1976,35 @@ toast(message, variant){
         if(modal && !modal._ackBound){
           modal._ackBound = true;
           modal.addEventListener('click', async (e)=>{
+            // Enterprise Task Distribution deep-link
+            const viewBtn = e && e.target ? e.target.closest('[data-view-tasks]') : null;
+            if(viewBtn){
+              const id = String(viewBtn.getAttribute('data-view-tasks')||'');
+              const n = lastPending.find(x=>String(x.id||'')===id);
+              const distId = n ? String(n.distribution_id || '') : '';
+
+              if(!distId){
+                try{ UI.toast('Missing distribution reference in this notification.', 'warn'); }catch(_){ }
+                return;
+              }
+
+              // If already on /my_task, prefer in-app expansion without reload.
+              const path = String(window.location.pathname || '').replace(/\/+$/,'');
+              const isMyTask = path === '/my_task' || path.endsWith('/my_task');
+              if(isMyTask){
+                try{
+                  window.dispatchEvent(new CustomEvent('mums:open_task_distribution', { detail: { distribution_id: distId } }));
+                  UI.closeModal('schedNotifModal');
+                }catch(_){ }
+              }else{
+                // Safe fallback: full navigation with deep-link
+                try{ window.location.href = `/my_task?dist=${encodeURIComponent(distId)}`; }catch(_){ window.location.href = '/my_task'; }
+              }
+
+              return;
+            }
+
+            // Mailbox accept (legacy)
             const btn = e && e.target ? e.target.closest('[data-ack]') : null;
             if(!btn) return;
             const id = String(btn.getAttribute('data-ack')||'');

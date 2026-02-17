@@ -1,7 +1,40 @@
-const { sendJson, requireAuthedUser, serviceFetch, serviceSelect, serviceInsert } = require('./_common');
+const { sendJson, requireAuthedUser, serviceFetch, serviceSelect, serviceInsert, serviceUpsert } = require('./_common');
 
 const OWNER_COLUMNS = ['created_by', 'created_by_user_id', 'owner_id', 'user_id'];
 const ITEM_DISTRIBUTION_COLUMNS = ['distribution_id', 'task_distribution_id'];
+
+function safeString(x, max = 240) {
+  const s = x == null ? '' : String(x);
+  return s.length > max ? s.slice(0, max) : s;
+}
+
+function normalizeDeadlineAt(value) {
+  if (!value) return null;
+  const t = Date.parse(String(value));
+  return Number.isFinite(t) ? t : null;
+}
+
+async function getDocValue(key) {
+  const q = `select=key,value&key=eq.${encodeURIComponent(key)}&limit=1`;
+  const out = await serviceSelect('mums_documents', q);
+  if (!out.ok) return { ok: false, error: 'select_failed', details: out.json || out.text };
+  const row = Array.isArray(out.json) ? out.json[0] : null;
+  return { ok: true, value: row ? row.value : null };
+}
+
+async function upsertDoc(key, value, actor, profile) {
+  const row = {
+    key,
+    value,
+    updated_at: new Date().toISOString(),
+    updated_by_user_id: actor?.id || null,
+    updated_by_name: profile?.name || null,
+    updated_by_client_id: 'server:tasks'
+  };
+  const up = await serviceUpsert('mums_documents', [row], 'key');
+  if (!up.ok) return { ok: false, error: 'upsert_failed', details: up.json || up.text };
+  return { ok: true };
+}
 
 function ownerIdFromDistribution(distribution) {
   const row = distribution && typeof distribution === 'object' ? distribution : {};
@@ -398,6 +431,65 @@ module.exports = async (req, res) => {
           error: 'task_items_create_failed',
           details: insertedItems.out && (insertedItems.out.json || insertedItems.out.text)
         });
+      }
+
+      // Best-effort: create notifications for all assignees in this distribution.
+      // Uses the existing mums_schedule_notifs document so it shows in the global notifications panel.
+      try {
+        const counts = {};
+        let earliestDeadlineAt = null;
+
+        normalizedRows.forEach((r) => {
+          const assignee = String(r.assignedTo || '').trim();
+          if (!assignee) return;
+          counts[assignee] = (counts[assignee] || 0) + 1;
+          const t = normalizeDeadlineAt(r.deadline);
+          if (t && (!earliestDeadlineAt || t < earliestDeadlineAt)) earliestDeadlineAt = t;
+        });
+
+        const recipients = Object.keys(counts);
+        if (recipients.length) {
+          const deadlineStr = earliestDeadlineAt ? new Date(earliestDeadlineAt).toISOString().slice(0, 10) : 'Not set';
+          const distTitle = safeString(title, 120);
+
+          const userSummaries = {};
+          const userMessages = {};
+          recipients.forEach((rid) => {
+            const x = counts[rid] || 0;
+            const summary = `You have ${x} new tasks from ${distTitle}. Deadline: ${deadlineStr}.`;
+            userSummaries[rid] = summary;
+            userMessages[rid] = summary;
+          });
+
+          const notif = {
+            id: `task_dist_${distributionId}_${Date.now()}`,
+            type: 'TASK_DISTRIBUTION',
+            ts: Date.now(),
+            title: `New tasks from ${distTitle}`,
+            distribution_id: distributionId,
+            distribution_title: distTitle,
+            deadline: deadlineStr,
+            recipients,
+            userSummaries,
+            userMessages,
+            // Store uses (teamId, weekStartISO, snapshotDigest) as the dedupe tuple. We map the distribution id here.
+            teamId: 'TASK_DISTRIBUTION',
+            weekStartISO: distributionId,
+            snapshotDigest: `dist:${distributionId}:${recipients.join(',')}:${deadlineStr}`
+          };
+
+          const docKey = 'mums_schedule_notifs';
+          const existing = await getDocValue(docKey);
+          const docVal = (existing.ok && existing.value && typeof existing.value === 'object') ? existing.value : {};
+          const prevNotifs = Array.isArray(docVal.notifs) ? docVal.notifs : [];
+          const notifs = [notif].concat(prevNotifs).slice(0, 200);
+          docVal.notifs = notifs;
+          docVal.updatedAt = new Date().toISOString();
+          await upsertDoc(docKey, docVal, auth.authed, auth.profile);
+        }
+      } catch (e) {
+        // Ignore notification failures so distribution creation remains usable.
+        // (Notifications are non-critical and can be regenerated or added later.)
       }
 
       return sendJson(res, 200, {

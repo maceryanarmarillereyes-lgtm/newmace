@@ -1,4 +1,4 @@
-const { getUserFromJwt, getProfileForUserId, serviceFetch, serviceSelect, serviceInsert, serviceUpdate } = require('../../lib/supabase');
+const { getUserFromJwt, getProfileForUserId, serviceFetch, serviceSelect, serviceInsert, serviceUpdate, serviceUpsert } = require('../../lib/supabase');
 
 function sendJson(res, statusCode, body) {
   res.statusCode = statusCode;
@@ -35,5 +35,6 @@ module.exports = {
   serviceFetch,
   serviceSelect,
   serviceInsert,
-  serviceUpdate
+  serviceUpdate,
+  serviceUpsert
 };

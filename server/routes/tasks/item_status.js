@@ -30,7 +30,11 @@ module.exports = async (req, res) => {
     if (!allowed.includes(status)) return sendJson(res, 400, { ok: false, error: 'invalid_status' });
 
     const remarks = String(body.remarks || '');
-    const problemNotes = body.problem_notes == null ? null : String(body.problem_notes);
+    const problemNotes = String(body.problem_notes == null ? '' : body.problem_notes).trim();
+
+    if (status === 'With Problem' && !problemNotes) {
+      return sendJson(res, 400, { ok: false, error: 'problem_notes_required' });
+    }
 
     const patch = {
       status,
@@ -38,11 +42,23 @@ module.exports = async (req, res) => {
       updated_at: new Date().toISOString()
     };
 
-    // Only send problem_notes if provided (schema may not have it yet)
-    if (problemNotes != null) patch.problem_notes = problemNotes;
+    // Enforce consistent notes storage:
+    // - With Problem -> notes required
+    // - All other statuses -> notes cleared
+    patch.problem_notes = status === 'With Problem' ? problemNotes : null;
 
     const uid = encodeURIComponent(String(auth.authed.id || ''));
-    const out = await serviceUpdate('task_items', patch, { id: `eq.${encodeURIComponent(id)}`, assigned_to: `eq.${uid}` });
+    let out = await serviceUpdate('task_items', patch, { id: `eq.${encodeURIComponent(id)}`, assigned_to: `eq.${uid}` });
+    // Backward compatibility: if DB schema doesn't yet have problem_notes, retry without it.
+    if (!out.ok) {
+      const errText = JSON.stringify(out.json || out.text || '').toLowerCase();
+      const missingProblemNotes = errText.includes('problem_notes') && errText.includes('does not exist');
+      if (missingProblemNotes && status !== 'With Problem') {
+        const retryPatch = { ...patch };
+        delete retryPatch.problem_notes;
+        out = await serviceUpdate('task_items', retryPatch, { id: `eq.${encodeURIComponent(id)}`, assigned_to: `eq.${uid}` });
+      }
+    }
     if (!out.ok) return sendJson(res, 500, { ok: false, error: 'task_item_update_failed', details: out.json || out.text });
 
     const row = Array.isArray(out.json) ? out.json[0] : null;
