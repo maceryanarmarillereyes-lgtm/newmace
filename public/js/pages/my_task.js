@@ -685,7 +685,7 @@
 
         state.creating = false;
         if (!out.ok) {
-          state.parseError = out.message || (out.data && (out.data.details || out.data.error)) || 'Failed to create distribution';
+          state.parseError = out.message || 'Failed to create distribution';
           render();
           return;
         }

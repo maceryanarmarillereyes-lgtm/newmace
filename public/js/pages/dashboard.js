@@ -143,8 +143,23 @@
         const sbAnon = String(env.SUPABASE_ANON_KEY || '');
         if (!window.supabase || !sbUrl || !sbAnon) return;
         if (state.subscription) return;
-        const client = window.supabase.createClient(sbUrl, sbAnon, { auth: { persistSession: false, autoRefreshToken: false } });
+
         const token = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+        // Don't create a client without a token; it can cause RLS issues for any REST usage.
+        if (!token) return;
+
+        // Reuse the shared Supabase client to avoid multiple GoTrueClient instances.
+        // If it doesn't exist yet, create it once and store it globally.
+        if (!window.__MUMS_SB_CLIENT) {
+          const dummyStorage = { getItem() { return null; }, setItem() { }, removeItem() { } };
+          window.__MUMS_SB_CLIENT = window.supabase.createClient(sbUrl, sbAnon, {
+            auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storage: dummyStorage, storageKey: 'mums_shared' },
+            realtime: { params: { eventsPerSecond: 10 } },
+            global: { headers: { Authorization: 'Bearer ' + token } }
+          });
+        }
+
+        const client = window.__MUMS_SB_CLIENT;
         if (token && client && client.realtime && typeof client.realtime.setAuth === 'function') client.realtime.setAuth(token);
 
         state.subscription = client

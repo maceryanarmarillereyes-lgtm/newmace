@@ -2568,17 +2568,27 @@ Store.startMailboxOverrideSync = function(opts){
           const uid = sbUser && sbUser.id ? String(sbUser.id) : '';
           if(!uid) return false;
 
-          // Reuse a dedicated client for heartbeat to keep it lightweight.
-          if(!window.__MUMS_HB_CLIENT || window.__MUMS_HB_CLIENT_TOKEN !== token){
-            window.__MUMS_HB_CLIENT_TOKEN = token;
-            window.__MUMS_HB_CLIENT = window.supabase.createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
-              auth: { persistSession: false, autoRefreshToken: false, storage: { getItem: function(){ return null; }, setItem: function(){}, removeItem: function(){} } },
-              auth: { persistSession: false, autoRefreshToken: false, storage: { getItem(){ return null; }, setItem(){}, removeItem(){} } },
+          // Reuse the shared Supabase client to avoid multiple GoTrueClient instances.
+          // If the shared client does not exist yet, create it with a dummy storage (no local persistence)
+          // and an Authorization header so RLS works for authed inserts.
+          if(!window.__MUMS_SB_CLIENT){
+            window.__MUMS_SB_CLIENT = window.supabase.createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
+              auth: {
+                persistSession: false,
+                autoRefreshToken: false,
+                detectSessionInUrl: false,
+                storage: { getItem(){ return null; }, setItem(){}, removeItem(){} },
+                // Explicit storageKey prevents any accidental collisions if another client is created elsewhere.
+                storageKey: 'mums_shared'
+              },
+              realtime: { params: { eventsPerSecond: 10 } },
               global: { headers: { Authorization: 'Bearer ' + token } }
             });
           }
+          // Track last token we applied; the realtime socket will be re-authed below.
+          window.__MUMS_SB_CLIENT_TOKEN = token;
 
-          const client = window.__MUMS_HB_CLIENT;
+          const client = window.__MUMS_SB_CLIENT;
           try { client && client.realtime && client.realtime.setAuth && client.realtime.setAuth(token); } catch(_){ }
 
           const payload = [{ uid: uid, timestamp: new Date().toISOString() }];

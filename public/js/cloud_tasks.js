@@ -5,24 +5,8 @@ const CloudTasks = (() => {
   };
 
   const parse = async (res) => {
-    const contentType = String(res.headers.get('content-type') || '');
-    let data = {};
-
-    if (contentType.includes('application/json')) {
-      data = await res.json().catch(() => ({}));
-    } else {
-      const raw = await res.text().catch(() => '');
-      data = { message: raw ? raw.slice(0, 240) : '' };
-    }
-
-    if (!res.ok) {
-      const base = data.message || data.error || `Failed (${res.status})`;
-      const details = data.details || data.hint || data.error_description || '';
-      const detailsText = typeof details === 'string' ? details : JSON.stringify(details || '');
-      const message = detailsText && detailsText !== base ? `${base}: ${detailsText}` : base;
-      return { ok: false, status: res.status, message, data };
-    }
-
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, status: res.status, message: data.message || data.error || `Failed (${res.status})`, data };
     return { ok: true, data };
   };
 

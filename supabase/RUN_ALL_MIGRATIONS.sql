@@ -343,3 +343,172 @@ create index if not exists task_items_distribution_id_idx
 --------------------------------------------------------------------------------
 -- END 20260215_01_task_items_reference_url_and_distribution_idx.sql
 --------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+-- BEGIN 20260216_01_task_orchestration_core.sql
+
+-- 2026-02-16: Task Orchestration Core (Distributions + Items)
+--
+-- Why:
+-- - /api/tasks/* endpoints expect these objects to exist.
+-- - Missing tables/views will cause 500s like "distribution_create_failed".
+--
+-- Safe to run multiple times.
+
+--------------------------------------------------------------------------------
+-- UUID generator (Supabase usually has this, but keep it safe/idempotent)
+--------------------------------------------------------------------------------
+
+create extension if not exists pgcrypto;
+
+--------------------------------------------------------------------------------
+-- task_distributions
+--------------------------------------------------------------------------------
+
+create table if not exists public.task_distributions (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  created_by uuid not null,
+  title text not null,
+  description text,
+  reference_url text,
+  status text not null default 'ONGOING'
+);
+
+create index if not exists task_distributions_created_by_idx
+  on public.task_distributions (created_by);
+
+--------------------------------------------------------------------------------
+-- task_items
+--------------------------------------------------------------------------------
+
+create table if not exists public.task_items (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  distribution_id uuid not null references public.task_distributions(id) on delete cascade,
+
+  -- Work metadata
+  case_number text not null,
+  site text not null,
+
+  -- Assignee
+  assigned_to uuid not null,
+
+  -- Task details
+  task_description text not null,
+  description text,
+  remarks text,
+  reference_url text,
+  status text not null default 'PENDING'
+);
+
+create index if not exists task_items_distribution_id_idx
+  on public.task_items (distribution_id);
+
+create index if not exists task_items_assigned_to_idx
+  on public.task_items (assigned_to);
+
+--------------------------------------------------------------------------------
+-- view: team workload matrix (optional helper)
+-- NOTE: We DROP first to avoid Postgres 42P16 (cannot drop columns from view)
+--------------------------------------------------------------------------------
+
+drop view if exists public.view_team_workload_matrix;
+
+create view public.view_team_workload_matrix
+with (security_invoker=true)
+as
+select
+  assigned_to as user_id,
+  count(*) filter (where status in ('PENDING','ONGOING')) as open_tasks,
+  count(*) as total_tasks,
+  max(updated_at) as last_updated_at
+from public.task_items
+group by assigned_to;
+
+--------------------------------------------------------------------------------
+-- END 20260216_01_task_orchestration_core.sql
+
+
+--------------------------------------------------------------------------------
+-- BEGIN 20260217_01_security_advisor_hardening.sql
+
+-- 2026-02-17: Security Advisor hardening
+--
+-- Addresses common Supabase Security Advisor findings:
+-- - SECURITY DEFINER view warning (prefer SECURITY INVOKER)
+-- - Functions with mutable/unspecified search_path
+-- - Extensions installed in public schema (move to extensions)
+--
+-- Safe to run multiple times.
+
+create schema if not exists extensions;
+
+do $$
+begin
+  if exists (select 1 from pg_extension where extname = 'citext') then
+    if (select n.nspname from pg_extension e join pg_namespace n on n.oid = e.extnamespace where e.extname = 'citext') = 'public' then
+      execute 'alter extension citext set schema extensions';
+    end if;
+  end if;
+exception when others then
+  null;
+end$$;
+
+do $$
+begin
+  if exists (
+    select 1
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = 'view_team_workload_matrix'
+      and c.relkind = 'v'
+  ) then
+    execute 'alter view public.view_team_workload_matrix set (security_invoker=true)';
+  end if;
+exception when others then
+  null;
+end$$;
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+set search_path = public, extensions
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+create or replace function public.mums_set_updated_at()
+returns trigger
+language plpgsql
+set search_path = public, extensions
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+create or replace function public.mums_link_auth_user_to_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, auth, extensions
+as $$
+begin
+  insert into public.profiles (id, email)
+  values (new.id, new.email)
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+--------------------------------------------------------------------------------
+-- END 20260217_01_security_advisor_hardening.sql
+--------------------------------------------------------------------------------
