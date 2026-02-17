@@ -28,7 +28,8 @@
     form: {
       title: '',
       description: '',
-      reference_url: ''
+      reference_url: '',
+      enable_daily_alerts: false
     },
 
     isSheetJsReady: false
@@ -271,6 +272,11 @@
               <label for="distReferenceInput">Work Instruction Link (URL)</label>
               <input id="distReferenceInput" type="url" value="${esc(state.form.reference_url)}" placeholder="https://..." />
             </div>
+            <div class="task-field" style="margin-top:8px; display:flex; align-items:center; gap:10px">
+              <input id="distEnableDailyAlerts" type="checkbox" ${state.form.enable_daily_alerts ? 'checked' : ''} />
+              <label for="distEnableDailyAlerts" style="margin:0">Enable Daily Reminders for Incomplete Tasks</label>
+            </div>
+            <div class="task-meta" style="margin-top:-2px; opacity:0.85">When enabled, the system will send daily reminders for tasks not yet completed (Phase 4 automation).</div>
           </article>
 
           <article class="task-card">
@@ -511,6 +517,7 @@
     state.dragActive = false;
     state.uploadMeta = { name: '', rows: 0, sheets: 0 };
     state.parsedRows = [];
+    state.form = { title: '', description: '', reference_url: '', enable_daily_alerts: false };
     render();
   }
 
@@ -625,6 +632,9 @@
     if (descriptionInput) descriptionInput.oninput = () => { state.form.description = String(descriptionInput.value || ''); };
     if (referenceInput) referenceInput.oninput = () => { state.form.reference_url = String(referenceInput.value || ''); };
 
+    const dailyAlertsToggle = root.querySelector('#distEnableDailyAlerts');
+    if (dailyAlertsToggle) dailyAlertsToggle.onchange = () => { state.form.enable_daily_alerts = !!dailyAlertsToggle.checked; };
+
     const fileInput = root.querySelector('#taskFileInput');
     if (fileInput) fileInput.onchange = () => handleFile(fileInput.files && fileInput.files[0]);
 
@@ -680,6 +690,7 @@
           title: state.form.title,
           description: state.form.description,
           reference_url: state.form.reference_url,
+          enable_daily_alerts: !!state.form.enable_daily_alerts,
           items
         });
 
@@ -690,7 +701,7 @@
           return;
         }
 
-        state.form = { title: '', description: '', reference_url: '' };
+        state.form = { title: '', description: '', reference_url: '', enable_daily_alerts: false };
         closeModal();
         await loadBaseData();
       };

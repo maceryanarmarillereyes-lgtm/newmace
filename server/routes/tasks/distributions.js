@@ -23,6 +23,24 @@ function normalizeStatus(value) {
   return 'ONGOING';
 }
 
+const TASK_ITEM_STATUS_MAP = {
+  PENDING: 'Pending',
+  'IN_PROGRESS': 'Ongoing',
+  ONGOING: 'Ongoing',
+  DONE: 'Completed',
+  COMPLETED: 'Completed',
+  WITH_PROBLEM: 'With Problem',
+  'WITH PROBLEM': 'With Problem'
+};
+
+function normalizeTaskItemStatus(value, fallback = 'Pending') {
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return fallback;
+  const upper = raw.toUpperCase();
+  return TASK_ITEM_STATUS_MAP[upper] || raw;
+}
+
+
 function normalizeReferenceUrl(value) {
   const url = sanitizeCell(value);
   return /^https?:\/\//i.test(url) ? url : '';
@@ -115,10 +133,11 @@ async function insertDistributionRow(title, uid, metadata) {
     title,
     description: sanitizeCell(metadata && metadata.description, ''),
     reference_url: normalizeReferenceUrl(metadata && metadata.reference_url),
+    enable_daily_alerts: metadata && metadata.enable_daily_alerts ? true : undefined,
     status: normalizeStatus(metadata && metadata.status)
   };
 
-  const optionalColumns = ['title', 'description', 'reference_url', 'status'];
+  const optionalColumns = ['title', 'description', 'reference_url', 'enable_daily_alerts', 'status'];
 
   const extractMissingColumn = (errorText) => {
     const match = errorText.match(/column\s+"?([a-zA-Z0-9_]+)"?\s+of\s+relation\s+"?task_distributions"?\s+does\s+not\s+exist/i);
@@ -164,7 +183,7 @@ async function insertDistributionRow(title, uid, metadata) {
   return { row: null, ownerKey: OWNER_COLUMNS[0], error: 'distribution_owner_column_not_found' };
 }
 
-async function insertTaskItems(distributionId, rows) {
+async function insertTaskItems(distributionId, rows, assignedBy) {
   const payloadBase = rows.map((row) => {
     const deadlineText = sanitizeCell(row.deadline);
     const deadlineAt = normalizeDeadlineAt(deadlineText);
@@ -179,17 +198,18 @@ async function insertTaskItems(distributionId, rows) {
       description: row.description,
       assigned_to: row.assignedTo,
       assignee_user_id: row.assignedTo,
+      assigned_by: assignedBy,
       deadline: deadlineDate,
       due_at: deadlineAt,
       deadline_at: deadlineAt,
       reference_url: row.referenceUrl,
-      status: 'PENDING',
+      status: 'Pending',
       remarks: ''
     };
   });
 
   // Keep task_description in the payload; older schemas can drop it, newer schemas require it.
-  const optionalColumns = ['case_no', 'assignee_user_id', 'deadline', 'due_at', 'deadline_at', 'reference_url', 'remarks', 'task_description'];
+  const optionalColumns = ['case_no', 'assignee_user_id', 'deadline', 'due_at', 'deadline_at', 'reference_url', 'remarks', 'assigned_by', 'task_description'];
   const requiredColumns = ['case_number', 'site', 'description', 'assigned_to', 'status'];
   const buildPayload = (distributionKey, dropColumns) => payloadBase.map((item) => {
     const next = {};
@@ -309,10 +329,10 @@ module.exports = async (req, res) => {
         const distributionId = String(item[itemData.distributionColumn] || '');
         if (!distributionId) return acc;
 
-        const status = String(item.status || 'PENDING').toUpperCase();
+        const canonical = normalizeTaskItemStatus(item.status, 'Pending');
         if (!acc[distributionId]) acc[distributionId] = { total_count: 0, pending_count: 0, done_count: 0 };
         acc[distributionId].total_count += 1;
-        if (status === 'DONE') acc[distributionId].done_count += 1;
+        if (canonical === 'Completed') acc[distributionId].done_count += 1;
         else acc[distributionId].pending_count += 1;
         return acc;
       }, {});
@@ -342,12 +362,18 @@ module.exports = async (req, res) => {
       const description = sanitizeCell(body.description, '');
       const referenceUrl = normalizeReferenceUrl(body.reference_url);
       const status = normalizeStatus(body.status);
+      const enableDailyAlerts = (() => {
+        const raw = body.enable_daily_alerts;
+        if (typeof raw === 'boolean') return raw;
+        const s = String(raw || '').trim().toLowerCase();
+        return s === 'true' || s === '1' || s === 'yes' || s === 'on';
+      })();
       const normalizedRows = normalizeIncomingRows(body.items, description, referenceUrl);
 
       if (!title) return sendJson(res, 400, { ok: false, error: 'missing_title' });
       if (!normalizedRows.length) return sendJson(res, 400, { ok: false, error: 'valid_items_required' });
 
-      const created = await insertDistributionRow(title, uid, { description, reference_url: referenceUrl, status });
+      const created = await insertDistributionRow(title, uid, { description, reference_url: referenceUrl, status, enable_daily_alerts: enableDailyAlerts });
       if (!created.row) {
         return sendJson(res, 500, {
           ok: false,
@@ -364,7 +390,7 @@ module.exports = async (req, res) => {
         });
       }
 
-      const insertedItems = await insertTaskItems(distributionId, normalizedRows);
+      const insertedItems = await insertTaskItems(distributionId, normalizedRows, uid);
       if (!insertedItems.ok) {
         await rollbackDistribution(distributionId);
         return sendJson(res, 500, {

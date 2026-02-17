@@ -1,27 +1,16 @@
--- RUN_ALL_MIGRATIONS.sql
--- Generated: 2026-01-28 14:16:12 UTC
--- Purpose: Convenience script to run all Supabase migrations for MUMS in a single SQL Editor execution.
---
--- Notes:
--- 1) This script concatenates the contents of each migration file in lexicographic order.
--- 2) Some migrations may not be fully idempotent; re-running may fail if objects already exist.
--- 3) Recommended: run in a maintenance window; keep "Role" as postgres in Supabase SQL Editor.
---
--- Included migrations (in order):
---   - 20260127_01_profiles_avatar_url.sql
---   - 20260127_02_storage_public_bucket.sql
---   - 20260128_01_profiles_team_override.sql
---   - 20260128_02_deduplicate_supermace.sql
---   - 20260130_01_mums_sync_log.sql
---   - 20260130_01_rls_profiles_select_own.sql
---   - 20260201_01_heartbeat_table.sql
---   - 20260203_01_heartbeat_uid_rls.sql
+-- -----------------------------------------------------------------------------
+-- RUN_ALL_MIGRATIONS.sql (auto-generated)
+-- Generated: 2026-02-17
+-- Purpose: Convenience script to execute ALL migrations in order (idempotent).
+-- Recommended: Run in Supabase SQL Editor as role "postgres".
+-- -----------------------------------------------------------------------------
 
+begin;
 
---------------------------------------------------------------------------------
--- BEGIN 20260127_01_profiles_avatar_url.sql
+-- ===========================================================================
+-- Migration: 20260127_01_profiles_avatar_url.sql
+-- ===========================================================================
 
---------------------------------------------------------------------------------
 -- 2026-01-27: Add avatar_url to mums_profiles (profile photos stored in Storage public bucket)
 -- Safe to run multiple times.
 
@@ -30,15 +19,11 @@ alter table if exists public.mums_profiles
 
 -- Optional: keep updated_at correct (trigger is already created in schema.sql).
 
---------------------------------------------------------------------------------
--- END 20260127_01_profiles_avatar_url.sql
 
---------------------------------------------------------------------------------
+-- ===========================================================================
+-- Migration: 20260127_02_storage_public_bucket.sql
+-- ===========================================================================
 
---------------------------------------------------------------------------------
--- BEGIN 20260127_02_storage_public_bucket.sql
-
---------------------------------------------------------------------------------
 -- 2026-01-27: Supabase Storage public bucket bootstrap (optional)
 --
 -- Goal: Create a PUBLIC bucket (default name: "public") for avatars and other images.
@@ -73,15 +58,11 @@ on conflict (id) do update set public = true;
 -- -- Block client-side writes (uploads are server-side only). This is the default
 -- -- if you do not create any insert/update policies for authenticated/anon.
 
---------------------------------------------------------------------------------
--- END 20260127_02_storage_public_bucket.sql
 
---------------------------------------------------------------------------------
+-- ===========================================================================
+-- Migration: 20260128_01_profiles_team_override.sql
+-- ===========================================================================
 
---------------------------------------------------------------------------------
--- BEGIN 20260128_01_profiles_team_override.sql
-
---------------------------------------------------------------------------------
 -- MUMS: SUPER_ADMIN team override
 -- Allows SUPER_ADMIN to optionally assign themselves to a shift team while defaulting to Developer Access.
 
@@ -99,15 +80,11 @@ set team_id = null
 where upper(coalesce(role,'')) in ('SUPER_ADMIN','SUPER_USER')
   and team_override = false;
 
---------------------------------------------------------------------------------
--- END 20260128_01_profiles_team_override.sql
 
---------------------------------------------------------------------------------
+-- ===========================================================================
+-- Migration: 20260128_02_deduplicate_supermace.sql
+-- ===========================================================================
 
---------------------------------------------------------------------------------
--- BEGIN 20260128_02_deduplicate_supermace.sql
-
---------------------------------------------------------------------------------
 -- MUMS Step 2: Deduplicate Super Mace (and any other accidental duplicates) by email
 -- Goal:
 --   1) Ensure only one mums_profiles row exists for email supermace@mums.local
@@ -184,13 +161,10 @@ alter table if exists public.mums_profiles
 alter table if exists public.mums_profiles
   add constraint mums_profiles_email_unique unique (email);
 
---------------------------------------------------------------------------------
--- END 20260128_02_deduplicate_supermace.sql
 
---------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
--- BEGIN 20260130_01_mums_sync_log.sql
+-- ===========================================================================
+-- Migration: 20260130_01_mums_sync_log.sql
+-- ===========================================================================
 
 --------------------------------------------------------------------------------
 -- 2026-01-30: MUMS - Audit log for mailbox override changes (safe migration)
@@ -221,15 +195,10 @@ create index if not exists mums_sync_log_scope_idx
 --   - Read permissions are aligned with your audit visibility requirements.
 --------------------------------------------------------------------------------
 
---------------------------------------------------------------------------------
--- END 20260130_01_mums_sync_log.sql
 
---------------------------------------------------------------------------------
-
-
---------------------------------------------------------------------------------
--- BEGIN 20260130_01_rls_profiles_select_own.sql
---------------------------------------------------------------------------------
+-- ===========================================================================
+-- Migration: 20260130_01_rls_profiles_select_own.sql
+-- ===========================================================================
 
 DROP POLICY IF EXISTS profiles_select_own ON public.mums_profiles;
 CREATE POLICY profiles_select_own
@@ -238,13 +207,10 @@ FOR SELECT
 USING (user_id = (select auth.uid()));
 ALTER TABLE public.mums_profiles ENABLE ROW LEVEL SECURITY;
 
---------------------------------------------------------------------------------
--- END 20260130_01_rls_profiles_select_own.sql
---------------------------------------------------------------------------------
 
-
---------------------------------------------------------------------------------
--- BEGIN 20260201_01_heartbeat_table.sql
+-- ===========================================================================
+-- Migration: 20260201_01_heartbeat_table.sql
+-- ===========================================================================
 
 --------------------------------------------------------------------------------
 -- 2026-02-01: Keep-alive heartbeat table (lightweight)
@@ -259,12 +225,10 @@ create table if not exists public.heartbeat (
 -- RLS is OFF by default for new tables; keep it disabled.
 alter table public.heartbeat disable row level security;
 
---------------------------------------------------------------------------------
--- END 20260201_01_heartbeat_table.sql
 
---------------------------------------------------------------------------------
-
--- BEGIN 20260203_01_heartbeat_uid_rls.sql
+-- ===========================================================================
+-- Migration: 20260203_01_heartbeat_uid_rls.sql
+-- ===========================================================================
 
 --------------------------------------------------------------------------------
 -- 2026-02-03: Heartbeat RLS alignment (uid column + per-user policies)
@@ -321,14 +285,71 @@ begin
 end
 $$;
 
---------------------------------------------------------------------------------
--- END 20260203_01_heartbeat_uid_rls.sql
 
---------------------------------------------------------------------------------
+-- ===========================================================================
+-- Migration: 20260214_01_invite_only_azure_guard.sql
+-- ===========================================================================
+
+-- 2026-02-14: Invite-only Azure OAuth guard for auth.users
+--
+-- Goal:
+-- - On new auth.users row insertion, require a pre-existing whitelist row in public.mums_profiles by email.
+-- - If matched (case-insensitive), attach auth.users.id to the existing profile row.
+-- - If no match, raise an exception to abort signup/login.
+
+create extension if not exists citext;
+
+create or replace function public.mums_link_auth_user_to_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_email text;
+  v_profile_exists boolean;
+begin
+  v_email := lower(trim(coalesce(new.email, '')));
+
+  if v_email = '' then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Invite-only login denied: missing email.';
+  end if;
+
+  select exists (
+    select 1
+    from public.mums_profiles p
+    where lower(trim(coalesce(p.email::text, ''))) = v_email
+  )
+  into v_profile_exists;
+
+  if not v_profile_exists then
+    raise exception using
+      errcode = 'P0001',
+      message = format('Invite-only login denied for email: %s', v_email);
+  end if;
+
+  update public.mums_profiles p
+  set user_id = new.id,
+      updated_at = now()
+  where lower(trim(coalesce(p.email::text, ''))) = v_email;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_mums_link_auth_user_to_profile on auth.users;
+
+create trigger trg_mums_link_auth_user_to_profile
+after insert on auth.users
+for each row
+execute function public.mums_link_auth_user_to_profile();
 
 
---------------------------------------------------------------------------------
--- BEGIN 20260215_01_task_items_reference_url_and_distribution_idx.sql
+-- ===========================================================================
+-- Migration: 20260215_01_task_items_reference_url_and_distribution_idx.sql
+-- ===========================================================================
 
 -- 2026-02-15: Task orchestration high-volume support
 -- 1) Add optional reference_url to task_items for OneDrive/SharePoint links.
@@ -340,13 +361,10 @@ alter table if exists public.task_items
 create index if not exists task_items_distribution_id_idx
   on public.task_items (distribution_id);
 
---------------------------------------------------------------------------------
--- END 20260215_01_task_items_reference_url_and_distribution_idx.sql
---------------------------------------------------------------------------------
 
-
---------------------------------------------------------------------------------
--- BEGIN 20260216_01_task_orchestration_core.sql
+-- ===========================================================================
+-- Migration: 20260216_01_task_orchestration_core.sql
+-- ===========================================================================
 
 -- 2026-02-16: Task Orchestration Core (Distributions + Items)
 --
@@ -428,12 +446,10 @@ select
 from public.task_items
 group by assigned_to;
 
---------------------------------------------------------------------------------
--- END 20260216_01_task_orchestration_core.sql
 
-
---------------------------------------------------------------------------------
--- BEGIN 20260217_01_security_advisor_hardening.sql
+-- ===========================================================================
+-- Migration: 20260217_01_security_advisor_hardening.sql
+-- ===========================================================================
 
 -- 2026-02-17: Security Advisor hardening
 --
@@ -444,7 +460,15 @@ group by assigned_to;
 --
 -- Safe to run multiple times.
 
+--------------------------------------------------------------------------------
+-- Ensure extensions schema exists
+--------------------------------------------------------------------------------
+
 create schema if not exists extensions;
+
+--------------------------------------------------------------------------------
+-- Move citext extension out of public schema (if present)
+--------------------------------------------------------------------------------
 
 do $$
 begin
@@ -454,8 +478,13 @@ begin
     end if;
   end if;
 exception when others then
+  -- Non-fatal: extension move may require elevated privileges depending on project settings.
   null;
 end$$;
+
+--------------------------------------------------------------------------------
+-- Set SECURITY INVOKER on workload view if it exists
+--------------------------------------------------------------------------------
 
 do $$
 begin
@@ -472,6 +501,10 @@ begin
 exception when others then
   null;
 end$$;
+
+--------------------------------------------------------------------------------
+-- Harden trigger/util functions: set explicit search_path
+--------------------------------------------------------------------------------
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -495,6 +528,7 @@ begin
 end;
 $$;
 
+-- Re-apply search_path hardening for auth->profile linking helper
 create or replace function public.mums_link_auth_user_to_profile()
 returns trigger
 language plpgsql
@@ -509,6 +543,144 @@ begin
 end;
 $$;
 
---------------------------------------------------------------------------------
--- END 20260217_01_security_advisor_hardening.sql
---------------------------------------------------------------------------------
+
+-- ===========================================================================
+-- Migration: 20260217_02_phase1_task_distribution_monitoring.sql
+-- ===========================================================================
+
+-- -----------------------------------------------------------------------------
+-- 2026-02-17: Phase 1 Foundation — Task Distribution & Monitoring
+--
+-- Why:
+-- - Support richer per-task tracking (status enum, problem notes, audit fields)
+-- - Support distribution-level opt-in for daily reminders
+--
+-- Safe to run multiple times.
+-- -----------------------------------------------------------------------------
+
+-- Distribution-level toggle
+alter table if exists public.task_distributions
+  add column if not exists enable_daily_alerts boolean not null default false;
+
+-- Canonical task status enum
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'task_item_status') then
+    create type public.task_item_status as enum ('Pending', 'Ongoing', 'Completed', 'With Problem');
+  end if;
+end $$;
+
+-- New audit/problem fields
+alter table if exists public.task_items
+  add column if not exists problem_notes text,
+  add column if not exists assigned_by uuid,
+  add column if not exists transferred_from uuid;
+
+-- Ensure task_items.status uses the enum (migrates legacy values safely)
+do $$
+declare
+  current_udt text;
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'task_items'
+      and column_name = 'status'
+  ) then
+    select udt_name into current_udt
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'task_items'
+      and column_name = 'status'
+    limit 1;
+
+    if current_udt is distinct from 'task_item_status' then
+      -- Remove default before type cast
+      begin
+        alter table public.task_items alter column status drop default;
+      exception when others then
+        -- ignore
+      end;
+
+      alter table public.task_items
+        alter column status type public.task_item_status
+        using (
+          case upper(status::text)
+            when 'PENDING' then 'Pending'::public.task_item_status
+            when 'IN_PROGRESS' then 'Ongoing'::public.task_item_status
+            when 'ONGOING' then 'Ongoing'::public.task_item_status
+            when 'DONE' then 'Completed'::public.task_item_status
+            when 'COMPLETED' then 'Completed'::public.task_item_status
+            when 'WITH_PROBLEM' then 'With Problem'::public.task_item_status
+            when 'WITH PROBLEM' then 'With Problem'::public.task_item_status
+            else 'Pending'::public.task_item_status
+          end
+        );
+    end if;
+  else
+    alter table public.task_items
+      add column status public.task_item_status not null default 'Pending';
+  end if;
+end $$;
+
+-- Backfill + enforce defaults
+update public.task_items set status = 'Pending' where status is null;
+
+alter table public.task_items
+  alter column status set default 'Pending',
+  alter column status set not null;
+
+-- Workload matrix view (matches /api/tasks/workload_matrix expectations)
+drop view if exists public.view_team_workload_matrix;
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.tables
+    where table_schema = 'public'
+      and table_name = 'mums_profiles'
+  )
+  or exists (
+    select 1
+    from information_schema.views
+    where table_schema = 'public'
+      and table_name = 'mums_profiles'
+  ) then
+    execute $$
+      create view public.view_team_workload_matrix
+      with (security_invoker = true)
+      as
+      select
+        ti.id as task_item_id,
+        ti.status as task_status,
+        td.title as distribution_title,
+        coalesce(mp.name, mp.username, mp.user_id::text) as member_name,
+        mp.duty as member_shift,
+        coalesce(ti.updated_at, ti.created_at) as last_update
+      from public.task_items ti
+      join public.task_distributions td on td.id = ti.distribution_id
+      left join public.mums_profiles mp on mp.user_id = ti.assigned_to;
+    $$;
+  else
+    execute $$
+      create view public.view_team_workload_matrix
+      with (security_invoker = true)
+      as
+      select
+        ti.id as task_item_id,
+        ti.status as task_status,
+        td.title as distribution_title,
+        ti.assigned_to::text as member_name,
+        null::text as member_shift,
+        coalesce(ti.updated_at, ti.created_at) as last_update
+      from public.task_items ti
+      join public.task_distributions td on td.id = ti.distribution_id;
+    $$;
+  end if;
+end $$;
+
+
+commit;
+

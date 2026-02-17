@@ -1,5 +1,18 @@
 const { sendJson, requireAuthedUser, serviceUpdate } = require('./_common');
 
+function normalizeTaskItemStatus(value) {
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return 'Pending';
+  const upper = raw.toUpperCase();
+  if (upper === 'PENDING') return 'Pending';
+  if (upper === 'IN_PROGRESS' || upper === 'ONGOING') return 'Ongoing';
+  if (upper === 'DONE' || upper === 'COMPLETED') return 'Completed';
+  if (upper === 'WITH_PROBLEM' || upper === 'WITH PROBLEM') return 'With Problem';
+  // Allow already-canonical values
+  if (raw === 'Pending' || raw === 'Ongoing' || raw === 'Completed' || raw === 'With Problem') return raw;
+  return raw;
+}
+
 module.exports = async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
@@ -10,16 +23,23 @@ module.exports = async (req, res) => {
 
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const id = String(body.task_item_id || '').trim();
-    const status = String(body.status || '').trim().toUpperCase();
-    const remarks = String(body.remarks || '');
     if (!id) return sendJson(res, 400, { ok: false, error: 'missing_task_item_id' });
-    if (!['PENDING', 'IN_PROGRESS', 'DONE'].includes(status)) return sendJson(res, 400, { ok: false, error: 'invalid_status' });
+
+    const status = normalizeTaskItemStatus(body.status);
+    const allowed = ['Pending', 'Ongoing', 'Completed', 'With Problem'];
+    if (!allowed.includes(status)) return sendJson(res, 400, { ok: false, error: 'invalid_status' });
+
+    const remarks = String(body.remarks || '');
+    const problemNotes = body.problem_notes == null ? null : String(body.problem_notes);
 
     const patch = {
       status,
       remarks,
       updated_at: new Date().toISOString()
     };
+
+    // Only send problem_notes if provided (schema may not have it yet)
+    if (problemNotes != null) patch.problem_notes = problemNotes;
 
     const uid = encodeURIComponent(String(auth.authed.id || ''));
     const out = await serviceUpdate('task_items', patch, { id: `eq.${encodeURIComponent(id)}`, assigned_to: `eq.${uid}` });

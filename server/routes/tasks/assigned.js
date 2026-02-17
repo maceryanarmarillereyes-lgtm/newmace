@@ -5,9 +5,14 @@ const ITEM_DISTRIBUTION_COLUMNS = ['distribution_id', 'task_distribution_id'];
 const OWNER_COLUMNS = ['created_by', 'created_by_user_id', 'owner_id', 'user_id'];
 
 function normStatus(value) {
-  const status = String(value || 'PENDING').toUpperCase();
-  if (status === 'DONE' || status === 'IN_PROGRESS') return status;
-  return 'PENDING';
+  const raw = String(value == null ? '' : value).trim();
+  if (!raw) return 'Pending';
+  const upper = raw.toUpperCase();
+  if (upper === 'PENDING') return 'Pending';
+  if (upper === 'IN_PROGRESS' || upper === 'ONGOING') return 'Ongoing';
+  if (upper === 'DONE' || upper === 'COMPLETED') return 'Completed';
+  if (upper === 'WITH_PROBLEM' || upper === 'WITH PROBLEM') return 'With Problem';
+  return raw;
 }
 
 function itemDeadlineValue(item) {
@@ -113,8 +118,8 @@ module.exports = async (req, res) => {
 
       acc[distributionId].items.push(item);
       acc[distributionId].total_count += 1;
-      if (status === 'DONE') acc[distributionId].done_count += 1;
-      if (status !== 'DONE') acc[distributionId].pending_count += 1;
+      if (status === 'Completed') acc[distributionId].done_count += 1;
+      if (status !== 'Completed') acc[distributionId].pending_count += 1;
       return acc;
     }, {});
 
