@@ -36,30 +36,82 @@ module.exports = async (req, res) => {
       return sendJson(res, 400, { ok: false, error: 'problem_notes_required' });
     }
 
-    const patch = {
-      status,
-      remarks,
-      updated_at: new Date().toISOString()
+    const updatedAt = new Date().toISOString();
+
+    // Keep patches minimal to reduce failures when PostgREST schema cache is stale
+    // or optional columns (like problem_notes) don't exist yet.
+    const includeProblemNotes = (status === 'With Problem');
+    const mkPatch = (statusValue) => {
+      const p = { status: statusValue, updated_at: updatedAt };
+      if (remarks) p.remarks = remarks;
+      if (includeProblemNotes) p.problem_notes = problemNotes;
+      return p;
     };
 
-    // Enforce consistent notes storage:
-    // - With Problem -> notes required
-    // - All other statuses -> notes cleared
-    patch.problem_notes = status === 'With Problem' ? problemNotes : null;
-
     const uid = encodeURIComponent(String(auth.authed.id || ''));
-    let out = await serviceUpdate('task_items', patch, { id: `eq.${encodeURIComponent(id)}`, assigned_to: `eq.${uid}` });
-    // Backward compatibility: if DB schema doesn't yet have problem_notes, retry without it.
+    const match = { id: `eq.${encodeURIComponent(id)}`, assigned_to: `eq.${uid}` };
+
+    const errTextOf = (out) => {
+      try { return JSON.stringify(out?.json ?? out?.text ?? ''); } catch (_) { return String(out?.text || ''); }
+    };
+    const isSchemaCacheMissingColumn = (errText, columnName) => {
+      const t = String(errText || '');
+      const tl = t.toLowerCase();
+      return (t.includes('PGRST204') || tl.includes('schema cache') || tl.includes('does not exist')) && t.includes(columnName);
+    };
+    const isInvalidEnumValue = (errText) => {
+      const tl = String(errText || '').toLowerCase();
+      return tl.includes('invalid input value for enum') || tl.includes('22p02');
+    };
+    const toLegacyEnum = (canonical) => {
+      const c = String(canonical || '');
+      if (c === 'With Problem') return 'WITH_PROBLEM';
+      return c.toUpperCase();
+    };
+
+    // Attempt 1: canonical values (Pending/Ongoing/Completed/With Problem)
+    let out = await serviceUpdate('task_items', mkPatch(status), match);
+
+    // Attempt 2: legacy enum variants (PENDING/ONGOING/COMPLETED/WITH_PROBLEM)
     if (!out.ok) {
-      const errText = JSON.stringify(out.json || out.text || '').toLowerCase();
-      const missingProblemNotes = errText.includes('problem_notes') && errText.includes('does not exist');
-      if (missingProblemNotes && status !== 'With Problem') {
-        const retryPatch = { ...patch };
-        delete retryPatch.problem_notes;
-        out = await serviceUpdate('task_items', retryPatch, { id: `eq.${encodeURIComponent(id)}`, assigned_to: `eq.${uid}` });
+      const et = errTextOf(out);
+      if (isInvalidEnumValue(et)) {
+        out = await serviceUpdate('task_items', mkPatch(toLegacyEnum(status)), match);
       }
     }
-    if (!out.ok) return sendJson(res, 500, { ok: false, error: 'task_item_update_failed', details: out.json || out.text });
+
+    // If we're trying to write problem_notes but PostgREST can't see the column,
+    // return a clear remediation message.
+    if (!out.ok && includeProblemNotes) {
+      const et = errTextOf(out);
+      if (isSchemaCacheMissingColumn(et, 'problem_notes')) {
+        return sendJson(res, 409, {
+          ok: false,
+          error: 'task_item_update_failed',
+          message:
+            "Your database API schema cache is stale or the DB is missing the 'problem_notes' column. " +
+            "Run the latest migrations, then refresh PostgREST schema cache by executing: NOTIFY pgrst, 'reload schema'; in Supabase SQL Editor.",
+          details: out.json || out.text
+        });
+      }
+    }
+
+    if (!out.ok) {
+      return sendJson(res, out.status || 500, {
+        ok: false,
+        error: 'task_item_update_failed',
+        message: (out.json && (out.json.message || out.json.error)) ? (out.json.message || out.json.error) : 'Failed to update task status.',
+        details: out.json || out.text
+      });
+    }
+
+    // Best-effort cleanup: if the user is moving away from "With Problem",
+    // clear problem_notes when the column exists (ignore failures on older DBs).
+    if (!includeProblemNotes) {
+      try {
+        await serviceUpdate('task_items', { problem_notes: null }, match);
+      } catch (_) {}
+    }
 
     const row = Array.isArray(out.json) ? out.json[0] : null;
     return sendJson(res, 200, { ok: true, row });
