@@ -2922,6 +2922,12 @@ function updateClocksPreviewTimes(){
       return '';
     }catch(_){ return ''; }
   }
+      if(h[0] === '/'){
+        return _normalizeRouteSegment(h);
+      }
+      return '';
+    }catch(_){ return ''; }
+  }
 
   function resolveRoutePageId(){
     try{
@@ -2952,6 +2958,13 @@ function updateClocksPreviewTimes(){
     }
   }
 
+      if(pages['dashboard']) return 'dashboard';
+      const keys = Object.keys(pages);
+      return keys.length ? keys[0] : 'dashboard';
+    }catch(_){
+      return 'dashboard';
+    }
+  }
 
   function navigateToPageId(pageId, opts){
     const pages = window.Pages || {};
