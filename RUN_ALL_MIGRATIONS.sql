@@ -595,22 +595,13 @@ create index if not exists task_items_assigned_to_idx
   on public.task_items (assigned_to);
 
 --------------------------------------------------------------------------------
--- view: team workload matrix (optional helper)
--- NOTE: We DROP first to avoid Postgres 42P16 (cannot drop columns from view)
+-- view: team workload matrix
+-- NOTE: This view depends on task_items.status. We normalize/cast status to the
+-- enum type later in this script, so we DEFER creating the view until AFTER the
+-- status conversion. We still drop any existing view here to keep reruns safe.
 --------------------------------------------------------------------------------
 
 drop view if exists public.view_team_workload_matrix;
-
-create view public.view_team_workload_matrix
-with (security_invoker=true)
-as
-select
-  assigned_to as user_id,
-  count(*) filter (where status in ('PENDING','ONGOING')) as open_tasks,
-  count(*) as total_tasks,
-  max(updated_at) as last_updated_at
-from public.task_items
-group by assigned_to;
 
 
 -- ===========================================================================
