@@ -841,7 +841,7 @@ begin
     where table_schema = 'public'
       and table_name = 'mums_profiles'
   ) then
-    execute $$
+    execute $view$
       create view public.view_team_workload_matrix
       with (security_invoker = true)
       as
@@ -855,9 +855,9 @@ begin
       from public.task_items ti
       join public.task_distributions td on td.id = ti.distribution_id
       left join public.mums_profiles mp on mp.user_id = ti.assigned_to;
-    $$;
+    $view$;
   else
-    execute $$
+    execute $view$
       create view public.view_team_workload_matrix
       with (security_invoker = true)
       as
@@ -870,7 +870,7 @@ begin
         coalesce(ti.updated_at, ti.created_at) as last_update
       from public.task_items ti
       join public.task_distributions td on td.id = ti.distribution_id;
-    $$;
+    $view$;
   end if;
 end $$;
 
