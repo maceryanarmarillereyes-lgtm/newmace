@@ -1405,7 +1405,8 @@ function updateClocksPreviewTimes(){
       const depthClass = depth > 0 ? ' nav-subitem' : '';
 
       if(!hasKids){
-        return `<a class="nav-item depth-${depth}${depthClass}" href="/${n.id}" data-page="${n.id}" data-label="${UI.esc(n.label)}" ${pad} title="${UI.esc(n.label)}">
+        const href = (n && n.route) ? String(n.route) : (`/${n.id}`);
+        return `<a class="nav-item depth-${depth}${depthClass}" href="${href}" data-page="${n.id}" data-label="${UI.esc(n.label)}" ${pad} title="${UI.esc(n.label)}">
           <span class="nav-ico" data-ico="${iconFor(n.id)}" aria-hidden="true"></span>
           <span class="nav-label">${UI.esc(n.label)}</span>
         </a>`;
@@ -2874,16 +2875,53 @@ function updateClocksPreviewTimes(){
     }catch(_){ return ''; }
   }
 
+  // Normalize full route paths (keeps nested segments like "distribution/monitoring").
+  function _normalizeRoutePath(raw){
+    try{
+      let s = String(raw||'').trim();
+      if(!s) return '';
+      if(s.startsWith('#')) s = s.slice(1);
+      if(s.startsWith('/')) s = s.slice(1);
+      s = s.split('?')[0].split('#')[0];
+      // Trim trailing slashes
+      s = s.replace(/\/+$/g,'');
+      return s;
+    }catch(_){ return ''; }
+  }
+
+  function _routePageIdFromRoutePath(routePath){
+    try{
+      const rp = String(routePath||'').trim().toLowerCase();
+      if(rp === 'distribution/monitoring') return 'distribution_monitoring';
+      // Default: only the first segment is the page id (legacy behavior).
+      return String(routePath||'').split('/')[0] || '';
+    }catch(_){ return ''; }
+  }
+
+  function _routePathForPageId(pageId){
+    try{
+      const id = String(pageId||'').trim();
+      if(id === 'distribution_monitoring') return '/distribution/monitoring';
+      return '/' + id;
+    }catch(_){ return '/' + String(pageId||''); }
+  }
+
   function _routePageIdFromHref(href){
     try{
       const h = String(href||'').trim();
       if(!h) return '';
+
       if(h[0] === '#'){
-        // Support legacy hash routes both with and without a leading slash:
-        //   #my_schedule   ✅
-        //   #/my_schedule  ✅
-        return _normalizeRouteSegment(h);
+        const routePath = _normalizeRoutePath(h);
+        return _routePageIdFromRoutePath(routePath);
       }
+      if(h[0] === '/'){
+        const routePath = _normalizeRoutePath(h);
+        return _routePageIdFromRoutePath(routePath);
+      }
+      return '';
+    }catch(_){ return ''; }
+  }
       if(h[0] === '/'){
         return _normalizeRouteSegment(h);
       }
@@ -2894,20 +2932,31 @@ function updateClocksPreviewTimes(){
   function resolveRoutePageId(){
     try{
       const pages = window.Pages || {};
-      const hashId = _normalizeRouteSegment(window.location.hash||'');
+      const hashPath = _normalizeRoutePath(window.location.hash||'');
+      const hashId = _routePageIdFromRoutePath(hashPath);
 
       const proto = String(window.location.protocol||'');
       if(proto !== 'file:'){
-        const seg = _normalizeRouteSegment(window.location.pathname||'/');
+        const path = _normalizeRoutePath(window.location.pathname||'/');
+        const pathId = _routePageIdFromRoutePath(path);
+
         // In hosted mode (http/https), clean path is canonical.
         // This avoids stale hashes from previous pages (e.g. #my_schedule)
         // overriding explicit sidebar navigation to another page.
-        if(seg && !seg.includes('.') && pages[seg]) return seg;
+        if(pathId && !pathId.includes('.') && pages[pathId]) return pathId;
         if(hashId && pages[hashId]) return hashId;
       }else{
         // file:// mode still relies on hash routing.
         if(hashId && pages[hashId]) return hashId;
       }
+
+      if(pages['dashboard']) return 'dashboard';
+      const keys = Object.keys(pages);
+      return keys.length ? keys[0] : 'dashboard';
+    }catch(_){
+      return 'dashboard';
+    }
+  }
 
       if(pages['dashboard']) return 'dashboard';
       const keys = Object.keys(pages);
@@ -2929,7 +2978,7 @@ function updateClocksPreviewTimes(){
     }
 
     try{
-      const url = '/' + id;
+      const url = _routePathForPageId(id);
       if(opts && opts.replace) history.replaceState({},'', url);
       else history.pushState({},'', url);
       // In hosted mode, keep clean URLs authoritative. Remove any stale hash

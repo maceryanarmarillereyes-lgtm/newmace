@@ -68,6 +68,9 @@ const ROUTES = {
   'tasks/item_status': require('../server/routes/tasks/item_status'),
   'tasks/workload_matrix': require('../server/routes/tasks/workload_matrix'),
   'tasks/members': require('../server/routes/tasks/members'),
+  'tasks/monitoring': require('../server/routes/tasks/monitoring'),
+  'tasks/reassign_pending': require('../server/routes/tasks/reassign_pending'),
+  'tasks/distribution_export': require('../server/routes/tasks/distribution_export'),
 };
 
 const DYNAMIC_ROUTES = [

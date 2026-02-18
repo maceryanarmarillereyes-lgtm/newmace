@@ -7,7 +7,7 @@ const CloudTasks = (() => {
   const parse = async (res) => {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, status: res.status, message: data.message || data.error || `Failed (${res.status})`, data };
-    return { ok: true, data };
+    return {ok: true, data, monitoring, reassignPending, exportDistribution };
   };
 
   const assigned = async () => parse(await fetch('/api/tasks/assigned', { headers: { ...authHeader() } }));
@@ -38,7 +38,45 @@ const CloudTasks = (() => {
     return parse(await fetch(`/api/tasks/workload_matrix${q}`, { headers: { ...authHeader() } }));
   };
 
-  return { assigned, distributions, members, distributionItems, createDistribution, deleteDistribution, updateItemStatus, workloadMatrix };
+  
+  // Phase 3: Command Center (Team Lead Monitoring)
+  const monitoring = async (limit, offset) => {
+    const l = Math.max(1, Math.min(20, Number(limit || 20)));
+    const o = Math.max(0, Number(offset || 0));
+    return parse(await fetch(`/api/tasks/monitoring?limit=${encodeURIComponent(String(l))}&offset=${encodeURIComponent(String(o))}`, { headers: { ...authHeader() } }));
+  };
+
+  const reassignPending = async (payload) => parse(await fetch('/api/tasks/reassign_pending', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeader() },
+    body: JSON.stringify(payload || {})
+  }));
+
+  const exportDistribution = async (distributionId, format) => {
+    const id = String(distributionId || '').trim();
+    const fmt = String(format || 'csv').trim().toLowerCase();
+    const res = await fetch(`/api/tasks/distribution_export?distribution_id=${encodeURIComponent(id)}&format=${encodeURIComponent(fmt)}`, { headers: { ...authHeader() } });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      let msg = `Failed (${res.status})`;
+      try {
+        const j = text ? JSON.parse(text) : null;
+        msg = (j && (j.message || j.error)) ? (j.message || j.error) : msg;
+      } catch (_) {
+        if (text) msg = text.slice(0, 240);
+      }
+      return { ok: false, status: res.status, message: msg, data: text };
+    }
+    const blob = await res.blob();
+    return {
+      ok: true,
+      blob,
+      contentType: res.headers.get('content-type') || '',
+      disposition: res.headers.get('content-disposition') || ''
+    };
+  };
+
+  return { assigned, distributions, members, distributionItems, createDistribution, deleteDistribution, updateItemStatus, workloadMatrix, monitoring, reassignPending, exportDistribution };
 })();
 
 window.CloudTasks = CloudTasks;

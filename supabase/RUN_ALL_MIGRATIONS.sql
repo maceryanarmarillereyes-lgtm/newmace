@@ -529,16 +529,43 @@ end;
 $$;
 
 -- Re-apply search_path hardening for auth->profile linking helper
+-- Re-apply search_path hardening for auth->profile linking helper
 create or replace function public.mums_link_auth_user_to_profile()
 returns trigger
 language plpgsql
 security definer
 set search_path = public, auth, extensions
 as $$
+declare
+  v_email text;
+  v_profile_exists boolean;
 begin
-  insert into public.profiles (id, email)
-  values (new.id, new.email)
-  on conflict (id) do nothing;
+  v_email := lower(trim(coalesce(new.email, '')));
+
+  if v_email = '' then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Invite-only login denied: missing email.';
+  end if;
+
+  select exists (
+    select 1
+    from public.mums_profiles p
+    where lower(trim(coalesce(p.email::text, ''))) = v_email
+  )
+  into v_profile_exists;
+
+  if not v_profile_exists then
+    raise exception using
+      errcode = 'P0001',
+      message = format('Invite-only login denied for email: %s', v_email);
+  end if;
+
+  update public.mums_profiles p
+  set user_id = new.id,
+      updated_at = now()
+  where lower(trim(coalesce(p.email::text, ''))) = v_email;
+
   return new;
 end;
 $$;

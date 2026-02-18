@@ -149,6 +149,39 @@ async function queryDistributionsByOwner(uid) {
   return { ok: false, json: null, text: 'owner_column_not_found' };
 }
 
+
+async function enforceRetentionForOwner(uid) {
+  try {
+    const ownerId = String(uid || '').trim();
+    if (!ownerId) return;
+
+    // FIFO retention: keep only the newest 50 distributions per creator.
+    for (const ownerKey of OWNER_COLUMNS) {
+      const q = `select=id,created_at&${encodeURIComponent(ownerKey)}=eq.${encodeURIComponent(ownerId)}&order=created_at.asc&limit=50`;
+      const out = await serviceSelect('task_distributions', q);
+      if (!out.ok) {
+        const errText = JSON.stringify(out.json || out.text || '');
+        const err = errText.toLowerCase();
+        // If this ownerKey doesn't exist, try the next.
+        if (err.includes('does not exist') || err.includes('schema cache') || err.includes('could not find')) continue;
+        // Unknown error: don't block creation.
+        return;
+      }
+
+      const rows = Array.isArray(out.json) ? out.json : [];
+      if (rows.length < 50) return;
+
+      const oldest = rows[0] && rows[0].id ? String(rows[0].id) : '';
+      if (!oldest) return;
+
+      await serviceFetch(`/rest/v1/task_distributions?id=eq.${encodeURIComponent(oldest)}`, { method: 'DELETE' });
+      return;
+    }
+  } catch (_) {
+    // Non-fatal
+  }
+}
+
 async function queryItemsForDistributionIds(ids) {
   if (!ids.length) return { items: [], distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
 
@@ -406,6 +439,8 @@ module.exports = async (req, res) => {
       if (!title) return sendJson(res, 400, { ok: false, error: 'missing_title' });
       if (!normalizedRows.length) return sendJson(res, 400, { ok: false, error: 'valid_items_required' });
 
+      await enforceRetentionForOwner(uid);
+
       const created = await insertDistributionRow(title, uid, { description, reference_url: referenceUrl, status, enable_daily_alerts: enableDailyAlerts });
       if (!created.row) {
         return sendJson(res, 500, {
@@ -525,3 +560,5 @@ module.exports = async (req, res) => {
     return sendJson(res, 500, { ok: false, error: 'distributions_failed', message: String(err && err.message ? err.message : err) });
   }
 };
+
+

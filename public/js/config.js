@@ -153,6 +153,7 @@
           { id: 'members', label: 'Members', icon: '👥', perm: 'view_members' },
           { id: 'master_schedule', label: 'Master Schedule', icon: '📅', perm: 'view_master_schedule' },
           { id: 'team_config', label: 'Team Task Settings', icon: '🛠️', perm: 'manage_team_config' },
+          { id: 'distribution_monitoring', label: 'Command Center', icon: '🛰️', perm: 'view_distribution_monitoring', route: '/distribution/monitoring' },
         ]
       },
 
@@ -190,10 +191,10 @@
     // Permissions are intentionally flat strings to keep the app usable without a backend.
     // New: manage_release_notes (grants Add/Import/Export/Delete release notes).
 	    PERMS: {
-	      SUPER_ADMIN: ['*','create_users','view_logs','view_my_record','view_gmt_overview'],
-	      SUPER_USER: ['view_dashboard','view_mailbox','view_members','manage_release_notes','view_master_schedule','view_my_record','view_my_reminders','view_team_reminders','manage_team_reminders','create_users','view_logs','view_gmt_overview'],
-	      ADMIN: ['view_dashboard','view_mailbox','view_members','manage_users','manage_announcements','manage_release_notes','manage_members_scheduling','view_master_schedule','view_my_record','view_logs','view_gmt_overview'],
-	      TEAM_LEAD: ['view_dashboard','view_mailbox','view_members','manage_members_scheduling','manage_announcements','view_master_schedule','view_my_record','view_my_reminders','view_team_reminders','manage_team_reminders','create_users','manage_team_config','view_logs','view_gmt_overview'],
+	      SUPER_ADMIN: ['*','create_users','view_logs','view_my_record','view_gmt_overview','view_distribution_monitoring'],
+	      SUPER_USER: ['view_dashboard','view_mailbox','view_members','manage_release_notes','view_master_schedule','view_my_record','view_my_reminders','view_team_reminders','manage_team_reminders','create_users','view_logs','view_gmt_overview','view_distribution_monitoring'],
+	      ADMIN: ['view_dashboard','view_mailbox','view_members','manage_users','manage_announcements','manage_release_notes','manage_members_scheduling','view_master_schedule','view_my_record','view_logs','view_gmt_overview','view_distribution_monitoring'],
+	      TEAM_LEAD: ['view_dashboard','view_mailbox','view_members','manage_members_scheduling','manage_announcements','view_master_schedule','view_my_record','view_my_reminders','view_team_reminders','manage_team_reminders','create_users','manage_team_config','view_logs','view_gmt_overview','view_distribution_monitoring'],
 	      MEMBER: ['view_dashboard','view_mailbox','view_my_record','view_my_reminders','view_team_reminders','view_gmt_overview'],
 	    },
 
