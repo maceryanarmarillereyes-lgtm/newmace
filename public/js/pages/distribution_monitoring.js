@@ -76,8 +76,7 @@
 </div>`;
   }
 
-  function page(){
-    const root = UI.el('#page');
+  function page(root){
     if(!root) return;
 
     if(!canView()){
