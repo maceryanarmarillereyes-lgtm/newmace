@@ -69,9 +69,27 @@
         </div>
       </div>
 
-      <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:10px">
-        <div class="muted" id="distReassignInfo" style="font-size:12px"></div>
-        <button class="btn primary" id="distReassignConfirm">Transfer Pending</button>
+      <div class="dist-items-wrap" style="margin-top:12px">
+        <div class="dist-items-head">
+          <label class="dist-items-selectall"><input type="checkbox" id="distReassignSelectAll"> Select All</label>
+          <div class="muted" id="distReassignInfo" style="font-size:12px"></div>
+        </div>
+        <div class="dist-items-scroll">
+          <table class="dist-items-table">
+            <thead>
+              <tr>
+                <th style="width:46px">#</th>
+                <th>Case #</th>
+                <th>Site</th>
+              </tr>
+            </thead>
+            <tbody id="distReassignItems"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:10px">
+        <button class="btn primary" id="distReassignConfirm">Transfer Selected</button>
       </div>
     </div>
   </div>
@@ -221,6 +239,16 @@
           .m-manage-btn { background:transparent; border:1px solid #38bdf8; color:#38bdf8; font-size:10px; padding:2px 8px; border-radius:4px; cursor:pointer; }
           .m-manage-btn:hover { background:#38bdf8; color:#0f172a; }
           .err-dot { width:8px; height:8px; background:#ef4444; border-radius:50%; display:inline-block; box-shadow:0 0 8px #ef4444; }
+          .dist-items-wrap { border:1px solid rgba(148,163,184,.25); border-radius:10px; background:rgba(15,23,42,.42); }
+          .dist-items-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border-bottom:1px solid rgba(148,163,184,.2); }
+          .dist-items-selectall { display:flex; align-items:center; gap:6px; font-size:11px; color:#cbd5e1; font-weight:700; }
+          .dist-items-scroll { max-height:220px; overflow:auto; }
+          .dist-items-table { width:100%; border-collapse:collapse; font-size:11px; }
+          .dist-items-table th { text-align:left; color:#94a3b8; font-weight:800; padding:7px 10px; position:sticky; top:0; background:rgba(15,23,42,.92); }
+          .dist-items-table td { padding:6px 10px; border-top:1px solid rgba(148,163,184,.14); color:#e2e8f0; }
+          .dist-items-table tr:hover td { background:rgba(56,189,248,.08); }
+          .dist-item-checkbox { width:14px; height:14px; accent-color:#38bdf8; }
+          .dist-item-empty { text-align:center; color:#94a3b8; }
           @keyframes ccPulse { 0% { opacity: 1; } 50% { opacity: .5; } 100% { opacity: 1; } }
 
           @media (max-width: 1200px) {
@@ -286,6 +314,29 @@
       downloadBlob(out.blob, name);
     }
 
+    function getModalSelectedItemIds(){
+      const tbody = UI.el('#distReassignItems');
+      if(!tbody) return [];
+      return Array.from(tbody.querySelectorAll('input[data-item-id]:checked'))
+        .map((el)=>String(el.getAttribute('data-item-id') || '').trim())
+        .filter(Boolean);
+    }
+
+    function syncSelectAllState(){
+      const tbody = UI.el('#distReassignItems');
+      const allEl = UI.el('#distReassignSelectAll');
+      const infoEl = UI.el('#distReassignInfo');
+      const btn = UI.el('#distReassignConfirm');
+      const total = tbody ? Number(tbody.getAttribute('data-total') || 0) : 0;
+      const selected = getModalSelectedItemIds().length;
+      if(infoEl) infoEl.textContent = `Selected ${selected} of ${total} pending task(s)`;
+      if(btn) btn.disabled = selected <= 0;
+      if(allEl){
+        allEl.checked = total > 0 && selected === total;
+        allEl.indeterminate = selected > 0 && selected < total;
+      }
+    }
+
     function openManageModal(distId, fromUserId){
       const dist = state.dists.find((d)=>String(d.id)===String(distId));
       if(!dist) return;
@@ -297,17 +348,40 @@
       const fromEl = UI.el('#distReassignFrom');
       const subEl = UI.el('#distReassignSub');
       const infoEl = UI.el('#distReassignInfo');
+      const tbody = UI.el('#distReassignItems');
+      const allEl = UI.el('#distReassignSelectAll');
 
       fromEl.textContent = `${from.name || from.user_id} (${from.user_id})`;
-      subEl.textContent = `${dist.title || 'Distribution'} • Transfer ONLY PENDING tasks`;
+      subEl.textContent = `${dist.title || 'Distribution'} • Select pending tasks to transfer`;
 
       const opts = members
         .filter((m)=>String(m.user_id)!==String(from.user_id))
         .map((m)=>`<option value="${UI.esc(m.user_id)}">${UI.esc(m.name || m.user_id)}</option>`);
       toSel.innerHTML = opts.join('') || '<option value="">No other members</option>';
 
-      const pendingCount = Number(from.pending||0);
-      infoEl.textContent = `Pending tasks to transfer: ${pendingCount}`;
+      const memberItems = Array.isArray(from.items) ? from.items : [];
+      const pendingItems = memberItems.filter((it)=>String(it && it.status || '').trim().toLowerCase() === 'pending');
+      if(tbody){
+        tbody.setAttribute('data-total', String(pendingItems.length));
+        if(!pendingItems.length){
+          tbody.innerHTML = '<tr><td colspan="3" class="dist-item-empty">No pending tasks available.</td></tr>';
+        }else{
+          tbody.innerHTML = pendingItems.map((it)=>{
+            const itemId = String(it && it.id || '').trim();
+            const caseNo = it && (it.case_number || it.case_no) ? String(it.case_number || it.case_no) : 'N/A';
+            const site = it && it.site ? String(it.site) : 'N/A';
+            return `<tr><td><input class="dist-item-checkbox" type="checkbox" data-item-id="${UI.esc(itemId)}"></td><td>${UI.esc(caseNo)}</td><td>${UI.esc(site)}</td></tr>`;
+          }).join('');
+        }
+      }
+
+      if(allEl){
+        allEl.checked = false;
+        allEl.indeterminate = false;
+      }
+
+      const pendingCount = pendingItems.length;
+      infoEl.textContent = `Selected 0 of ${pendingCount} pending task(s)`;
 
       state.modalCtx = { distribution_id: distId, from_user_id: from.user_id, pending: pendingCount };
       UI.openModal('distReassignModal');
@@ -328,10 +402,17 @@
       const btn = UI.el('#distReassignConfirm');
       btn.disabled = true;
       try{
+        const selectedItemIds = getModalSelectedItemIds();
+        if(!selectedItemIds.length){
+          UI.toast('Select at least one pending task', { variant: 'danger' });
+          btn.disabled = false;
+          return;
+        }
         const out = await CloudTasks.reassignPending({
           distribution_id: ctx.distribution_id,
           from_user_id: ctx.from_user_id,
-          to_user_id: toUser
+          to_user_id: toUser,
+          selected_item_ids: selectedItemIds
         });
         if(!out.ok){
           UI.toast(out.message || out.error || 'Transfer failed', { variant: 'danger' });
@@ -369,6 +450,26 @@
       e.preventDefault();
       confirmTransfer();
     });
+
+    const selectAllEl = UI.el('#distReassignSelectAll');
+    if(selectAllEl){
+      selectAllEl.addEventListener('change', ()=>{
+        const tbody = UI.el('#distReassignItems');
+        if(!tbody) return;
+        const checks = tbody.querySelectorAll('input[data-item-id]');
+        checks.forEach((el)=>{ el.checked = !!selectAllEl.checked; });
+        syncSelectAllState();
+      });
+    }
+
+    const itemsBodyEl = UI.el('#distReassignItems');
+    if(itemsBodyEl){
+      itemsBodyEl.addEventListener('change', (e)=>{
+        const cb = e.target.closest('input[data-item-id]');
+        if(!cb) return;
+        syncSelectAllState();
+      });
+    }
 
     btnMore.addEventListener('click', (e)=>{
       e.preventDefault();
