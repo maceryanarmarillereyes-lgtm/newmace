@@ -28,11 +28,15 @@ module.exports = async (req, res) => {
     const distributionId = String(body.distribution_id || '').trim();
     const fromUserId = String(body.from_user_id || '').trim();
     const toUserId = String(body.to_user_id || '').trim();
+    const selectedItemIds = Array.isArray(body.selected_item_ids)
+      ? body.selected_item_ids.map((id) => String(id || '').trim()).filter((id) => isUuid(id))
+      : [];
 
     if (!distributionId || !isUuid(distributionId)) return sendJson(res, 400, { ok: false, error: 'invalid_distribution_id' });
     if (!fromUserId || !isUuid(fromUserId)) return sendJson(res, 400, { ok: false, error: 'invalid_from_user_id' });
     if (!toUserId || !isUuid(toUserId)) return sendJson(res, 400, { ok: false, error: 'invalid_to_user_id' });
     if (fromUserId === toUserId) return sendJson(res, 400, { ok: false, error: 'same_user' });
+    if (!selectedItemIds.length) return sendJson(res, 400, { ok: false, error: 'invalid_selected_item_ids' });
 
     // Ensure the distribution exists.
     const dOut = await serviceSelect('task_distributions', `select=*&id=eq.${encodeURIComponent(distributionId)}&limit=1`);
@@ -40,11 +44,12 @@ module.exports = async (req, res) => {
     const dist = Array.isArray(dOut.json) && dOut.json[0] ? dOut.json[0] : null;
     if (!dist) return sendJson(res, 404, { ok: false, error: 'distribution_not_found' });
 
-    // Only transfer PENDING tasks.
+    // Only transfer SELECTED + PENDING tasks.
     const status = 'Pending';
+    const selectedIn = selectedItemIds.join(',');
 
-    // 1) Update pending tasks that have no transfer history yet: set transferred_from.
-    const matchBase = `distribution_id=eq.${encodeURIComponent(distributionId)}&assigned_to=eq.${encodeURIComponent(fromUserId)}&status=eq.${encodeURIComponent(status)}`;
+    // 1) Update pending selected tasks that have no transfer history yet: set transferred_from.
+    const matchBase = `distribution_id=eq.${encodeURIComponent(distributionId)}&assigned_to=eq.${encodeURIComponent(fromUserId)}&status=eq.${encodeURIComponent(status)}&id=in.(${selectedIn})`;
 
     let moved = 0;
 
@@ -54,7 +59,7 @@ module.exports = async (req, res) => {
     });
     if (out1.ok && Array.isArray(out1.json)) moved += out1.json.length;
 
-    // 2) Update remaining pending tasks (already have transfer history): only set assigned_to.
+    // 2) Update remaining selected pending tasks (already have transfer history): only set assigned_to.
     let out2 = await serviceUpdate('task_items', `${matchBase}&transferred_from=not.is.null`, {
       assigned_to: toUserId
     });
@@ -62,7 +67,7 @@ module.exports = async (req, res) => {
 
     // Fallback for legacy schema column name task_distribution_id
     if (!out1.ok && !out2.ok) {
-      const legacyMatch = `task_distribution_id=eq.${encodeURIComponent(distributionId)}&assigned_to=eq.${encodeURIComponent(fromUserId)}&status=eq.${encodeURIComponent(status)}`;
+      const legacyMatch = `task_distribution_id=eq.${encodeURIComponent(distributionId)}&assigned_to=eq.${encodeURIComponent(fromUserId)}&status=eq.${encodeURIComponent(status)}&id=in.(${selectedIn})`;
       out1 = await serviceUpdate('task_items', `${legacyMatch}&transferred_from=is.null`, {
         assigned_to: toUserId,
         transferred_from: fromUserId
@@ -75,7 +80,7 @@ module.exports = async (req, res) => {
     }
 
     // If the schema is missing columns (e.g. transferred_from), serviceUpdate may fail.
-    // In that case, at least attempt to move tasks without transfer history.
+    // In that case, at least attempt to move selected pending tasks.
     if (moved === 0) {
       const patchOnly = await serviceUpdate('task_items', matchBase, { assigned_to: toUserId });
       if (patchOnly.ok && Array.isArray(patchOnly.json)) moved += patchOnly.json.length;

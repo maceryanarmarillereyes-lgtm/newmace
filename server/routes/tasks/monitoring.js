@@ -40,9 +40,9 @@ if (!dists.length) return sendJson(res, 200, { ok: true, limit, offset, distribu
 const distIds = safeUuidList(dists.map((d) => d && (d.id || d.distribution_id || d.task_distribution_id)));
 if (!distIds.length) return sendJson(res, 200, { ok: true, limit, offset, distributions: [], has_more: dists.length === limit });
 const inList = distIds.join(',');
-let tOut = await serviceSelect('task_items', `select=id,distribution_id,assigned_to,status,problem_notes,transferred_from,created_at,updated_at&distribution_id=in.(${inList})`);
+let tOut = await serviceSelect('task_items', `select=id,distribution_id,assigned_to,status,problem_notes,transferred_from,created_at,updated_at,case_number,case_no,site&distribution_id=in.(${inList})`);
 if (!tOut.ok) {
-  tOut = await serviceSelect('task_items', `select=id,task_distribution_id,assigned_to,status,problem_notes,transferred_from,created_at,updated_at&task_distribution_id=in.(${inList})`);
+  tOut = await serviceSelect('task_items', `select=id,task_distribution_id,assigned_to,status,problem_notes,transferred_from,created_at,updated_at,case_number,case_no,site&task_distribution_id=in.(${inList})`);
 }
 const items = tOut.ok && Array.isArray(tOut.json) ? tOut.json : [];
 const userIds = safeUuidList([
@@ -85,11 +85,18 @@ const byDist = {};
       pending: 0,
       ongoing: 0,
       completed: 0,
-      with_problem: 0
+      with_problem: 0,
+      items: []
     };
   }
   const s = normalizeStatus(t.status);
   const row = byDist[distId][memberId];
+  row.items.push({
+    id: t.id,
+    case_number: t.case_number || t.case_no,
+    site: t.site,
+    status: t.status
+  });
   row.total += 1;
   if (s === 'Pending') row.pending += 1;
   else if (s === 'Ongoing') row.ongoing += 1;
