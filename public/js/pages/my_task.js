@@ -410,15 +410,20 @@
             <table>
               <thead><tr><th>Case #</th><th>Site</th><th>Assignee</th><th>Status</th><th>Deadline</th></tr></thead>
               <tbody>
-                ${items.map((item) => `
-                  <tr>
-                    <td>${esc(safeText(item.case_number || item.case_no, 'N/A'))}</td>
-                    <td>${esc(safeText(item.site, 'N/A'))}</td>
-                    <td>${esc(safeText(item.assigned_to || item.assignee_user_id, 'N/A'))}</td>
-                    <td>${esc(safeText(item.status, 'PENDING'))}</td>
-                    <td>${esc(safeDate(item.deadline || item.deadline_at || item.due_at))}</td>
-                  </tr>
-                `).join('') || '<tr><td colspan="5" class="task-meta">No task items</td></tr>'}
+                ${items.map((item) => {
+                  const uid = String(item.assigned_to || item.assignee_user_id || '').trim();
+                  const member = state.members.find(m => String(m.user_id || m.id) === uid);
+                  const assigneeName = member ? (member.name || member.username || uid) : (uid || 'N/A');
+                  return `
+                    <tr>
+                      <td>${esc(safeText(item.case_number || item.case_no, 'N/A'))}</td>
+                      <td>${esc(safeText(item.site, 'N/A'))}</td>
+                      <td>${esc(assigneeName)}</td>
+                      <td>${esc(safeText(item.status, 'PENDING'))}</td>
+                      <td>${esc(safeDate(item.deadline || item.deadline_at || item.due_at))}</td>
+                    </tr>
+                  `;
+                }).join('') || '<tr><td colspan="5" class="task-meta">No task items</td></tr>'}
               </tbody>
             </table>
           </div>
