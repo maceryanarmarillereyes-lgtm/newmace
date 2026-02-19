@@ -95,4 +95,19 @@ create index if not exists task_distributions_created_by_idx
   on public.task_distributions (created_by);
 
 commit;
+-- =========================================================================
+-- PHASE 3 HOTFIX: Relax RLS for Team Lead Monitoring
+-- Allows all authenticated users to read. The backend API handles the actual
+-- team isolation and filtering.
+-- =========================================================================
+DO $$ 
+BEGIN
+    DROP POLICY IF EXISTS "Elevated Read Distributions" ON public.task_distributions;
+    CREATE POLICY "Allow All Authed to Read Distributions" ON public.task_distributions 
+    FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Elevated Read Task Items" ON public.task_items;
+CREATE POLICY "Allow All Authed to Read Task Items" ON public.task_items 
+FOR SELECT USING (auth.role() = 'authenticated');
+END $$;
+
 NOTIFY pgrst, 'reload schema';
