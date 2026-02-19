@@ -4369,8 +4369,9 @@ async function boot(){
       const proto = String(window.location.protocol||'');
       const pages = window.Pages || {};
       const hasHash = !!(window.location.hash && window.location.hash.length > 1);
-      const seg = String(window.location.pathname||'/').split('/').filter(Boolean)[0] || '';
-      const hasPathPage = !!(proto !== 'file:' && seg && !seg.includes('.') && pages[seg]);
+      const path = _normalizeRoutePath(window.location.pathname||'/');
+      const pathPageId = _routePageIdFromRoutePath(path);
+      const hasPathPage = !!(proto !== 'file:' && pathPageId && !pathPageId.includes('.') && pages[pathPageId]);
 
       if(proto === 'file:'){
         if(!hasHash) window.location.hash = '#dashboard';
