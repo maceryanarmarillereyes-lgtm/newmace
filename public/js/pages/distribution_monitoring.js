@@ -136,83 +136,104 @@
     const btnRefresh = UI.el('#ccRefresh');
 
     function render(){
-      const html = [];
+      const elDistList = UI.el('#ccList');
+      if(!elDistList) return;
 
+      const html = [];
       if(!state.dists.length){
-        html.push(`<div class="muted">No distributions yet.</div>`);
+        html.push(`<div class="task-empty">No active distributions found. Click refresh to sync.</div>`);
       }
 
       state.dists.forEach((d)=>{
         const totals = d.totals || {};
         const members = Array.isArray(d.members) ? d.members : [];
-
-        const headerBadges = [];
-        headerBadges.push(`<span class="pill">Tasks: ${totals.total||0}</span>`);
-        if((totals.with_problem||0) > 0){
-          headerBadges.push(`<span class="pill" style="border-color:rgba(239,68,68,.35);color:rgba(239,68,68,1);background:rgba(239,68,68,.10)">With Problem: ${totals.with_problem}</span>`);
-        }
-        if((totals.pending||0) > 0){
-          headerBadges.push(`<span class="pill">Pending: ${totals.pending}</span>`);
-        }
-
+        const distId = String(d.id || '');
         const distTitle = UI.esc(d.title || 'Untitled');
-        const createdBy = UI.esc(d.created_by_name || d.created_by || '');
-        const createdAt = fmtDate(d.created_at);
+        const createdBy = UI.esc(d.created_by_name || 'System');
 
         html.push(`
-          <div class="card" style="margin-top:12px">
-            <div class="card-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap">
-              <div style="min-width:240px">
-                <div class="card-title" style="font-size:16px">${distTitle}</div>
-                <div class="muted" style="margin-top:3px;font-size:12px">Created by <b>${createdBy}</b> • ${UI.esc(createdAt)}</div>
-                <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${headerBadges.join('')}</div>
+          <div class="enterprise-dist-card">
+            <div class="dist-header">
+              <div class="dist-info">
+                <div class="dist-badge">BATCH ID: ${UI.esc(distId ? distId.slice(0, 8) : 'N/A')}</div>
+                <h3 class="dist-title">${distTitle}</h3>
+                <div class="dist-meta">Lead: <b>${createdBy}</b> • ${UI.esc(fmtDate(d.created_at))}</div>
               </div>
-              <div style="display:flex;gap:8px;align-items:center">
-                <button class="btn" data-export="${UI.esc(d.id)}">Download Excel/CSV</button>
+              <div class="dist-actions">
+                <button class="btn tiny ghost" data-export="${UI.esc(distId)}">Export CSV</button>
               </div>
             </div>
-            <div class="card-body">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th style="width:36%">Member</th>
-                    <th style="width:42%">Completion</th>
-                    <th style="width:22%">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${members.map((m)=>{
-                    const pct = Number(m.completion_pct||0);
-                    const bar = `<div class="syscheck-progress"><div class="bar"><div class="fill" style="width:${pct}%;background:${pctColor(pct)}"></div></div></div>`;
-                    const prob = (m.with_problem||0) > 0 ? `<span class="pill" style="margin-left:8px;border-color:rgba(239,68,68,.35);color:rgba(239,68,68,1);background:rgba(239,68,68,.10)">With Problem: ${m.with_problem}</span>` : '';
-                    const counts = `<div class="muted" style="font-size:12px;margin-top:4px">${m.completed||0}/${m.total||0} done • ${m.pending||0} pending</div>`;
-                    return `
-                      <tr>
-                        <td>
-                          <div style="font-weight:900">${UI.esc(m.name || m.user_id)}</div>
-                          <div class="muted" style="font-size:12px">${UI.esc(m.user_id||'')}</div>
-                        </td>
-                        <td>
-                          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-                            <div style="font-weight:900">${pct}%</div>
-                            <div>${prob}</div>
-                          </div>
-                          ${bar}
-                          ${counts}
-                        </td>
-                        <td>
-                          <button class="btn" data-manage="${UI.esc(d.id)}" data-from="${UI.esc(m.user_id)}">Manage</button>
-                        </td>
-                      </tr>`;
-                  }).join('')}
-                </tbody>
-              </table>
+            <div class="dist-summary-pills">
+              <div class="s-pill blue">Tasks: ${totals.total||0}</div>
+              <div class="s-pill ${totals.with_problem ? 'red pulse' : 'gray'}">Problems: ${totals.with_problem||0}</div>
+              <div class="s-pill gold">Pending: ${totals.pending||0}</div>
+            </div>
+            <div class="member-grid-compact">
+              ${members.map((m)=>{
+                const pct = Number(m.completion_pct||0);
+                return `
+                  <div class="member-mini-card">
+                    <div class="m-info">
+                      <span class="m-name">${UI.esc(m.name || 'Unknown')}</span>
+                      <span class="m-stat">${m.completed||0}/${m.total||0}</span>
+                    </div>
+                    <div class="m-progress-wrap">
+                      <div class="m-progress-bar" style="width:${pct}%; background:${pctColor(pct)}"></div>
+                    </div>
+                    <div class="m-actions">
+                      ${(m.with_problem||0) > 0 ? '<span class="err-dot" title="Has Problem"></span>' : ''}
+                      <button class="m-manage-btn" data-manage="${UI.esc(distId)}" data-from="${UI.esc(m.user_id || '')}">Manage</button>
+                    </div>
+                  </div>`;
+              }).join('')}
             </div>
           </div>
         `);
       });
 
-      elList.innerHTML = html.join('');
+      elDistList.innerHTML = `<div class="enterprise-dashboard-grid">${html.join('')}</div>`;
+
+      if(!document.getElementById('cc-enterprise-styles')){
+        const s = document.createElement('style');
+        s.id = 'cc-enterprise-styles';
+        s.textContent = `
+          .enterprise-dashboard-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
+          .enterprise-dist-card { background:rgba(30, 41, 59, 0.4); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:16px; transition:transform .2s ease, border-color .2s ease; box-shadow:0 8px 24px rgba(0,0,0,.18); }
+          .enterprise-dist-card:hover { transform:translateY(-2px); border-color:rgba(56,189,248,.35); }
+          .dist-header { display:flex; justify-content:space-between; gap:10px; margin-bottom:12px; }
+          .dist-info { min-width:0; }
+          .dist-badge { font-size:10px; color:#38bdf8; font-weight:800; letter-spacing:.08em; }
+          .dist-title { font-size:16px; margin:4px 0; color:#f8fafc; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+          .dist-meta { font-size:11px; color:#94a3b8; }
+          .dist-summary-pills { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:15px; }
+          .s-pill { padding:4px 10px; border-radius:999px; font-size:10px; font-weight:800; border:1px solid rgba(255,255,255,0.1); }
+          .s-pill.blue { background:rgba(56, 189, 248, 0.1); color:#38bdf8; }
+          .s-pill.red.pulse { background:rgba(239, 68, 68, 0.2); color:#ef4444; border-color:#ef4444; animation:ccPulse 2s infinite; }
+          .s-pill.gray { background:rgba(148,163,184,.12); color:#94a3b8; }
+          .s-pill.gold { background:rgba(245, 158, 11, .15); color:#fbbf24; }
+          .member-grid-compact { display:flex; flex-direction:column; gap:8px; }
+          .member-mini-card { background:rgba(15, 23, 42, 0.3); border:1px solid rgba(255,255,255,.06); border-radius:8px; padding:8px 12px; display:grid; grid-template-columns:minmax(0,1fr) 120px auto; align-items:center; gap:10px; }
+          .m-name { font-size:13px; font-weight:700; color:#e2e8f0; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+          .m-stat { font-size:10px; color:#94a3b8; }
+          .m-progress-wrap { height:6px; background:rgba(255,255,255,0.05); border-radius:10px; overflow:hidden; }
+          .m-progress-bar { height:100%; border-radius:10px; }
+          .m-actions { display:flex; justify-content:flex-end; align-items:center; gap:8px; }
+          .m-manage-btn { background:transparent; border:1px solid #38bdf8; color:#38bdf8; font-size:10px; padding:2px 8px; border-radius:4px; cursor:pointer; }
+          .m-manage-btn:hover { background:#38bdf8; color:#0f172a; }
+          .err-dot { width:8px; height:8px; background:#ef4444; border-radius:50%; display:inline-block; box-shadow:0 0 8px #ef4444; }
+          @keyframes ccPulse { 0% { opacity: 1; } 50% { opacity: .5; } 100% { opacity: 1; } }
+
+          @media (max-width: 1200px) {
+            .enterprise-dashboard-grid { grid-template-columns:1fr; }
+          }
+          @media (max-width: 600px) {
+            .member-mini-card { grid-template-columns:1fr; }
+            .m-progress-wrap { width:100%; }
+            .m-actions { justify-content:flex-start; }
+          }
+        `;
+        document.head.appendChild(s);
+      }
 
       btnMore.disabled = state.loading || state.done;
       btnMore.style.display = state.done ? 'none' : '';
