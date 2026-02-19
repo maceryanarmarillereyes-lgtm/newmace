@@ -6,9 +6,11 @@
 
   function canView(){
     try{
-      const role = (window.Me && window.Me.profile && window.Me.profile.role) ? String(window.Me.profile.role) : '';
-      // Prefer permission system if present.
-      if(Config && typeof Config.can === 'function') return !!Config.can('view_distribution_monitoring');
+      const user = (window.Auth && typeof window.Auth.getUser === 'function') ? window.Auth.getUser() : null;
+      if(Config && typeof Config.can === 'function' && user) {
+        return !!Config.can(user, 'view_distribution_monitoring');
+      }
+      const role = user ? String(user.role || '').toUpperCase() : '';
       return ['TEAM_LEAD','ADMIN','SUPER_ADMIN','SUPER_USER'].includes(role);
     }catch(_){ return false; }
   }
