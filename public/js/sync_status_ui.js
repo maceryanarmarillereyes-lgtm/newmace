@@ -71,7 +71,7 @@
       el.querySelector('#rtReloadBtn').addEventListener('click', function(){ location.reload(); });
       el.querySelector('#rtLoginBtn').addEventListener('click', function(){
         const next = encodeURIComponent(window.location.href);
-        window.location.href = `login.html?next=${next}`;
+        window.location.href = `/login.html?next=${next}`;
       });
     } catch (_) {}
     return el;

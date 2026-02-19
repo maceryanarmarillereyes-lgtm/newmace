@@ -11,7 +11,7 @@
       try {
         const p = String(location.pathname || '/').toLowerCase();
         if (p === '/' || p === '/login' || p === '/login/' || p === '/index' || p === '/index/') {
-          location.replace('./login.html');
+          location.replace('/login.html');
         }
       } catch (_) {}
     })();

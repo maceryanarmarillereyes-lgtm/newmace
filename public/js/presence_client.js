@@ -235,7 +235,7 @@ function jwtSub(jwt){
       try{ localStorage.setItem('mums_login_flash', msg || 'This account has been removed from the system.'); }catch(_){}
       try{ window.CloudAuth && CloudAuth.signOut && (await CloudAuth.signOut()); }catch(_){}
       try{ window.Store && Store.setSession && Store.setSession(null); }catch(_){}
-      try{ window.location.href = './login.html'; }catch(_){}
+      try{ window.location.href = '/login.html'; }catch(_){}
     }
 
     // Heartbeat: update server presence.
