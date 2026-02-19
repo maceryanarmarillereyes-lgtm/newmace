@@ -1006,8 +1006,8 @@
     const backdrop = root.querySelector('#distributionModalBackdrop');
 
     if (backdrop) {
-      backdrop.onclick = (event) => {
-        if (event.target === backdrop) closeModal();
+      backdrop.onclick = () => {
+        // Intentionally disabled: backdrop clicks must not close this data-entry modal.
       };
     }
 
