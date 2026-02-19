@@ -195,7 +195,7 @@
         currentUser = null;
         resolveHydrated(null);
         if (redirect) {
-          try { window.location.href = './login.html'; } catch(_) { }
+          try { window.location.href = '/login.html'; } catch(_) { }
         }
       };
 
@@ -285,7 +285,7 @@ try {
                       try { window.Store && Store.setSession && Store.setSession(null); } catch (_) {}
                       currentUser = null;
                       resolveHydrated(null);
-                      if (redirect) window.location.href = './login.html';
+                      if (redirect) window.location.href = '/login.html';
                       return null;
                     }
                   }
@@ -510,7 +510,7 @@ try {
         window.Store && Store.setSession && Store.setSession(null);
       } catch (_) {}
       emitAuth('logout');
-      window.location.href = './login.html';
+      window.location.href = '/login.html';
     }
   };
 
@@ -529,7 +529,7 @@ async function __forceRelogin(message){
     if (p.toLowerCase().includes('login')) {
       window.location.reload();
     } else {
-      window.location.href = './login.html';
+      window.location.href = '/login.html';
     }
   } catch(_) {}
 }
