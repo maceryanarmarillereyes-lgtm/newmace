@@ -1,31 +1,32 @@
 const { sendJson, requireAuthedUser, roleFlags, serviceSelect } = require('./_common');
+
 module.exports = async (req, res) => {
   try {
     const auth = await requireAuthedUser(req);
     if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+
     const flags = roleFlags(auth.profile && auth.profile.role);
-    const isSuper = flags.isAdmin;
+    const isSuper = flags.isAdmin || flags.isLead;
     const myTeamId = (req.query && req.query.team_id) || (auth.profile ? auth.profile.team_id : null);
+
     const limit = Number(req.query.limit) || 20;
     const offset = Number(req.query.offset) || 0;
 
-    let dOut = await serviceSelect('task_distributions', `select=*&order=created_at.desc&limit=${limit}&offset=${offset}`);
+    const dOut = await serviceSelect('task_distributions', `select=*&order=created_at.desc&limit=${limit}&offset=${offset}`);
     const dists = dOut.ok && Array.isArray(dOut.json) ? dOut.json : [];
     if (!dists.length) return sendJson(res, 200, { ok: true, distributions: [], has_more: false });
 
     const distIds = dists.map((d) => d.id).filter(Boolean);
-    const inList = distIds.join(',');
+    const inList = distIds.map((id) => `"${id}"`).join(',');
 
-    // Simplified fetch: try distribution_id first, then task_distribution_id as fallback if needed
-    let tOut = await serviceSelect('task_items', `select=id,distribution_id,task_distribution_id,assigned_to,status,case_number,case_no,site&distribution_id=in.(${inList})`);
-    if (!tOut.ok || !tOut.json.length) {
-      tOut = await serviceSelect('task_items', `select=id,distribution_id,task_distribution_id,assigned_to,status,case_number,case_no,site&task_distribution_id=in.(${inList})`);
-    }
-
+    const tOut = await serviceSelect(
+      'task_items',
+      `select=id,distribution_id,task_distribution_id,assigned_to,status,case_number,case_no,site&or=(distribution_id.in.(${inList}),task_distribution_id.in.(${inList}))`
+    );
     const items = tOut.ok ? (tOut.json || []) : [];
+
     const userIds = [...new Set(items.map((i) => i.assigned_to).filter(Boolean))];
     const profilesById = {};
-
     if (userIds.length) {
       const pOut = await serviceSelect('mums_profiles', `select=user_id,name,username,team_id&user_id=in.(${userIds.join(',')})`);
       if (pOut.ok) pOut.json.forEach((p) => { profilesById[p.user_id] = p; });
@@ -37,8 +38,16 @@ module.exports = async (req, res) => {
 
       dItems.forEach((it) => {
         const mId = it.assigned_to;
+        if (!mId) return;
+
         const prof = profilesById[mId] || {};
-        if (!isSuper && myTeamId && prof.team_id && String(prof.team_id).toLowerCase() !== String(myTeamId).toLowerCase()) return;
+
+        if (
+          !isSuper
+          && myTeamId
+          && prof.team_id
+          && String(prof.team_id).toLowerCase() !== String(myTeamId).toLowerCase()
+        ) return;
 
         if (!byMember[mId]) {
           byMember[mId] = {
@@ -52,15 +61,15 @@ module.exports = async (req, res) => {
           };
         }
 
-        const m = byMember[mId];
-        m.total += 1;
+        const member = byMember[mId];
+        const status = String(it.status || '').toLowerCase();
 
-        const s = String(it.status || '').toLowerCase();
-        if (s.includes('complete') || s === 'done') m.completed += 1;
-        else if (s.includes('problem')) m.with_problem += 1;
-        else m.pending += 1;
+        member.total += 1;
+        if (status.includes('complete') || status === 'done') member.completed += 1;
+        else if (status.includes('problem')) member.with_problem += 1;
+        else member.pending += 1;
 
-        m.items.push({
+        member.items.push({
           id: it.id,
           case_number: it.case_number || it.case_no || 'N/A',
           site: it.site || 'N/A',
@@ -72,13 +81,13 @@ module.exports = async (req, res) => {
         .map((m) => ({ ...m, completion_pct: m.total ? Math.round((m.completed / m.total) * 100) : 0 }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
-      if (!isSuper && !members.length) return null;
+      if (!members.length && !isSuper) return null;
 
       return {
         id: d.id,
         title: d.title,
         created_at: d.created_at,
-        created_by_name: d.created_by_name,
+        created_by_name: d.created_by_name || 'System',
         totals: members.reduce((acc, m) => {
           acc.total += m.total;
           acc.pending += m.pending;
