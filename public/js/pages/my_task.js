@@ -48,8 +48,16 @@
       enable_daily_alerts: false
     },
 
-    isSheetJsReady: false
+    isSheetJsReady: false,
+    loginAlert: {
+      open: false,
+      overdueCount: 0,
+      distributionTitle: '',
+      nearestDeadline: ''
+    }
   };
+
+  const LOGIN_ALERT_SESSION_KEY = 'mums:my_task:high_priority_login_alert_shown';
 
   const STATUS_OPTIONS = ['Pending', 'Ongoing', 'Completed', 'With Problem'];
 
@@ -153,6 +161,77 @@
     return state.parsedRows.filter((row) => !row.assigned_to).length;
   }
 
+  function isDailyAlertsEnabled(value) {
+    if (value === true || value === 1) return true;
+    const normalized = String(value == null ? '' : value).trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 't' || normalized === 'yes';
+  }
+
+  function isOverdue(value) {
+    if (!value) return false;
+    const d = new Date(value);
+    return !Number.isNaN(d.getTime()) && d.getTime() < Date.now();
+  }
+
+  function computeLoginAlertData() {
+    let overdueCount = 0;
+    let distributionTitle = '';
+    let nearestDeadline = '';
+    let nearestMs = Number.POSITIVE_INFINITY;
+
+    state.assignedGroups.forEach((group) => {
+      const alertsEnabled = isDailyAlertsEnabled(group && group.enable_daily_alerts);
+      if (!alertsEnabled) return;
+
+      const items = Array.isArray(group.items) ? group.items : [];
+      items.forEach((item) => {
+        const status = normalizeItemStatus(item && item.status);
+        const pendingLike = status === 'Pending' || status === 'Ongoing';
+        if (!pendingLike) return;
+
+        const deadline = item && (item.deadline || item.deadline_at || item.due_at);
+        if (!isOverdue(deadline)) return;
+
+        overdueCount += 1;
+        const ms = new Date(deadline).getTime();
+        if (ms < nearestMs) {
+          nearestMs = ms;
+          distributionTitle = safeText(group && group.project_title, 'Untitled Distribution');
+          nearestDeadline = safeDate(deadline);
+        }
+      });
+    });
+
+    return { overdueCount, distributionTitle, nearestDeadline };
+  }
+
+  function maybeShowLoginAlertOncePerSession() {
+    let alreadyShown = false;
+    try {
+      alreadyShown = sessionStorage.getItem(LOGIN_ALERT_SESSION_KEY) === '1';
+    } catch (_) {
+      alreadyShown = false;
+    }
+    if (alreadyShown) return;
+
+    const info = computeLoginAlertData();
+    if (info.overdueCount < 1) return;
+
+    state.loginAlert = {
+      open: true,
+      overdueCount: info.overdueCount,
+      distributionTitle: info.distributionTitle,
+      nearestDeadline: info.nearestDeadline
+    };
+
+    try { sessionStorage.setItem(LOGIN_ALERT_SESSION_KEY, '1'); } catch (_) { }
+  }
+
+  function closeLoginAlertModal() {
+    state.loginAlert.open = false;
+    render();
+  }
+
   function normalizeStatus(value, pendingCount) {
     const pending = Number(pendingCount || 0);
     if (pending === 0) return 'COMPLETED';
@@ -227,6 +306,10 @@
       .task-problem-notes{font-size:12px;color:#fecaca;line-height:1.3;word-break:break-word;opacity:.95}
       .task-modal-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
       .task-modal-error{font-size:12px;color:#fecaca;background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.25);padding:10px 12px;border-radius:8px}
+      .login-alert-modal{width:min(560px,96vw);max-height:calc(100vh - 150px);overflow:auto;background:linear-gradient(145deg,rgba(15,23,42,.96),rgba(30,41,59,.9));backdrop-filter:blur(14px);border:1px solid rgba(248,113,113,.36);box-shadow:0 18px 48px rgba(2,6,23,.6);border-radius:14px;padding:18px;color:#f8fafc;display:flex;flex-direction:column;gap:12px}
+      .login-alert-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(239,68,68,.2);border:1px solid rgba(248,113,113,.45);color:#fecaca;font-size:12px;font-weight:800;width:max-content}
+      .login-alert-summary{font-size:13px;color:#cbd5e1;line-height:1.45;background:rgba(15,23,42,.58);border:1px solid rgba(248,113,113,.24);border-radius:10px;padding:10px 12px}
+      .login-alert-actions{display:flex;justify-content:flex-end}
       @keyframes taskSpin{to{transform:rotate(360deg)}}
     `;
 
@@ -488,6 +571,27 @@
     `;
   }
 
+  function renderLoginAlertModal() {
+    const info = state.loginAlert || {};
+    return `
+      <div class="task-modal-backdrop" id="loginAlertBackdrop">
+        <div class="login-alert-modal" role="dialog" aria-modal="true" aria-label="High Priority Login Alert">
+          <div class="login-alert-pill">⚠️ High Priority Login Alert</div>
+          <div style="font-size:22px;font-weight:900;line-height:1.2">Overdue tasks require immediate action</div>
+          <div class="login-alert-summary">
+            You have <strong>${esc(String(info.overdueCount || 0))}</strong> overdue task(s) in Pending/Ongoing status with daily alerts enabled.
+            ${info.distributionTitle ? `<div style="margin-top:8px"><strong>Distribution:</strong> ${esc(info.distributionTitle)}</div>` : ''}
+            ${info.nearestDeadline ? `<div style="margin-top:4px"><strong>Oldest deadline:</strong> ${esc(info.nearestDeadline)}</div>` : ''}
+          </div>
+          <div class="task-meta">Please update progress or resolve blockers to prevent escalation.</div>
+          <div class="login-alert-actions">
+            <button class="task-btn task-btn-primary" type="button" id="loginAlertAcknowledge">Acknowledge</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function render() {
     ensureStyleTag();
 
@@ -507,6 +611,7 @@
         ${state.activeTab === 'assigned' ? renderAssignedPanel() : renderDistributionPanel()}
         ${state.modalOpen ? renderModal() : ''}
         ${state.problemModal && state.problemModal.open ? renderProblemModal() : ''}
+        ${state.loginAlert && state.loginAlert.open ? renderLoginAlertModal() : ''}
       </section>
     `;
 
@@ -703,6 +808,8 @@
     state.distributions = distRes.ok && Array.isArray(distRes.data.rows) ? distRes.data.rows : [];
     state.members = membersRes.ok && Array.isArray(membersRes.data.rows) ? membersRes.data.rows : [];
 
+    maybeShowLoginAlertOncePerSession();
+
     // Apply /my_task?dist=<distribution_id> deep-link once base data is available.
     applyDeepLinkIfNeeded();
 
@@ -726,6 +833,17 @@
         state.activeTab = 'distribution';
         render();
       };
+    }
+
+    if (state.loginAlert && state.loginAlert.open) {
+      const backdrop = root.querySelector('#loginAlertBackdrop');
+      const acknowledgeBtn = root.querySelector('#loginAlertAcknowledge');
+      if (backdrop) {
+        backdrop.onclick = (event) => {
+          if (event.target === backdrop) closeLoginAlertModal();
+        };
+      }
+      if (acknowledgeBtn) acknowledgeBtn.onclick = closeLoginAlertModal;
     }
 
     const openBtn = root.querySelector('#openDistributionModal');
