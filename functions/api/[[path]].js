@@ -81,7 +81,8 @@ async function getRoutes(env) {
     'tasks/distribution_items': unwrapCjs(await import('../../server/routes/tasks/distribution_items.js')),
     'tasks/item_status': unwrapCjs(await import('../../server/routes/tasks/item_status.js')),
     'tasks/workload_matrix': unwrapCjs(await import('../../server/routes/tasks/workload_matrix.js')),
-    'tasks/members': unwrapCjs(await import('../../server/routes/tasks/members.js'))
+    'tasks/members': unwrapCjs(await import('../../server/routes/tasks/members.js')),
+    'tasks/monitoring': unwrapCjs(await import('../../server/routes/tasks/monitoring.js'))
   };
 
   return ROUTES;
