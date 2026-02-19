@@ -341,7 +341,7 @@
       const dist = state.dists.find((d)=>String(d.id)===String(distId));
       if(!dist) return;
       const members = Array.isArray(dist.members) ? dist.members : [];
-      const from = members.find((m)=>String(m.user_id)===String(fromUserId));
+      const from = members.find((m)=>String((m && (m.user_id || m.id)) || '')===String(fromUserId));
       if(!from) return;
 
       const toSel = UI.el('#distReassignTo');
@@ -351,12 +351,16 @@
       const tbody = UI.el('#distReassignItems');
       const allEl = UI.el('#distReassignSelectAll');
 
-      fromEl.textContent = `${from.name || from.user_id} (${from.user_id})`;
+      const fromMemberId = String((from && (from.user_id || from.id)) || '').trim();
+      fromEl.textContent = `${from.name || fromMemberId} (${fromMemberId})`;
       subEl.textContent = `${dist.title || 'Distribution'} • Select pending tasks to transfer`;
 
       const opts = members
-        .filter((m)=>String(m.user_id)!==String(from.user_id))
-        .map((m)=>`<option value="${UI.esc(m.user_id)}">${UI.esc(m.name || m.user_id)}</option>`);
+        .filter((m)=>String((m && (m.user_id || m.id)) || '')!==String(fromMemberId))
+        .map((m)=>{
+          const memberId = String((m && (m.user_id || m.id)) || '').trim();
+          return `<option value="${UI.esc(memberId)}">${UI.esc(m.name || memberId)}</option>`;
+        });
       toSel.innerHTML = opts.join('') || '<option value="">No other members</option>';
 
       const memberItems = Array.isArray(from.items) ? from.items : [];
@@ -383,7 +387,7 @@
       const pendingCount = pendingItems.length;
       infoEl.textContent = `Selected 0 of ${pendingCount} pending task(s)`;
 
-      state.modalCtx = { distribution_id: distId, from_user_id: from.user_id, pending: pendingCount };
+      state.modalCtx = { distribution_id: distId, from_user_id: fromMemberId, pending: pendingCount };
       UI.openModal('distReassignModal');
 
       const btn = UI.el('#distReassignConfirm');
