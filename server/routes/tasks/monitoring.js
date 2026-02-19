@@ -24,9 +24,13 @@ if (req.method !== 'GET') return sendJson(res, 405, { ok: false, error: 'method_
 const auth = await requireAuthedUser(req);
 if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 const flags = roleFlags(auth.profile && auth.profile.role);
-if (!flags.isAdmin && !flags.isLead) return sendJson(res, 403, { ok: false, error: 'forbidden' });
-const isSuper = flags.isAdmin; 
-const myTeamId = auth.profile ? auth.profile.team_id : null;
+const rawRole = auth.profile ? String(auth.profile.role || '').toUpperCase() : '';
+const isSuper = flags.isAdmin || rawRole === 'SUPER_ADMIN' || rawRole === 'SUPER_USER' || rawRole === 'ADMIN';
+
+if (!isSuper && !flags.isLead && rawRole !== 'TEAM_LEAD') {
+return sendJson(res, 403, { ok: false, error: 'forbidden' });
+}
+const myTeamId = (req.query && req.query.team_id) || (auth.profile ? auth.profile.team_id : null);
 const limit = Math.max(1, Math.min(20, Number((req.query && req.query.limit) || 20)));
 const offset = Math.max(0, Number((req.query && req.query.offset) || 0));
 let dOut = await serviceSelect('task_distributions', `select=*&order=created_at.desc&limit=${limit}&offset=${offset}`);
@@ -66,8 +70,11 @@ const byDist = {};
   
   const prof = profilesById[memberId] || {};
   
-  // TEAM ISOLATION LOGIC
-  if (!isSuper && prof.team_id !== myTeamId) return;
+  // FAULT-TOLERANT TEAM ISOLATION LOGIC
+  const memberTeam = prof.team_id || prof.teamId || '';
+  if (!isSuper && myTeamId && memberTeam && String(memberTeam).toLowerCase() !== String(myTeamId).toLowerCase()) {
+      return; 
+  }
   if (!byDist[distId]) byDist[distId] = {};
   if (!byDist[distId][memberId]) {
     byDist[distId][memberId] = {

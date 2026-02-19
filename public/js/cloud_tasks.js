@@ -43,7 +43,9 @@ const CloudTasks = (() => {
   const monitoring = async (limit, offset) => {
     const l = Math.max(1, Math.min(20, Number(limit || 20)));
     const o = Math.max(0, Number(offset || 0));
-    return parse(await fetch(`/api/tasks/monitoring?limit=${encodeURIComponent(String(l))}&offset=${encodeURIComponent(String(o))}`, { headers: { ...authHeader() } }));
+    const u = window.Auth && window.Auth.getUser ? window.Auth.getUser() : {};
+    const tid = u.teamId || '';
+    return parse(await fetch(`/api/tasks/monitoring?limit=${encodeURIComponent(String(l))}&offset=${encodeURIComponent(String(o))}&team_id=${encodeURIComponent(tid)}`, { headers: { ...authHeader() } }));
   };
 
   const reassignPending = async (payload) => parse(await fetch('/api/tasks/reassign_pending', {
