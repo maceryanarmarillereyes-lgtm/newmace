@@ -1974,6 +1974,14 @@ toast(message, variant){
             const bodyMsg = perUser || n.body || 'Your schedule has been updated.';
             const summary = (n.userSummaries && n.userSummaries[user.id]) ? n.userSummaries[user.id] : null;
             const isTaskDist = String(n.type||'') === 'TASK_DISTRIBUTION';
+            const distId = String(n.distribution_id || '');
+            const distTitle = String(n.distribution_title || n.title || 'New Task Distribution');
+            const taskDistBody = isTaskDist
+              ? `
+                <div class="notif-intro">${esc(distTitle)}</div>
+                <div class="small">${esc(summary || bodyMsg || 'N/A')}</div>
+              `
+              : '';
             const meta = isTaskDist
               ? `From: ${n.fromName||'Team Lead'} • ${new Date(n.ts||Date.now()).toLocaleString()} • Tasks`
               : (String(n.type||'')==='MAILBOX_ASSIGN')
@@ -1983,18 +1991,18 @@ toast(message, variant){
               <div class="notif-item">
                 <div class="notif-item-head">
                   <div>
-                    <div class="notif-item-title">${esc(n.title || 'Schedule Updated')}</div>
+                    <div class="notif-item-title">${esc(isTaskDist ? distTitle : (n.title || 'Schedule Updated'))}</div>
                     <div class="small muted">${esc(meta)}</div>
                   </div>
                   <div class="row" style="gap:8px">
-                    ${isTaskDist ? `<button class="btn" data-view-tasks="${esc(n.id)}" type="button">View All Details</button>` : ''}
+                    ${isTaskDist ? `<a class="btn" href="#my_task?dist=${encodeURIComponent(distId)}" data-view-tasks="${esc(n.id)}" type="button" style="font-weight:900">View All Details</a>` : ''}
                     <button class="btn dashx-ack" data-ack="${esc(n.id)}" type="button" aria-label="Acknowledge schedule notification">
                       <span class="dashx-spin" aria-hidden="true"></span>
                       <span class="dashx-acklbl">Acknowledge</span>
                     </button>
                   </div>
                 </div>
-                <div class="notif-item-body">${renderNotifBody(bodyMsg, summary)}</div>
+                <div class="notif-item-body">${isTaskDist ? taskDistBody : renderNotifBody(bodyMsg, summary)}</div>
               </div>
             `;
           }catch(err){
@@ -2070,6 +2078,7 @@ toast(message, variant){
             // Enterprise Task Distribution deep-link
             const viewBtn = e && e.target ? e.target.closest('[data-view-tasks]') : null;
             if(viewBtn){
+              try{ e.preventDefault(); }catch(_){ }
               const id = String(viewBtn.getAttribute('data-view-tasks')||'');
               const n = lastPending.find(x=>String(x.id||'')===id);
               const distId = n ? String(n.distribution_id || '') : '';

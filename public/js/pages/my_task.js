@@ -327,7 +327,7 @@
     return `
       <article class="task-card" id="assignedGroup_${esc(id)}">
         <button class="task-accordion" type="button" data-toggle-assigned="${esc(id)}" aria-expanded="${isOpen ? 'true' : 'false'}">
-          <div class="task-title">${esc(safeText(group.project_title, 'Untitled Distribution'))}</div>
+          <div class="task-title">${esc(safeText(group.project_title, 'Untitled Distribution'))} <span class="chev">▾</span> <span class="small muted">(Click to view tasks)</span></div>
           <div class="task-meta">Assigned by: ${esc(safeText(group.assigner_name, 'N/A'))} • ${esc(assignedAt)}</div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap">
             <div class="task-meta">${esc(done)} / ${esc(total)} complete</div>
