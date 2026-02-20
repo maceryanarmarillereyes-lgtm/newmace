@@ -1,26 +1,23 @@
+/* File: public/js/ui.js */
+
 (function(){
   const UI = {
     el(sel, root){ return (root||document).querySelector(sel); },
     els(sel, root){ return Array.from((root||document).querySelectorAll(sel)); },
     esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); },
 
-    // ===== CODE UNTOUCHABLES =====
-// Global Override Label helper:
-// When mailbox override is active AND scope is global AND override is synced,
-// the Mailbox UI must show a visible label for ALL roles.
-// Exception: Only change if required by documented UX specification updates.
-// ==============================
-overrideLabel(override){
-  try{
-    const o = override;
-    if(!o || typeof o !== 'object') return '';
-    if(!o.enabled) return '';
-    if(String(o.scope||'') !== 'global') return '';
-    return `<span class="override-label" role="status" aria-live="polite">GLOBAL OVERRIDE ACTIVE</span>`;
-  }catch(_){
-    return '';
-  }
-},
+    overrideLabel(override){
+      try{
+        const o = override;
+        if(!o || typeof o !== 'object') return '';
+        if(!o.enabled) return '';
+        if(String(o.scope||'') !== 'global') return '';
+        return `<span class="override-label" role="status" aria-live="polite">GLOBAL OVERRIDE ACTIVE</span>`;
+      }catch(_){
+        return '';
+      }
+    },
+    
     initials(name){
       const parts = String(name||"").trim().split(/\s+/).filter(Boolean);
       if(!parts.length) return "U";
@@ -38,10 +35,8 @@ overrideLabel(override){
         r.onerror = ()=>reject(r.error||new Error("read failed"));
         r.readAsDataURL(f);
       });
-      // If no resizing requested, return as-is
       const limit = Number(maxSize||0);
       if(!limit) return dataUrl;
-      // Resize via canvas
       const img = await new Promise((resolve,reject)=>{
         const im = new Image();
         im.onload = ()=>resolve(im);
@@ -60,7 +55,6 @@ overrideLabel(override){
       return canvas.toDataURL("image/jpeg", 0.9);
     },
 
-
     openModal(id){
       const m = UI.el('#'+id);
       if(m){
@@ -69,31 +63,24 @@ overrideLabel(override){
       }
       try{ document.body.classList.add('modal-open'); }catch(_){ }
     },
+    
     closeModal(id){
       const m = UI.el('#'+id);
       if(m) m.classList.remove('open');
-      // Remove modal-open when no modals remain open.
       try{
         const any = document.querySelector('.modal.open');
         if(!any) document.body.classList.remove('modal-open');
       }catch(_){ }
     },
-    // Ensure reused dialogs always render above existing UI layers.
+    
     bringToFront(modal, opts){
       try{
         const m = modal;
         if(!m || !(m instanceof HTMLElement)) return;
-        // Move to end of <body> to win same-z-index stacking ties.
         if(document.body && m.parentElement === document.body){
           document.body.appendChild(m);
         }
-
-        const o = Object.assign({
-          baseZ: 2147483000,
-          panelOffset: 1,
-          headOffset: 2
-        }, opts || {});
-
+        const o = Object.assign({ baseZ: 2147483000, panelOffset: 1, headOffset: 2 }, opts || {});
         m.style.zIndex = String(Math.max(10000, Number(o.baseZ)||2147483000));
         const panel = m.querySelector('.panel');
         if(panel) panel.style.zIndex = String((Number(m.style.zIndex)||2147483000) + Number(o.panelOffset||1));
@@ -101,7 +88,7 @@ overrideLabel(override){
         if(head) head.style.zIndex = String((Number(m.style.zIndex)||2147483000) + Number(o.headOffset||2));
       }catch(_){ }
     },
-    // Toast notifications (enterprise-style, theme-adaptive)
+    
     _ensureToastHost(){
       let host = document.getElementById('toastHost');
       if(host) return host;
@@ -111,14 +98,12 @@ overrideLabel(override){
       document.body.appendChild(host);
       return host;
     },
-        _normalizeToastMessage(message){
+    
+    _normalizeToastMessage(message){
       if(message == null) return '';
       if(typeof message === 'string') return message;
-      try{
-        if(message instanceof Error) return message.message || String(message);
-      }catch(_){ }
+      try{ if(message instanceof Error) return message.message || String(message); }catch(_){ }
       if(typeof message === 'object'){
-        // Common shapes: {message}, {error}, Supabase errors, fetch responses
         try{
           if(typeof message.message === 'string') return message.message;
           if(typeof message.error === 'string') return message.error;
@@ -130,94 +115,80 @@ overrideLabel(override){
       return String(message);
     },
 
-// High-visibility error alerts (Upper Center + Red Overlay)
-_ensureHighAlertHosts(){
-  let overlay = document.getElementById('highAlertOverlay');
-  if(!overlay){
-    overlay = document.createElement('div');
-    overlay.id = 'highAlertOverlay';
-    overlay.className = 'high-alert-overlay';
-    overlay.style.display = 'none';
-    document.body.appendChild(overlay);
-  }
+    _ensureHighAlertHosts(){
+      let overlay = document.getElementById('highAlertOverlay');
+      if(!overlay){
+        overlay = document.createElement('div');
+        overlay.id = 'highAlertOverlay';
+        overlay.className = 'high-alert-overlay';
+        overlay.style.display = 'none';
+        document.body.appendChild(overlay);
+      }
+      let host = document.getElementById('highAlertHost');
+      if(!host){
+        host = document.createElement('div');
+        host.id = 'highAlertHost';
+        host.className = 'high-alert-host';
+        host.style.display = 'none';
+        host.innerHTML = `
+          <div class="high-alert-box" role="alert" aria-live="assertive">
+            <div class="high-alert-title">⚠️ Error</div>
+            <div class="high-alert-message" id="highAlertMessage"></div>
+            <div class="high-alert-actions">
+              <button class="btn danger" type="button" id="highAlertCloseBtn">Close</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(host);
+      }
+      return { overlay, host };
+    },
 
-  let host = document.getElementById('highAlertHost');
-  if(!host){
-    host = document.createElement('div');
-    host.id = 'highAlertHost';
-    host.className = 'high-alert-host';
-    host.style.display = 'none';
-    host.innerHTML = `
-      <div class="high-alert-box" role="alert" aria-live="assertive">
-        <div class="high-alert-title">⚠️ Error</div>
-        <div class="high-alert-message" id="highAlertMessage"></div>
-        <div class="high-alert-actions">
-          <button class="btn danger" type="button" id="highAlertCloseBtn">Close</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(host);
-  }
-  return { overlay, host };
-},
+    alertError(message, opts){
+      try{
+        const msg = UI._normalizeToastMessage(message);
+        const o = Object.assign({ title: '⚠️ Error', autoCloseMs: 7000 }, (opts||{}));
+        const hosts = UI._ensureHighAlertHosts();
+        const overlay = hosts.overlay;
+        const host = hosts.host;
+        const titleEl = host.querySelector('.high-alert-title');
+        const msgEl = host.querySelector('#highAlertMessage');
+        const closeBtn = host.querySelector('#highAlertCloseBtn');
 
-alertError(message, opts){
-  try{
-    const msg = UI._normalizeToastMessage(message);
-    const o = Object.assign({ title: '⚠️ Error', autoCloseMs: 7000 }, (opts||{}));
-    const hosts = UI._ensureHighAlertHosts();
-    const overlay = hosts.overlay;
-    const host = hosts.host;
-    const titleEl = host.querySelector('.high-alert-title');
-    const msgEl = host.querySelector('#highAlertMessage');
-    const closeBtn = host.querySelector('#highAlertCloseBtn');
+        if(titleEl) titleEl.textContent = String(o.title || '⚠️ Error');
+        if(msgEl) msgEl.textContent = String(msg || 'Unknown error');
 
-    if(titleEl) titleEl.textContent = String(o.title || '⚠️ Error');
-    if(msgEl) msgEl.textContent = String(msg || 'Unknown error');
+        overlay.style.display = 'block';
+        host.style.display = 'flex';
+        overlay.style.zIndex = '2147483645';
+        host.style.zIndex = '2147483646';
 
-    overlay.style.display = 'block';
-    host.style.display = 'flex';
+        if(closeBtn && !closeBtn._mumsBound){
+          closeBtn._mumsBound = true;
+          closeBtn.onclick = () => UI.closeAlertError();
+        }
+        if(!host._mumsBound){
+          host._mumsBound = true;
+          host.addEventListener('click', (ev)=>{ if(ev.target === host) UI.closeAlertError(); });
+        }
 
-    // Ensure this sits above app modals.
-    overlay.style.zIndex = '2147483645';
-    host.style.zIndex = '2147483646';
+        if(host._mumsTimer) clearTimeout(host._mumsTimer);
+        const ms = Number(o.autoCloseMs || 0);
+        if(ms > 0){ host._mumsTimer = setTimeout(()=>UI.closeAlertError(), ms); }
+      }catch(err){ try{ console.error('UI.alertError failed', err); }catch(_){} }
+    },
 
-    if(closeBtn && !closeBtn._mumsBound){
-      closeBtn._mumsBound = true;
-      closeBtn.onclick = () => UI.closeAlertError();
-    }
-    if(!host._mumsBound){
-      host._mumsBound = true;
-      host.addEventListener('click', (ev)=>{
-        // Clicking outside the box closes the alert.
-        if(ev.target === host) UI.closeAlertError();
-      });
-    }
+    closeAlertError(){
+      try{
+        const overlay = document.getElementById('highAlertOverlay');
+        const host = document.getElementById('highAlertHost');
+        if(host && host._mumsTimer){ clearTimeout(host._mumsTimer); host._mumsTimer = null; }
+        if(overlay) overlay.style.display = 'none';
+        if(host) host.style.display = 'none';
+      }catch(_){}
+    },
 
-    if(host._mumsTimer) clearTimeout(host._mumsTimer);
-    const ms = Number(o.autoCloseMs || 0);
-    if(ms > 0){
-      host._mumsTimer = setTimeout(()=>UI.closeAlertError(), ms);
-    }
-  }catch(err){
-    try{ console.error('UI.alertError failed', err); }catch(_){}
-  }
-},
-
-closeAlertError(){
-  try{
-    const overlay = document.getElementById('highAlertOverlay');
-    const host = document.getElementById('highAlertHost');
-    if(host && host._mumsTimer){
-      clearTimeout(host._mumsTimer);
-      host._mumsTimer = null;
-    }
-    if(overlay) overlay.style.display = 'none';
-    if(host) host.style.display = 'none';
-  }catch(_){}
-},
-
-toast(message, variant){
+    toast(message, variant){
       try{
         const v = String(variant||'').toLowerCase();
         if(v==='danger' || v==='error' || v==='invalid'){
@@ -230,26 +201,17 @@ toast(message, variant){
         const msg = UI._normalizeToastMessage(message);
         t.textContent = msg;
         host.appendChild(t);
-        // animate in
         requestAnimationFrame(()=>t.classList.add('show'));
         setTimeout(()=>{
           t.classList.remove('show');
           setTimeout(()=>{ try{ t.remove(); }catch(_){} }, 250);
         }, 3200);
-      }catch(e){
-        try{ console.log(UI._normalizeToastMessage(message)); }catch(_){}
-      }
+      }catch(e){ try{ console.log(UI._normalizeToastMessage(message)); }catch(_){} }
     },
 
-    // Enterprise confirmation modal (replaces native confirm())
     confirm(opts){
       const o = Object.assign({
-        title: 'Confirm',
-        message: '',
-        detail: '',
-        okText: 'Confirm',
-        cancelText: 'Cancel',
-        danger: false
+        title: 'Confirm', message: '', detail: '', okText: 'Confirm', cancelText: 'Cancel', danger: false
       }, (opts||{}));
 
       return new Promise((resolve)=>{
@@ -298,30 +260,20 @@ toast(message, variant){
         okBtn.classList.toggle('danger', !!o.danger);
         okBtn.classList.toggle('primary', !o.danger);
 
-        // disable outside close for confirms; close via cancel only
         const cleanup = ()=>{
           try{
             modal.classList.remove('open');
             modal.removeEventListener('click', onBackdrop);
             document.removeEventListener('keydown', onKey);
-            okBtn.onclick = null;
-            cancelBtn.onclick = null;
-            xBtn.onclick = null;
+            okBtn.onclick = null; cancelBtn.onclick = null; xBtn.onclick = null;
           }catch(_){}
         };
         const done = (v)=>{ cleanup(); resolve(!!v); };
 
-        const onBackdrop = (e)=>{
-          // click outside panel cancels
-          if(e.target === modal) done(false);
-        };
+        const onBackdrop = (e)=>{ if(e.target === modal) done(false); };
         const onKey = (e)=>{
           if(e.key === 'Escape'){ e.preventDefault(); done(false); }
-          if(e.key === 'Enter'){
-            // allow Enter to confirm
-            e.preventDefault();
-            done(true);
-          }
+          if(e.key === 'Enter'){ e.preventDefault(); done(true); }
         };
 
         okBtn.onclick = ()=>done(true);
@@ -331,24 +283,15 @@ toast(message, variant){
         UI.bringToFront(modal, { baseZ: 2147483200, panelOffset: 1, headOffset: 2 });
         modal.addEventListener('click', onBackdrop);
         document.addEventListener('keydown', onKey, true);
-
         modal.classList.add('open');
-        // focus
         setTimeout(()=>{ try{ okBtn.focus(); }catch(_){} }, 0);
       });
     },
 
-    // Text prompt modal (supports textarea). Resolves with string, or null if cancelled.
     promptText(opts){
       const o = Object.assign({
-        title: 'Input required',
-        message: '',
-        detail: '',
-        placeholder: 'Type here...',
-        okText: 'Save',
-        cancelText: 'Cancel',
-        required: true,
-        maxLen: 500
+        title: 'Input required', message: '', detail: '', placeholder: 'Type here...',
+        okText: 'Save', cancelText: 'Cancel', required: true, maxLen: 500
       }, (opts||{}));
 
       return new Promise((resolve)=>{
@@ -405,9 +348,7 @@ toast(message, variant){
             modal.classList.remove('open');
             modal.removeEventListener('click', onBackdrop);
             document.removeEventListener('keydown', onKey, true);
-            okBtn.onclick = null;
-            cancelBtn.onclick = null;
-            xBtn.onclick = null;
+            okBtn.onclick = null; cancelBtn.onclick = null; xBtn.onclick = null;
           }catch(_){ }
         };
         const done = (v)=>{ cleanup(); resolve(v); };
@@ -415,10 +356,7 @@ toast(message, variant){
         const onBackdrop = (e)=>{ if(e.target === modal) done(null); };
         const onKey = (e)=>{
           if(e.key === 'Escape'){ e.preventDefault(); done(null); }
-          if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){
-            e.preventDefault();
-            okBtn.click();
-          }
+          if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); okBtn.click(); }
         };
 
         okBtn.onclick = ()=>{
@@ -441,7 +379,6 @@ toast(message, variant){
       });
     },
 
-    // Mandatory attendance modal (non-cancelable). Resolves with record object.
     attendancePrompt(user, team){
       return new Promise((resolve)=>{
         const u = user || {};
@@ -494,7 +431,6 @@ toast(message, variant){
                     <button class="btn primary" type="button" id="attSubmit" disabled>Save Attendance</button>
                   </div>
                 </div>
-
                 <div class="small muted">
                   Note: Attendance is required during your active shift window. You cannot proceed until you submit.
                 </div>
@@ -504,7 +440,6 @@ toast(message, variant){
           document.body.appendChild(modal);
         }
 
-        // lock the app while modal open
         document.body.classList.add('attendance-locked');
         UI.bringToFront(modal, { baseZ: 2147483300, panelOffset: 1, headOffset: 2 });
 
@@ -523,7 +458,6 @@ toast(message, variant){
         attName.textContent = name;
         attTeam.textContent = `Team: ${String(t.label||teamId||'')}`;
 
-        // avatar
         try{
           const prof = (window.Store && Store.getProfile) ? (Store.getProfile(u.id)||{}) : {};
           if(prof.photoDataUrl){
@@ -535,7 +469,6 @@ toast(message, variant){
           av.textContent = UI.initials(name);
         }
 
-        // populate reasons
         reasonSel.innerHTML = `<option value="">Select reason</option>` + safeReasons.map(r=>`<option value="${UI.esc(r)}">${UI.esc(r)}</option>`).join('');
 
         let mode = '';
@@ -561,12 +494,7 @@ toast(message, variant){
         reasonSel.onchange = ()=>{ reason = String(reasonSel.value||''); update(); };
 
         const onKey = (e)=>{
-          // Block ESC to prevent dismiss
-          if(e.key === 'Escape'){
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-          }
+          if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); return false; }
           return true;
         };
 
@@ -575,7 +503,6 @@ toast(message, variant){
         bSubmit.onclick = ()=>{
           if(!mode) return;
           if(mode==='WFH' && !reason) return;
-          // cleanup + resolve
           document.removeEventListener('keydown', onKey, true);
           modal.classList.remove('open');
           document.body.classList.remove('attendance-locked');
@@ -594,13 +521,11 @@ toast(message, variant){
           resolve(record);
         };
 
-        // prevent backdrop close
         modal.onclick = (e)=>{ if(e.target===modal){ e.preventDefault(); e.stopPropagation(); } };
         update();
         modal.classList.add('open');
       });
     },
-
 
     downloadJSON(filename, obj){
       const blob = new Blob([JSON.stringify(obj, null, 2)], { type:'application/json' });
@@ -614,20 +539,9 @@ toast(message, variant){
     },
 
     downloadCSV(filename, rows){
-      // CSV is commonly opened in Excel/Sheets. Large integer timestamps (epoch ms)
-      // are often auto-formatted into scientific notation (e.g., 1.76921E+12).
-      // To preserve the exact value, we emit those as an Excel-safe formula string: ="<digits>".
       const esc = (v)=>{
         const s = String(v ?? '');
-
-        // Excel-safe preservation for long digit strings (e.g., epoch ms timestamps).
-        // We intentionally keep this heuristic tight to avoid impacting normal IDs.
-        if(/^[0-9]{12,18}$/.test(s)){
-          // content should be: ="<digits>"
-          // CSV escaping: wrap in quotes and escape internal quotes by doubling them
-          return '"=""' + s + '"""';
-        }
-
+        if(/^[0-9]{12,18}$/.test(s)){ return '"=""' + s + '"""'; }
         if(/[",\n\r]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
         return s;
       };
@@ -657,7 +571,6 @@ toast(message, variant){
       });
     },
 
-    // Manila time helpers
     manilaParts(date){
       const Config = window.Config;
       const fmt = new Intl.DateTimeFormat('en-CA', {
@@ -680,11 +593,6 @@ toast(message, variant){
     },
     manilaNow(){ return UI.manilaParts(new Date()); },
 
-    // Mailbox time override (Super Admin testing)
-    // Returns Manila date parts using either system time or the override time configured in Settings.
-    // Scope:
-    // - sa_only: applies only to SUPER_ADMIN sessions
-    // - global: applies to all sessions on this device/browser
     mailboxNowParts(){
       try{
         const u = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
@@ -728,11 +636,6 @@ toast(message, variant){
           }catch(_){}
         }
 
-        // Strong validation: if override is missing/malformed, fall back to system Manila time.
-        // ===== CODE UNTOUCHABLES =====
-        // Do NOT allow invalid override timestamps (NaN/0/ancient/future) to affect mailbox clock.
-        // Exception: Only change if required by documented override semantics.
-        // ==============================
         if(!o || !o.enabled) return UI.manilaNow();
         const scope = (String(o.scope||'sa_only') === 'global') ? 'global' : 'sa_only';
         if(scope === 'sa_only' && !isSA) return UI.manilaNow();
@@ -759,19 +662,10 @@ toast(message, variant){
       }
     },
 
-
-    // Mailbox override info helper
     mailboxTimeInfo(){
       const info = {
-        isSuperAdmin:false,
-        scope:'sa_only',
-        isApplicable:false,
-        overrideEnabled:false,
-        freeze:true,
-        baseMs:0,
-        effectiveMs:0,
-        systemParts:UI.manilaNow(),
-        effectiveParts:null,
+        isSuperAdmin:false, scope:'sa_only', isApplicable:false, overrideEnabled:false,
+        freeze:true, baseMs:0, effectiveMs:0, systemParts:UI.manilaNow(), effectiveParts:null,
       };
       try{
         const u = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
@@ -815,11 +709,6 @@ toast(message, variant){
           }catch(_){}
         }
 
-        // Strong validation: if override is missing/malformed, treat as no override.
-        // ===== CODE UNTOUCHABLES =====
-        // Keep mailbox override reads safe: invalid timestamps must NOT crash the mailbox page.
-        // Exception: Only change if required by documented override semantics.
-        // ==============================
         if(!o || !o.enabled) return info;
         const base = Number(o.ms);
         const MIN_VALID_MS = Date.UTC(2020,0,1);
@@ -851,8 +740,6 @@ toast(message, variant){
       }catch(_){ return false; }
     },
 
-    // Parse a datetime-local string (YYYY-MM-DDTHH:MM) as Manila time and return epoch ms.
-    // Manila is UTC+8 with no DST.
     parseManilaDateTimeLocal(v){
       const s = String(v||'').trim();
       if(!s || !s.includes('T')) return 0;
@@ -860,23 +747,15 @@ toast(message, variant){
       const [yy,mm,dd] = d.split('-').map(n=>Number(n));
       const [hh,mi] = t.split(':').map(n=>Number(n));
       if(!yy||!mm||!dd||Number.isNaN(hh)||Number.isNaN(mi)) return 0;
-      // Convert Manila local time to UTC ms
       return Date.UTC(yy, mm-1, dd, hh-8, mi, 0, 0);
     },
 
-    // Format an epoch ms as a datetime-local string in Manila time.
     formatManilaDateTimeLocal(ms){
       const p = UI.manilaParts(new Date(Number(ms)||Date.now()));
       const pad = n => String(n).padStart(2,'0');
       return `${p.y}-${pad(p.m)}-${pad(p.d)}T${pad(p.hh)}:${pad(p.mm)}`;
     },
 
-    
-
-    // ISO date helpers (timezone-safe)
-    // Treat ISO strings (YYYY-MM-DD) as a calendar date in Manila.
-    // Do NOT use Date.UTC(...).getUTCDay() for weekday checks because Manila midnight
-    // maps to the prior UTC day and will shift weekdays.
     isoToYMD(iso){
       const parts = String(iso||'').split('-');
       const y = Number(parts[0]);
@@ -886,11 +765,9 @@ toast(message, variant){
       return { y, m, d };
     },
 
-    // Day index 0..6 where 0=Sunday..6=Saturday
     weekdayFromISO(iso){
       const v = UI.isoToYMD(iso);
       if(!v) return null;
-      // Tomohiko Sakamoto algorithm (Gregorian calendar)
       const t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
       let y = v.y;
       const m = v.m;
@@ -917,10 +794,7 @@ toast(message, variant){
 
     DAYS: ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
 
-    // Convert minutes into percent position along a team shift timeline.
-    // Works for shifts that cross midnight (end<=start).
     shiftMeta(team){
-      // Team schedule can be overridden via Team Configuration Control (local storage)
       let startHM = team && team.teamStart;
       let endHM = team && team.teamEnd;
       try{
@@ -937,13 +811,10 @@ toast(message, variant){
       return { start, end, wraps, length };
     },
 
-    // Normalizes a time string "HH:MM" to minutes offset from shift start
-    // (0..shiftLength). If out of range, it may be negative or >length.
     offsetFromShiftStart(team, hm){
       const m = UI.parseHM(hm);
       const meta = UI.shiftMeta(team);
       if(!meta.wraps) return m - meta.start;
-      // shift crosses midnight
       if(m >= meta.start) return m - meta.start;
       return (24*60 - meta.start) + m;
     },
@@ -957,13 +828,11 @@ toast(message, variant){
       return { left: left, width: width };
     },
 
-    // Snap minutes to a step (default 15 minutes)
     snapMinutes(mins, step){
       const s = step || 15;
       return Math.max(0, Math.round(mins / s) * s);
     },
 
-    // Convert minutes offset from shift start -> "HH:MM" clock time
     offsetToHM(team, off){
       const meta = UI.shiftMeta(team);
       const abs = (meta.start + off) % (24*60);
@@ -972,16 +841,12 @@ toast(message, variant){
       return `${hh}:${mm}`;
     },
 
-    // Manila-aware "now" as a Date object with Manila wall time
-    // (Good enough for weekly reset + log grouping when app is used on other timezones.)
     manilaNowDate(){
       return new Date(new Date().toLocaleString('en-US', { timeZone: (window.Config && Config.TZ) || 'Asia/Manila' }));
     },
 
-    // Start of this week (Monday 00:00 Manila wall time) in ms
     manilaWeekStartMondayMs(){
       const d = UI.manilaNowDate();
-      // JS getDay: 0=Sun..6=Sat; convert to Mon-based week
       const day = d.getDay();
       const diff = (day === 0) ? 6 : (day - 1);
       d.setDate(d.getDate() - diff);
@@ -997,7 +862,6 @@ toast(message, variant){
       return `${pad(h)}:${pad(m)}:${pad(s)}`;
     },
 
-    // Duty windows based on Config.TEAMS dutyStart/dutyEnd
     getDutyWindow(nowParts){
       const Config = window.Config;
       const p = nowParts || UI.manilaNow();
@@ -1045,11 +909,9 @@ toast(message, variant){
     toDatetimeLocal(ms){
       const d = new Date(ms);
       const pad = n => String(n).padStart(2,'0');
-      // Use local time (user machine). For Manila accuracy, we store ms already; editing convenience only.
       return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     },
 
-    // Notification sound preferences (per user)
     _sndKey(userId){ return `ums_sound_settings_${userId||'anon'}`; },
     getSoundSettings(userId){
       try{
@@ -1073,7 +935,6 @@ toast(message, variant){
       const s = UI.getSoundSettings(userId);
       if(!s.enabled || s.volume<=0.001) return;
 
-      // WebAudio (no external files)
       try{
         const Ctx = window.AudioContext || window.webkitAudioContext;
         if(!Ctx) return;
@@ -1114,7 +975,6 @@ toast(message, variant){
           osc.start(now);
           osc.stop(now + 0.13);
         } else {
-          // beep
           osc.type='square';
           osc.frequency.setValueAtTime(760, now);
           env(now, 0.01, 0.05, 0.12, 0.30*s.volume);
@@ -1128,9 +988,7 @@ toast(message, variant){
           osc2.start(now + 0.22);
           osc2.stop(now + 0.42);
         }
-      }catch(e){
-        // ignore
-      }
+      }catch(e){}
     },
 
     bindSoundSettingsModal(user){
@@ -1170,16 +1028,12 @@ toast(message, variant){
         UI.closeModal('soundSettingsModal');
       };
 
-      // close buttons
       (modal.querySelectorAll('[data-close="soundSettingsModal"]')||[]).forEach(b=>b.onclick=()=>UI.closeModal('soundSettingsModal'));
-
-      // load on open (cheap)
       modal.addEventListener('transitionend', ()=>{});
       load();
       return load;
     },
 
-    // Dictionary modal: always reflects the current app state (features/roles/config).
     bindDictionaryModal(user){
       const u = user || (window.Auth && Auth.getUser && Auth.getUser());
       const modal = document.getElementById('dictionaryModal');
@@ -1200,24 +1054,15 @@ toast(message, variant){
 
       const stateSummary = ()=>{
         const cfg = window.Config || {};
-        const roles = cfg.ROLES || {};
         const tz = cfg.TZ || 'Asia/Manila';
         const navIds = (cfg.NAV||[]).map(n=>n.id);
         const hasMaster = navIds.includes('members') && (cfg.NAV||[]).some(n=>n.id==='members' && (n.children||[]).some(c=>c.id==='master_schedule'));
         const schedules = Object.keys(cfg.SCHEDULES||{});
         const week = (UI && UI.manilaTodayISO) ? UI.manilaTodayISO() : '';
         return {
-          tz,
-          week,
+          tz, week,
           user: u ? { name: u.name||u.username, role: u.role, teamId: u.teamId } : null,
-          features: {
-            masterSchedule: !!hasMaster,
-            leaves: ['SICK','EMERGENCY','VACATION','HOLIDAY'],
-            hourGrid: true,
-            dragToPaint: true,
-            sendAck: true,
-            soundSettings: true
-          },
+          features: { masterSchedule: !!hasMaster, leaves: ['SICK','EMERGENCY','VACATION','HOLIDAY'], hourGrid: true, dragToPaint: true, sendAck: true, soundSettings: true },
           counts: { teams: (cfg.TEAMS||[]).length, schedules: schedules.length, nav: navIds.length }
         };
       };
@@ -1250,56 +1095,14 @@ toast(message, variant){
 
       const buildCards = (s)=>{
         const cards = [];
-        cards.push({
-          id:'overview',
-          title:'What is MUMS?',
-          keywords:'mums meys user management system overview',
-          body:`MUMS (MUMS User Management System) is a single-file web app for managing users, teams, announcements, and 1-hour grid scheduling (no minutes). It runs locally in the browser using secure localStorage.`
-        });
-        cards.push({
-          id:'scheduling',
-          title:'Scheduling rules (strict hour blocks)',
-          keywords:'schedule hour grid no minutes drag paint call onqueue back office block lunch',
-          body:`All schedules are strictly aligned to 1-hour blocks. No minutes are allowed on the grid. Drag-to-paint lets Team Leads fill multiple hours quickly while still enforcing 1-hour steps.`,
-          extra: illusGrid()
-        });
-        cards.push({
-          id:'master',
-          title:'Master Schedule and Rest Days',
-          keywords:'master schedule rest day monthly quarterly frequency',
-          body:`Team Leads/Admins can configure fixed rest days per member in Master Schedule. Rest days automatically gray-out the member in Members Assigning with the notice “ON REST DAY”. Frequency controls how the fixed schedule repeats (monthly / every 2 months / every 3 months / quarterly).`
-        });
-        cards.push({
-          id:'leaves',
-          title:'Leaves (SL / EL / VL / HL)',
-          keywords:'sick emergency vacation holiday leave sl el vl hl',
-          body:`Leaves are per-member per-date: SL (Sick), EL (Emergency), VL (Vacation), HL (Holiday). Setting a leave grays out the member schedule immediately and auto-scheduling skips them. Clicking an already-active leave prompts for confirmation before removal.`,
-          extra: illusLeaves()
-        });
-        cards.push({
-          id:'send',
-          title:'Send schedule updates + Acknowledgements',
-          keywords:'send notify popup acknowledge',
-          body:`Team Lead can press “Send” to broadcast schedule updates. Members receive a real-time pop-up with an Acknowledge button. Team Leads can view acknowledgement status (who acknowledged + timestamp).`
-        });
-        cards.push({
-          id:'sound',
-          title:'Notification sound settings',
-          keywords:'sound beep volume type on off',
-          body:`Users can control notification sound with the Settings icon: On/Off, volume, and sound type (Beep/Chime/Pop). Notifications still show pop-ups even if sound is Off.`
-        });
-        cards.push({
-          id:'roles',
-          title:'Roles and permissions',
-          keywords:'roles team lead admin super user permissions',
-          body:`Super Admin controls everything. Admin can manage teams and users. Team Lead manages their own team’s members, master schedule, announcements, and scheduling. Members view their own schedules and receive notifications.`
-        });
-        cards.push({
-          id:'structure',
-          title:'How MUMS is built',
-          keywords:'structure localstorage pages config store ui',
-          body:`MUMS is a lightweight, file-based web app: Config defines teams/schedules/permissions; Store persists data in localStorage (with backups); UI provides timezone-safe Manila helpers and reusable modals; Pages render the screens (Dashboard, Members, Master Schedule, User Management, etc.).`
-        });
+        cards.push({ id:'overview', title:'What is MUMS?', keywords:'mums meys user management system overview', body:`MUMS (MUMS User Management System) is a single-file web app for managing users, teams, announcements, and 1-hour grid scheduling (no minutes). It runs locally in the browser using secure localStorage.` });
+        cards.push({ id:'scheduling', title:'Scheduling rules (strict hour blocks)', keywords:'schedule hour grid no minutes drag paint call onqueue back office block lunch', body:`All schedules are strictly aligned to 1-hour blocks. No minutes are allowed on the grid. Drag-to-paint lets Team Leads fill multiple hours quickly while still enforcing 1-hour steps.`, extra: illusGrid() });
+        cards.push({ id:'master', title:'Master Schedule and Rest Days', keywords:'master schedule rest day monthly quarterly frequency', body:`Team Leads/Admins can configure fixed rest days per member in Master Schedule. Rest days automatically gray-out the member in Members Assigning with the notice “ON REST DAY”. Frequency controls how the fixed schedule repeats (monthly / every 2 months / every 3 months / quarterly).` });
+        cards.push({ id:'leaves', title:'Leaves (SL / EL / VL / HL)', keywords:'sick emergency vacation holiday leave sl el vl hl', body:`Leaves are per-member per-date: SL (Sick), EL (Emergency), VL (Vacation), HL (Holiday). Setting a leave grays out the member schedule immediately and auto-scheduling skips them. Clicking an already-active leave prompts for confirmation before removal.`, extra: illusLeaves() });
+        cards.push({ id:'send', title:'Send schedule updates + Acknowledgements', keywords:'send notify popup acknowledge', body:`Team Lead can press “Send” to broadcast schedule updates. Members receive a real-time pop-up with an Acknowledge button. Team Leads can view acknowledgement status (who acknowledged + timestamp).` });
+        cards.push({ id:'sound', title:'Notification sound settings', keywords:'sound beep volume type on off', body:`Users can control notification sound with the Settings icon: On/Off, volume, and sound type (Beep/Chime/Pop). Notifications still show pop-ups even if sound is Off.` });
+        cards.push({ id:'roles', title:'Roles and permissions', keywords:'roles team lead admin super user permissions', body:`Super Admin controls everything. Admin can manage teams and users. Team Lead manages their own team’s members, master schedule, announcements, and scheduling. Members view their own schedules and receive notifications.` });
+        cards.push({ id:'structure', title:'How MUMS is built', keywords:'structure localstorage pages config store ui', body:`MUMS is a lightweight, file-based web app: Config defines teams/schedules/permissions; Store persists data in localStorage (with backups); UI provides timezone-safe Manila helpers and reusable modals; Pages render the screens (Dashboard, Members, Master Schedule, User Management, etc.).` });
         return cards;
       };
 
@@ -1363,9 +1166,7 @@ toast(message, variant){
         }
       };
 
-      if(searchEl){
-        searchEl.oninput = ()=>render();
-      }
+      if(searchEl){ searchEl.oninput = ()=>render(); }
       if(askEl){
         askEl.onclick = ()=>{
           const q = (qEl && qEl.value || '').trim();
@@ -1378,14 +1179,12 @@ toast(message, variant){
         };
       }
 
-      // Close buttons
       (modal.querySelectorAll('[data-close="dictionaryModal"]')||[]).forEach(b=>b.onclick=()=>UI.closeModal('dictionaryModal'));
 
       render();
       return render;
     },
 
-    // Release Notes modal (append-only; render from Store.getReleaseNotes)
     bindReleaseNotesModal(user){
       const u = user || (window.Auth && Auth.getUser && Auth.getUser());
       const modal = document.getElementById('releaseNotesModal');
@@ -1403,7 +1202,6 @@ toast(message, variant){
       const bodyEl = document.getElementById('rnBody');
       const addEl = document.getElementById('rnAdd');
 
-      // Advanced tools
       const bodyPreviewEl = document.getElementById('rnBodyPreview');
       const importEl = document.getElementById('rnImportFile');
       const importModeEl = document.getElementById('rnImportMode');
@@ -1413,7 +1211,7 @@ toast(message, variant){
       const toolbar = document.getElementById('rnToolbar');
 
       const canManage = !!(u && window.Config && Config.can && Config.can(u,'manage_release_notes'));
-      const canDelete = canManage; // single permission for now
+      const canDelete = canManage;
       if(adminWrap) adminWrap.style.display = canManage ? '' : 'none';
 
       const fmt = (ms)=>{
@@ -1424,11 +1222,7 @@ toast(message, variant){
       };
 
       const normalizeTags = (s)=>{
-        return String(s||'')
-          .split(',')
-          .map(x=>x.trim().toLowerCase())
-          .filter(Boolean)
-          .slice(0,8);
+        return String(s||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean).slice(0,8);
       };
 
       const resolveDefaultVersion = ()=>{
@@ -1444,24 +1238,15 @@ toast(message, variant){
         const all = (Store.getReleaseNotes ? Store.getReleaseNotes() : []);
 
         let filtered = all;
-        if(f && f!=='all'){
-          filtered = filtered.filter(n => (n.tags||[]).map(t=>String(t).toLowerCase()).includes(f));
-        }
+        if(f && f!=='all'){ filtered = filtered.filter(n => (n.tags||[]).map(t=>String(t).toLowerCase()).includes(f)); }
         if(q){
           filtered = filtered.filter(n=>{
-            const hay = (
-              String(n.version||'') + ' ' +
-              String(n.title||'') + ' ' +
-              String(n.body||'') + ' ' +
-              String((n.tags||[]).join(' '))
-            ).toLowerCase();
+            const hay = (String(n.version||'') + ' ' + String(n.title||'') + ' ' + String(n.body||'') + ' ' + String((n.tags||[]).join(' '))).toLowerCase();
             return hay.includes(q);
           });
         }
 
-        if(metaEl){
-          metaEl.textContent = `${filtered.length} of ${all.length} note(s) shown`;
-        }
+        if(metaEl){ metaEl.textContent = `${filtered.length} of ${all.length} note(s) shown`; }
 
         if(listEl){
           listEl.innerHTML = filtered.map(n=>{
@@ -1483,32 +1268,25 @@ toast(message, variant){
         }
       };
 
-      // Very small markdown renderer (safe): supports headings, bold, italics, inline code, lists, and line breaks.
       function renderMarkdownSafe(md){
         const esc = UI.esc(String(md||''));
-        // code blocks (triple backticks)
         let out = esc.replace(/```([\s\S]*?)```/g, (m,g)=>`<pre class="rn-pre"><code>${g}</code></pre>`);
-        // headings
         out = out.replace(/^###\s(.+)$/gm, '<div class="rn-h3">$1</div>');
         out = out.replace(/^##\s(.+)$/gm, '<div class="rn-h2">$1</div>');
         out = out.replace(/^#\s(.+)$/gm, '<div class="rn-h1">$1</div>');
-        // bold / italics / inline code
         out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
         out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
         out = out.replace(/`([^`]+)`/g, '<code class="rn-code">$1</code>');
-        // unordered lists
         out = out.replace(/^(?:\s*[-*]\s.+\n?)+/gm, (block)=>{
           const items = block.trim().split(/\n/).map(l=>l.replace(/^\s*[-*]\s+/,'').trim()).filter(Boolean);
           if(!items.length) return block;
           return `<ul class="rn-ul">${items.map(i=>`<li>${i}</li>`).join('')}</ul>`;
         });
-        // ordered lists
         out = out.replace(/^(?:\s*\d+\.\s.+\n?)+/gm, (block)=>{
           const items = block.trim().split(/\n/).map(l=>l.replace(/^\s*\d+\.\s+/,'').trim()).filter(Boolean);
           if(!items.length) return block;
           return `<ol class="rn-ol">${items.map(i=>`<li>${i}</li>`).join('')}</ol>`;
         });
-        // line breaks
         out = out.replace(/\n/g, '<br/>');
         return `<div class="rn-md">${out}</div>`;
       }
@@ -1516,7 +1294,6 @@ toast(message, variant){
       if(searchEl) searchEl.oninput = ()=>render();
       if(filterEl) filterEl.onchange = ()=>render();
 
-      // Editor toolbar: insert simple markdown snippets.
       if(toolbar && bodyEl){
         toolbar.querySelectorAll('[data-md]').forEach(btn=>{
           btn.onclick = ()=>{
@@ -1530,7 +1307,6 @@ toast(message, variant){
               const after = String(ta.value||'').slice(end);
 
               let insert = t;
-              // tokens: {text}
               if(t.includes('{text}')) insert = t.replace('{text}', sel||'text');
               ta.value = before + insert + after;
               const pos = before.length + insert.length;
@@ -1554,20 +1330,11 @@ toast(message, variant){
           const body = String(bodyEl && bodyEl.value || '').trim();
           const tags = normalizeTags(tagsEl && tagsEl.value || '');
 
-          if(!ttl || !body){
-            alert('Please enter a Title and Details.');
-            return;
-          }
-
+          if(!ttl || !body){ alert('Please enter a Title and Details.'); return; }
           Store.addReleaseNote({
             version: ver || resolveDefaultVersion(),
-            date: Date.now(),
-            title: ttl,
-            body: body,
-            author: u ? (u.name||u.username||u.id) : '',
-            tags: tags.length ? tags : ['feature'],
+            date: Date.now(), title: ttl, body: body, author: u ? (u.name||u.username||u.id) : '', tags: tags.length ? tags : ['feature'],
           });
-
           if(titleEl) titleEl.value = '';
           if(bodyEl) bodyEl.value = '';
           if(bodyPreviewEl) bodyPreviewEl.innerHTML = renderMarkdownSafe('');
@@ -1577,7 +1344,6 @@ toast(message, variant){
         };
       }
 
-      // Import (JSON, TXT, MD)
       if(importBtn && canManage){
         importBtn.onclick = async()=>{
           const f = importEl && importEl.files && importEl.files[0];
@@ -1585,39 +1351,27 @@ toast(message, variant){
           const mode = String(importModeEl && importModeEl.value || 'merge');
           const name = String(f.name||'').toLowerCase();
           const text = await (f.text ? f.text() : new Promise((res,rej)=>{
-            const r = new FileReader();
-            r.onload = ()=>res(String(r.result||''));
-            r.onerror = rej;
-            r.readAsText(f);
+            const r = new FileReader(); r.onload = ()=>res(String(r.result||'')); r.onerror = rej; r.readAsText(f);
           }));
           try{
             if(name.endsWith('.json')){
               const obj = JSON.parse(text);
               Store.importReleaseNotes(obj, mode);
             } else {
-              // Treat as a single note body; first line becomes title when available.
               const lines = String(text||'').replace(/\r/g,'').split('\n');
               const first = String(lines[0]||'').trim();
               const body = lines.slice(1).join('\n').trim();
               Store.addReleaseNote({
-                version: resolveDefaultVersion(),
-                date: Date.now(),
-                title: first || 'Imported note',
-                body: body || String(text||''),
-                author: u ? (u.name||u.username||u.id) : '',
-                tags: ['import']
+                version: resolveDefaultVersion(), date: Date.now(), title: first || 'Imported note', body: body || String(text||''),
+                author: u ? (u.name||u.username||u.id) : '', tags: ['import']
               });
             }
             if(importEl) importEl.value = '';
             render();
-          }catch(err){
-            console.error(err);
-            alert('Import failed. Please verify the file format.');
-          }
+          }catch(err){ console.error(err); alert('Import failed. Please verify the file format.'); }
         };
       }
 
-      // Export
       if(exportBtn && canManage){
         exportBtn.onclick = ()=>{
           try{
@@ -1636,7 +1390,6 @@ toast(message, variant){
         };
       }
 
-      // Clear all
       if(clearBtn && canManage){
         clearBtn.onclick = async ()=>{
           const ok1 = await UI.confirm({ title:'Delete All Release Notes', message:'This will delete ALL release notes in this browser. A backup is retained, but you should export first. Continue?', okText:'Continue', cancelText:'Cancel', danger:true });
@@ -1648,7 +1401,6 @@ toast(message, variant){
         };
       }
 
-      // Per-item delete
       if(listEl && canDelete){
         listEl.onclick = async (e)=>{
           const btn = e && e.target ? e.target.closest('[data-del]') : null;
@@ -1662,34 +1414,40 @@ toast(message, variant){
         };
       }
 
-      // Close buttons
       (modal.querySelectorAll('[data-close="releaseNotesModal"]')||[]).forEach(b=>b.onclick=()=>UI.closeModal('releaseNotesModal'));
 
       render();
       return render;
     },
 
-    // Lightweight realtime notifications for schedule updates.
-    // Works across tabs via BroadcastChannel + storage events (no server required).
+    // ENTERPRISE UPGRADE: Glassmorphism Case Assigned Notification Modal
     startScheduleNotifListener(user){
       if(!user || !window.Store) return;
 
-      // Create modal shell once
       if(!document.getElementById('schedNotifModal')){
         const m = document.createElement('div');
         m.className = 'modal';
         m.id = 'schedNotifModal';
+        // HTML Injection for Glassmorphism
         m.innerHTML = `
-          <div class="panel notification-popout">
-            <div class="head">
-              <div>
-                <div class="notif-member" id="schedNotifMember">—</div>
-                <div class="announce-title" id="schedNotifTitle">Schedule Notifications</div>
-                <div class="small" id="schedNotifMeta">—</div>
+          <div class="task-modal-backdrop" style="position:fixed; inset:0; background:rgba(2,6,23,0.85); backdrop-filter:blur(8px); z-index:99999; display:flex; align-items:center; justify-content:center; padding:20px;">
+              <div class="task-modal-glass notification-popout" style="width:min(900px, 100vw); background:linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98)); border:1px solid rgba(56,189,248,0.3); border-radius:16px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.7); display:flex; flex-direction:column; max-height:90vh; overflow:hidden;">
+                <div class="head modal-header-glass" style="padding:20px 24px; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.6);">
+                  <div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="background:#0ea5e9; color:#fff; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px;">🔔</span>
+                        <div class="announce-title" id="schedNotifTitle" style="font-size:18px; font-weight:800; color:#f8fafc; letter-spacing:-0.5px;">Schedule Notifications</div>
+                    </div>
+                    <div class="small" id="schedNotifMeta" style="color:#94a3b8; margin-top:4px; font-size:13px;">—</div>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:12px;">
+                      <div class="notif-member" id="schedNotifMember" style="background:rgba(255,255,255,0.05); padding:6px 12px; border-radius:999px; font-size:12px; font-weight:700; color:#cbd5e1;">—</div>
+                      <div class="notif-count" id="schedNotifCount" style="background:#ef4444; color:#fff; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:900;"></div>
+                      <button class="btn-glass btn-glass-ghost" onclick="window.UI.closeModal('schedNotifModal')" style="padding:6px 12px; border:1px solid rgba(255,255,255,0.1); color:#cbd5e1; background:transparent; border-radius:8px; cursor:pointer;">✕</button>
+                  </div>
+                </div>
+                <div class="body modal-body-scroll" id="schedNotifBody" style="padding:24px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:16px;"></div>
               </div>
-              <div class="notif-count" id="schedNotifCount"></div>
-            </div>
-            <div class="body" id="schedNotifBody"></div>
           </div>
         `;
         document.body.appendChild(m);
@@ -1697,7 +1455,6 @@ toast(message, variant){
 
       const channel = ('BroadcastChannel' in window) ? new BroadcastChannel('ums_schedule_updates') : null;
 
-      // Palette must match TEAM TASK catalog (used in My Schedule)
       const TASK_PALETTE = {
         'mailbox manager': '#4aa3ff',
         'back office': '#ffa21a',
@@ -1738,7 +1495,7 @@ toast(message, variant){
         const n = parseInt(m[1],16);
         return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
       };
-      const esc = UI.esc || ((x)=>String(x||'').replace(/[&<>"']/g,(c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;' }[c])));
+      const esc = UI.esc || ((x)=>String(x||'').replace(/[&<>"']/g,(c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])));
 
       const renderTaskSummary = (summary)=>{
         if(!summary || !summary.items) return '';
@@ -1766,8 +1523,6 @@ toast(message, variant){
 
       const renderNotifBody = (msg, summary)=>{
         const text = String(msg||'').trim();
-        // Expected format:
-        // “Schedule Updated: Call Available added on Sunday, February 01, 2026.”
         const m = text.match(/^Schedule Updated:\s*(.+?)\s+(added|removed|updated)\s+on\s+(.+?)\.?\s*$/i);
         if(!m){
           const fallback = `<div class="notif-intro">${esc(text || 'Your schedule has been updated.')}</div>`;
@@ -1885,6 +1640,8 @@ toast(message, variant){
           return { ok:false, message: String(e && (e.message || e) || 'Confirm failed') };
         }
       };
+      
+      // ENTERPRISE UPGRADE: Glassmorphism Inner Table for Pending Assignments
       const renderMailboxAssignTable = (list)=>{
         const rows = (Array.isArray(list) ? list : []).map((n, index)=>{
           const assignedAt = Number((n && (n.assignedAt || n.ts)) || 0);
@@ -1894,37 +1651,43 @@ toast(message, variant){
           const descDisplay = truncate(desc, 50) || 'N/A';
           const timer = formatAssignTimer(assignedAt);
           return `
-            <tr class="mbx-assign-row-item" data-ack-row="${esc(n.id)}">
-              <td>${index + 1}</td>
-              <td class="mbx-assign-ts">${esc(ts)}</td>
-              <td><strong class="mbx-assign-case-cell">${esc(caseNo)}</strong></td>
-              <td title="${esc(desc || 'N/A')}">${esc(descDisplay)}</td>
-              <td>${renderAssignedBy(n)}</td>
-              <td class="mbx-assign-live" data-assign-timer="${esc(assignedAt)}">${esc(timer)}</td>
-              <td>
-                <button class="btn dashx-ack mbx-accept-btn" data-ack="${esc(n.id)}" type="button" aria-label="Accept case assignment">
-                  <span class="dashx-spin" aria-hidden="true"></span>
-                  <span class="dashx-acklbl">ACCEPT</span>
+            <tr class="mbx-assign-row-item" data-ack-row="${esc(n.id)}" style="transition:background 0.2s;">
+              <td style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); color:#64748b; font-weight:700;">${index + 1}</td>
+              <td class="mbx-assign-ts" style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); color:#cbd5e1; font-size:12px;">${esc(ts)}</td>
+              <td style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02);"><strong class="mbx-assign-case-cell" style="color:#38bdf8; font-size:14px; letter-spacing:0.5px;">${esc(caseNo)}</strong></td>
+              <td title="${esc(desc || 'N/A')}" style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); color:#e2e8f0; font-size:13px; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(descDisplay)}</td>
+              <td style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); font-size:13px; font-weight:600; color:#f8fafc;">${renderAssignedBy(n)}</td>
+              <td class="mbx-assign-live" data-assign-timer="${esc(assignedAt)}" style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); color:#fcd34d; font-family:monospace; font-weight:800;">${esc(timer)}</td>
+              <td style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); text-align:right;">
+                <button class="btn-glass dashx-ack mbx-accept-btn" data-ack="${esc(n.id)}" type="button" aria-label="Accept case assignment" style="background:linear-gradient(145deg, #10b981, #059669); color:#fff; border:1px solid rgba(52,211,153,0.4); padding:8px 16px; border-radius:8px; font-weight:800; box-shadow:0 4px 12px rgba(16,185,129,0.3); cursor:pointer;">
+                  <span class="dashx-spin" aria-hidden="true" style="display:none;">⏳ </span>
+                  <span class="dashx-acklbl">ACCEPT ✓</span>
                 </button>
               </td>
             </tr>
           `;
         }).join('');
+        
         if(!rows){
           return '<div class="muted">No pending cases.</div>';
         }
+        
         return `
-          <div class="mbx-assign-table-wrap" role="region" aria-label="Pending case assignments">
-            <table class="mbx-assign-table" role="table">
+          <style>
+            .mbx-assign-table tbody tr:hover { background: rgba(56,189,248,0.05); }
+            .mbx-accept-btn:hover { background: linear-gradient(145deg, #34d399, #10b981) !important; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(16,185,129,0.4) !important; }
+          </style>
+          <div class="mbx-assign-table-wrap glass-table-container" role="region" aria-label="Pending case assignments" style="border:1px solid rgba(255,255,255,0.06); border-radius:10px; overflow:hidden; background:rgba(2,6,23,0.5);">
+            <table class="mbx-assign-table" role="table" style="width:100%; border-collapse:collapse;">
               <thead>
                 <tr>
-                  <th>No.</th>
-                  <th>TIMESTAMP</th>
-                  <th>CASE#</th>
-                  <th>DESCRIPTION</th>
-                  <th>ASSIGNED BY</th>
-                  <th>TIME ELAPSED</th>
-                  <th>STATUS</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08);">No.</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08);">Timestamp</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08);">Case #</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08);">Description</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08);">Assigned By</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08);">Elapsed</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:right;">Action</th>
                 </tr>
               </thead>
               <tbody>${rows}</tbody>
@@ -1932,7 +1695,7 @@ toast(message, variant){
           </div>
         `;
       };
-      // Prevent spam: show each notif once per tab session (unless page reloads).
+      
       const shownKeys = new Set();
       let lastBeepedId = null;
       const pendingKeyFor = (n)=>{
@@ -1945,7 +1708,6 @@ toast(message, variant){
       const ackNotif = (n)=>{
         if(!n || !n.id) return;
         Store.ackNotif(n.id, user.id);
-        // broadcast ack to other tabs
         try{ channel && channel.postMessage({ type:'ack', notifId:n.id, userId:user.id }); }catch(e){}
       };
       const renderPendingNotifs = (list)=>{
@@ -1954,7 +1716,6 @@ toast(message, variant){
         }
         const allMailbox = list.every(n=>String(n && n.type || '') === 'MAILBOX_ASSIGN');
         if(allMailbox) return renderMailboxAssignTable(list);
-        // Resilience: a single bad/malformed notif should not crash the entire modal.
         return list.map(n=>{
           try{
             if(String(n.type||'') === 'MAILBOX_ASSIGN'){
@@ -2075,7 +1836,6 @@ toast(message, variant){
         if(modal && !modal._ackBound){
           modal._ackBound = true;
           modal.addEventListener('click', async (e)=>{
-            // Enterprise Task Distribution deep-link
             const viewBtn = e && e.target ? e.target.closest('[data-view-tasks]') : null;
             if(viewBtn){
               try{ e.preventDefault(); }catch(_){ }
@@ -2088,7 +1848,6 @@ toast(message, variant){
                 return;
               }
 
-              // If already on /my_task, prefer in-app expansion without reload.
               const path = String(window.location.pathname || '').replace(/\/+$/,'');
               const isMyTask = path === '/my_task' || path.endsWith('/my_task');
               if(isMyTask){
@@ -2097,14 +1856,11 @@ toast(message, variant){
                   UI.closeModal('schedNotifModal');
                 }catch(_){ }
               }else{
-                // Safe fallback: full navigation with deep-link
                 try{ window.location.href = `/my_task?dist=${encodeURIComponent(distId)}`; }catch(_){ window.location.href = '/my_task'; }
               }
-
               return;
             }
 
-            // Mailbox accept (legacy)
             const btn = e && e.target ? e.target.closest('[data-ack]') : null;
             if(!btn) return;
             const id = String(btn.getAttribute('data-ack')||'');
@@ -2116,7 +1872,7 @@ toast(message, variant){
               btn.disabled = true;
               const spin = btn.querySelector('.dashx-spin');
               const lbl = btn.querySelector('.dashx-acklbl');
-              if(spin) spin.classList.add('on');
+              if(spin) { spin.style.display = 'inline-block'; spin.classList.add('on'); }
               if(lbl) lbl.textContent = 'ACCEPTING…';
             }catch(_){ }
             const n = lastPending.find(x=>String(x.id||'')===id);
@@ -2129,8 +1885,8 @@ toast(message, variant){
                   btn.disabled = false;
                   const spin = btn.querySelector('.dashx-spin');
                   const lbl = btn.querySelector('.dashx-acklbl');
-                  if(spin) spin.classList.remove('on');
-                  if(lbl) lbl.textContent = 'ACCEPT';
+                  if(spin) { spin.style.display = 'none'; spin.classList.remove('on'); }
+                  if(lbl) lbl.textContent = 'ACCEPT ✓';
                 }catch(_){ }
                 return;
               }
@@ -2156,7 +1912,6 @@ toast(message, variant){
         }
       };
 
-      // periodic poll (cheap) + cross-tab hints
       let timer = setInterval(()=>{
         ping();
         updateTimers();
@@ -2174,14 +1929,9 @@ toast(message, variant){
       };
       window.addEventListener('mums:store', onStore);
 
-      if(channel){
-        channel.onmessage = ()=>ping();
-      }
-
-      // immediate check
+      if(channel){ channel.onmessage = ()=>ping(); }
       ping();
 
-      // return disposer
       return ()=>{
         try{ clearInterval(timer); }catch(e){}
         try{ window.removeEventListener('storage', onStorage); }catch(e){}
@@ -2190,78 +1940,72 @@ toast(message, variant){
       };
     },
 
+    initAppCursor(){
+      try{
+        if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return;
+        const mode = (localStorage.getItem('mums_cursor_mode')||'custom');
+        if(mode !== 'custom') return;
+        if(document.getElementById('appCursor')) return;
 
-// App cursor (mouse cursor) — always visible and consistent regardless of OS cursor settings.
-// Runs only when user selects custom cursor mode.
-initAppCursor(){
-  try{
-    if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return; // touch devices
-    const mode = (localStorage.getItem('mums_cursor_mode')||'custom');
-    if(mode !== 'custom') return;
-    if(document.getElementById('appCursor')) return;
+        const cur = document.createElement('div');
+        cur.id = 'appCursor';
+        cur.className = 'app-cursor';
+        cur.innerHTML = '<div class="app-cursor-arrow"></div><div class="app-cursor-ibar"></div>';
+        document.body.appendChild(cur);
+        document.body.classList.add('app-cursor-on');
 
-    const cur = document.createElement('div');
-    cur.id = 'appCursor';
-    cur.className = 'app-cursor';
-    cur.innerHTML = '<div class="app-cursor-arrow"></div><div class="app-cursor-ibar"></div>';
-    document.body.appendChild(cur);
-    document.body.classList.add('app-cursor-on');
+        let x = window.innerWidth/2, y = window.innerHeight/2;
 
-    let x = window.innerWidth/2, y = window.innerHeight/2;
+        const isTextTarget = (el)=>{
+          if(!el) return false;
+          const tag = (el.tagName||'').toLowerCase();
+          if(tag==='input' || tag==='textarea' || tag==='select') return true;
+          if(el.isContentEditable) return true;
+          return false;
+        };
 
-    const isTextTarget = (el)=>{
-      if(!el) return false;
-      const tag = (el.tagName||'').toLowerCase();
-      if(tag==='input' || tag==='textarea' || tag==='select') return true;
-      if(el.isContentEditable) return true;
-      return false;
-    };
+        const update = (cx, cy)=>{
+          x = cx; y = cy;
+          cur.style.transform = `translate(${x}px, ${y}px)`;
+          const el = document.elementFromPoint(cx, cy);
+          cur.classList.toggle('is-text', isTextTarget(el));
+        };
 
-    const update = (cx, cy)=>{
-      x = cx; y = cy;
-      cur.style.transform = `translate(${x}px, ${y}px)`;
-      const el = document.elementFromPoint(cx, cy);
-      cur.classList.toggle('is-text', isTextTarget(el));
-    };
+        const onMove = (ev)=>{ update(ev.clientX, ev.clientY); };
+        const onDown = ()=>cur.classList.add('is-down');
+        const onUp = ()=>cur.classList.remove('is-down');
 
-    const onMove = (ev)=>{ update(ev.clientX, ev.clientY); };
+        window.addEventListener('mousemove', onMove, { passive:true });
+        window.addEventListener('mousedown', onDown, { passive:true });
+        window.addEventListener('mouseup', onUp, { passive:true });
 
-    const onDown = ()=>cur.classList.add('is-down');
-    const onUp = ()=>cur.classList.remove('is-down');
+        update(x, y);
 
-    window.addEventListener('mousemove', onMove, { passive:true });
-    window.addEventListener('mousedown', onDown, { passive:true });
-    window.addEventListener('mouseup', onUp, { passive:true });
+        cur._cleanup = ()=>{
+          try{ window.removeEventListener('mousemove', onMove); }catch(_){}
+          try{ window.removeEventListener('mousedown', onDown); }catch(_){}
+          try{ window.removeEventListener('mouseup', onUp); }catch(_){}
+        };
+      }catch(e){}
+    },
 
-    // Ensure visible immediately
-    update(x, y);
-
-    cur._cleanup = ()=>{
-      try{ window.removeEventListener('mousemove', onMove); }catch(_){}
-      try{ window.removeEventListener('mousedown', onDown); }catch(_){}
-      try{ window.removeEventListener('mouseup', onUp); }catch(_){}
-    };
-  }catch(e){}
-},
-
-setCursorMode(mode){
-  try{
-    const m = (mode==='system') ? 'system' : 'custom';
-    localStorage.setItem('mums_cursor_mode', m);
-    const cur = document.getElementById('appCursor');
-    if(m==='system'){
-      if(cur && cur._cleanup) cur._cleanup();
-      if(cur) cur.remove();
-      document.body.classList.remove('app-cursor-on');
-      return;
+    setCursorMode(mode){
+      try{
+        const m = (mode==='system') ? 'system' : 'custom';
+        localStorage.setItem('mums_cursor_mode', m);
+        const cur = document.getElementById('appCursor');
+        if(m==='system'){
+          if(cur && cur._cleanup) cur._cleanup();
+          if(cur) cur.remove();
+          document.body.classList.remove('app-cursor-on');
+          return;
+        }
+        if(!cur) UI.initAppCursor();
+        document.body.classList.add('app-cursor-on');
+      }catch(e){ console.error('setCursorMode error', e); }
     }
-    if(!cur) UI.initAppCursor();
-    document.body.classList.add('app-cursor-on');
-  }catch(e){ console.error('setCursorMode error', e); }
-},
   };
 
-  // Global delegated handler for modal close buttons (fixes Settings close ✕ across all modals).
   UI.bindDataClose = function(){
     if(UI.__dataCloseBound) return;
     UI.__dataCloseBound = true;
@@ -2270,18 +2014,12 @@ setCursorMode(mode){
       if(!btn) return;
       const id = btn.getAttribute('data-close');
       if(!id) return;
-      // Only close the target modal. (Attendance and confirm modals intentionally have no data-close.)
       try{ UI.closeModal(id); }catch(_){}
       e.preventDefault();
       e.stopPropagation();
     }, true);
   };
 
-
-
-  // Dashboard renderer
-  // - Clean URL route: /dashboard
-  // - Must render for all roles without redirect
   UI.renderDashboard = function(root){
     try{
       const Config = window.Config || {};
@@ -2289,7 +2027,6 @@ setCursorMode(mode){
       const Auth = window.Auth || {};
       const me = (Auth.getUser ? (Auth.getUser()||{}) : {});
 
-      // Rollback-safe: clear prior dashboard listeners/timers.
       try{ if(root && root._dashCleanup) root._dashCleanup(); }catch(_){ }
 
       const state = root._dashState || { filter: 'unread', q: '', sync: { mode:'offline', detail:'', lastOkAt:0 } };
@@ -2337,10 +2074,7 @@ setCursorMode(mode){
       const nowText = ()=>{
         try{
           return new Date().toLocaleString('en-CA', {
-            timeZone: tz,
-            weekday:'short', year:'numeric', month:'short', day:'2-digit',
-            hour:'2-digit', minute:'2-digit', second:'2-digit',
-            hour12:false
+            timeZone: tz, weekday:'short', year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
           });
         }catch(_){ return ''; }
       };
@@ -2369,7 +2103,6 @@ setCursorMode(mode){
         const myNotifs = notifsTeam.filter(n=>n && Array.isArray(n.recipients) && me.id && n.recipients.includes(me.id));
         const myUnread = myNotifs.filter(n=>!(n.acks && n.acks[me.id]));
 
-        // Mailbox analytics (current duty shift)
         const shiftKey = dutyCur ? String(dutyCur.id||'') : '';
         const table = (shiftKey && Store.getMailboxTable) ? Store.getMailboxTable(shiftKey) : null;
         const nowMin = (UI.minutesOfDay ? UI.minutesOfDay(parts) : (Number(parts.hh||0)*60 + Number(parts.mm||0)));
@@ -2378,17 +2111,7 @@ setCursorMode(mode){
         let bucketLabel = '';
         let bucketManager = '';
         let mbx = {
-          shiftKey,
-          hasTable: !!table,
-          totalAssigned: 0,
-          totalConfirmed: 0,
-          totalOpen: 0,
-          bucketAssigned: 0,
-          bucketOpen: 0,
-          avgRespMin: 0,
-          byBucket: [],
-          byRole: [],
-          topAssignees: []
+          shiftKey, hasTable: !!table, totalAssigned: 0, totalConfirmed: 0, totalOpen: 0, bucketAssigned: 0, bucketOpen: 0, avgRespMin: 0, byBucket: [], byRole: [], topAssignees: []
         };
 
         if(table && typeof table==='object'){
@@ -2409,9 +2132,7 @@ setCursorMode(mode){
           const open = assigns.filter(a=>a && !(Number(a.confirmedAt||0) > 0));
           const inB = (a)=> String(a.bucketId||'') === activeBucketId;
 
-          const confirmedDur = confirmed
-            .map(a=> (Number(a.confirmedAt||0) - Number(a.assignedAt||0)))
-            .filter(ms=>Number.isFinite(ms) && ms>0);
+          const confirmedDur = confirmed.map(a=> (Number(a.confirmedAt||0) - Number(a.assignedAt||0))).filter(ms=>Number.isFinite(ms) && ms>0);
           const avgRespMs = confirmedDur.length ? (confirmedDur.reduce((x,y)=>x+y,0) / confirmedDur.length) : 0;
 
           mbx.totalAssigned = assigns.length;
@@ -2421,7 +2142,6 @@ setCursorMode(mode){
           mbx.bucketOpen = open.filter(a=>a && inB(a)).length;
           mbx.avgRespMin = avgRespMs ? Math.round(avgRespMs/60000) : 0;
 
-          // By bucket
           const byB = {};
           for(const a of assigns){
             if(!a) continue;
@@ -2434,33 +2154,21 @@ setCursorMode(mode){
             const bid = String(b && b.id || '');
             const row = byB[bid] || { bucketId: bid, assigned:0, open:0, confirmed:0 };
             return {
-              bucketId: bid,
-              label: b ? `${String(b.start||'')}–${String(b.end||'')}` : bid,
-              assigned: row.assigned,
-              open: row.open,
-              confirmed: row.confirmed,
-              isActive: bid === activeBucketId
+              bucketId: bid, label: b ? `${String(b.start||'')}–${String(b.end||'')}` : bid, assigned: row.assigned, open: row.open, confirmed: row.confirmed, isActive: bid === activeBucketId
             };
           });
 
-          // By role (assignee role)
           const users = (Store.getUsers ? (Store.getUsers()||[]) : []);
           const roleById = {};
-          for(const u of users){
-            if(!u) continue;
-            roleById[String(u.id||'')] = String(u.role||'MEMBER');
-          }
+          for(const u of users){ if(!u) continue; roleById[String(u.id||'')] = String(u.role||'MEMBER'); }
           const byRole = {};
           for(const a of assigns){
             if(!a) continue;
             const rid = roleById[String(a.assigneeId||'')] || 'MEMBER';
             byRole[rid] = (byRole[rid]||0) + 1;
           }
-          mbx.byRole = Object.keys(byRole)
-            .sort((a,b)=>byRole[b]-byRole[a])
-            .map(r=>({ role:r, count: byRole[r], pct: totalAssigned ? Math.round((byRole[r]/totalAssigned)*100) : 0 }));
+          mbx.byRole = Object.keys(byRole).sort((a,b)=>byRole[b]-byRole[a]).map(r=>({ role:r, count: byRole[r], pct: totalAssigned ? Math.round((byRole[r]/totalAssigned)*100) : 0 }));
 
-          // Top assignees
           const byA = {};
           for(const a of assigns){
             if(!a) continue;
@@ -2469,13 +2177,9 @@ setCursorMode(mode){
           }
           const nameById = {};
           for(const u of users){ if(u) nameById[String(u.id||'')] = String(u.name||u.username||''); }
-          mbx.topAssignees = Object.keys(byA)
-            .sort((a,b)=>byA[b]-byA[a])
-            .slice(0, 6)
-            .map(uid=>({ uid, name: nameById[uid] || uid, count: byA[uid], pct: totalAssigned ? Math.round((byA[uid]/totalAssigned)*100) : 0 }));
+          mbx.topAssignees = Object.keys(byA).sort((a,b)=>byA[b]-byA[a]).slice(0, 6).map(uid=>({ uid, name: nameById[uid] || uid, count: byA[uid], pct: totalAssigned ? Math.round((byA[uid]/totalAssigned)*100) : 0 }));
         }
 
-        // Activity heatmap (last 7 Manila days, 4-hour bins)
         const logsAll = (Store.getLogs ? (Store.getLogs()||[]) : []);
         const logs = me.teamId ? logsAll.filter(l=>l && (!l.teamId || String(l.teamId)===String(me.teamId))) : logsAll;
 
@@ -2491,7 +2195,7 @@ setCursorMode(mode){
         const dayIndex = {};
         days.forEach((d, idx)=>{ dayIndex[d.iso] = idx; });
 
-        const bins = 6; // 24h / 4h
+        const bins = 6; 
         const mat = Array.from({length: bins}, ()=> Array.from({length:7}, ()=>0));
         const recentCut = Date.now() - (7*24*60*60*1000);
 
@@ -2511,24 +2215,7 @@ setCursorMode(mode){
         let maxV = 0;
         for(const row of mat){ for(const v of row){ if(v>maxV) maxV=v; } }
 
-        return {
-          parts,
-          dutyCur, dutyNext,
-          dutyLabel, nextLabel,
-          secLeft,
-          teamLabel,
-          openCases: openCases.length,
-          myOpen: myOpen.length,
-          pendingAcks: myUnread.length,
-          notifs: myNotifs,
-          unreadNotifs: myUnread,
-          mbx,
-          activeBucketId,
-          bucketLabel,
-          bucketManager,
-          heat: { days, mat, maxV },
-          logs
-        };
+        return { parts, dutyCur, dutyNext, dutyLabel, nextLabel, secLeft, teamLabel, openCases: openCases.length, myOpen: myOpen.length, pendingAcks: myUnread.length, notifs: myNotifs, unreadNotifs: myUnread, mbx, activeBucketId, bucketLabel, bucketManager, heat: { days, mat, maxV }, logs };
       }
 
       function render(model){
@@ -2541,7 +2228,6 @@ setCursorMode(mode){
         const card = (k,v,s)=>`<div class="ux-card dashx-card"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${s?`<div class="s">${esc(s)}</div>`:''}</div>`;
 
         const heatRows = [];
-        // header row
         heatRows.push(`<div></div>`);
         for(const d of model.heat.days){ heatRows.push(`<div class="h">${esc(d.wd)}</div>`); }
         const labels = ['00','04','08','12','16','20'];
@@ -2551,7 +2237,7 @@ setCursorMode(mode){
             const v = model.heat.mat[r][c];
             const maxV = model.heat.maxV || 1;
             const level = v<=0 ? 0 : Math.min(4, Math.ceil((v/maxV)*4));
-            const alpha = 0.04 + (level*0.06); // 0.04..0.28
+            const alpha = 0.04 + (level*0.06);
             const dayIso = model.heat.days[c].iso;
             const title = `${dayIso} ${labels[r]}–${labels[r]=== '20' ? '24' : pad2((parseInt(labels[r],10)+4)%24)} • ${v} events`;
             heatRows.push(`<div class="cell" title="${esc(title)}" style="background: rgba(255,255,255,${alpha.toFixed(3)})"></div>`);
@@ -2560,45 +2246,21 @@ setCursorMode(mode){
 
         const bucketRows = (model.mbx.hasTable && model.mbx.byBucket.length) ? model.mbx.byBucket.map(b=>{
           const dot = b.isActive ? '<span class="badge ok" style="margin-left:8px">Now</span>' : '';
-          return `<div class="small" style="display:flex;justify-content:space-between;gap:10px;margin-top:6px">
-            <div>${esc(b.label)}${dot}</div>
-            <div class="muted">${esc(b.open)} open • ${esc(b.assigned)} assigned</div>
-          </div>`;
+          return `<div class="small" style="display:flex;justify-content:space-between;gap:10px;margin-top:6px"><div>${esc(b.label)}${dot}</div><div class="muted">${esc(b.open)} open • ${esc(b.assigned)} assigned</div></div>`;
         }).join('') : `<div class="small muted" style="margin-top:8px">Mailbox table not loaded yet for this shift.</div>`;
 
         const byRole = (model.mbx.byRole && model.mbx.byRole.length) ?
           `<div class="small muted" style="margin-top:10px">Distribution by assignee role</div>
            <div class="dashx-dist" style="margin-top:8px">
-             ${model.mbx.byRole.slice(0,6).map(r=>`
-               <div class="dashx-dist-row">
-                 <div class="dashx-dist-left">${esc(r.role)}</div>
-                 <div class="dashx-dist-mid">
-                   <div class="dashx-bar" role="img" aria-label="${esc(r.role)} ${esc(r.count)} (${esc(r.pct)}%)">
-                     <div class="fill" style="width:${Math.max(0, Math.min(100, Number(r.pct||0)))}%"></div>
-                   </div>
-                 </div>
-                 <div class="dashx-dist-right muted">${esc(r.count)} • ${esc(r.pct)}%</div>
-               </div>
-             `).join('')}
-           </div>`
-          : '';
+             ${model.mbx.byRole.slice(0,6).map(r=>`<div class="dashx-dist-row"><div class="dashx-dist-left">${esc(r.role)}</div><div class="dashx-dist-mid"><div class="dashx-bar" role="img" aria-label="${esc(r.role)} ${esc(r.count)} (${esc(r.pct)}%)"><div class="fill" style="width:${Math.max(0, Math.min(100, Number(r.pct||0)))}%"></div></div></div><div class="dashx-dist-right muted">${esc(r.count)} • ${esc(r.pct)}%</div></div>`).join('')}
+           </div>` : '';
 
         const topAsg = (model.mbx.topAssignees && model.mbx.topAssignees.length) ?
           `<div class="small muted" style="margin-top:12px">Top assignees (distribution)</div>
            <div class="dashx-top" style="margin-top:8px">
-             ${model.mbx.topAssignees.map(a=>`
-               <div class="dashx-top-row">
-                 <div class="dashx-top-name">${esc(a.name)}</div>
-                 <div class="dashx-top-meta muted">${esc(a.count)} • ${esc(a.pct)}%</div>
-                 <div class="dashx-bar" role="img" aria-label="${esc(a.name)} ${esc(a.count)} (${esc(a.pct)}%)">
-                   <div class="fill" style="width:${Math.max(0, Math.min(100, Number(a.pct||0)))}%"></div>
-                 </div>
-               </div>
-             `).join('')}
-           </div>`
-          : '';
+             ${model.mbx.topAssignees.map(a=>`<div class="dashx-top-row"><div class="dashx-top-name">${esc(a.name)}</div><div class="dashx-top-meta muted">${esc(a.count)} • ${esc(a.pct)}%</div><div class="dashx-bar" role="img" aria-label="${esc(a.name)} ${esc(a.count)} (${esc(a.pct)}%)"><div class="fill" style="width:${Math.max(0, Math.min(100, Number(a.pct||0)))}%"></div></div></div>`).join('')}
+           </div>` : '';
 
-        // Notification list (rendered later by bindNotifCenter)
         root.innerHTML = `
           <div class="dashx">
             <div class="dashx-head">
@@ -2611,7 +2273,6 @@ setCursorMode(mode){
                   <span id="dashNow">${esc(nowText())}</span> • Team: <b>${esc(model.teamLabel)}</b> • Duty: <b>${esc(model.dutyLabel)}</b> (next: ${esc(model.nextLabel)} in <span id="dashDutyLeft">${esc(dutyCountdown)}</span>)
                 </div>
               </div>
-
               <div class="dashx-actions">
                 <button class="btn" type="button" id="dashToggleSidebar">Toggle Sidebar</button>
                 <a class="btn" href="/mailbox">Assign Case</a>
@@ -2619,20 +2280,17 @@ setCursorMode(mode){
                 <a class="btn" href="/logs">Export Logs</a>
               </div>
             </div>
-
             <div class="dashx-cards">
               ${card('Active cases', String(model.openCases), isAdmin ? 'All open cases in system' : 'Your team workload signal')}
               ${card('My active cases', String(model.myOpen), 'Assigned to you')}
               ${card('Pending acknowledgements', String(model.pendingAcks), 'Schedule blocks awaiting your acknowledge')}
               ${card('Mailbox shift load', model.mbx.hasTable ? String(model.mbx.totalOpen) : '—', model.mbx.hasTable ? `Open assignments (${esc(model.mbx.shiftKey||'shift')})` : 'Mailbox not loaded')}
             </div>
-
             <div class="dashx-layout">
               <div class="ux-card dashx-panel">
                 <div class="dashx-title">Team Activity Heatmap</div>
                 <div class="small muted" style="margin-top:6px">Last 7 days • 4-hour bins • Hover for counts</div>
                 <div class="dashx-heatmap" id="dashHeatmap">${heatRows.join('')}</div>
-
                 <div style="margin-top:14px" class="dashx-title">Notification Center</div>
                 <div class="dashx-notif-tools">
                   <button class="dashx-filter ux-focusable" data-filter="unread" id="dashF_unread">Unread (${esc(model.unreadNotifs.length)})</button>
@@ -2644,30 +2302,15 @@ setCursorMode(mode){
                 </div>
                 <div class="dashx-notifs" id="dashNotifs"></div>
               </div>
-
               <div style="display:flex;flex-direction:column;gap:12px">
                 <div class="ux-card dashx-panel">
                   <div class="dashx-title">Mailbox Analytics</div>
-                  <div class="small muted" style="margin-top:6px">
-                    Shift: <b>${esc(model.mbx.shiftKey||'—')}</b>
-                    ${model.bucketLabel ? ` • Bucket: <b>${esc(model.bucketLabel)}</b>` : ''}
-                    ${model.bucketManager ? ` • Manager: <b>${esc(model.bucketManager)}</b>` : ''}
-                  </div>
-
-                  ${model.mbx.hasTable ? `
-                    <div class="ux-row" style="margin-top:10px;gap:10px">
-                      <span class="badge">Assigned: ${esc(model.mbx.totalAssigned)}</span>
-                      <span class="badge ok">Confirmed: ${esc(model.mbx.totalConfirmed)}</span>
-                      <span class="badge warn">Open: ${esc(model.mbx.totalOpen)}</span>
-                      <span class="badge">Avg response: ${esc(model.mbx.avgRespMin ? (model.mbx.avgRespMin+' min') : '—')}</span>
-                    </div>
-                  ` : ''}
-
+                  <div class="small muted" style="margin-top:6px">Shift: <b>${esc(model.mbx.shiftKey||'—')}</b>${model.bucketLabel ? ` • Bucket: <b>${esc(model.bucketLabel)}</b>` : ''}${model.bucketManager ? ` • Manager: <b>${esc(model.bucketManager)}</b>` : ''}</div>
+                  ${model.mbx.hasTable ? `<div class="ux-row" style="margin-top:10px;gap:10px"><span class="badge">Assigned: ${esc(model.mbx.totalAssigned)}</span><span class="badge ok">Confirmed: ${esc(model.mbx.totalConfirmed)}</span><span class="badge warn">Open: ${esc(model.mbx.totalOpen)}</span><span class="badge">Avg response: ${esc(model.mbx.avgRespMin ? (model.mbx.avgRespMin+' min') : '—')}</span></div>` : ''}
                   <div style="margin-top:10px">${bucketRows}</div>
                   ${byRole}
                   ${topAsg}
                 </div>
-
                 <div class="ux-card dashx-panel">
                   <div class="dashx-title">Quick Navigation</div>
                   <div class="small muted" style="margin-top:6px">Role-aware shortcuts</div>
@@ -2685,7 +2328,6 @@ setCursorMode(mode){
           </div>
         `;
 
-        // Activate the current filter button
         try{
           const f = String(state.filter||'unread');
           (root.querySelectorAll('.dashx-filter[data-filter]')||[]).forEach(b=>{
@@ -2708,38 +2350,24 @@ setCursorMode(mode){
       function renderNotifs(model){
         const f = String(state.filter||'unread');
         const q = String(state.q||'').trim().toLowerCase();
-
         const items = [];
 
-        // Schedule notifications
         for(const n of (model.notifs||[])){
           if(!n) continue;
           const unread = !!(me.id && Array.isArray(n.recipients) && n.recipients.includes(me.id) && !(n.acks && n.acks[me.id]));
           items.push({
-            type:'schedule',
-            id: n.id,
-            ts: Number(n.ts||0) || Date.now(),
-            title: n.title || 'Schedule Updated',
-            body: n.body || '',
-            from: n.fromName || 'Team Lead',
-            unread,
-            category:'schedule'
+            type:'schedule', id: n.id, ts: Number(n.ts||0) || Date.now(), title: n.title || 'Schedule Updated',
+            body: n.body || '', from: n.fromName || 'Team Lead', unread, category:'schedule'
           });
         }
 
-        // Activity logs
         const logs = (model.logs||[]).slice(0, 60);
         for(const l of logs){
           if(!l) continue;
           items.push({
-            type:'activity',
-            id: String(l.ts||'') + '_' + String(l.action||''),
-            ts: Number(l.ts||0) || 0,
-            title: String(l.action||'Activity'),
-            body: [l.msg, l.detail].filter(Boolean).join('\\n'),
-            from: l.actorName || '',
-            unread:false,
-            category: classifyActivity(l)
+            type:'activity', id: String(l.ts||'') + '_' + String(l.action||''), ts: Number(l.ts||0) || 0,
+            title: String(l.action||'Activity'), body: [l.msg, l.detail].filter(Boolean).join('\\n'), from: l.actorName || '',
+            unread:false, category: classifyActivity(l)
           });
         }
 
@@ -2774,14 +2402,8 @@ setCursorMode(mode){
           return `
             <div class="dashx-notif ${unreadCls}">
               <div class="top">
-                <div>
-                  <div class="t">${esc(it.title)}</div>
-                  ${from}
-                </div>
-                <div style="display:flex;align-items:center;gap:10px">
-                  ${topRight}
-                  ${ackBtn}
-                </div>
+                <div><div class="t">${esc(it.title)}</div>${from}</div>
+                <div style="display:flex;align-items:center;gap:10px">${topRight}${ackBtn}</div>
               </div>
               <div class="m">${esc(it.body||'')}</div>
             </div>
@@ -2794,7 +2416,6 @@ setCursorMode(mode){
         if(!box) return;
         box.innerHTML = renderNotifs(model);
 
-        // Filter buttons
         (root.querySelectorAll('.dashx-filter[data-filter]')||[]).forEach(btn=>{
           btn.onclick = ()=>{
             state.filter = String(btn.getAttribute('data-filter')||'all');
@@ -2803,28 +2424,23 @@ setCursorMode(mode){
           };
         });
 
-        // Search
         const inp = root.querySelector('#dashNotifSearch');
         if(inp){
           inp.oninput = ()=>{
             state.q = String(inp.value||'');
             const next = buildModel();
-            // re-render only list (avoid full rerender jank)
             const list = root.querySelector('#dashNotifs');
             if(list) list.innerHTML = renderNotifs(next);
           };
         }
 
-        // Acknowledge (safe: guard double clicks, show spinner, rollback-safe)
         (box.querySelectorAll('[data-ack]')||[]).forEach(b=>{
           b.onclick = ()=>{
             const id = String(b.getAttribute('data-ack')||'');
             if(!id) return;
-
             try{
               if(b.dataset.busy==='1') return;
-              b.dataset.busy='1';
-              b.disabled = true;
+              b.dataset.busy='1'; b.disabled = true;
               const spin = b.querySelector('.dashx-spin');
               const lbl = b.querySelector('.dashx-acklbl');
               if(spin) spin.classList.add('on');
@@ -2837,8 +2453,7 @@ setCursorMode(mode){
             }catch(e){
               try{ UI.toast && UI.toast('Failed to acknowledge. Try again.', 'warn'); }catch(_){ }
               try{
-                b.dataset.busy='0';
-                b.disabled = false;
+                b.dataset.busy='0'; b.disabled = false;
                 const spin = b.querySelector('.dashx-spin');
                 const lbl = b.querySelector('.dashx-acklbl');
                 if(spin) spin.classList.remove('on');
@@ -2846,18 +2461,8 @@ setCursorMode(mode){
               }catch(_){ }
               return;
             }
-
-            try{
-              const next = buildModel();
-              render(next);
-            }catch(_){
-              try{
-                const list = root.querySelector('#dashNotifs');
-                if(list){
-                  const next = buildModel();
-                  list.innerHTML = renderNotifs(next);
-                }
-              }catch(_){}
+            try{ const next = buildModel(); render(next); }catch(_){
+              try{ const list = root.querySelector('#dashNotifs'); if(list){ const next = buildModel(); list.innerHTML = renderNotifs(next); } }catch(_){}
             }
           };
         });
@@ -2865,9 +2470,7 @@ setCursorMode(mode){
 
       function bindQuickActions(){
         const btn = root.querySelector('#dashToggleSidebar');
-        if(btn){
-          btn.onclick = ()=>{ try{ const t = document.getElementById('sidebarToggle'); if(t) t.click(); }catch(_){ } };
-        }
+        if(btn){ btn.onclick = ()=>{ try{ const t = document.getElementById('sidebarToggle'); if(t) t.click(); }catch(_){ } }; }
       }
 
       function softUpdateHeader(){
@@ -2898,13 +2501,9 @@ setCursorMode(mode){
       const model = buildModel();
       render(model);
 
-      // Lightweight timer for clock + duty countdown
       try{ if(root._dashTimer) clearInterval(root._dashTimer); }catch(_){ }
-      root._dashTimer = setInterval(()=>{
-        softUpdateHeader();
-      }, 1000);
+      root._dashTimer = setInterval(()=>{ softUpdateHeader(); }, 1000);
 
-      // Store changes: re-render for relevant keys only.
       const onStore = (ev)=>{
         try{
           const k = ev && ev.detail ? String(ev.detail.key||'') : '';
@@ -2917,7 +2516,6 @@ setCursorMode(mode){
       };
       window.addEventListener('mums:store', onStore);
 
-      // Sync status updates
       const onSync = (ev)=>{
         try{
           const d = (ev && ev.detail) ? ev.detail : {};
@@ -2927,7 +2525,6 @@ setCursorMode(mode){
       };
       window.addEventListener('mums:syncstatus', onSync);
 
-      // Cleanup hook for router
       const prevCleanup = root._cleanup;
       root._dashCleanup = ()=>{
         try{ if(root._dashTimer) clearInterval(root._dashTimer); }catch(_){ }
@@ -2946,9 +2543,6 @@ setCursorMode(mode){
     }
   };
 
-  // My Schedule renderer alias.
-  // NOTE: Primary routing uses window.Pages, but some UI elements call this directly.
-  // Must render My Schedule, never Dashboard.
   UI.renderSchedule = function(root){
     try{
       const host = root || document.getElementById('main') || document.body;
@@ -2966,12 +2560,113 @@ setCursorMode(mode){
     }
   };
 
+  // ==========================================
+  // ENTERPRISE UPGRADE: MAILBOX MANAGER TOAST ENGINE
+  // ==========================================
+  UI.initMailboxManagerToasts = function() {
+    if(window._mbxToastEngineRunning) return;
+    window._mbxToastEngineRunning = true;
+
+    let knownAssignments = {};
+
+    window.addEventListener('mums:store', (e) => {
+        if(e?.detail?.key !== 'mums_mailbox_tables') return;
+
+        // Security Check: Only active Mailbox Managers get the toast
+        if(!isCurrentMailboxManager()) return;
+
+        const state = window.Store?.getMailboxState?.() || {};
+        const curKey = state.currentKey;
+        if(!curKey) return;
+        
+        const table = window.Store?.getMailboxTable?.(curKey);
+        if(!table || !Array.isArray(table.assignments)) return;
+
+        table.assignments.forEach(a => {
+           if (!a || !a.id) return;
+           const wasConfirmed = knownAssignments[a.id];
+           const isConfirmed = Number(a.confirmedAt||0) > 0;
+
+           if (!wasConfirmed && isConfirmed) {
+               // A transition from Pending -> Accepted just happened!
+               const assignee = window.Store?.getUsers?.().find(u => u.id === a.assigneeId);
+               const name = assignee ? (assignee.name || assignee.username) : 'A team member';
+               showTeamsToast(name, a.caseNo || 'Unknown Case');
+           }
+           knownAssignments[a.id] = isConfirmed;
+        });
+    });
+
+    function isCurrentMailboxManager() {
+        try {
+            const u = window.Auth?.getUser?.();
+            if (!u) return false;
+            const now = window.UI?.manilaNow?.();
+            if (!now) return false;
+            const nowMin = now.hh * 60 + now.mm;
+            const dow = new Date(now.isoDate + 'T00:00:00+08:00').getDay();
+            const blocks = window.Store?.getUserDayBlocks?.(u.id, dow) || [];
+            
+            for (const b of blocks) {
+                if (b.role !== 'mailbox_manager' && b.role !== 'mailbox_call') continue;
+                const sParts = String(b.start).split(':');
+                const eParts = String(b.end).split(':');
+                const s = (parseInt(sParts[0])||0)*60 + (parseInt(sParts[1])||0);
+                const e = (parseInt(eParts[0])||0)*60 + (parseInt(eParts[1])||0);
+                const wraps = e <= s;
+                const hit = !wraps ? (nowMin >= s && nowMin < e) : (nowMin >= s || nowMin < e);
+                if (hit) return true;
+            }
+            return false;
+        } catch(e) {
+            return false;
+        }
+    }
+
+    function showTeamsToast(name, caseNo) {
+        let container = document.getElementById('ms-teams-toast-container');
+        if(!container) {
+            container = document.createElement('div');
+            container.id = 'ms-teams-toast-container';
+            container.style.cssText = 'position:fixed; bottom:24px; right:24px; z-index:999999; display:flex; flex-direction:column; gap:10px; pointer-events:none;';
+            document.body.appendChild(container);
+        }
+
+        const toast = document.createElement('div');
+        toast.style.cssText = 'background:linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98)); border:1px solid rgba(16,185,129,0.4); border-left:4px solid #10b981; border-radius:8px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,0.5); display:flex; align-items:center; gap:12px; transform:translateX(120%); opacity:0; transition:all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); width:320px; pointer-events:auto;';
+
+        toast.innerHTML = `
+            <div style="background:rgba(16,185,129,0.15); width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; border:1px solid rgba(16,185,129,0.3);">
+                ✅
+            </div>
+            <div style="flex:1; min-width:0;">
+                <div style="font-size:12px; color:#94a3b8; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Case Accepted</div>
+                <div style="font-size:14px; color:#f8fafc; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;">
+                    <span style="color:#34d399;">${window.UI.esc(name)}</span>
+                </div>
+                <div style="font-size:12px; color:#cbd5e1; margin-top:2px;">Ref: <strong style="color:#e2e8f0;">${window.UI.esc(caseNo)}</strong></div>
+            </div>
+        `;
+
+        container.appendChild(toast);
+
+        try{ window.UI.playNotifSound?.(window.Auth?.getUser?.()?.id); }catch(e){}
+
+        requestAnimationFrame(() => {
+            toast.style.transform = 'translateX(0)';
+            toast.style.opacity = '1';
+        });
+
+        setTimeout(() => {
+            toast.style.transform = 'translateX(120%)';
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 400);
+        }, 5000);
+    }
+  };
+
   window.UI = UI;
 
-    // Realtime Sync Status badge
-    // - Green: realtime connected
-    // - Yellow: connecting / reconnecting (or polling fallback in legacy mode)
-    // - Red: offline
   (function bindSyncStatus(){
     function root(){ return document.getElementById("realtimeSyncStatus"); }
     function set(mode, detail){
@@ -2995,5 +2690,8 @@ setCursorMode(mode){
     });
     document.addEventListener("DOMContentLoaded", function(){ set("offline", "Starting sync..."); });
   })();
+
+  // Initialize the MS Teams style Mailbox Manager Toast Engine on load
+  UI.initMailboxManagerToasts();
 
 })();
