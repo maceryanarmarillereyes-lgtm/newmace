@@ -39,42 +39,18 @@ module.exports = async (req, res) => {
       dItems.forEach((it) => {
         const mId = it.assigned_to;
         if (!mId) return;
-
         const prof = profilesById[mId] || {};
 
-        if (
-          !isSuper
-          && myTeamId
-          && prof.team_id
-          && String(prof.team_id).toLowerCase() !== String(myTeamId).toLowerCase()
-        ) return;
+        if (!isSuper && myTeamId && prof.team_id && String(prof.team_id).toLowerCase() !== String(myTeamId).toLowerCase()) return;
+        if (!byMember[mId]) byMember[mId] = { user_id: mId, name: prof.name || prof.username || mId, total: 0, completed: 0, pending: 0, with_problem: 0, items: [] };
 
-        if (!byMember[mId]) {
-          byMember[mId] = {
-            user_id: mId,
-            name: prof.name || prof.username || mId,
-            total: 0,
-            completed: 0,
-            pending: 0,
-            with_problem: 0,
-            items: []
-          };
-        }
-
-        const member = byMember[mId];
-        const status = String(it.status || '').toLowerCase();
-
-        member.total += 1;
-        if (status.includes('complete') || status === 'done') member.completed += 1;
-        else if (status.includes('problem')) member.with_problem += 1;
-        else member.pending += 1;
-
-        member.items.push({
-          id: it.id,
-          case_number: it.case_number || it.case_no || 'N/A',
-          site: it.site || 'N/A',
-          status: it.status
-        });
+        const m = byMember[mId];
+        const s = String(it.status || '').toLowerCase();
+        m.total += 1;
+        if (s.includes('complete') || s === 'done') m.completed += 1;
+        else if (s.includes('problem')) m.with_problem += 1;
+        else m.pending += 1;
+        m.items.push({ id: it.id, case_number: it.case_number || it.case_no || 'N/A', site: it.site || 'N/A', status: it.status });
       });
 
       const members = Object.values(byMember)
