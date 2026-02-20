@@ -32,8 +32,15 @@
     form: { title: '', description: '', reference_url: '', deadline: '', enable_daily_alerts: true },
     isSheetJsReady: false,
     loginAlert: { open: false, totalOverdue: 0, distributions: [], isHourlyEscalation: false },
-    isFullscreen: false,       // ENTERPRISE: Added Fullscreen state
-    showWorkloadModal: false   // ENTERPRISE: Added Workload pop-up state
+    isFullscreen: false,       
+    showWorkloadModal: false,
+    
+    // ENTERPRISE: Auto-Assign Wizard State
+    autoAssign: {
+      open: false,
+      group: 'ALL',
+      includeLead: false
+    }
   };
 
   const LOGIN_ALERT_SESSION_KEY = 'mums:my_task:high_priority_login_alert_v2';
@@ -321,6 +328,10 @@
       .btn-glass-primary { background: #0ea5e9; color: #fff; box-shadow: 0 4px 12px rgba(14,165,233,0.3); }
       .btn-glass-primary:hover:not(:disabled) { background: #0284c7; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(14,165,233,0.4); }
       .btn-glass-primary:disabled { background: rgba(14,165,233,0.4); color: rgba(255,255,255,0.5); cursor: not-allowed; box-shadow:none; }
+      
+      .btn-glass-action { background: linear-gradient(145deg, #10b981, #059669); color: #fff; border:none; box-shadow: 0 4px 12px rgba(16,185,129,0.3); }
+      .btn-glass-action:hover:not(:disabled) { background: #047857; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(16,185,129,0.4); }
+
       .task-invalid{background:rgba(239,68,68,.08) !important; border-left:3px solid #ef4444;}
       .task-status-select{width:max-content;max-width:220px;padding:6px 10px;border-radius:999px;font-weight:800;font-size:12px;border:1px solid rgba(148,163,184,.28);background:rgba(15,23,42,.55);color:#e2e8f0;outline:none}
       .task-status-select:disabled{opacity:.65;cursor:not-allowed}
@@ -551,6 +562,53 @@
       `;
     }
 
+    // ENTERPRISE UPGRADE: DYNAMIC AUTO-ASSIGN WIZARD HTML
+    let autoAssignModalHtml = '';
+    if (state.autoAssign.open) {
+       // Extract unique teams/shifts dynamically from available members
+       const extractedTeams = [...new Set(state.members.map(m => m.team_name || m.team || m.shift || '').filter(Boolean))];
+       const teamOptionsHtml = extractedTeams.map(t => `<option value="${esc(t)}" ${state.autoAssign.group === t ? 'selected' : ''}>${esc(t)}</option>`).join('');
+
+       autoAssignModalHtml = `
+         <div class="task-modal-backdrop" id="autoAssignBackdrop" style="z-index:16000; background:rgba(2,6,23,0.92);">
+           <div class="task-modal-glass" style="width:min(550px, 95vw); border-color:#8b5cf6; box-shadow: 0 0 40px rgba(139,92,246,0.15);">
+             <div class="modal-header-glass" style="background:rgba(15,23,42,0.9);">
+               <h3>✨ Smart Auto-Assign</h3>
+               <button class="btn-glass btn-glass-ghost" type="button" id="closeAutoAssign">✕ Close</button>
+             </div>
+             <div class="modal-body-scroll" style="gap:20px;">
+               
+               <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); padding:14px; border-radius:8px; display:flex; gap:12px; align-items:flex-start;">
+                 <span style="font-size:20px;">⚠️</span>
+                 <div style="color:#fcd34d; font-size:13px; line-height:1.45;">
+                   <strong>Override Notice:</strong> Executing Auto-Assign will <strong style="color:#f8fafc;">erase all existing manual assignments</strong> in your current preview and distribute the tasks equally among the selected group.
+                 </div>
+               </div>
+
+               <div class="glass-card" style="padding:20px;">
+                 <label class="premium-label" style="margin-bottom:8px;">1. Select Target Group</label>
+                 <select class="premium-input" id="autoAssignGroupSelect" style="margin-bottom:16px;">
+                   <option value="ALL" ${state.autoAssign.group === 'ALL' ? 'selected' : ''}>All Available Members</option>
+                   ${teamOptionsHtml}
+                 </select>
+
+                 <label class="premium-checkbox-container" style="padding:12px 14px; margin-top:8px;">
+                   <input type="checkbox" id="autoAssignLeadCheck" ${state.autoAssign.includeLead ? 'checked' : ''} style="width:18px; height:18px; accent-color:#8b5cf6;">
+                   <div style="font-size:14px; font-weight:600; color:#e2e8f0;">Include Team Lead in distribution</div>
+                 </label>
+               </div>
+
+             </div>
+             <div class="modal-header-glass" style="border-top: 1px solid rgba(255,255,255,0.06); border-bottom:none; justify-content:flex-end; top:auto; bottom:0;">
+               <button class="btn-glass btn-glass-action" type="button" id="executeAutoAssign" style="background:linear-gradient(145deg, #8b5cf6, #7c3aed); box-shadow: 0 4px 12px rgba(139,92,246,0.3);">
+                 Execute Equal Distribution 🚀
+               </button>
+             </div>
+           </div>
+         </div>
+       `;
+    }
+
     // PRE-COMPILE GRID HTML
     const gridRowsHtml = state.parsedRows.map((row, idx) => {
       const invalid = !row.assigned_to;
@@ -678,11 +736,17 @@
                   </div>
                 </div>
 
-                <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(2,6,23,0.4); padding:14px; border-radius:8px; border:1px solid rgba(255,255,255,0.05); margin-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(2,6,23,0.4); padding:14px; border-radius:8px; border:1px solid rgba(255,255,255,0.05); margin-bottom:16px; flex-wrap:wrap; gap:10px;">
                   <div style="font-size:12px; color:#94a3b8;"><strong style="color:#e2e8f0;">${assigneeStats.length}</strong> members mapped. Balance the distribution to prevent burnout.</div>
-                  <button class="btn-glass btn-glass-primary" type="button" id="btnViewWorkload" style="padding:6px 14px; font-size:12px; background:rgba(56,189,248,0.1); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); box-shadow:none;">
-                    📊 View Workload Balance
-                  </button>
+                  
+                  <div style="display:flex; gap:10px;">
+                     <button class="btn-glass btn-glass-primary" type="button" id="btnOpenAutoAssign" style="padding:6px 14px; font-size:12px; background:linear-gradient(145deg, #8b5cf6, #d97706); border:none; box-shadow: 0 4px 12px rgba(245,158,11,0.3);">
+                       ✨ Auto-Assign Wizard
+                     </button>
+                     <button class="btn-glass btn-glass-primary" type="button" id="btnViewWorkload" style="padding:6px 14px; font-size:12px; background:rgba(56,189,248,0.1); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); box-shadow:none;">
+                       📊 View Workload Balance
+                     </button>
+                  </div>
                 </div>
 
                 <div class="glass-table-container">
@@ -726,6 +790,7 @@
         </div>
       </div>
       ${workloadModalHtml}
+      ${autoAssignModalHtml}
     `;
   }
 
@@ -967,7 +1032,6 @@
       state.parsedRows = buildParsedRows(split.rows, detection, split.headers);
       state.assigneeColumnIndex = detection.assigneeColumnIndex;
       state.uploadMeta = { name: String(file.name || ''), rows: state.parsedRows.length, sheets: parsed.sheets };
-      // ENTERPRISE UX: Open fullscreen automatically when a large file is dropped
       if(state.parsedRows.length > 50) state.isFullscreen = true;
     } catch (err) {
       state.parseError = String(err && err.message ? err.message : err);
@@ -979,7 +1043,7 @@
     state.modalOpen = false; state.parseError = ''; state.dragActive = false;
     state.uploadMeta = { name: '', rows: 0, sheets: 0 }; state.parsedRows = [];
     state.form = { title: '', description: '', reference_url: '', deadline: '', enable_daily_alerts: true };
-    state.isFullscreen = false; state.showWorkloadModal = false;
+    state.isFullscreen = false; state.showWorkloadModal = false; state.autoAssign.open = false;
     render();
   }
 
@@ -1117,6 +1181,81 @@
       };
     }
 
+    // ENTERPRISE UPGRADE: Auto-Assign Wizard Events
+    if (el('#btnOpenAutoAssign')) {
+      el('#btnOpenAutoAssign').onclick = () => {
+        state.autoAssign.open = true;
+        render();
+      };
+    }
+    if (el('#closeAutoAssign')) {
+      el('#closeAutoAssign').onclick = () => {
+        state.autoAssign.open = false;
+        render();
+      };
+    }
+    if (el('#autoAssignBackdrop')) {
+      el('#autoAssignBackdrop').onclick = (e) => {
+        if (e.target === el('#autoAssignBackdrop')) {
+          state.autoAssign.open = false;
+          render();
+        }
+      };
+    }
+    if (el('#autoAssignGroupSelect')) {
+      el('#autoAssignGroupSelect').onchange = (e) => {
+        state.autoAssign.group = e.target.value;
+        render(); // Keeps UI in sync
+      };
+    }
+    if (el('#autoAssignLeadCheck')) {
+      el('#autoAssignLeadCheck').onchange = (e) => {
+        state.autoAssign.includeLead = e.target.checked;
+        // No full render needed for checkbox check, just state update
+      };
+    }
+    if (el('#executeAutoAssign')) {
+      el('#executeAutoAssign').onclick = () => {
+        
+        // Dynamic Lead Checker (checks role strings)
+        const isLead = (m) => {
+          const roleStr = String(m.role || m.user_role || m.designation || '').toLowerCase();
+          return roleStr.includes('lead') || roleStr.includes('manager') || roleStr.includes('supervisor') || roleStr.includes('admin');
+        };
+
+        const targetGroup = state.autoAssign.group;
+        const includeLead = state.autoAssign.includeLead;
+
+        // Filter eligible members
+        const eligible = state.members.filter(m => {
+          // Team filter
+          if (targetGroup !== 'ALL') {
+            const mTeam = m.team_name || m.team || m.shift || '';
+            if (mTeam !== targetGroup) return false;
+          }
+          // Lead filter
+          if (!includeLead && isLead(m)) return false;
+
+          return true;
+        });
+
+        if (eligible.length === 0) {
+          alert("Error: No eligible members found for the selected criteria.");
+          return;
+        }
+
+        // Apply Round-Robin Mathematics (Equal Distribution)
+        state.parsedRows.forEach((row, idx) => {
+          const member = eligible[idx % eligible.length];
+          row.assigned_to = String(member.user_id || member.id);
+        });
+
+        // Close modal and force UI update
+        state.autoAssign.open = false;
+        render();
+      };
+    }
+
     const checkSubmitBtn = () => {
       const canSubmit = state.form.title.trim() && state.form.deadline && state.parsedRows.length > 0 && unresolvedRowsCount() === 0 && !state.creating;
       if (el('#submitDistribution')) el('#submitDistribution').disabled = !canSubmit;
@@ -1185,7 +1324,7 @@
       state.creating = false;
       if (!out.ok) { state.parseError = out.message || 'Failed'; render(); return; }
       state.form = { title: '', description: '', reference_url: '', deadline: '', enable_daily_alerts: true };
-      state.isFullscreen = false;
+      state.isFullscreen = false; state.autoAssign.open = false;
       closeModal(); await loadBaseData();
     };
   }
