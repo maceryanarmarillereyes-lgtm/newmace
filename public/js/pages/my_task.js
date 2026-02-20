@@ -34,7 +34,7 @@
     loginAlert: { open: false, totalOverdue: 0, distributions: [], isHourlyEscalation: false },
     isFullscreen: false,       
     showWorkloadModal: false,
-    confirmCloseModal: false, // ENTERPRISE: Unsaved Progress Safety Net
+    confirmCloseModal: false, 
     
     autoAssign: {
       open: false,
@@ -258,7 +258,6 @@
         display:flex; flex-direction:column; transition: all 0.3s ease;
       }
 
-      /* ENTERPRISE: Fullscreen Mode UI Overhaul */
       .task-modal-glass.is-fullscreen { width: 98vw !important; height: 98vh !important; max-height: 98vh !important; border-radius:10px; }
       .task-modal-glass.is-fullscreen .modal-body-scroll { padding: 20px 30px; }
       .task-modal-glass.is-fullscreen .glass-table-container { flex: 1; max-height: none !important; margin-bottom: 0; }
@@ -501,7 +500,6 @@
     `;
   }
 
-  // ENTERPRISE UPGRADE: Safety Net Confirm Modal
   function renderConfirmCloseModal() {
     return `
       <div class="task-modal-backdrop" id="confirmCloseBackdrop" style="z-index:17000; background:rgba(2,6,23,0.95);">
@@ -685,7 +683,9 @@
           
           <div class="modal-header-glass">
             <h3>✨ Create New Distribution</h3>
-            <button class="btn-glass btn-glass-ghost" type="button" id="closeDistributionModal" style="padding:6px 12px; ${state.isFullscreen ? 'border:1px solid rgba(239,68,68,0.3); color:#fca5a5;' : ''}">✕ Close</button>
+            ${!state.isFullscreen ? `
+              <button class="btn-glass btn-glass-ghost" type="button" id="closeDistributionModal" style="padding:6px 12px;">✕ Close</button>
+            ` : ''}
           </div>
 
           <div class="modal-body-scroll">
@@ -737,9 +737,11 @@
                 <div style="display:flex; gap:8px;">
                   ${hasData ? `
                     <button class="btn-glass btn-glass-ghost" type="button" id="btnToggleFullscreen" style="font-size:11px; padding:6px 12px; color:#38bdf8; border-color:rgba(56,189,248,0.3);">
-                      ${state.isFullscreen ? '↙️ Collapse & View Metadata' : '↗️ Fullscreen Table'}
+                      ${state.isFullscreen ? '↙️ Exit Fullscreen' : '↗️ Fullscreen View'}
                     </button>
-                    <button class="btn-glass btn-glass-ghost" type="button" id="btnReplaceFile" style="font-size:11px; padding:6px 12px; border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">🗑️ Discard & Reupload</button>
+                    ${!state.isFullscreen ? `
+                      <button class="btn-glass btn-glass-ghost" type="button" id="btnReplaceFile" style="font-size:11px; padding:6px 12px; border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">🗑️ Discard & Reupload</button>
+                    ` : ''}
                   ` : ''}
                 </div>
               </div>
@@ -815,7 +817,9 @@
               ${canSubmit ? `<span style="color:#86efac; font-weight:700;">✓ Ready to deploy ${state.parsedRows.length} tasks</span>` : 'Complete all mandatory fields (Title, Deadline) and resolve members to continue.'}
             </div>
             <div style="display:flex; gap:12px;">
-              <button class="btn-glass btn-glass-ghost" type="button" id="cancelDistributionCreate">Cancel</button>
+              ${!state.isFullscreen ? `
+                <button class="btn-glass btn-glass-ghost" type="button" id="cancelDistributionCreate">Cancel</button>
+              ` : ''}
               <button class="btn-glass btn-glass-primary" type="button" id="submitDistribution" style="padding:8px 24px;" ${!canSubmit ? 'disabled' : ''}>
                 ${state.creating ? 'Deploying...' : 'Launch Distribution 🚀'}
               </button>
@@ -1176,7 +1180,6 @@
       }
     }
 
-    // ENTERPRISE UX: Safety Net Interceptor for closing the modal
     const handleModalCloseRequest = () => {
       const hasUnsavedChanges = state.parsedRows.length > 0 || state.form.title.trim() !== '' || state.form.deadline !== '';
       if (hasUnsavedChanges) {
@@ -1188,10 +1191,11 @@
     };
 
     if (!state.modalOpen) return;
+    
+    // Safety Net: Bind to buttons ONLY if they exist in the current DOM state (they hide during fullscreen)
     if (el('#closeDistributionModal')) el('#closeDistributionModal').onclick = handleModalCloseRequest;
     if (el('#cancelDistributionCreate')) el('#cancelDistributionCreate').onclick = handleModalCloseRequest;
     
-    // Safety Net Modal Events
     if (state.confirmCloseModal) {
       if (el('#confirmCloseNo')) el('#confirmCloseNo').onclick = () => { state.confirmCloseModal = false; render(); };
       if (el('#confirmCloseYes')) el('#confirmCloseYes').onclick = closeModal;
@@ -1200,7 +1204,6 @@
       };
     }
     
-    // UI Toggles
     if (el('#btnToggleFullscreen')) {
       el('#btnToggleFullscreen').onclick = () => {
         state.isFullscreen = !state.isFullscreen;
@@ -1228,6 +1231,7 @@
       };
     }
 
+    // Hide the "Discard" button in Fullscreen mode. Bind only if it exists.
     if (el('#btnReplaceFile')) {
       el('#btnReplaceFile').onclick = () => {
         state.parsedRows = [];
@@ -1238,7 +1242,6 @@
       };
     }
 
-    // ENTERPRISE UPGRADE: Auto-Assign Wizard Events
     if (el('#btnOpenAutoAssign')) {
       el('#btnOpenAutoAssign').onclick = () => {
         state.autoAssign.open = true;
@@ -1262,7 +1265,7 @@
     if (el('#autoAssignGroupSelect')) {
       el('#autoAssignGroupSelect').onchange = (e) => {
         state.autoAssign.group = e.target.value;
-        render(); // Keeps UI in sync
+        render(); 
       };
     }
     if (el('#autoAssignLeadCheck')) {
@@ -1334,7 +1337,6 @@
       zone.ondrop = (e) => { e.preventDefault(); state.dragActive = false; render(); handleFile(e.dataTransfer.files[0]); };
     }
 
-    // ENTERPRISE UX: Memory Scroll Lock
     els('[data-assignee-fix]').forEach((select) => select.onchange = () => {
       const idx = Number(select.getAttribute('data-assignee-fix'));
       if (Number.isFinite(idx) && state.parsedRows[idx]) {
