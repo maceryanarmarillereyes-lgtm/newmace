@@ -1,2734 +1,1876 @@
-/* File: public/js/ui.js */
+/* File: public/js/pages/mailbox.js */
 
-(function(){
-  const UI = {
-    el(sel, root){ return (root||document).querySelector(sel); },
-    els(sel, root){ return Array.from((root||document).querySelectorAll(sel)); },
-    esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); },
+function _mbxIsoDow(isoDate){
+  try{ return new Date(String(isoDate||'') + 'T00:00:00+08:00').getDay(); }catch(_){ return (new Date()).getDay(); }
+}
+function _mbxToSegments(startMin, endMin){
+  if(!Number.isFinite(startMin) || !Number.isFinite(endMin)) return [];
+  if(endMin > startMin) return [[startMin, endMin]];
+  return [[startMin, 24*60],[0, endMin]];
+}
+function _mbxSegmentsOverlap(aSegs, bSegs){
+  for(const a of (aSegs||[])){
+    for(const b of (bSegs||[])){
+      if(a[0] < b[1] && b[0] < a[1]) return true;
+    }
+  }
+  return false;
+}
+function _mbxBlockHit(nowMin, s, e){
+  const wraps = e <= s;
+  return (!wraps && nowMin >= s && nowMin < e) || (wraps && (nowMin >= s || nowMin < e));
+}
+function _mbxInDutyWindow(nowMin, team){
+  if(!team) return false;
+  const s = _mbxParseHM(team.dutyStart||'00:00');
+  const e = _mbxParseHM(team.dutyEnd||'00:00');
+  return _mbxBlockHit(nowMin, s, e);
+}
 
-    overrideLabel(override){
+function eligibleForMailboxManager(user, opts){
+  if(!user) return false;
+  opts = opts || {};
+  const r = String(user.role||'');
+  const admin = (window.Config && Config.ROLES) ? Config.ROLES.ADMIN : 'ADMIN';
+  const superAdmin = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
+  const superUser = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_USER : 'SUPER_USER';
+  const teamLead = (window.Config && Config.ROLES) ? Config.ROLES.TEAM_LEAD : 'TEAM_LEAD';
+
+  if(r===superAdmin || r===superUser || r===admin || r===teamLead) return true;
+  if(opts.teamId && String(user.teamId||'') !== String(opts.teamId||'')) return false;
+
+  const UI = window.UI;
+  const Store = window.Store;
+  const nowParts = opts.nowParts || (UI && UI.mailboxNowParts ? UI.mailboxNowParts() : (UI ? UI.manilaNow() : null));
+  if(!UI || !Store || !nowParts) return false;
+
+  const nowMin = _mbxMinutesOfDayFromParts(nowParts);
+
+  if(opts.dutyTeam && !_mbxInDutyWindow(nowMin, opts.dutyTeam)) return false;
+
+  const roleSet = new Set(['mailbox_manager','mailbox_call']);
+  const dow = _mbxIsoDow(nowParts.isoDate);
+  const dows = [dow];
+
+  try{
+    if(opts.dutyTeam){
+      const s = _mbxParseHM(opts.dutyTeam.dutyStart||'00:00');
+      const e = _mbxParseHM(opts.dutyTeam.dutyEnd||'00:00');
+      const wraps = e <= s;
+      if(wraps && nowMin < e){
+        dows.push((dow+6)%7);
+      }
+    }else{
+      dows.push((dow+6)%7);
+    }
+  }catch(_){}
+
+  for(const di of dows){
+    const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, di) || []) : [];
+    for(const b of blocks){
+      const rr = String(b?.role||'');
+      if(!roleSet.has(rr)) continue;
+      const s = (UI.parseHM ? UI.parseHM(b.start) : _mbxParseHM(b.start));
+      const e = (UI.parseHM ? UI.parseHM(b.end) : _mbxParseHM(b.end));
+      if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+      if(_mbxBlockHit(nowMin, s, e)) return true;
+    }
+  }
+
+  try{
+    const legacy = String(user.schedule||'').toLowerCase();
+    if(legacy==='mailbox_manager' || legacy==='mailbox_call'){
+      if(opts.dutyTeam) return _mbxInDutyWindow(nowMin, opts.dutyTeam);
+      return true;
+    }
+  }catch(_){}
+  try{
+    const t = String(user.task||user.taskId||user.taskRole||user.primaryTask||'').toLowerCase();
+    if(t==='mailbox_manager' || t==='mailbox manager'){
+      if(opts.dutyTeam) return _mbxInDutyWindow(nowMin, opts.dutyTeam);
+      return true;
+    }
+  }catch(_){}
+  return false;
+}
+
+function _mbxMinutesOfDayFromParts(p){
+  return (Number(p.hh)||0) * 60 + (Number(p.mm)||0);
+}
+function _mbxParseHM(hm){
+  const raw = String(hm||'').trim();
+  if(!raw) return 0;
+  let mer = '';
+  let base = raw;
+  const merMatch = raw.match(/\b(am|pm)\b/i);
+  if(merMatch){
+    mer = merMatch[1].toLowerCase();
+    base = raw.replace(/\b(am|pm)\b/i, '').trim();
+  }
+  const parts = base.split(':');
+  let h = Number(parts[0]);
+  let m = Number(parts[1]);
+  if(!Number.isFinite(h)) h = 0;
+  if(!Number.isFinite(m)) m = 0;
+  h = Math.max(0, Math.min(23, h));
+  m = Math.max(0, Math.min(59, m));
+  if(mer){
+    h = h % 12;
+    if(mer === 'pm') h += 12;
+  }
+  return (h * 60) + m;
+}
+function _mbxFmt12(min){
+  min = ((min% (24*60)) + (24*60)) % (24*60);
+  let h = Math.floor(min/60);
+  const m = min%60;
+  const ampm = h>=12 ? 'PM' : 'AM';
+  h = h%12; if(h===0) h=12;
+  return `${h}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+function _mbxBucketLabel(b){
+  return `${_mbxFmt12(b.startMin)} - ${_mbxFmt12(b.endMin)}`;
+}
+function _mbxInBucket(nowMin, b){
+  const start = b.startMin, end = b.endMin;
+  if(end > start) return nowMin >= start && nowMin < end;
+  return (nowMin >= start) || (nowMin < end);
+}
+function _mbxBuildDefaultBuckets(team){
+  const start = _mbxParseHM(team?.dutyStart || '00:00');
+  const end = _mbxParseHM(team?.dutyEnd || '00:00');
+  const wraps = end <= start;
+  const total = wraps ? (24*60 - start + end) : (end - start);
+  const seg = Math.max(1, Math.floor(total / 3));
+  const buckets = [];
+  for(let i=0;i<3;i++){
+    const s = (start + i*seg) % (24*60);
+    const e = (i===2) ? end : ((start + (i+1)*seg) % (24*60));
+    buckets.push({ id:`b${i}`, startMin:s, endMin:e });
+  }
+  return buckets;
+}
+
+function _mbxComputeShiftKey(team, nowParts){
+  const p = nowParts || (window.UI && UI.mailboxNowParts ? UI.mailboxNowParts() : (UI ? UI.manilaNow() : null));
+  const nowMin = _mbxMinutesOfDayFromParts(p||{hh:0,mm:0});
+  const start = _mbxParseHM(team?.dutyStart || '00:00');
+  const end = _mbxParseHM(team?.dutyEnd || '00:00');
+  const wraps = end <= start;
+
+  let shiftDateISO = p && p.isoDate ? p.isoDate : (UI && UI.manilaNow ? UI.manilaNow().isoDate : '');
+  if(wraps && nowMin < end){
+    try{ shiftDateISO = UI.addDaysISO(shiftDateISO, -1); }catch(_){}
+  }
+  return `${team.id}|${shiftDateISO}T${team.dutyStart||'00:00'}`;
+}
+
+function _mbxRoleLabel(role){
+  return String(role||'').replaceAll('_',' ').trim();
+}
+
+function _mbxDutyLabelForUser(user, nowParts){
+  try{
+    const Store = window.Store;
+    const Config = window.Config;
+    const UI = window.UI;
+    if(!Store || !Config || !UI || !user) return '—';
+    const p = nowParts || (UI.mailboxNowParts ? UI.mailboxNowParts() : UI.manilaNow());
+    const nowMin = UI.minutesOfDay(p);
+    const dow = (new Date(UI.manilaNowDate()).getDay()); 
+    const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, dow) || []) : [];
+    for(const b of blocks){
+      const s = UI.parseHM(b.start);
+      const e = UI.parseHM(b.end);
+      if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+      const wraps = e <= s;
+      const hit = (!wraps && nowMin >= s && nowMin < e) || (wraps && (nowMin >= s || nowMin < e));
+      if(hit){
+        const sc = Config.scheduleById ? Config.scheduleById(b.role) : null;
+        return (sc && sc.label) ? sc.label : String(b.role||'—');
+      }
+    }
+    return '—';
+  }catch(_){
+    return '—';
+  }
+}
+
+function _mbxMemberSortKey(u){
+  const Config = window.Config;
+  const TL = (Config && Config.ROLES) ? Config.ROLES.TEAM_LEAD : 'TEAM_LEAD';
+  const w = (String(u?.role||'') === TL) ? 0 : 1;
+  return { w, name: String(u?.name||u?.username||'').toLowerCase() };
+}
+
+function _mbxDutyTone(label){
+  const t = String(label||'').toLowerCase();
+  if(!t || t === '—' || t === 'n/a') return 'idle';
+  if(t.includes('mailbox manager')) return 'manager';
+  if(t.includes('mailbox call')) return 'call';
+  if(t.includes('break') || t.includes('lunch')) return 'break';
+  return 'active';
+}
+
+(window.Pages=window.Pages||{}, window.Pages.mailbox = function(root){
+  const me = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
+  let isManager = false;
+
+  function getDuty(){
+    let nowParts = null;
+    if(UI && UI.mailboxTimeInfo){
+      const info = UI.mailboxTimeInfo();
+      if(info && info.overrideEnabled && info.effectiveParts){
+        nowParts = info.effectiveParts;
+      }
+    }
+    if(!nowParts){
+      nowParts = UI.mailboxNowParts ? UI.mailboxNowParts() : null;
+    }
+    return UI.getDutyWindow(nowParts);
+  }
+
+  function _mbxFindOnDutyMailboxManagerName(teamId, dutyTeam, nowParts, table, activeBucketId){
+    try{
+      const all = (Store.getUsers ? Store.getUsers() : []) || [];
+      const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
+      const nowMin = _mbxMinutesOfDayFromParts(nowParts||{hh:0,mm:0});
+      const dow = _mbxIsoDow(nowParts && nowParts.isoDate);
+      const dows = [dow];
       try{
-        const o = override;
+        const s = _mbxParseHM(dutyTeam?.dutyStart || '00:00');
+        const e = _mbxParseHM(dutyTeam?.dutyEnd || '00:00');
+        const wraps = e <= s;
+        if(wraps && nowMin < e) dows.push((dow+6)%7);
+      }catch(_){}
+      const roleOrder = ['mailbox_manager','mailbox_call'];
+      for(const role of roleOrder){
+        for(const u of candidates){
+          for(const di of dows){
+            const bl = Store.getUserDayBlocks ? (Store.getUserDayBlocks(u.id, di) || []) : [];
+            for(const b of bl){
+              if(String(b?.role||'') !== role) continue;
+              const s = (UI.parseHM ? UI.parseHM(b.start) : _mbxParseHM(b.start));
+              const e = (UI.parseHM ? UI.parseHM(b.end) : _mbxParseHM(b.end));
+              if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+              if(_mbxBlockHit(nowMin, s, e)) return String(u.name||u.username||'—');
+            }
+          }
+        }
+      }
+    }catch(_){}
+
+    try{
+      const bm = table?.meta?.bucketManagers?.[activeBucketId];
+      if(bm && bm.name) return String(bm.name);
+    }catch(_){}
+    return '—';
+  }
+
+  function _mbxFindScheduledManagerForBucket(table, bucket){
+    try{
+      if(!table || !bucket) return '—';
+      const teamId = String(table?.meta?.teamId||'');
+      if(!teamId) return '—';
+      const shiftKey = String(table?.meta?.shiftKey||'');
+      const datePart = (shiftKey.split('|')[1] || '').split('T')[0];
+      const shiftStartISO = datePart || (UI.mailboxNowParts ? UI.mailboxNowParts().isoDate : (UI.manilaNow ? UI.manilaNow().isoDate : ''));
+      const startDow = _mbxIsoDow(shiftStartISO);
+      const nextDow = (startDow + 1) % 7;
+      const dows = [startDow, nextDow];
+
+      const bucketStartMin = Number(bucket.startMin)||0;
+      const all = (Store.getUsers ? Store.getUsers() : []) || [];
+      const candidates = all
+        .filter(u=>u && u.teamId===teamId && u.status==='active')
+        .slice()
+        .sort((a,b)=>{
+          const an = String(a?.name||a?.username||'').toLowerCase();
+          const bn = String(b?.name||b?.username||'').toLowerCase();
+          if(an && bn && an !== bn) return an.localeCompare(bn);
+          return String(a?.id||'').localeCompare(String(b?.id||''));
+        });
+
+      const roleOrder = ['mailbox_manager','mailbox_call'];
+      const matches = [];
+      for(const role of roleOrder){
+        for(const u of candidates){
+          for(const di of dows){
+            const bl = Store.getUserDayBlocks ? (Store.getUserDayBlocks(u.id, di) || []) : [];
+            for(const b of bl){
+              if(String(b?.role||'') !== role) continue;
+              const s = (UI.parseHM ? UI.parseHM(b.start) : _mbxParseHM(b.start));
+              const e = (UI.parseHM ? UI.parseHM(b.end) : _mbxParseHM(b.end));
+              if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+              if(!_mbxBlockHit(bucketStartMin, s, e)) continue;
+              const blockSegs = _mbxToSegments(s, e);
+              if(!_mbxSegmentsOverlap(bucketSegs, blockSegs)) continue;
+              matches.push({
+                role,
+                roleIdx: roleOrder.indexOf(role),
+                startMin: s,
+                name: String(u.name||u.username||'—'),
+                id: String(u.id||'')
+              });
+            }
+          }
+        }
+      }
+      if(matches.length){
+        matches.sort((a,b)=>{
+          if(a.roleIdx !== b.roleIdx) return a.roleIdx - b.roleIdx;
+          if(a.startMin !== b.startMin) return a.startMin - b.startMin;
+          const an = a.name.toLowerCase();
+          const bn = b.name.toLowerCase();
+          if(an && bn && an !== bn) return an.localeCompare(bn);
+          return a.id.localeCompare(b.id);
+        });
+        return matches[0].name || '—';
+      }
+    }catch(_){}
+    return '—';
+  }
+
+  function isPrivilegedRole(u){
+    try{
+      const r = String(u?.role||'');
+      const R = (window.Config && Config.ROLES) ? Config.ROLES : {};
+      return r === (R.SUPER_ADMIN||'SUPER_ADMIN') ||
+             r === (R.SUPER_USER||'SUPER_USER') ||
+             r === (R.ADMIN||'ADMIN') ||
+             r === (R.TEAM_LEAD||'TEAM_LEAD');
+    }catch(_){ return false; }
+  }
+
+  function canAssignNow(opts){
+    try{
+      if(isPrivilegedRole(me)) return true;
+      const duty = opts?.duty || getDuty();
+      const nowParts = opts?.nowParts || (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+      const teamId = duty?.current?.id || me.teamId;
+      if(eligibleForMailboxManager(me, { teamId, dutyTeam: duty?.current, nowParts })) return true;
+      return eligibleForMailboxManager(me, { teamId, nowParts });
+    }catch(_){
+      return false;
+    }
+  }
+
+  function ensureShiftTables(){
+    const d = getDuty();
+    const team = d.current;
+    const shiftKey = _mbxComputeShiftKey(team, UI.mailboxNowParts ? UI.mailboxNowParts() : null);
+    const state = Store.getMailboxState ? Store.getMailboxState() : { currentKey:'', previousKey:'' };
+
+    if(state.currentKey !== shiftKey){
+      const prev = state.currentKey;
+      Store.saveMailboxState && Store.saveMailboxState({ previousKey: prev, currentKey: shiftKey, lastChangeAt: Date.now() });
+
+      try{
+        const actor = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
+        Store.addLog && Store.addLog({
+          ts: Date.now(),
+          teamId: team.id,
+          actorId: actor?.id || '',
+          actorName: actor ? (actor.name||actor.username) : '',
+          action:'MAILBOX_SHIFT_CHANGE',
+          targetId: shiftKey,
+          targetName: team.label || team.id,
+          msg:`Mailbox shift changed to ${team.label||team.id}`,
+          detail:`Previous: ${prev||'—'}`
+        });
+      }catch(_){}
+    }
+
+    let table = Store.getMailboxTable ? Store.getMailboxTable(shiftKey) : null;
+    if(!table){
+      const teamObj = (window.Config && Config.teamById) ? Config.teamById(team.id) : team;
+      const cfg = (Store.getTeamConfig ? Store.getTeamConfig(team.id) : {}) || {};
+      const rawBuckets = Array.isArray(cfg.mailboxBuckets) ? cfg.mailboxBuckets : null;
+      let buckets;
+      if(rawBuckets && rawBuckets.length){
+        buckets = rawBuckets.map((x,i)=>({
+          id: x.id || `b${i}`,
+          startMin: _mbxParseHM(x.start),
+          endMin: _mbxParseHM(x.end),
+        }));
+      }else{
+        buckets = _mbxBuildDefaultBuckets(teamObj || team);
+      }
+      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : UI.manilaNow());
+      const members = (Store.getUsers ? Store.getUsers() : [])
+        .filter(u=>u && u.teamId===team.id && u.status==='active')
+        .map(u=>({
+          id: u.id,
+          name: u.name||u.username||'—',
+          username: u.username||'',
+          role: u.role||'',
+          roleLabel: _mbxRoleLabel(u.role||''),
+          dutyLabel: _mbxDutyLabelForUser(u, nowParts)
+        }))
+        .sort((a,b)=>{
+          const ak=_mbxMemberSortKey(a), bk=_mbxMemberSortKey(b);
+          if(ak.w!==bk.w) return ak.w-bk.w;
+          return ak.name.localeCompare(bk.name);
+        });
+
+      table = {
+        meta: {
+          shiftKey,
+          teamId: team.id,
+          teamLabel: team.label || team.id,
+          dutyStart: team.dutyStart || '',
+          dutyEnd: team.dutyEnd || '',
+          bucketManagers: {},
+          createdAt: Date.now()
+        },
+        buckets,
+        members,
+        counts: {}, 
+        assignments: [] 
+      };
+      Store.saveMailboxTable && Store.saveMailboxTable(shiftKey, table);
+    }else{
+      if(!table.meta) table.meta = {};
+      if(!table.meta.bucketManagers) table.meta.bucketManagers = {};
+      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : UI.manilaNow());
+      const teamUsers = (Store.getUsers ? Store.getUsers() : [])
+        .filter(u=>u && u.teamId===team.id && u.status==='active')
+        .map(u=>({
+          id: u.id,
+          name: u.name||u.username||'—',
+          username: u.username||'',
+          role: u.role||'',
+          roleLabel: _mbxRoleLabel(u.role||''),
+          dutyLabel: _mbxDutyLabelForUser(u, nowParts)
+        }))
+        .sort((a,b)=>{
+          const ak=_mbxMemberSortKey(a), bk=_mbxMemberSortKey(b);
+          if(ak.w!==bk.w) return ak.w-bk.w;
+          return ak.name.localeCompare(bk.name);
+        });
+
+      const existingIds = new Set((table.members||[]).map(m=>m.id));
+      const nextMembers = teamUsers.concat((table.members||[]).filter(m=>m && !teamUsers.find(x=>x.id===m.id)));
+      table.members = nextMembers.filter(m=>existingIds.has(m.id) || teamUsers.find(x=>x.id===m.id));
+      Store.saveMailboxTable && Store.saveMailboxTable(shiftKey, table, { silent:true });
+    }
+
+    return { shiftKey, table, state: Store.getMailboxState ? Store.getMailboxState() : state };
+  }
+
+  function computeActiveBucketId(table){
+    const p = UI.mailboxNowParts ? UI.mailboxNowParts() : UI.manilaNow();
+    const nowMin = _mbxMinutesOfDayFromParts(p);
+    const b = (table.buckets||[]).find(x=>_mbxInBucket(nowMin, x));
+    return b ? b.id : ((table.buckets||[])[0]?.id || '');
+  }
+
+  function safeGetCount(table, userId, bucketId){
+    const c = (table.counts && table.counts[userId]) ? table.counts[userId] : null;
+    const v = c ? (Number(c[bucketId])||0) : 0;
+    return v;
+  }
+
+  function computeTotals(table){
+    const buckets = table.buckets || [];
+    const members = table.members || [];
+    const colTotals = {};
+    for(const b of buckets) colTotals[b.id] = 0;
+    const rowTotals = {};
+    let shiftTotal = 0;
+
+    for(const m of members){
+      let rt = 0;
+      for(const b of buckets){
+        const v = safeGetCount(table, m.id, b.id);
+        colTotals[b.id] += v;
+        rt += v;
+      }
+      rowTotals[m.id] = rt;
+      shiftTotal += rt;
+    }
+    return { colTotals, rowTotals, shiftTotal };
+  }
+
+	function isMailboxRouteActive(){
+	  try{
+	    if(typeof window._currentPageId === 'string') return window._currentPageId === 'mailbox';
+	  }catch(_){ }
+	  try{
+	    const p = String(location.pathname||'').replace(/^\/+/, '').split('/')[0];
+	    const h = String(location.hash||'').replace(/^#\/?/, '').split('/')[0];
+	    return p === 'mailbox' || h === 'mailbox';
+	  }catch(_){
+	    return false;
+	  }
+	}
+
+  /* ENTERPRISE UPGRADE: Injecting Core UI CSS into Head */
+  function ensureEnterpriseMailboxStyles() {
+    if (document.getElementById('enterprise-mailbox-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'enterprise-mailbox-styles';
+    style.textContent = `
+      .mbx-shell { display:flex; flex-direction:column; gap:20px; padding-bottom: 30px; }
+      
+      /* Header & Controls */
+      .mbx-header-bar { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:16px; flex-wrap:wrap; gap:14px; }
+      .mbx-main-title { font-size: 26px; font-weight: 900; color: #f8fafc; margin: 0; letter-spacing: -0.5px; }
+      
+      /* Glassmorphism Button Standard */
+      .btn-glass { padding: 8px 16px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s; outline: none; display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+      .btn-glass-ghost { background: rgba(255,255,255,0.05); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.1); }
+      .btn-glass-ghost:hover { background: rgba(255,255,255,0.1); color: #f8fafc; border-color: rgba(255,255,255,0.2); }
+      .btn-glass-primary { background: linear-gradient(145deg, #0ea5e9, #0284c7); color: #fff; border: 1px solid rgba(56,189,248,0.4); box-shadow: 0 4px 12px rgba(14,165,233,0.3); }
+      .btn-glass-primary:hover:not(:disabled) { background: linear-gradient(145deg, #38bdf8, #0ea5e9); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(14,165,233,0.4); }
+      
+      /* Top Summary Row (Current Shift, Timer, Permissions) */
+      .mbx-summary-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; }
+      .mbx-stat-box { background:linear-gradient(145deg, rgba(30,41,59,0.4), rgba(15,23,42,0.6)); border:1px solid rgba(255,255,255,0.06); border-radius:12px; padding:20px; box-shadow: 0 8px 24px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.02); display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; transition:transform 0.2s; }
+      .mbx-stat-box:hover { transform: translateY(-2px); border-color: rgba(56,189,248,0.3); }
+      .mbx-stat-lbl { font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
+      .mbx-stat-val { font-size:24px; font-weight:900; color:#f8fafc; letter-spacing:-0.5px; }
+      .mbx-stat-sub { font-size:12px; color:#64748b; margin-top:4px; font-weight:600; }
+      .timer-display { font-variant-numeric: tabular-nums; font-family: 'Courier New', Courier, monospace; color:#38bdf8; text-shadow: 0 0 10px rgba(56,189,248,0.3); }
+
+      /* Analytics Panels */
+      .mbx-analytics-panel { background:rgba(2,6,23,0.4); border:1px solid rgba(255,255,255,0.04); border-radius:14px; padding:24px; margin-top:24px; }
+      .mbx-panel-head { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:12px; margin-bottom:16px; }
+      .mbx-panel-title { font-size:18px; font-weight:800; color:#f8fafc; margin:0; }
+      .mbx-panel-desc { font-size:12px; color:#94a3b8; margin-top:4px; }
+      
+      .mbx-analytics-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:20px; }
+      @media (max-width: 900px) { .mbx-analytics-grid { grid-template-columns: 1fr; } }
+      .mbx-ana-card { background:rgba(15,23,42,0.6); border:1px solid rgba(255,255,255,0.03); border-radius:10px; padding:16px; }
+      .mbx-ana-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.02); }
+      .mbx-ana-row:last-child { border-bottom:none; }
+      .mbx-ana-badge { background:rgba(56,189,248,0.1); color:#38bdf8; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:800; }
+      .mbx-ana-bar-wrap { height:6px; background:rgba(2,6,23,0.8); border-radius:999px; overflow:hidden; margin-top:6px; }
+      .mbx-ana-bar-fill { height:100%; background:linear-gradient(90deg, #0ea5e9, #38bdf8); border-radius:999px; }
+
+      /* Counter Table Upgrade */
+      .mbx-counter-wrap { border:1px solid rgba(255,255,255,0.06); border-radius:12px; overflow:hidden; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2); background:rgba(2,6,23,0.5); }
+      .mbx-counter-table { width:100%; border-collapse:collapse; }
+      .mbx-counter-table th { background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#cbd5e1; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:10; backdrop-filter:blur(8px); }
+      .mbx-counter-table th.active-head-col { background:rgba(14,165,233,0.15); color:#38bdf8; border-bottom-color:#38bdf8; }
+      .mbx-counter-table td { padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); font-size:13px; color:#e2e8f0; vertical-align:middle; }
+      .mbx-counter-table tr:hover { background:rgba(255,255,255,0.03); }
+      .mbx-counter-table tr.mbx-assignable { cursor:pointer; }
+      .mbx-counter-table td.active-col { background:rgba(14,165,233,0.05); }
+      .mbx-count-td { text-align:center; font-weight:800; font-size:15px; }
+      .mbx-num[data-zero="1"] { opacity:0.3; }
+      
+      .duty-pill { display:inline-block; padding:4px 12px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; }
+      .duty-pill[data-tone="idle"] { background:rgba(148,163,184,0.1); color:#94a3b8; }
+      .duty-pill[data-tone="active"] { background:rgba(16,185,129,0.1); color:#34d399; border:1px solid rgba(16,185,129,0.2); }
+      .duty-pill[data-tone="manager"] { background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); }
+      .duty-pill[data-tone="call"] { background:rgba(245,158,11,0.15); color:#fbbf24; border:1px solid rgba(245,158,11,0.3); }
+      .duty-pill[data-tone="break"] { background:rgba(239,68,68,0.1); color:#fca5a5; }
+
+      /* Case Monitoring Matrix */
+      .mbx-monitor-panel { border:1px solid rgba(255,255,255,0.06); border-radius:12px; background:rgba(15,23,42,0.4); overflow-x:auto; }
+      .mbx-mon-table { width:100%; border-collapse:collapse; }
+      .mbx-mon-table th { background:rgba(15,23,42,0.9); padding:12px 10px; font-size:12px; font-weight:800; color:#cbd5e1; border-bottom:1px solid rgba(255,255,255,0.08); text-align:center; }
+      .mbx-mon-table td { padding:10px; border:1px solid rgba(255,255,255,0.02); text-align:center; vertical-align:middle; transition:background 0.2s;}
+      .mbx-mon-cell { cursor:pointer; }
+      .mbx-mon-cell:hover { background:rgba(56,189,248,0.1) !important; box-shadow:inset 0 0 0 1px rgba(56,189,248,0.3); }
+      .mbx-mon-cell.confirmed { background:rgba(16,185,129,0.05); }
+      .mbx-case-badge { display:inline-flex; align-items:center; gap:6px; background:rgba(2,6,23,0.8); padding:4px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); font-size:12px; font-weight:700; color:#f8fafc; }
+      .mbx-stat-wait { color:#fcd34d; animation: mbxPulse 1.5s infinite; }
+      .mbx-stat-done { color:#10b981; }
+      
+      @keyframes mbxPulse { 0% { opacity:1; } 50% { opacity:0.5; } 100% { opacity:1; } }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function render(){
+	  if(!isMailboxRouteActive()) return;
+    ensureEnterpriseMailboxStyles();
+    
+    const { shiftKey, table, state } = ensureShiftTables();
+    const prevKey = state.previousKey || '';
+    const prevTable = prevKey ? (Store.getMailboxTable ? Store.getMailboxTable(prevKey) : null) : null;
+
+    const activeBucketId = computeActiveBucketId(table);
+    const totals = computeTotals(table);
+
+    const duty = getDuty();
+    const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+    isManager = canAssignNow({ duty, nowParts });
+    const mbxMgrName = _mbxFindOnDutyMailboxManagerName(duty.current.id, duty.current, nowParts, table, activeBucketId);
+
+    const globalOverrideLabelHtml = (function(){
+      try{
+        const raw = localStorage.getItem('mums_mailbox_time_override_cloud');
+        if(!raw) return '';
+        const o = JSON.parse(raw);
         if(!o || typeof o !== 'object') return '';
         if(!o.enabled) return '';
         if(String(o.scope||'') !== 'global') return '';
-        return `<span class="override-label" role="status" aria-live="polite">GLOBAL OVERRIDE ACTIVE</span>`;
-      }catch(_){
-        return '';
-      }
-    },
-    
-    initials(name){
-      const parts = String(name||"").trim().split(/\s+/).filter(Boolean);
-      if(!parts.length) return "U";
-      const a = (parts[0]||"")[0]||"";
-      const b = (parts[1]||parts[0]||"")[0]||"";
-      return (a+b).toUpperCase();
-    },
+        const ms = Number(o.ms)||0;
+        if(!Number.isFinite(ms) || ms <= 0) return '';
+        return (window.UI && UI.overrideLabel) ? UI.overrideLabel(o) : '';
+      }catch(_){ return ''; }
+    })();
 
-    async readImageAsDataUrl(file, maxSize){
-      const f = file;
-      if(!f) return null;
-      const dataUrl = await new Promise((resolve,reject)=>{
-        const r = new FileReader();
-        r.onload = ()=>resolve(String(r.result||""));
-        r.onerror = ()=>reject(r.error||new Error("read failed"));
-        r.readAsDataURL(f);
-      });
-      const limit = Number(maxSize||0);
-      if(!limit) return dataUrl;
-      const img = await new Promise((resolve,reject)=>{
-        const im = new Image();
-        im.onload = ()=>resolve(im);
-        im.onerror = ()=>reject(new Error("image load failed"));
-        im.src = dataUrl;
-      });
-      const w = img.naturalWidth||img.width;
-      const h = img.naturalHeight||img.height;
-      const scale = Math.min(1, limit/Math.max(w,h));
-      if(scale>=1) return dataUrl;
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(w*scale));
-      canvas.height = Math.max(1, Math.round(h*scale));
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      return canvas.toDataURL("image/jpeg", 0.9);
-    },
+    root.innerHTML = `
+      <div class="mbx-shell">
+        <div class="mbx-header-bar">
+          <div>
+            <h2 class="mbx-main-title">Mailbox Command</h2>
+            <div class="mbx-panel-desc" style="margin-top:4px;">Dynamic shift assignment tracking, workload balancing, and live audit logs.</div>
+          </div>
+          <div style="display:flex; gap:10px;">
+            <button class="btn-glass btn-glass-ghost" id="mbxExportCsv">📥 CSV</button>
+            <button class="btn-glass btn-glass-ghost" id="mbxExportXlsx">📊 XLSX</button>
+            <button class="btn-glass btn-glass-ghost" id="mbxExportPdf">📄 PDF</button>
+          </div>
+        </div>
 
-    openModal(id){
-      const m = UI.el('#'+id);
-      if(m){
-        UI.bringToFront(m);
-        m.classList.add('open');
-      }
-      try{ document.body.classList.add('modal-open'); }catch(_){ }
-    },
-    
-    closeModal(id){
-      const m = UI.el('#'+id);
-      if(m) m.classList.remove('open');
-      try{
-        const any = document.querySelector('.modal.open');
-        if(!any) document.body.classList.remove('modal-open');
-      }catch(_){ }
-    },
-    
-    bringToFront(modal, opts){
-      try{
-        const m = modal;
-        if(!m || !(m instanceof HTMLElement)) return;
-        if(document.body && m.parentElement === document.body){
-          document.body.appendChild(m);
-        }
-        const o = Object.assign({ baseZ: 2147483000, panelOffset: 1, headOffset: 2 }, opts || {});
-        m.style.zIndex = String(Math.max(10000, Number(o.baseZ)||2147483000));
-        const panel = m.querySelector('.panel');
-        if(panel) panel.style.zIndex = String((Number(m.style.zIndex)||2147483000) + Number(o.panelOffset||1));
-        const head = m.querySelector('.head, .modal-head');
-        if(head) head.style.zIndex = String((Number(m.style.zIndex)||2147483000) + Number(o.headOffset||2));
-      }catch(_){ }
-    },
-    
-    _ensureToastHost(){
-      let host = document.getElementById('toastHost');
-      if(host) return host;
-      host = document.createElement('div');
-      host.id = 'toastHost';
-      host.className = 'toast-host';
-      document.body.appendChild(host);
-      return host;
-    },
-    
-    _normalizeToastMessage(message){
-      if(message == null) return '';
-      if(typeof message === 'string') return message;
-      try{ if(message instanceof Error) return message.message || String(message); }catch(_){ }
-      if(typeof message === 'object'){
-        try{
-          if(typeof message.message === 'string') return message.message;
-          if(typeof message.error === 'string') return message.error;
-          if(typeof message.details === 'string') return message.details;
-          if(typeof message.hint === 'string') return message.hint;
-        }catch(_){ }
-        try{ return JSON.stringify(message); }catch(_){ return String(message); }
-      }
-      return String(message);
-    },
+        <div class="mbx-summary-grid">
+          <div class="mbx-stat-box" style="border-left: 3px solid #38bdf8;">
+            <div class="mbx-stat-lbl">Active Roster Shift</div>
+            <div id="mbCurDutyLbl" class="mbx-stat-val">${UI.esc(duty.current.label)}</div>
+            <div class="mbx-stat-sub">Team Code: ${UI.esc(duty.current.id)}</div>
+          </div>
+          
+          <div class="mbx-stat-box" style="border-left: 3px solid #f59e0b; position:relative; overflow:hidden;">
+            ${globalOverrideLabelHtml}
+            <span class="mbx-ana-badge" id="mbOverridePill" title="Mailbox time override is enabled" style="display:none; position:absolute; top:10px; right:10px; background:rgba(245,158,11,0.2); color:#fcd34d;">OVERRIDE</span>
+            <div class="mbx-stat-lbl">Manila Time (Countdown)</div>
+            <div class="mbx-stat-val timer-display" id="dutyTimer">--:--:--</div>
+            <div class="mbx-stat-sub">Remaining in shift</div>
+            <div class="mbx-stat-sub" id="mbOverrideNote" style="display:none; color:#fca5a5;"></div>
+          </div>
 
-    _ensureHighAlertHosts(){
-      let overlay = document.getElementById('highAlertOverlay');
-      if(!overlay){
-        overlay = document.createElement('div');
-        overlay.id = 'highAlertOverlay';
-        overlay.className = 'high-alert-overlay';
-        overlay.style.display = 'none';
-        document.body.appendChild(overlay);
-      }
-      let host = document.getElementById('highAlertHost');
-      if(!host){
-        host = document.createElement('div');
-        host.id = 'highAlertHost';
-        host.className = 'high-alert-host';
-        host.style.display = 'none';
-        host.innerHTML = `
-          <div class="high-alert-box" role="alert" aria-live="assertive">
-            <div class="high-alert-title">⚠️ Error</div>
-            <div class="high-alert-message" id="highAlertMessage"></div>
-            <div class="high-alert-actions">
-              <button class="btn danger" type="button" id="highAlertCloseBtn">Close</button>
+          <div class="mbx-stat-box" style="border-left: 3px solid ${isManager ? '#10b981' : '#64748b'};">
+            <div class="mbx-stat-lbl">Your Authority Level</div>
+            <div class="mbx-stat-val" style="color:${isManager ? '#34d399' : '#e2e8f0'};">${isManager ? 'Mailbox Manager' : 'View Only Access'}</div>
+            <div class="mbx-stat-sub">${isManager ? 'Double-click any member row below to assign cases.' : 'Assignments are locked to managers.'}</div>
+          </div>
+        </div>
+
+        ${renderMyAssignmentsPanel(table)}
+        ${renderMailboxAnalyticsPanel(table, prevTable, totals, activeBucketId)}
+
+        <div class="mbx-analytics-panel" style="padding:0; overflow:hidden;">
+          <div class="mbx-panel-head" style="padding:20px 24px 16px 24px; margin:0; background:rgba(15,23,42,0.6);">
+            <div>
+              <h3 class="mbx-panel-title">${UI.esc(table.meta.teamLabel)} <span style="font-weight:400; opacity:0.8;">| Shift Counter</span></h3>
+              <div class="mbx-panel-desc">Real-time assignment distribution map for the active roster.</div>
+            </div>
+            <div style="text-align:right;">
+              <span class="mbx-ana-badge" style="background:rgba(255,255,255,0.05); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1);">
+                Manager: <strong style="color:#f8fafc;">${UI.esc(mbxMgrName)}</strong>
+              </span>
+              <div class="mbx-panel-desc" style="margin-top:6px; font-weight:700;">
+                Active Block: <span style="color:#38bdf8;">${UI.esc((_mbxBucketLabel((table.buckets||[]).find(b=>b.id===activeBucketId)||table.buckets?.[0]||{startMin:0,endMin:0})))}</span>
+              </div>
             </div>
           </div>
-        `;
-        document.body.appendChild(host);
+          <div class="mbx-counter-wrap" id="mbxTableWrap" style="border:none; border-radius:0;">
+            ${renderTable(table, activeBucketId, totals, true)}
+          </div>
+        </div>
+
+        <div class="mbx-analytics-panel">
+          <div class="mbx-panel-head">
+            <div>
+              <h3 class="mbx-panel-title">Case Monitoring Matrix</h3>
+              <div class="mbx-panel-desc">Double-click any assigned case to open Transfer/Delete controls.</div>
+            </div>
+            <span class="mbx-ana-badge" id="mbxPendingMine" style="display:none; background:rgba(245,158,11,0.15); color:#fcd34d;">Pending: 0</span>
+          </div>
+          <div class="mbx-monitor-wrap mbx-monitor-panel">
+            ${renderCaseMonitoring(table, shiftKey)}
+          </div>
+        </div>
+
+        <div class="mbx-analytics-panel" style="background:rgba(15,23,42,0.3); border-color:transparent;">
+          <div class="mbx-panel-head" style="border-bottom:none; margin-bottom:0;">
+            <div>
+              <h3 class="mbx-panel-title" style="font-size:16px; color:#cbd5e1;">Historical: Previous Shift</h3>
+              <div class="mbx-panel-desc">${prevTable ? UI.esc(prevTable.meta.teamLabel)+' • '+UI.esc(prevKey) : 'No previous shift record.'}</div>
+            </div>
+            <button class="btn-glass btn-glass-ghost" id="mbxTogglePrev">${prevTable ? 'Show Archive' : '—'}</button>
+          </div>
+          <div id="mbxPrevWrap" style="display:none; margin-top:16px;">
+            <div class="mbx-counter-wrap">
+              ${prevTable ? renderTable(prevTable, '', computeTotals(prevTable), false) : ''}
+            </div>
+          </div>
+        </div>
+
+      </div>
+    `;
+
+    refreshMemberDutyPills(root);
+    ensureAssignModalMounted();
+    ensureCaseActionMenuMounted();
+    ensureReassignModalMounted();
+
+    const tBtn = UI.el('#mbxTogglePrev');
+    if(tBtn){
+      tBtn.disabled = !prevTable;
+      tBtn.onclick = ()=>{
+        const w = UI.el('#mbxPrevWrap');
+        if(!w) return;
+        const open = w.style.display !== 'none';
+        w.style.display = open ? 'none' : 'block';
+        tBtn.textContent = open ? 'Show Archive' : 'Hide Archive';
+      };
+    }
+
+    UI.el('#mbxExportCsv').onclick = ()=>exportCSV(table);
+    UI.el('#mbxExportXlsx').onclick = ()=>exportXLSX(table);
+    UI.el('#mbxExportPdf').onclick = ()=>exportPDF(table);
+
+    try{
+      root.querySelectorAll('[data-confirm-assign]').forEach(btn=>{
+        btn.onclick = ()=>{
+          const id = btn.getAttribute('data-confirm-assign');
+          if(id) confirmAssignment(shiftKey, id);
+        };
+      });
+      const pending = getMyPendingAssignments(table).length;
+      const pill = UI.el('#mbxPendingMine');
+      if(pill){
+        pill.style.display = pending ? 'inline-flex' : 'none';
+        pill.textContent = `Pending: ${pending}`;
       }
-      return { overlay, host };
-    },
+    }catch(_){}
 
-    alertError(message, opts){
-      try{
-        const msg = UI._normalizeToastMessage(message);
-        const o = Object.assign({ title: '⚠️ Error', autoCloseMs: 7000 }, (opts||{}));
-        const hosts = UI._ensureHighAlertHosts();
-        const overlay = hosts.overlay;
-        const host = hosts.host;
-        const titleEl = host.querySelector('.high-alert-title');
-        const msgEl = host.querySelector('#highAlertMessage');
-        const closeBtn = host.querySelector('#highAlertCloseBtn');
 
-        if(titleEl) titleEl.textContent = String(o.title || '⚠️ Error');
-        if(msgEl) msgEl.textContent = String(msg || 'Unknown error');
-
-        overlay.style.display = 'block';
-        host.style.display = 'flex';
-        overlay.style.zIndex = '2147483645';
-        host.style.zIndex = '2147483646';
-
-        if(closeBtn && !closeBtn._mumsBound){
-          closeBtn._mumsBound = true;
-          closeBtn.onclick = () => UI.closeAlertError();
-        }
-        if(!host._mumsBound){
-          host._mumsBound = true;
-          host.addEventListener('click', (ev)=>{ if(ev.target === host) UI.closeAlertError(); });
-        }
-
-        if(host._mumsTimer) clearTimeout(host._mumsTimer);
-        const ms = Number(o.autoCloseMs || 0);
-        if(ms > 0){ host._mumsTimer = setTimeout(()=>UI.closeAlertError(), ms); }
-      }catch(err){ try{ console.error('UI.alertError failed', err); }catch(_){} }
-    },
-
-    closeAlertError(){
-      try{
-        const overlay = document.getElementById('highAlertOverlay');
-        const host = document.getElementById('highAlertHost');
-        if(host && host._mumsTimer){ clearTimeout(host._mumsTimer); host._mumsTimer = null; }
-        if(overlay) overlay.style.display = 'none';
-        if(host) host.style.display = 'none';
-      }catch(_){}
-    },
-
-    toast(message, variant){
-      try{
-        const v = String(variant||'').toLowerCase();
-        if(v==='danger' || v==='error' || v==='invalid'){
-          UI.alertError(message);
+    const wrap = UI.el('#mbxTableWrap');
+    if(wrap){
+      wrap.ondblclick = (e)=>{
+        const row = e.target.closest('tr[data-assign-member]');
+        if(!row) return;
+        const uid = row.dataset.assignMember;
+        if(!uid) return;
+        if(!canAssignNow()){
+          UI.toast('You do not have permission to assign cases right now.', 'warn');
           return;
         }
-        const host = UI._ensureToastHost();
-        const t = document.createElement('div');
-        t.className = 'toast' + (v ? ` ${v}` : '');
-        const msg = UI._normalizeToastMessage(message);
-        t.textContent = msg;
-        host.appendChild(t);
-        requestAnimationFrame(()=>t.classList.add('show'));
-        setTimeout(()=>{
-          t.classList.remove('show');
-          setTimeout(()=>{ try{ t.remove(); }catch(_){} }, 250);
-        }, 3200);
-      }catch(e){ try{ console.log(UI._normalizeToastMessage(message)); }catch(_){} }
-    },
-
-    confirm(opts){
-      const o = Object.assign({
-        title: 'Confirm', message: '', detail: '', okText: 'Confirm', cancelText: 'Cancel', danger: false
-      }, (opts||{}));
-
-      return new Promise((resolve)=>{
-        let modal = document.getElementById('mumsConfirmModal');
-        if(!modal){
-          modal = document.createElement('div');
-          modal.id = 'mumsConfirmModal';
-          modal.className = 'modal confirm-modal';
-          modal.innerHTML = `
-            <div class="panel" style="max-width:520px">
-              <div class="head">
-                <div>
-                  <div class="announce-title" id="mcmTitle"></div>
-                  <div class="small muted" id="mcmDetail" style="margin-top:2px"></div>
-                </div>
-                <button class="btn ghost" type="button" id="mcmX" aria-label="Close">✕</button>
-              </div>
-              <div class="body" style="display:grid;gap:10px">
-                <div class="h3" id="mcmMsg" style="margin:0"></div>
-                <div class="small muted" id="mcmMsg2" style="margin-top:-6px"></div>
-                <div class="row" style="justify-content:flex-end;gap:8px;margin-top:4px;flex-wrap:wrap">
-                  <button class="btn" id="mcmCancel" type="button"></button>
-                  <button class="btn primary" id="mcmOk" type="button"></button>
-                </div>
-              </div>
-            </div>
-          `;
-          document.body.appendChild(modal);
-        }
-
-        const titleEl = modal.querySelector('#mcmTitle');
-        const detailEl = modal.querySelector('#mcmDetail');
-        const msgEl = modal.querySelector('#mcmMsg');
-        const msg2El = modal.querySelector('#mcmMsg2');
-        const okBtn = modal.querySelector('#mcmOk');
-        const cancelBtn = modal.querySelector('#mcmCancel');
-        const xBtn = modal.querySelector('#mcmX');
-
-        titleEl.textContent = String(o.title||'Confirm');
-        msgEl.textContent = String(o.message||'');
-        msg2El.textContent = String(o.detail||'');
-        detailEl.textContent = '';
-        cancelBtn.textContent = String(o.cancelText||'Cancel');
-        okBtn.textContent = String(o.okText||'Confirm');
-
-        okBtn.classList.toggle('danger', !!o.danger);
-        okBtn.classList.toggle('primary', !o.danger);
-
-        const cleanup = ()=>{
-          try{
-            modal.classList.remove('open');
-            modal.removeEventListener('click', onBackdrop);
-            document.removeEventListener('keydown', onKey);
-            okBtn.onclick = null; cancelBtn.onclick = null; xBtn.onclick = null;
-          }catch(_){}
-        };
-        const done = (v)=>{ cleanup(); resolve(!!v); };
-
-        const onBackdrop = (e)=>{ if(e.target === modal) done(false); };
-        const onKey = (e)=>{
-          if(e.key === 'Escape'){ e.preventDefault(); done(false); }
-          if(e.key === 'Enter'){ e.preventDefault(); done(true); }
-        };
-
-        okBtn.onclick = ()=>done(true);
-        cancelBtn.onclick = ()=>done(false);
-        xBtn.onclick = ()=>done(false);
-
-        UI.bringToFront(modal, { baseZ: 2147483200, panelOffset: 1, headOffset: 2 });
-        modal.addEventListener('click', onBackdrop);
-        document.addEventListener('keydown', onKey, true);
-        modal.classList.add('open');
-        setTimeout(()=>{ try{ okBtn.focus(); }catch(_){} }, 0);
-      });
-    },
-
-    promptText(opts){
-      const o = Object.assign({
-        title: 'Input required', message: '', detail: '', placeholder: 'Type here...',
-        okText: 'Save', cancelText: 'Cancel', required: true, maxLen: 500
-      }, (opts||{}));
-
-      return new Promise((resolve)=>{
-        let modal = document.getElementById('mumsPromptTextModal');
-        if(!modal){
-          modal = document.createElement('div');
-          modal.id = 'mumsPromptTextModal';
-          modal.className = 'modal prompt-modal';
-          modal.innerHTML = `
-            <div class="panel" style="max-width:560px">
-              <div class="head">
-                <div>
-                  <div class="announce-title" id="mptTitle"></div>
-                  <div class="small muted" id="mptDetail" style="margin-top:2px"></div>
-                </div>
-                <button class="btn ghost" type="button" id="mptX" aria-label="Close">✕</button>
-              </div>
-              <div class="body" style="display:grid;gap:10px">
-                <div class="h3" id="mptMsg" style="margin:0"></div>
-                <textarea id="mptTextarea" class="input" style="min-height:110px;resize:vertical" maxlength="${o.maxLen}"></textarea>
-                <div class="row" style="justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
-                  <div class="small muted" id="mptHint"></div>
-                  <div class="row" style="gap:8px">
-                    <button class="btn" id="mptCancel" type="button"></button>
-                    <button class="btn primary" id="mptOk" type="button"></button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          `;
-          document.body.appendChild(modal);
-        }
-
-        const titleEl = modal.querySelector('#mptTitle');
-        const detailEl = modal.querySelector('#mptDetail');
-        const msgEl = modal.querySelector('#mptMsg');
-        const ta = modal.querySelector('#mptTextarea');
-        const hintEl = modal.querySelector('#mptHint');
-        const okBtn = modal.querySelector('#mptOk');
-        const cancelBtn = modal.querySelector('#mptCancel');
-        const xBtn = modal.querySelector('#mptX');
-
-        titleEl.textContent = String(o.title||'Input required');
-        detailEl.textContent = String(o.detail||'');
-        msgEl.textContent = String(o.message||'');
-        ta.value = String(o.value||'');
-        ta.placeholder = String(o.placeholder||'');
-        okBtn.textContent = String(o.okText||'Save');
-        cancelBtn.textContent = String(o.cancelText||'Cancel');
-        hintEl.textContent = o.required ? `Required (max ${o.maxLen} chars)` : `Optional (max ${o.maxLen} chars)`;
-
-        const cleanup = ()=>{
-          try{
-            modal.classList.remove('open');
-            modal.removeEventListener('click', onBackdrop);
-            document.removeEventListener('keydown', onKey, true);
-            okBtn.onclick = null; cancelBtn.onclick = null; xBtn.onclick = null;
-          }catch(_){ }
-        };
-        const done = (v)=>{ cleanup(); resolve(v); };
-
-        const onBackdrop = (e)=>{ if(e.target === modal) done(null); };
-        const onKey = (e)=>{
-          if(e.key === 'Escape'){ e.preventDefault(); done(null); }
-          if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); okBtn.click(); }
-        };
-
-        okBtn.onclick = ()=>{
-          const v = String(ta.value||'').trim();
-          if(o.required && !v){
-            UI.toast('Please enter a reason before saving.', 'warn');
-            try{ ta.focus(); }catch(_){ }
-            return;
-          }
-          done(v);
-        };
-        cancelBtn.onclick = ()=>done(null);
-        xBtn.onclick = ()=>done(null);
-
-        UI.bringToFront(modal, { baseZ: 2147483200, panelOffset: 1, headOffset: 2 });
-        modal.addEventListener('click', onBackdrop);
-        document.addEventListener('keydown', onKey, true);
-        modal.classList.add('open');
-        setTimeout(()=>{ try{ ta.focus(); }catch(_){ } }, 0);
-      });
-    },
-
-    attendancePrompt(user, team){
-      return new Promise((resolve)=>{
-        const u = user || {};
-        const t = team || { id:'', label:'' };
-        const teamId = String(u.teamId || t.id || '');
-        const reasons = (window.Store && Store.getTeamWFHReasons) ? (Store.getTeamWFHReasons(teamId)||[]) : [];
-        const safeReasons = (Array.isArray(reasons) && reasons.length) ? reasons : ['Other'];
-
-        let modal = document.getElementById('mumsAttendanceModal');
-        if(!modal){
-          modal = document.createElement('div');
-          modal.id = 'mumsAttendanceModal';
-          modal.className = 'modal attendance-modal';
-          modal.innerHTML = `
-            <div class="panel" style="max-width:640px">
-              <div class="head">
-                <div>
-                  <div class="announce-title">Attendance Confirmation</div>
-                  <div class="small muted" id="attSub" style="margin-top:2px"></div>
-                </div>
-              </div>
-              <div class="body" style="display:grid;gap:12px">
-                <div class="row" style="gap:12px;align-items:center;flex-wrap:wrap">
-                  <div class="avatar-lg" id="attAvatar"></div>
-                  <div style="display:grid;gap:2px">
-                    <div class="h3" id="attName" style="margin:0"></div>
-                    <div class="small muted" id="attTeam"></div>
-                  </div>
-                </div>
-
-                <div class="card pad" style="padding:14px">
-                  <div class="small muted" style="margin-bottom:10px">
-                    To confirm your attendance for today, please select if you are working.
-                  </div>
-                  <div class="row" style="gap:10px;flex-wrap:wrap">
-                    <button class="btn" type="button" id="attOffice">In Office</button>
-                    <button class="btn" type="button" id="attWFH">Work From Home</button>
-                  </div>
-
-                  <div id="attWFHWrap" style="display:none;margin-top:12px">
-                    <label class="field" style="max-width:420px">
-                      <div class="label">WFH Reason (required)</div>
-                      <select class="input" id="attReason">
-                        <option value="">Select reason</option>
-                      </select>
-                    </label>
-                  </div>
-
-                  <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px;flex-wrap:wrap">
-                    <button class="btn primary" type="button" id="attSubmit" disabled>Save Attendance</button>
-                  </div>
-                </div>
-                <div class="small muted">
-                  Note: Attendance is required during your active shift window. You cannot proceed until you submit.
-                </div>
-              </div>
-            </div>
-          `;
-          document.body.appendChild(modal);
-        }
-
-        document.body.classList.add('attendance-locked');
-        UI.bringToFront(modal, { baseZ: 2147483300, panelOffset: 1, headOffset: 2 });
-
-        const name = String(u.name || u.fullName || u.username || 'User');
-        const sub = modal.querySelector('#attSub');
-        const attName = modal.querySelector('#attName');
-        const attTeam = modal.querySelector('#attTeam');
-        const av = modal.querySelector('#attAvatar');
-        const reasonSel = modal.querySelector('#attReason');
-        const wfhWrap = modal.querySelector('#attWFHWrap');
-        const bOffice = modal.querySelector('#attOffice');
-        const bWFH = modal.querySelector('#attWFH');
-        const bSubmit = modal.querySelector('#attSubmit');
-
-        sub.textContent = 'Please submit your attendance to continue.';
-        attName.textContent = name;
-        attTeam.textContent = `Team: ${String(t.label||teamId||'')}`;
-
-        try{
-          const prof = (window.Store && Store.getProfile) ? (Store.getProfile(u.id)||{}) : {};
-          if(prof.photoDataUrl){
-            av.innerHTML = `<img src="${UI.esc(prof.photoDataUrl)}" alt="Profile" />`;
-          }else{
-            av.textContent = UI.initials(name);
-          }
-        }catch(_){
-          av.textContent = UI.initials(name);
-        }
-
-        reasonSel.innerHTML = `<option value="">Select reason</option>` + safeReasons.map(r=>`<option value="${UI.esc(r)}">${UI.esc(r)}</option>`).join('');
-
-        let mode = '';
-        let reason = '';
-
-        function update(){
-          if(mode === 'OFFICE'){
-            wfhWrap.style.display = 'none';
-            bSubmit.disabled = false;
-          }else if(mode === 'WFH'){
-            wfhWrap.style.display = '';
-            bSubmit.disabled = !reason;
-          }else{
-            wfhWrap.style.display = 'none';
-            bSubmit.disabled = true;
-          }
-          bOffice.classList.toggle('primary', mode==='OFFICE');
-          bWFH.classList.toggle('primary', mode==='WFH');
-        }
-
-        bOffice.onclick = ()=>{ mode='OFFICE'; reason=''; if(reasonSel) reasonSel.value=''; update(); };
-        bWFH.onclick = ()=>{ mode='WFH'; update(); };
-        reasonSel.onchange = ()=>{ reason = String(reasonSel.value||''); update(); };
-
-        const onKey = (e)=>{
-          if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); return false; }
-          return true;
-        };
-
-        document.addEventListener('keydown', onKey, true);
-
-        bSubmit.onclick = ()=>{
-          if(!mode) return;
-          if(mode==='WFH' && !reason) return;
-          document.removeEventListener('keydown', onKey, true);
-          modal.classList.remove('open');
-          document.body.classList.remove('attendance-locked');
-
-          const record = {
-            id: 'att_' + Math.random().toString(16).slice(2) + '_' + Date.now(),
-            userId: u.id,
-            username: u.username || '',
-            name,
-            teamId: teamId || '',
-            teamLabel: String(t.label||''),
-            mode,
-            reason: (mode==='WFH') ? reason : '',
-            ts: Date.now()
-          };
-          resolve(record);
-        };
-
-        modal.onclick = (e)=>{ if(e.target===modal){ e.preventDefault(); e.stopPropagation(); } };
-        update();
-        modal.classList.add('open');
-      });
-    },
-
-    downloadJSON(filename, obj){
-      const blob = new Blob([JSON.stringify(obj, null, 2)], { type:'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
-    },
-
-    downloadCSV(filename, rows){
-      const esc = (v)=>{
-        const s = String(v ?? '');
-        if(/^[0-9]{12,18}$/.test(s)){ return '"=""' + s + '"""'; }
-        if(/[",\n\r]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
-        return s;
+        openAssignModal(uid);
       };
-      const csv = rows.map(r => r.map(esc).join(',')).join('\r\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
-    },
+    }
 
-    pickJSON(){
-      return new Promise((resolve)=>{
-        const inp = document.createElement('input');
-        inp.type='file';
-        inp.accept='application/json';
-        inp.onchange = async () => {
-          const f = inp.files && inp.files[0];
-          if(!f) return resolve(null);
-          const txt = await f.text();
-          try{ resolve(JSON.parse(txt)); }catch(e){ resolve(null); }
-        };
-        inp.click();
-      });
-    },
-
-    manilaParts(date){
-      const Config = window.Config;
-      const fmt = new Intl.DateTimeFormat('en-CA', {
-        timeZone: (Config && Config.TZ) || 'Asia/Manila',
-        year:'numeric',month:'2-digit',day:'2-digit',
-        hour:'2-digit',minute:'2-digit',second:'2-digit',
-        hour12:false
-      });
-      const parts = Object.fromEntries(
-        fmt.formatToParts(date||new Date())
-          .filter(p=>p.type!=='literal')
-          .map(p=>[p.type,p.value])
-      );
-      return {
-        y:+parts.year, m:+parts.month, d:+parts.day,
-        hh:+parts.hour, mm:+parts.minute, ss:+parts.second,
-        isoDate:`${parts.year}-${parts.month}-${parts.day}`,
-        iso:`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`
+    const monitorWrap = root.querySelector('.mbx-monitor-wrap');
+    if(monitorWrap){
+      monitorWrap.ondblclick = (e)=>{
+        const cell = e && e.target ? e.target.closest('td[data-case-action="1"]') : null;
+        if(!cell) return;
+        if(!canAssignNow()){
+          UI.toast('You do not have permission to manage cases right now.', 'warn');
+          return;
+        }
+        openCaseActionMenu({
+          shiftKey,
+          assignmentId: String(cell.getAttribute('data-assignment-id') || ''),
+          caseNo: String(cell.getAttribute('data-case-no') || ''),
+          ownerId: String(cell.getAttribute('data-owner-id') || ''),
+          ownerName: String(cell.getAttribute('data-owner-name') || '')
+        });
       };
-    },
-    manilaNow(){ return UI.manilaParts(new Date()); },
+    }
 
-    mailboxNowParts(){
+    startTimerLoop();
+  }
+
+  function resolveMemberDutyLabel(member, nowParts){
+    try{
+      const all = (Store.getUsers ? Store.getUsers() : []) || [];
+      const live = all.find(u=>u && String(u.id||'') === String(member?.id||''));
+      const label = _mbxDutyLabelForUser(live || member, nowParts);
+      const safe = String(label||'').trim();
+      return safe || '—';
+    }catch(_){
+      return '—';
+    }
+  }
+
+  function refreshMemberDutyPills(scopeRoot){
+    try{
+      const host = scopeRoot || root;
+      if(!host) return;
+      const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+      host.querySelectorAll('[data-mbx-duty-user]').forEach(node=>{
+        const uid = String(node.getAttribute('data-mbx-duty-user') || '').trim();
+        if(!uid) return;
+        const member = { id: uid };
+        const duty = resolveMemberDutyLabel(member, nowParts);
+        const dutyText = (duty && duty !== '—') ? duty : 'No duty';
+        node.textContent = dutyText;
+        node.dataset.tone = _mbxDutyTone(dutyText);
+        node.title = `Current status: ${dutyText}`;
+      });
+    }catch(_){ }
+  }
+
+  function renderTable(table, activeBucketId, totals, interactive){
+    const buckets = table.buckets || [];
+    const members = table.members || [];
+    const bucketManagers = buckets.map(b=>({ bucket:b, name:getBucketManagerName(b) }));
+    
+    function getBucketManagerName(bucket){
       try{
-        const u = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
-        const superAdmin = window.Config && Config.ROLES ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
-        const isSA = !!(u && u.role === superAdmin);
-        let o = (window.Store && Store.getMailboxTimeOverride) ? Store.getMailboxTimeOverride() : null;
-        try{
-          const raw = localStorage.getItem('mums_mailbox_time_override_cloud');
-          const cloud = raw ? JSON.parse(raw) : null;
-          if(cloud && typeof cloud === 'object' && cloud.enabled && String(cloud.scope) === 'global'){
-            const def = { enabled:false, ms:0, freeze:true, setAt:0, scope:'global' };
-            const c = Object.assign({}, def, cloud);
-            c.enabled = !!c.enabled;
-            c.ms = Number(c.ms)||0;
-            c.freeze = (c.freeze !== false);
-            c.setAt = Number(c.setAt)||0;
-            c.scope = 'global';
-            const oScope = String(o?.scope||'');
-            const oMs = Number(o?.ms)||0;
-            const oSetAt = Number(o?.setAt)||0;
-            const oFreeze = (o?.freeze !== false);
-            if(!o || !o.enabled || oScope !== 'global' || oMs !== c.ms || oSetAt !== c.setAt || oFreeze !== c.freeze){
-              o = c;
-            }
-          }
-        }catch(_){}
-        if(!o || !o.enabled || String(o.scope||'') !== 'global'){
-          try{
-            const raw = localStorage.getItem('mums_mailbox_time_override_cloud');
-            const cloud = raw ? JSON.parse(raw) : null;
-            if(cloud && typeof cloud === 'object' && cloud.enabled && String(cloud.scope) === 'global'){
-              const def = { enabled:false, ms:0, freeze:true, setAt:0, scope:'global' };
-              const c = Object.assign({}, def, cloud);
-              c.enabled = !!c.enabled;
-              c.ms = Number(c.ms)||0;
-              c.freeze = (c.freeze !== false);
-              c.setAt = Number(c.setAt)||0;
-              c.scope = 'global';
-              o = c;
-            }
-          }catch(_){}
-        }
-
-        if(!o || !o.enabled) return UI.manilaNow();
-        const scope = (String(o.scope||'sa_only') === 'global') ? 'global' : 'sa_only';
-        if(scope === 'sa_only' && !isSA) return UI.manilaNow();
-
-        const base = Number(o.ms);
-        const MIN_VALID_MS = Date.UTC(2020,0,1);
-        const MAX_VALID_MS = Date.now() + (366 * 24 * 60 * 60 * 1000);
-        if(!Number.isFinite(base) || base <= 0) return UI.manilaNow();
-        if(base < MIN_VALID_MS || base > MAX_VALID_MS) return UI.manilaNow();
-
-        const freeze = (o.freeze !== false);
-        let setAt = Number(o.setAt)||0;
-        if(!freeze){
-          if(!Number.isFinite(setAt) || setAt <= 0 || setAt > (Date.now() + 60*1000)) setAt = Date.now();
-        }else{
-          setAt = 0;
-        }
-
-        const ms = freeze ? base : (base + Math.max(0, Date.now() - setAt));
-        if(!Number.isFinite(ms) || ms <= 0) return UI.manilaNow();
-        return UI.manilaParts(new Date(ms));
-      }catch(_){
-        return UI.manilaNow();
-      }
-    },
-
-    mailboxTimeInfo(){
-      const info = {
-        isSuperAdmin:false, scope:'sa_only', isApplicable:false, overrideEnabled:false,
-        freeze:true, baseMs:0, effectiveMs:0, systemParts:UI.manilaNow(), effectiveParts:null,
-      };
-      try{
-        const u = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
-        const superAdmin = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
-        info.isSuperAdmin = !!(u && u.role === superAdmin);
-        let o = (window.Store && Store.getMailboxTimeOverride) ? Store.getMailboxTimeOverride() : null;
-        try{
-          const raw = localStorage.getItem('mums_mailbox_time_override_cloud');
-          const cloud = raw ? JSON.parse(raw) : null;
-          if(cloud && typeof cloud === 'object' && cloud.enabled && String(cloud.scope) === 'global'){
-            const def = { enabled:false, ms:0, freeze:true, setAt:0, scope:'global' };
-            const c = Object.assign({}, def, cloud);
-            c.enabled = !!c.enabled;
-            c.ms = Number(c.ms)||0;
-            c.freeze = (c.freeze !== false);
-            c.setAt = Number(c.setAt)||0;
-            c.scope = 'global';
-            const oScope = String(o?.scope||'');
-            const oMs = Number(o?.ms)||0;
-            const oSetAt = Number(o?.setAt)||0;
-            const oFreeze = (o?.freeze !== false);
-            if(!o || !o.enabled || oScope !== 'global' || oMs !== c.ms || oSetAt !== c.setAt || oFreeze !== c.freeze){
-              o = c;
-            }
-          }
-        }catch(_){}
-        if(!o || !o.enabled || String(o.scope||'') !== 'global'){
-          try{
-            const raw = localStorage.getItem('mums_mailbox_time_override_cloud');
-            const cloud = raw ? JSON.parse(raw) : null;
-            if(cloud && typeof cloud === 'object' && cloud.enabled && String(cloud.scope) === 'global'){
-              const def = { enabled:false, ms:0, freeze:true, setAt:0, scope:'global' };
-              const c = Object.assign({}, def, cloud);
-              c.enabled = !!c.enabled;
-              c.ms = Number(c.ms)||0;
-              c.freeze = (c.freeze !== false);
-              c.setAt = Number(c.setAt)||0;
-              c.scope = 'global';
-              o = c;
-            }
-          }catch(_){}
-        }
-
-        if(!o || !o.enabled) return info;
-        const base = Number(o.ms);
-        const MIN_VALID_MS = Date.UTC(2020,0,1);
-        const MAX_VALID_MS = Date.now() + (366 * 24 * 60 * 60 * 1000);
-        if(!Number.isFinite(base) || base <= 0) return info;
-        if(base < MIN_VALID_MS || base > MAX_VALID_MS) return info;
-        info.scope = (String(o.scope||'sa_only') === 'global') ? 'global' : 'sa_only';
-        info.isApplicable = (info.scope === 'global') ? true : info.isSuperAdmin;
-        if(!info.isApplicable) return info;
-        info.overrideEnabled = true;
-        info.freeze = (o.freeze !== false);
-        info.baseMs = base;
-        let setAt = Number(o.setAt)||0;
-        if(info.freeze === false){
-          if(!Number.isFinite(setAt) || setAt <= 0 || setAt > (Date.now() + 60*1000)) setAt = Date.now();
-        }else{
-          setAt = 0;
-        }
-        info.effectiveMs = info.freeze ? info.baseMs : (info.baseMs + Math.max(0, Date.now()-setAt));
-        info.effectiveParts = UI.manilaParts(new Date(info.effectiveMs));
+        const scheduled = _mbxFindScheduledManagerForBucket(table, bucket);
+        if(scheduled && scheduled !== '—') return String(scheduled);
       }catch(_){ }
-      return info;
-    },
-
-    isMailboxOverrideActive(){
       try{
-        const i = UI.mailboxTimeInfo();
-        return !!(i && i.overrideEnabled);
-      }catch(_){ return false; }
-    },
-
-    parseManilaDateTimeLocal(v){
-      const s = String(v||'').trim();
-      if(!s || !s.includes('T')) return 0;
-      const [d,t] = s.split('T');
-      const [yy,mm,dd] = d.split('-').map(n=>Number(n));
-      const [hh,mi] = t.split(':').map(n=>Number(n));
-      if(!yy||!mm||!dd||Number.isNaN(hh)||Number.isNaN(mi)) return 0;
-      return Date.UTC(yy, mm-1, dd, hh-8, mi, 0, 0);
-    },
-
-    formatManilaDateTimeLocal(ms){
-      const p = UI.manilaParts(new Date(Number(ms)||Date.now()));
-      const pad = n => String(n).padStart(2,'0');
-      return `${p.y}-${pad(p.m)}-${pad(p.d)}T${pad(p.hh)}:${pad(p.mm)}`;
-    },
-
-    isoToYMD(iso){
-      const parts = String(iso||'').split('-');
-      const y = Number(parts[0]);
-      const m = Number(parts[1]);
-      const d = Number(parts[2]);
-      if(!y || !m || !d) return null;
-      return { y, m, d };
-    },
-
-    weekdayFromISO(iso){
-      const v = UI.isoToYMD(iso);
-      if(!v) return null;
-      const t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
-      let y = v.y;
-      const m = v.m;
-      const d = v.d;
-      if(m < 3) y -= 1;
-      const wd = (y + Math.floor(y/4) - Math.floor(y/100) + Math.floor(y/400) + t[m-1] + d) % 7;
-      return wd;
-    },
-
-    addDaysISO(iso, deltaDays){
-      const v = UI.isoToYMD(iso);
-      if(!v) return String(iso||'');
-      const ms = Date.UTC(v.y, v.m-1, v.d) + (Number(deltaDays||0) * 86400000);
-      const d = new Date(ms);
-      const pad = n => String(n).padStart(2,'0');
-      return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}`;
-    },
-
-    manilaTodayISO(){
-      return UI.manilaNow().isoDate;
-    },
-    minutesOfDay(p){ return (p.hh*60) + p.mm; },
-    parseHM(hm){ const a = String(hm||'00:00').split(':'); return (+a[0]||0)*60 + (+a[1]||0); },
-
-    DAYS: ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
-
-    shiftMeta(team){
-      let startHM = team && team.teamStart;
-      let endHM = team && team.teamEnd;
-      try{
-        if(window.Store && Store.getTeamConfig && team && team.id){
-          const cfg = Store.getTeamConfig(team.id);
-          startHM = (cfg && cfg.schedule && cfg.schedule.start) ? cfg.schedule.start : startHM;
-          endHM = (cfg && cfg.schedule && cfg.schedule.end) ? cfg.schedule.end : endHM;
+        if(activeBucketId && bucket?.id === activeBucketId){
+          const duty = getDuty();
+          const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+          const live = _mbxFindOnDutyMailboxManagerName(duty?.current?.id, duty?.current, nowParts, table, activeBucketId);
+          if(live && live !== '—') return String(live);
         }
       }catch(_){ }
-      const start = UI.parseHM(startHM);
-      const end = UI.parseHM(endHM);
-      const wraps = end <= start;
-      const length = wraps ? (24*60 - start + end) : (end - start);
-      return { start, end, wraps, length };
-    },
-
-    offsetFromShiftStart(team, hm){
-      const m = UI.parseHM(hm);
-      const meta = UI.shiftMeta(team);
-      if(!meta.wraps) return m - meta.start;
-      if(m >= meta.start) return m - meta.start;
-      return (24*60 - meta.start) + m;
-    },
-
-    blockToStyle(team, block){
-      const meta = UI.shiftMeta(team);
-      const a = UI.offsetFromShiftStart(team, block.start);
-      const b = UI.offsetFromShiftStart(team, block.end);
-      const left = (a / meta.length) * 100;
-      const width = ((b - a) / meta.length) * 100;
-      return { left: left, width: width };
-    },
-
-    snapMinutes(mins, step){
-      const s = step || 15;
-      return Math.max(0, Math.round(mins / s) * s);
-    },
-
-    offsetToHM(team, off){
-      const meta = UI.shiftMeta(team);
-      const abs = (meta.start + off) % (24*60);
-      const hh = String(Math.floor(abs/60)).padStart(2,'0');
-      const mm = String(abs%60).padStart(2,'0');
-      return `${hh}:${mm}`;
-    },
-
-    manilaNowDate(){
-      return new Date(new Date().toLocaleString('en-US', { timeZone: (window.Config && Config.TZ) || 'Asia/Manila' }));
-    },
-
-    manilaWeekStartMondayMs(){
-      const d = UI.manilaNowDate();
-      const day = d.getDay();
-      const diff = (day === 0) ? 6 : (day - 1);
-      d.setDate(d.getDate() - diff);
-      d.setHours(0,0,0,0);
-      return d.getTime();
-    },
-    formatDuration(sec){
-      sec = Math.max(0, Math.floor(sec||0));
-      const h = Math.floor(sec/3600);
-      const m = Math.floor((sec%3600)/60);
-      const s = sec%60;
-      const pad = n => String(n).padStart(2,'0');
-      return `${pad(h)}:${pad(m)}:${pad(s)}`;
-    },
-
-    getDutyWindow(nowParts){
-      const Config = window.Config;
-      const p = nowParts || UI.manilaNow();
-      const nowMin = UI.minutesOfDay(p);
-      const teams = (Config && Array.isArray(Config.TEAMS)) ? Config.TEAMS : [];
-      const windows = teams.map(t=>{
-        const start = UI.parseHM(t.dutyStart);
-        const end = UI.parseHM(t.dutyEnd);
-        return { team:t, start, end, wraps: end<=start };
-      });
-
-      function inWindow(w){
-        if(!w.wraps) return nowMin>=w.start && nowMin<w.end;
-        return (nowMin>=w.start) || (nowMin<w.end);
-      }
-
-      let cur = windows.find(inWindow) || windows[0];
-      const idx = Math.max(0, windows.findIndex(w=>w.team.id===cur.team.id));
-      const next = windows[(idx+1)%windows.length] || windows[0];
-
-      let minsLeft;
-      if(!cur.wraps) minsLeft = cur.end - nowMin;
-      else minsLeft = (nowMin < cur.end) ? (cur.end - nowMin) : (24*60 - nowMin + cur.end);
-      const secLeft = minsLeft*60 - p.ss;
-
-      return { current: cur.team, next: next.team, secLeft };
-    },
-
-    schedulePill(scheduleId){
-      const Config = window.Config;
-      const s = Config && Config.scheduleById ? Config.scheduleById(scheduleId) : null;
-      if(!s) return '';
-      return `<span class="iconpill"><span class="icon">${UI.esc(s.icon)}</span>${UI.esc(s.label)}</span>`;
-    },
-
-    activeAnnouncements(){
-      const Store = window.Store;
-      const list = Store ? Store.getAnnouncements() : [];
-      const nowMs = Date.now();
-      return list
-        .filter(a => nowMs >= a.startAt && nowMs <= a.endAt)
-        .sort((a,b)=>a.startAt-b.startAt);
-    },
-
-    toDatetimeLocal(ms){
-      const d = new Date(ms);
-      const pad = n => String(n).padStart(2,'0');
-      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    },
-
-    _sndKey(userId){ return `ums_sound_settings_${userId||'anon'}`; },
-    getSoundSettings(userId){
       try{
-        const raw = localStorage.getItem(UI._sndKey(userId));
-        const obj = raw ? JSON.parse(raw) : null;
-        const out = Object.assign({ enabled: true, volume: 0.65, type: 'beep' }, (obj||{}));
-        out.volume = Math.max(0, Math.min(1, Number(out.volume)));
-        out.enabled = !!out.enabled;
-        out.type = ['beep','chime','pop'].includes(out.type) ? out.type : 'beep';
-        return out;
-      }catch(e){
-        return { enabled: true, volume: 0.65, type: 'beep' };
-      }
-    },
-    saveSoundSettings(userId, settings){
-      const s = Object.assign(UI.getSoundSettings(userId), settings||{});
-      try{ localStorage.setItem(UI._sndKey(userId), JSON.stringify(s)); }catch(e){}
-      return s;
-    },
-    playNotifSound(userId){
-      const s = UI.getSoundSettings(userId);
-      if(!s.enabled || s.volume<=0.001) return;
-
+        const bm = table && table.meta && table.meta.bucketManagers;
+        if(bm && bm[bucket.id] && bm[bucket.id].name) return String(bm[bucket.id].name);
+      }catch(_){ }
       try{
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        if(!Ctx) return;
-        const ctx = UI._audioCtx || (UI._audioCtx = new Ctx());
-        const now = ctx.currentTime;
-        const gain = ctx.createGain();
-        gain.gain.value = 0;
-        gain.connect(ctx.destination);
+        const a = (table.assignments||[]).find(x=>x.bucketId===bucket.id && (x.actorName||''));
+        if(a && a.actorName) return String(a.actorName);
+      }catch(_){ }
+      return '—';
+    }
 
-        const env = (t0, attack, hold, release, peak)=>{
-          gain.gain.cancelScheduledValues(t0);
-          gain.gain.setValueAtTime(0, t0);
-          gain.gain.linearRampToValueAtTime(peak, t0 + attack);
-          gain.gain.setValueAtTime(peak, t0 + attack + hold);
-          gain.gain.linearRampToValueAtTime(0, t0 + attack + hold + release);
-        };
+    const rows = members.map(m=>{
+      const cells = buckets.map(b=>{
+        const v = safeGetCount(table, m.id, b.id);
+        const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
+        return `<td class="${cls} mbx-count-td"><span class="mbx-num" data-zero="${v===0 ? '1' : '0'}">${v}</span></td>`;
+      }).join('');
+      const total = totals.rowTotals[m.id] || 0;
+      const role = (m.roleLabel || _mbxRoleLabel(m.role) || '').trim();
+      const dutyLabel = resolveMemberDutyLabel(m, (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null)));
+      const safeDutyLabel = (dutyLabel && dutyLabel !== '—') ? dutyLabel : 'No duty';
 
-        const osc = ctx.createOscillator();
-        osc.connect(gain);
+      return `<tr class="${interactive ? 'mbx-assignable' : ''}" ${interactive ? `data-assign-member="${m.id}"` : ''}>
+        <td>
+          <div style="font-weight:800; font-size:13px;">${UI.esc(m.name)}</div>
+          <div style="font-size:11px; color:#94a3b8; margin-top:2px;">${UI.esc(role || '—')}</div>
+        </td>
+        <td>
+          <span class="duty-pill" data-mbx-duty-user="${UI.esc(m.id)}" data-tone="${_mbxDutyTone(safeDutyLabel)}">${UI.esc(safeDutyLabel)}</span>
+        </td>
+        ${cells}
+        <td class="mbx-count-td" style="color:#38bdf8;"><span class="mbx-num" data-zero="${total===0 ? '1' : '0'}">${total}</span></td>
+      </tr>`;
+    }).join('');
 
-        if(s.type==='chime'){
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(880, now);
-          env(now, 0.01, 0.08, 0.18, 0.35*s.volume);
-          osc.start(now);
-          osc.stop(now + 0.30);
+    const footCells = buckets.map(b=>{
+      const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
+      const vv = totals.colTotals[b.id]||0;
+      return `<td class="${cls} mbx-count-td"><span class="mbx-num" data-zero="${vv===0 ? '1' : '0'}">${vv}</span></td>`;
+    }).join('');
 
-          const osc2 = ctx.createOscillator();
-          osc2.type='sine';
-          osc2.frequency.setValueAtTime(1175, now + 0.11);
-          osc2.connect(gain);
-          osc2.start(now + 0.11);
-          osc2.stop(now + 0.36);
-        } else if(s.type==='pop'){
-          osc.type='triangle';
-          osc.frequency.setValueAtTime(520, now);
-          env(now, 0.005, 0.03, 0.09, 0.45*s.volume);
-          osc.start(now);
-          osc.stop(now + 0.13);
-        } else {
-          osc.type='square';
-          osc.frequency.setValueAtTime(760, now);
-          env(now, 0.01, 0.05, 0.12, 0.30*s.volume);
-          osc.start(now);
-          osc.stop(now + 0.20);
-          const osc2 = ctx.createOscillator();
-          osc2.type='square';
-          osc2.frequency.setValueAtTime(760, now + 0.22);
-          osc2.connect(gain);
-          env(now + 0.22, 0.01, 0.05, 0.12, 0.26*s.volume);
-          osc2.start(now + 0.22);
-          osc2.stop(now + 0.42);
-        }
-      }catch(e){}
-    },
-
-    bindSoundSettingsModal(user){
-      const u = user || (window.Auth && Auth.getUser && Auth.getUser());
-      if(!u) return;
-      const modal = document.getElementById('soundSettingsModal');
-      if(!modal) return;
-      const enabledEl = document.getElementById('sndEnabled');
-      const typeEl = document.getElementById('sndType');
-      const volEl = document.getElementById('sndVol');
-      const testEl = document.getElementById('sndTest');
-      const saveEl = document.getElementById('sndSave');
-
-      const load = ()=>{
-        const s = UI.getSoundSettings(u.id);
-        if(enabledEl) enabledEl.checked = !!s.enabled;
-        if(typeEl) typeEl.value = s.type;
-        if(volEl) volEl.value = String(Math.round((s.volume||0)*100));
-      };
-
-      if(testEl) testEl.onclick = ()=>{
-        const s = {
-          enabled: enabledEl ? enabledEl.checked : true,
-          type: typeEl ? typeEl.value : 'beep',
-          volume: (volEl ? Number(volEl.value) : 65) / 100
-        };
-        UI.saveSoundSettings(u.id, s);
-        UI.playNotifSound(u.id);
-      };
-      if(saveEl) saveEl.onclick = ()=>{
-        const s = {
-          enabled: enabledEl ? enabledEl.checked : true,
-          type: typeEl ? typeEl.value : 'beep',
-          volume: (volEl ? Number(volEl.value) : 65) / 100
-        };
-        UI.saveSoundSettings(u.id, s);
-        UI.closeModal('soundSettingsModal');
-      };
-
-      (modal.querySelectorAll('[data-close="soundSettingsModal"]')||[]).forEach(b=>b.onclick=()=>UI.closeModal('soundSettingsModal'));
-      modal.addEventListener('transitionend', ()=>{});
-      load();
-      return load;
-    },
-
-    bindDictionaryModal(user){
-      const u = user || (window.Auth && Auth.getUser && Auth.getUser());
-      const modal = document.getElementById('dictionaryModal');
-      if(!modal) return;
-      const searchEl = document.getElementById('dictSearch');
-      const qEl = document.getElementById('dictQuestion');
-      const askEl = document.getElementById('dictAskBtn');
-      const askHint = document.getElementById('dictAskHint');
-      const metaEl = document.getElementById('dictMeta');
-      const contentEl = document.getElementById('dictContent');
-      const footerEl = document.getElementById('dictFooter');
-
-      const keyQ = (u ? `ums_dict_questions_${u.id}` : 'ums_dict_questions');
-      const loadQs = ()=>{
-        try{ const arr = JSON.parse(localStorage.getItem(keyQ)||'[]'); return Array.isArray(arr)?arr:[]; }catch(e){ return []; }
-      };
-      const saveQs = (arr)=>{ localStorage.setItem(keyQ, JSON.stringify(Array.isArray(arr)?arr:[])); };
-
-      const stateSummary = ()=>{
-        const cfg = window.Config || {};
-        const tz = cfg.TZ || 'Asia/Manila';
-        const navIds = (cfg.NAV||[]).map(n=>n.id);
-        const hasMaster = navIds.includes('members') && (cfg.NAV||[]).some(n=>n.id==='members' && (n.children||[]).some(c=>c.id==='master_schedule'));
-        const schedules = Object.keys(cfg.SCHEDULES||{});
-        const week = (UI && UI.manilaTodayISO) ? UI.manilaTodayISO() : '';
-        return {
-          tz, week,
-          user: u ? { name: u.name||u.username, role: u.role, teamId: u.teamId } : null,
-          features: { masterSchedule: !!hasMaster, leaves: ['SICK','EMERGENCY','VACATION','HOLIDAY'], hourGrid: true, dragToPaint: true, sendAck: true, soundSettings: true },
-          counts: { teams: (cfg.TEAMS||[]).length, schedules: schedules.length, nav: navIds.length }
-        };
-      };
-
-      const illusGrid = ()=>`
-        <div class="dict-illus" aria-hidden="true">
-          <svg viewBox="0 0 520 120" width="100%" height="120" preserveAspectRatio="none">
-            <rect x="8" y="18" width="504" height="84" rx="14" ry="14" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.10)"/>
-            ${Array.from({length:9}).map((_,i)=>{
-              const x = 18 + i*56;
-              return `<rect x="${x}" y="32" width="46" height="56" rx="10" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.08)"/>`;
+    return `
+      <table class="mbx-counter-table">
+        <thead>
+          <tr>
+            <th style="min-width:220px;">Agent Profile</th>
+            <th style="min-width:160px;">Live Status</th>
+            ${bucketManagers.map(({ bucket:b, name })=>{
+              const cls = (activeBucketId && b.id===activeBucketId) ? 'active-head-col' : '';
+              return `<th class="${cls}">
+                <div style="font-size:12px; font-weight:900;">${UI.esc(_mbxBucketLabel(b))}</div>
+                <div style="font-size:10px; font-weight:600; text-transform:none; opacity:0.8; margin-top:4px;">Mgr: ${UI.esc(name)}</div>
+              </th>`;
             }).join('')}
-            <rect x="18" y="32" width="102" height="56" rx="10" fill="rgba(110,231,255,.14)" stroke="rgba(110,231,255,.45)"/>
-            <text x="28" y="64" fill="rgba(255,255,255,.85)" font-size="12" font-weight="700">Call</text>
-            <text x="28" y="80" fill="rgba(255,255,255,.55)" font-size="10">1-hour blocks</text>
-          </svg>
-        </div>`;
-
-      const illusLeaves = ()=>`
-        <div class="dict-illus" aria-hidden="true">
-          <svg viewBox="0 0 520 120" width="100%" height="120" preserveAspectRatio="none">
-            <rect x="8" y="18" width="504" height="84" rx="14" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.10)"/>
-            <rect x="18" y="32" width="150" height="56" rx="12" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.10)"/>
-            <text x="30" y="66" fill="rgba(255,255,255,.85)" font-size="12" font-weight="800">SL EL VL HL</text>
-            <rect x="190" y="32" width="312" height="56" rx="12" fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.08)"/>
-            <text x="206" y="58" fill="rgba(255,255,255,.65)" font-size="12" font-weight="700">Click to set leave</text>
-            <text x="206" y="76" fill="rgba(255,255,255,.55)" font-size="11">Click again → confirm removal</text>
-          </svg>
-        </div>`;
-
-      const buildCards = (s)=>{
-        const cards = [];
-        cards.push({ id:'overview', title:'What is MUMS?', keywords:'mums meys user management system overview', body:`MUMS (MUMS User Management System) is a single-file web app for managing users, teams, announcements, and 1-hour grid scheduling (no minutes). It runs locally in the browser using secure localStorage.` });
-        cards.push({ id:'scheduling', title:'Scheduling rules (strict hour blocks)', keywords:'schedule hour grid no minutes drag paint call onqueue back office block lunch', body:`All schedules are strictly aligned to 1-hour blocks. No minutes are allowed on the grid. Drag-to-paint lets Team Leads fill multiple hours quickly while still enforcing 1-hour steps.`, extra: illusGrid() });
-        cards.push({ id:'master', title:'Master Schedule and Rest Days', keywords:'master schedule rest day monthly quarterly frequency', body:`Team Leads/Admins can configure fixed rest days per member in Master Schedule. Rest days automatically gray-out the member in Members Assigning with the notice “ON REST DAY”. Frequency controls how the fixed schedule repeats (monthly / every 2 months / every 3 months / quarterly).` });
-        cards.push({ id:'leaves', title:'Leaves (SL / EL / VL / HL)', keywords:'sick emergency vacation holiday leave sl el vl hl', body:`Leaves are per-member per-date: SL (Sick), EL (Emergency), VL (Vacation), HL (Holiday). Setting a leave grays out the member schedule immediately and auto-scheduling skips them. Clicking an already-active leave prompts for confirmation before removal.`, extra: illusLeaves() });
-        cards.push({ id:'send', title:'Send schedule updates + Acknowledgements', keywords:'send notify popup acknowledge', body:`Team Lead can press “Send” to broadcast schedule updates. Members receive a real-time pop-up with an Acknowledge button. Team Leads can view acknowledgement status (who acknowledged + timestamp).` });
-        cards.push({ id:'sound', title:'Notification sound settings', keywords:'sound beep volume type on off', body:`Users can control notification sound with the Settings icon: On/Off, volume, and sound type (Beep/Chime/Pop). Notifications still show pop-ups even if sound is Off.` });
-        cards.push({ id:'roles', title:'Roles and permissions', keywords:'roles team lead admin super user permissions', body:`Super Admin controls everything. Admin can manage teams and users. Team Lead manages their own team’s members, master schedule, announcements, and scheduling. Members view their own schedules and receive notifications.` });
-        cards.push({ id:'structure', title:'How MUMS is built', keywords:'structure localstorage pages config store ui', body:`MUMS is a lightweight, file-based web app: Config defines teams/schedules/permissions; Store persists data in localStorage (with backups); UI provides timezone-safe Manila helpers and reusable modals; Pages render the screens (Dashboard, Members, Master Schedule, User Management, etc.).` });
-        return cards;
-      };
-
-      const render = ()=>{
-        const s = stateSummary();
-        const cards = buildCards(s);
-        const q = (searchEl && searchEl.value || '').trim().toLowerCase();
-        const qs = loadQs();
-
-        metaEl && (metaEl.innerHTML = `
-          <div class="dict-grid">
-            <div class="dict-card">
-              <h3>Current state</h3>
-              <div class="small">
-                <div><b>Time zone:</b> ${UI.esc(s.tz)} (Manila)</div>
-                <div><b>Today (Manila ISO):</b> ${UI.esc(s.week)}</div>
-                ${s.user ? `<div><b>User:</b> ${UI.esc(s.user.name)} • ${UI.esc(s.user.role)} • Team ${UI.esc(s.user.teamId||'—')}</div>` : ''}
-              </div>
-            </div>
-            <div class="dict-card">
-              <h3>Enabled capabilities</h3>
-              <div class="small">
-                <div>✅ Strict 1-hour scheduling grid</div>
-                <div>✅ Drag-to-paint assignment</div>
-                <div>✅ Master Schedule + Rest Day sync</div>
-                <div>✅ Leaves: SL, EL, VL, HL</div>
-                <div>✅ Send + acknowledgements</div>
-                <div>✅ Notification sound settings</div>
-              </div>
-            </div>
-          </div>
-        `);
-
-        const filtered = !q ? cards : cards.filter(c=>{
-          const hay = (c.title+' '+c.keywords+' '+c.body).toLowerCase();
-          return hay.includes(q);
-        });
-
-        if(contentEl){
-          contentEl.innerHTML = filtered.map(c=>{
-            return `
-              <div class="dict-card" data-id="${UI.esc(c.id)}">
-                <h3>${UI.esc(c.title)}</h3>
-                <div class="small">${UI.esc(c.body)}</div>
-                ${c.extra || ''}
-              </div>
-            `;
-          }).join('') || `<div class="dict-card"><h3>No match</h3><div class="small">Try a different keyword (e.g., rest day, leave, send, auto schedule).</div></div>`;
-        }
-
-        if(footerEl){
-          footerEl.textContent = `MUMS Dictionary • Teams: ${s.counts.teams} • Schedules: ${s.counts.schedules} • Notes saved: ${qs.length}`;
-        }
-
-        if(askHint){
-          if(qs.length){
-            askHint.innerHTML = `Saved questions (local):<br>${qs.slice(0,5).map(x=>`• ${UI.esc(x.q)}`).join('<br>')}${qs.length>5?'<br>…':''}`;
-          } else {
-            askHint.textContent = 'Saved questions appear to you as notes (local only).';
-          }
-        }
-      };
-
-      if(searchEl){ searchEl.oninput = ()=>render(); }
-      if(askEl){
-        askEl.onclick = ()=>{
-          const q = (qEl && qEl.value || '').trim();
-          if(!q) return;
-          const arr = loadQs();
-          arr.unshift({ q, at: Date.now() });
-          saveQs(arr.slice(0,50));
-          if(qEl) qEl.value = '';
-          render();
-        };
-      }
-
-      (modal.querySelectorAll('[data-close="dictionaryModal"]')||[]).forEach(b=>b.onclick=()=>UI.closeModal('dictionaryModal'));
-
-      render();
-      return render;
-    },
-
-    bindReleaseNotesModal(user){
-      const u = user || (window.Auth && Auth.getUser && Auth.getUser());
-      const modal = document.getElementById('releaseNotesModal');
-      if(!modal || !window.Store) return;
-
-      const searchEl = document.getElementById('rnSearch');
-      const filterEl = document.getElementById('rnFilter');
-      const metaEl = document.getElementById('rnMeta');
-      const listEl = document.getElementById('rnList');
-
-      const adminWrap = document.getElementById('rnAdmin');
-      const verEl = document.getElementById('rnVer');
-      const tagsEl = document.getElementById('rnTags');
-      const titleEl = document.getElementById('rnTitle');
-      const bodyEl = document.getElementById('rnBody');
-      const addEl = document.getElementById('rnAdd');
-
-      const bodyPreviewEl = document.getElementById('rnBodyPreview');
-      const importEl = document.getElementById('rnImportFile');
-      const importModeEl = document.getElementById('rnImportMode');
-      const importBtn = document.getElementById('rnImportBtn');
-      const exportBtn = document.getElementById('rnExportBtn');
-      const clearBtn = document.getElementById('rnClearBtn');
-      const toolbar = document.getElementById('rnToolbar');
-
-      const canManage = !!(u && window.Config && Config.can && Config.can(u,'manage_release_notes'));
-      const canDelete = canManage;
-      if(adminWrap) adminWrap.style.display = canManage ? '' : 'none';
-
-      const fmt = (ms)=>{
-        try{
-          const d = new Date(Number(ms||0)||Date.now());
-          return d.toLocaleString('en-CA', { year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' });
-        }catch(_){ return ''; }
-      };
-
-      const normalizeTags = (s)=>{
-        return String(s||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean).slice(0,8);
-      };
-
-      const resolveDefaultVersion = ()=>{
-        try{
-          const el = document.querySelector('.brand-build');
-          return el ? String(el.textContent||'').replace('Build:','').trim() : '';
-        }catch(_){ return ''; }
-      };
-
-      const render = ()=>{
-        const q = String(searchEl && searchEl.value || '').trim().toLowerCase();
-        const f = String(filterEl && filterEl.value || 'all').trim().toLowerCase();
-        const all = (Store.getReleaseNotes ? Store.getReleaseNotes() : []);
-
-        let filtered = all;
-        if(f && f!=='all'){ filtered = filtered.filter(n => (n.tags||[]).map(t=>String(t).toLowerCase()).includes(f)); }
-        if(q){
-          filtered = filtered.filter(n=>{
-            const hay = (String(n.version||'') + ' ' + String(n.title||'') + ' ' + String(n.body||'') + ' ' + String((n.tags||[]).join(' '))).toLowerCase();
-            return hay.includes(q);
-          });
-        }
-
-        if(metaEl){ metaEl.textContent = `${filtered.length} of ${all.length} note(s) shown`; }
-
-        if(listEl){
-          listEl.innerHTML = filtered.map(n=>{
-            const tags = (n.tags||[]).map(t=>`<span class="badge" style="margin-right:6px">${UI.esc(t)}</span>`).join('');
-            return `
-              <div class="card pad rn-item" style="margin:10px 0" data-rnid="${UI.esc(n.id||'')}">
-                <div class="row" style="justify-content:space-between;gap:10px;align-items:flex-start">
-                  <div style="min-width:0">
-                    <div class="h3" style="margin:0">${UI.esc(n.title||'Update')}</div>
-                    <div class="small muted" style="margin-top:4px">${UI.esc(n.version||'')} • ${UI.esc(fmt(n.date))}${n.author?(' • '+UI.esc(n.author)):''}</div>
-                  </div>
-                  ${canDelete ? `<button class="btn danger ghost rn-del" type="button" data-del="${UI.esc(n.id||'')}">Delete</button>` : ''}
-                </div>
-                <div class="rn-body" style="margin-top:10px">${renderMarkdownSafe(n.body||'')}</div>
-                <div style="margin-top:10px">${tags}</div>
-              </div>
-            `;
-          }).join('') || `<div class="card pad"><div class="small muted">No release notes match your filter.</div></div>`;
-        }
-      };
-
-      function renderMarkdownSafe(md){
-        const esc = UI.esc(String(md||''));
-        let out = esc.replace(/```([\s\S]*?)```/g, (m,g)=>`<pre class="rn-pre"><code>${g}</code></pre>`);
-        out = out.replace(/^###\s(.+)$/gm, '<div class="rn-h3">$1</div>');
-        out = out.replace(/^##\s(.+)$/gm, '<div class="rn-h2">$1</div>');
-        out = out.replace(/^#\s(.+)$/gm, '<div class="rn-h1">$1</div>');
-        out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-        out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-        out = out.replace(/`([^`]+)`/g, '<code class="rn-code">$1</code>');
-        out = out.replace(/^(?:\s*[-*]\s.+\n?)+/gm, (block)=>{
-          const items = block.trim().split(/\n/).map(l=>l.replace(/^\s*[-*]\s+/,'').trim()).filter(Boolean);
-          if(!items.length) return block;
-          return `<ul class="rn-ul">${items.map(i=>`<li>${i}</li>`).join('')}</ul>`;
-        });
-        out = out.replace(/^(?:\s*\d+\.\s.+\n?)+/gm, (block)=>{
-          const items = block.trim().split(/\n/).map(l=>l.replace(/^\s*\d+\.\s+/,'').trim()).filter(Boolean);
-          if(!items.length) return block;
-          return `<ol class="rn-ol">${items.map(i=>`<li>${i}</li>`).join('')}</ol>`;
-        });
-        out = out.replace(/\n/g, '<br/>');
-        return `<div class="rn-md">${out}</div>`;
-      }
-
-      if(searchEl) searchEl.oninput = ()=>render();
-      if(filterEl) filterEl.onchange = ()=>render();
-
-      if(toolbar && bodyEl){
-        toolbar.querySelectorAll('[data-md]').forEach(btn=>{
-          btn.onclick = ()=>{
-            try{
-              const t = String(btn.dataset.md||'');
-              const ta = bodyEl;
-              const start = ta.selectionStart || 0;
-              const end = ta.selectionEnd || 0;
-              const sel = String(ta.value||'').slice(start,end);
-              const before = String(ta.value||'').slice(0,start);
-              const after = String(ta.value||'').slice(end);
-
-              let insert = t;
-              if(t.includes('{text}')) insert = t.replace('{text}', sel||'text');
-              ta.value = before + insert + after;
-              const pos = before.length + insert.length;
-              ta.focus();
-              ta.selectionStart = ta.selectionEnd = pos;
-              if(bodyPreviewEl) bodyPreviewEl.innerHTML = renderMarkdownSafe(ta.value||'');
-            }catch(_){ }
-          };
-        });
-      }
-
-      if(bodyEl && bodyPreviewEl){
-        bodyPreviewEl.innerHTML = renderMarkdownSafe(bodyEl.value||'');
-        bodyEl.oninput = ()=>{ bodyPreviewEl.innerHTML = renderMarkdownSafe(bodyEl.value||''); };
-      }
-
-      if(addEl && canManage){
-        addEl.onclick = ()=>{
-          const ver = String(verEl && verEl.value || '').trim();
-          const ttl = String(titleEl && titleEl.value || '').trim();
-          const body = String(bodyEl && bodyEl.value || '').trim();
-          const tags = normalizeTags(tagsEl && tagsEl.value || '');
-
-          if(!ttl || !body){ alert('Please enter a Title and Details.'); return; }
-          Store.addReleaseNote({
-            version: ver || resolveDefaultVersion(),
-            date: Date.now(), title: ttl, body: body, author: u ? (u.name||u.username||u.id) : '', tags: tags.length ? tags : ['feature'],
-          });
-          if(titleEl) titleEl.value = '';
-          if(bodyEl) bodyEl.value = '';
-          if(bodyPreviewEl) bodyPreviewEl.innerHTML = renderMarkdownSafe('');
-          if(tagsEl) tagsEl.value = '';
-          if(verEl) verEl.value = '';
-          render();
-        };
-      }
-
-      if(importBtn && canManage){
-        importBtn.onclick = async()=>{
-          const f = importEl && importEl.files && importEl.files[0];
-          if(!f){ alert('Please choose a file to import.'); return; }
-          const mode = String(importModeEl && importModeEl.value || 'merge');
-          const name = String(f.name||'').toLowerCase();
-          const text = await (f.text ? f.text() : new Promise((res,rej)=>{
-            const r = new FileReader(); r.onload = ()=>res(String(r.result||'')); r.onerror = rej; r.readAsText(f);
-          }));
-          try{
-            if(name.endsWith('.json')){
-              const obj = JSON.parse(text);
-              Store.importReleaseNotes(obj, mode);
-            } else {
-              const lines = String(text||'').replace(/\r/g,'').split('\n');
-              const first = String(lines[0]||'').trim();
-              const body = lines.slice(1).join('\n').trim();
-              Store.addReleaseNote({
-                version: resolveDefaultVersion(), date: Date.now(), title: first || 'Imported note', body: body || String(text||''),
-                author: u ? (u.name||u.username||u.id) : '', tags: ['import']
-              });
-            }
-            if(importEl) importEl.value = '';
-            render();
-          }catch(err){ console.error(err); alert('Import failed. Please verify the file format.'); }
-        };
-      }
-
-      if(exportBtn && canManage){
-        exportBtn.onclick = ()=>{
-          try{
-            const data = Store.getReleaseNotes ? Store.getReleaseNotes() : [];
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            const ts = new Date().toISOString().slice(0,10);
-            a.href = url;
-            a.download = `mums_release_notes_${ts}.json`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(_){ } }, 1500);
-          }catch(err){ console.error(err); alert('Export failed.'); }
-        };
-      }
-
-      if(clearBtn && canManage){
-        clearBtn.onclick = async ()=>{
-          const ok1 = await UI.confirm({ title:'Delete All Release Notes', message:'This will delete ALL release notes in this browser. A backup is retained, but you should export first. Continue?', okText:'Continue', cancelText:'Cancel', danger:true });
-          if(!ok1) return;
-          const phrase = prompt('Type DELETE ALL to confirm:');
-          if(String(phrase||'').trim().toUpperCase() !== 'DELETE ALL') return;
-          try{ Store.clearReleaseNotes(); }catch(_){ }
-          render();
-        };
-      }
-
-      if(listEl && canDelete){
-        listEl.onclick = async (e)=>{
-          const btn = e && e.target ? e.target.closest('[data-del]') : null;
-          if(!btn) return;
-          const id = String(btn.dataset.del||'').trim();
-          if(!id) return;
-          const ok = await UI.confirm({ title:'Delete Release Note', message:'Delete this release note?', okText:'Delete', danger:true });
-          if(!ok) return;
-          try{ Store.deleteReleaseNote(id); }catch(_){ }
-          render();
-        };
-      }
-
-      (modal.querySelectorAll('[data-close="releaseNotesModal"]')||[]).forEach(b=>b.onclick=()=>UI.closeModal('releaseNotesModal'));
-
-      render();
-      return render;
-    },
-
-    startScheduleNotifListener(user){
-      if(!user || !window.Store) return;
-
-      if(!document.getElementById('schedNotifModal')){
-        const m = document.createElement('div');
-        m.className = 'modal'; 
-        m.id = 'schedNotifModal';
-        m.style.zIndex = '99999';
-        m.style.background = 'rgba(2,6,23,0.85)';
-        m.style.backdropFilter = 'blur(8px)';
-        m.innerHTML = `
-              <div class="task-modal-glass notification-popout" style="width:min(900px, 100vw); background:linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98)); border:1px solid rgba(56,189,248,0.3); border-radius:16px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.7); display:flex; flex-direction:column; max-height:90vh; overflow:hidden;">
-                <div class="head modal-header-glass" style="padding:20px 24px; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.6);">
-                  <div>
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="background:#0ea5e9; color:#fff; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px;">🔔</span>
-                        <div class="announce-title" id="schedNotifTitle" style="font-size:18px; font-weight:800; color:#f8fafc; letter-spacing:-0.5px;">Schedule Notifications</div>
-                    </div>
-                    <div class="small" id="schedNotifMeta" style="color:#94a3b8; margin-top:4px; font-size:13px;">—</div>
-                  </div>
-                  <div style="display:flex; align-items:center; gap:12px;">
-                      <div class="notif-member" id="schedNotifMember" style="background:rgba(255,255,255,0.05); padding:6px 12px; border-radius:999px; font-size:12px; font-weight:700; color:#cbd5e1;">—</div>
-                      <div class="notif-count" id="schedNotifCount" style="background:#ef4444; color:#fff; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:900;"></div>
-                      <button class="btn-glass btn-glass-ghost" onclick="window.UI.closeModal('schedNotifModal')" style="padding:6px 12px; border:1px solid rgba(255,255,255,0.1); color:#cbd5e1; background:transparent; border-radius:8px; cursor:pointer;">✕</button>
-                  </div>
-                </div>
-                <div class="body modal-body-scroll" id="schedNotifBody" style="padding:24px; overflow-y:auto; overflow-x:hidden; flex:1; display:flex; flex-direction:column; gap:16px;"></div>
-              </div>
-        `;
-        document.body.appendChild(m);
-      }
-
-      const channel = ('BroadcastChannel' in window) ? new BroadcastChannel('ums_schedule_updates') : null;
-
-      const TASK_PALETTE = {
-        'mailbox manager': '#4aa3ff',
-        'back office': '#ffa21a',
-        'call available': '#2ecc71',
-        'lunch': '#22d3ee',
-        'block': '#ff4d4f',
-      };
-      const getTeamTasks = ()=>{
-        try{
-          if(window.Store && Store.getTeamTasks && user.teamId != null) return Store.getTeamTasks(user.teamId) || [];
-        }catch(_){ }
-        return [];
-      };
-      const taskColorByLabel = (label, taskId)=>{
-        const tasks = getTeamTasks();
-        const id = String(taskId||'').trim();
-        const lbl = String(label||'').trim();
-        const hit = tasks.find(t=>{
-          if(!t) return false;
-          const tid = String(t.id||t.taskId||'').trim();
-          const tlabel = String(t.label||t.name||'').trim();
-          return (id && tid && tid === id) || (lbl && tlabel && tlabel.toLowerCase() === lbl.toLowerCase());
-        });
-        if(hit && hit.color) return hit.color;
-        const s = String(label||'').trim().toLowerCase();
-        if(TASK_PALETTE[s]) return TASK_PALETTE[s];
-        if(s.includes('mailbox')) return TASK_PALETTE['mailbox manager'];
-        if(s.includes('back')) return TASK_PALETTE['back office'];
-        if(s.includes('call')) return TASK_PALETTE['call available'];
-        if(s.includes('lunch')) return TASK_PALETTE['lunch'];
-        if(s.includes('block')) return TASK_PALETTE['block'];
-        return '';
-      };
-
-      const hexToRgb = (hex)=>{
-        const m = String(hex||'').trim().match(/^#?([0-9a-f]{6})$/i);
-        if(!m) return null;
-        const n = parseInt(m[1],16);
-        return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
-      };
-      const esc = UI.esc || ((x)=>String(x||'').replace(/[&<>"']/g,(c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])));
-
-      const renderTaskSummary = (summary)=>{
-        if(!summary || !summary.items) return '';
-        const dateLabel = summary.dateLabel || summary.iso || '';
-        const rows = (summary.items||[]).map(item=>{
-          const label = item.label || item.role || '';
-          const c = taskColorByLabel(label, item.role);
-          return `
-            <div class="notif-task-row">
-              <span class="notif-task-bullet" style="--task-color:${esc(c)}"></span>
-              <span class="notif-task-time">${esc(item.start||'')} to ${esc(item.end||'')}</span>
-              <span class="notif-task-eq">=</span>
-              <span class="notif-task-label">${esc(label)}</span>
-            </div>
-          `;
-        }).join('');
-        const empty = !rows ? '<div class="small muted">No assignments for this date.</div>' : rows;
-        return `
-          <div class="notif-summary">
-            <div class="notif-date">Date: ${esc(dateLabel || '—')}</div>
-            ${empty}
-          </div>
-        `;
-      };
-
-      const renderNotifBody = (msg, summary)=>{
-        const text = String(msg||'').trim();
-        const m = text.match(/^Schedule Updated:\s*(.+?)\s+(added|removed|updated)\s+on\s+(.+?)\.?\s*$/i);
-        if(!m){
-          const fallback = `<div class="notif-intro">${esc(text || 'Your schedule has been updated.')}</div>`;
-          return `${fallback}${renderTaskSummary(summary)}`;
-        }
-        const label = m[1];
-        const action = m[2];
-        const date = m[3];
-        const c = taskColorByLabel(label);
-        const rgb = hexToRgb(c);
-        const bg = rgb ? `rgba(${rgb.r},${rgb.g},${rgb.b},0.14)` : 'rgba(255,255,255,.06)';
-        const border = rgb ? `rgba(${rgb.r},${rgb.g},${rgb.b},0.35)` : 'rgba(255,255,255,.14)';
-        const taskText = '#081018';
-        const headline = `
-          <div class="notif-intro">
-            <span class="task-label" style="--task-color:${esc(c)};--task-bg:${esc(bg)};--task-border:${esc(border)};--task-text:${esc(taskText)}">
-              <span class="task-color" style="background:${esc(c)}"></span>
-              ${esc(label)}
-            </span>
-            <span>${esc(action)} on ${esc(date)}.</span>
-          </div>
-        `;
-        return `${headline}${renderTaskSummary(summary)}`;
-      };
-      
-      const formatAssignTimer = (ts)=>{
-        const assignedAt = Number(ts)||0;
-        if(!assignedAt) return '00:00:00';
-        const sec = Math.floor(Math.max(0, Date.now() - assignedAt) / 1000);
-        const h = String(Math.floor(sec / 3600)).padStart(2, '0');
-        const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
-        const s = String(sec % 60).padStart(2, '0');
-        return `${h}:${m}:${s}`;
-      };
-      const updateTimers = ()=>{
-        document.querySelectorAll('[data-assign-timer]').forEach((el)=>{
-          const start = parseInt(el.getAttribute('data-assign-timer'));
-          if(start) el.textContent = formatAssignTimer(start);
-        });
-      };
-      const formatAssignTimestamp = (ts)=>{
-        const ms = Number(ts) || 0;
-        if(!ms) return 'N/A';
-        try{
-          const d = new Date(ms);
-          const mm = String(d.getMonth() + 1).padStart(2, '0');
-          const dd = String(d.getDate()).padStart(2, '0');
-          const yyyy = String(d.getFullYear());
-          const hour24 = d.getHours();
-          const mins = String(d.getMinutes()).padStart(2, '0');
-          const hour12 = String(hour24 % 12 || 12).padStart(2, '0');
-          const meridiem = hour24 >= 12 ? 'PM' : 'AM';
-          return `${mm}/${dd}/${yyyy} ${hour12}:${mins} ${meridiem}`;
-        }catch(_){
-          return 'N/A';
-        }
-      };
-      const truncate = (v, max=50)=>{
-        const s = String(v || '').trim();
-        if(!s) return '';
-        if(s.length <= max) return s;
-        return `${s.slice(0, max-1)}…`;
-      };
-      const renderAssignedBy = (n)=>{
-        const name = String((n && n.fromName) || 'Mailbox Manager').trim() || 'Mailbox Manager';
-        const avatar = String((n && (n.fromAvatar || n.fromAvatarUrl || n.avatarUrl)) || '').trim();
-        if(avatar){
-          return `
-            <div class="mbx-assign-by-wrap">
-              <span class="mini-avatar"><img src="${esc(avatar)}" alt="${esc(name)} avatar" loading="lazy"/></span>
-              <span class="mbx-assign-by-name">${esc(name)}</span>
-            </div>
-          `;
-        }
-        return `<span class="mbx-assign-by-name">${esc(name)}</span>`;
-      };
-      const mailboxAssignmentIdFromNotif = (n)=>{
-        try{
-          const explicit = String((n && n.assignmentId) || '').trim();
-          if(explicit) return explicit;
-          const id = String((n && n.id) || '').trim();
-          if(id.startsWith('mbx_assign_')) return id.slice('mbx_assign_'.length);
-        }catch(_){ }
-        return '';
-      };
-      const confirmMailboxAssignmentFromNotif = async (n)=>{
-        try{
-          if(!n || String(n.type||'') !== 'MAILBOX_ASSIGN') return { ok:true, skipped:true };
-          const shiftKey = String((n && n.shiftKey) || '').trim();
-          const assignmentId = mailboxAssignmentIdFromNotif(n);
-          if(!shiftKey || !assignmentId) return { ok:false, message:'Missing mailbox assignment reference.' };
-
-          const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
-          if(!jwt) return { ok:false, message:'Session expired. Please log in again.' };
-
-          const res = await fetch('/api/mailbox/confirm', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${jwt}`
-            },
-            body: JSON.stringify({ shiftKey, assignmentId })
-          });
-          const data = await res.json().catch(()=>null);
-          if(!res.ok || !data || !data.ok){
-            const msg = (data && (data.message || data.error)) ? String(data.message || data.error) : `Failed (${res.status})`;
-            return { ok:false, message: msg };
-          }
-          try{
-            if(data.table && window.Store && Store.saveMailboxTable){
-              Store.saveMailboxTable(shiftKey, data.table, { fromRealtime:true });
-            }
-          }catch(_){ }
-          return { ok:true };
-        }catch(e){
-          return { ok:false, message: String(e && (e.message || e) || 'Confirm failed') };
-        }
-      };
-      
-      const renderMailboxAssignTable = (list)=>{
-        const rows = (Array.isArray(list) ? list : []).map((n, index)=>{
-          const assignedAt = Number((n && (n.assignedAt || n.ts)) || 0);
-          const ts = formatAssignTimestamp(assignedAt);
-          const caseNo = String((n && (n.caseNo || n.ticketNumber || n.id)) || '').trim() || 'N/A';
-          const desc = String((n && n.desc) || '').trim();
-          const descDisplay = truncate(desc, 50) || 'N/A';
-          const timer = formatAssignTimer(assignedAt);
-          return `
-            <tr class="mbx-assign-row-item" data-ack-row="${esc(n.id)}" style="transition:background 0.2s;">
-              <td style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); color:#64748b; font-weight:700;">${index + 1}</td>
-              <td class="mbx-assign-ts" style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); color:#cbd5e1; font-size:12px;">${esc(ts)}</td>
-              <td style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02);"><strong class="mbx-assign-case-cell" style="color:#38bdf8; font-size:14px; letter-spacing:0.5px;">${esc(caseNo)}</strong></td>
-              <td title="${esc(desc || 'N/A')}" style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); color:#e2e8f0; font-size:13px; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(descDisplay)}</td>
-              <td style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); font-size:13px; font-weight:600; color:#f8fafc;">${renderAssignedBy(n)}</td>
-              <td class="mbx-assign-live" data-assign-timer="${esc(assignedAt)}" style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); color:#fcd34d; font-family:monospace; font-weight:800;">${esc(timer)}</td>
-              <td style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); text-align:right;">
-                <button class="btn-glass dashx-ack mbx-accept-btn" data-ack="${esc(n.id)}" type="button" aria-label="Accept case assignment" style="background:linear-gradient(145deg, #10b981, #059669); color:#fff; border:1px solid rgba(52,211,153,0.4); padding:8px 16px; border-radius:8px; font-weight:800; box-shadow:0 4px 12px rgba(16,185,129,0.3); cursor:pointer;">
-                  <span class="dashx-spin" aria-hidden="true" style="display:none;">⏳ </span>
-                  <span class="dashx-acklbl">ACCEPT ✓</span>
-                </button>
-              </td>
-            </tr>
-          `;
-        }).join('');
-        
-        if(!rows){
-          return '<div class="muted">No pending cases.</div>';
-        }
-        
-        return `
-          <style>
-            .mbx-assign-table tbody tr:hover { background: rgba(56,189,248,0.05); }
-            .mbx-accept-btn { white-space: nowrap; flex-shrink: 0; }
-            .mbx-accept-btn:hover { background: linear-gradient(145deg, #34d399, #10b981) !important; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(16,185,129,0.4) !important; }
-          </style>
-          <div class="mbx-assign-table-wrap glass-table-container" role="region" aria-label="Pending case assignments" style="border:1px solid rgba(255,255,255,0.06); border-radius:10px; overflow-x:auto; background:rgba(2,6,23,0.5);">
-            <table class="mbx-assign-table" role="table" style="width:100%; min-width:800px; border-collapse:collapse;">
-              <thead>
-                <tr>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:5;">No.</th>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:5;">Timestamp</th>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:5;">Case #</th>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:5;">Description</th>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:5;">Assigned By</th>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:5;">Elapsed</th>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:right; position:sticky; top:0; z-index:5;">Action</th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>
-        `;
-      };
-      
-      const shownKeys = new Set();
-      let lastBeepedId = null;
-      const pendingKeyFor = (n)=>{
-        if(!n) return '';
-        if(String(n.type||'') === 'MAILBOX_ASSIGN') return `id:${String(n.id||'')}`;
-        if(n.snapshotDigest) return `digest:${String(n.snapshotDigest)}`;
-        return `id:${String(n.id||'')}`;
-      };
-      let lastPending = [];
-      const ackNotif = (n)=>{
-        if(!n || !n.id) return;
-        Store.ackNotif(n.id, user.id);
-        try{ channel && channel.postMessage({ type:'ack', notifId:n.id, userId:user.id }); }catch(e){}
-      };
-      const renderPendingNotifs = (list)=>{
-        if(!list.length){
-          return '<div class="muted">No pending cases.</div>';
-        }
-        const allMailbox = list.every(n=>String(n && n.type || '') === 'MAILBOX_ASSIGN');
-        if(allMailbox) return renderMailboxAssignTable(list);
-        return list.map(n=>{
-          try{
-            if(String(n.type||'') === 'MAILBOX_ASSIGN'){
-              return `
-                <div class="notif-item mailbox-assign">
-                  <div class="notif-item-head">
-                    <button class="btn dashx-ack" data-ack="${esc(n.id)}" type="button" aria-label="Acknowledge case assignment notification">
-                      <span class="dashx-spin" aria-hidden="true"></span>
-                      <span class="dashx-acklbl">Acknowledge</span>
-                    </button>
-                  </div>
-                  <div class="notif-item-body">${renderMailboxAssign(n)}</div>
-                </div>
-              `;
-            }
-            const perUser = (n.userMessages && n.userMessages[user.id]) ? n.userMessages[user.id] : '';
-            const bodyMsg = perUser || n.body || 'Your schedule has been updated.';
-            const summary = (n.userSummaries && n.userSummaries[user.id]) ? n.userSummaries[user.id] : null;
-            const isTaskDist = String(n.type||'') === 'TASK_DISTRIBUTION';
-            const distId = String(n.distribution_id || '');
-            const distTitle = String(n.distribution_title || n.title || 'New Task Distribution');
-            const taskDistBody = isTaskDist
-              ? `
-                <div class="notif-intro">${esc(distTitle)}</div>
-                <div class="small">${esc(summary || bodyMsg || 'N/A')}</div>
-              `
-              : '';
-            const meta = isTaskDist
-              ? `From: ${n.fromName||'Team Lead'} • ${new Date(n.ts||Date.now()).toLocaleString()} • Tasks`
-              : (String(n.type||'')==='MAILBOX_ASSIGN')
-                ? `From: ${n.fromName||'Mailbox Manager'} • ${new Date(n.ts||Date.now()).toLocaleString()} • Mailbox`
-                : `From: ${n.fromName||'Team Lead'} • Week of ${n.weekStartISO||'—'}`;
-            return `
-              <div class="notif-item">
-                <div class="notif-item-head">
-                  <div>
-                    <div class="notif-item-title">${esc(isTaskDist ? distTitle : (n.title || 'Schedule Updated'))}</div>
-                    <div class="small muted">${esc(meta)}</div>
-                  </div>
-                  <div class="row" style="gap:8px">
-                    ${isTaskDist ? `<a class="btn" href="#my_task?dist=${encodeURIComponent(distId)}" data-view-tasks="${esc(n.id)}" type="button" style="font-weight:900">View All Details</a>` : ''}
-                    <button class="btn dashx-ack" data-ack="${esc(n.id)}" type="button" aria-label="Acknowledge schedule notification">
-                      <span class="dashx-spin" aria-hidden="true"></span>
-                      <span class="dashx-acklbl">Acknowledge</span>
-                    </button>
-                  </div>
-                </div>
-                <div class="notif-item-body">${isTaskDist ? taskDistBody : renderNotifBody(bodyMsg, summary)}</div>
-              </div>
-            `;
-          }catch(err){
-            try{ console.error('renderPendingNotifs: render failed', err, n); }catch(_){ }
-            return `
-              <div class="notif-item">
-                <div class="notif-item-head">
-                  <div>
-                    <div class="notif-item-title">${esc((n && (n.title||n.type)) ? String(n.title||n.type) : 'Notification')}</div>
-                    <div class="small muted">${esc((n && n.ts) ? new Date(n.ts).toLocaleString() : '')}</div>
-                  </div>
-                </div>
-                <div class="notif-item-body"><div class="muted">N/A</div></div>
-              </div>
-            `;
-          }
-        }).join('');
-      };
-      const ping = ()=>{
-        const list = Store.getNotifs();
-        const pendingRaw = list.filter(x=>x && Array.isArray(x.recipients) && x.recipients.includes(user.id) && !(x.acks && x.acks[user.id]));
-        const pendingSorted = pendingRaw.sort((a,b)=> (b.ts||0) - (a.ts||0));
-        const deduped = [];
-        const seen = new Set();
-        for(const n of pendingSorted){
-          const key = pendingKeyFor(n);
-          if(!key || seen.has(key)) continue;
-          seen.add(key);
-          deduped.push(n);
-        }
-        lastPending = deduped;
-
-        const modal = document.getElementById('schedNotifModal');
-        const isOpen = !!(modal && modal.classList.contains('open'));
-        if(!deduped.length){
-          if(isOpen) UI.closeModal('schedNotifModal');
-          return;
-        }
-
-        const latest = deduped[0];
-        if(latest && latest.id && latest.id !== lastBeepedId){
-          lastBeepedId = latest.id;
-          UI.playNotifSound(user.id);
-        }
-
-        const allMailbox = deduped.length && deduped.every(n=>String(n.type||'')==='MAILBOX_ASSIGN');
-        const compactMailboxMode = false;
-        const mailboxTableMode = !!allMailbox;
-        const headerLabel = allMailbox
-          ? `Case Assigned Notification${deduped.length===1?'':'s'}`
-          : 'Schedule Notifications';
-        const metaLabel = allMailbox
-          ? `You have ${deduped.length} pending case assignment${deduped.length===1?'':'s'}.`
-          : `You have ${deduped.length} pending schedule update${deduped.length===1?'':'s'}.`;
-        UI.el('#schedNotifMember').textContent = user.name || user.username || 'Member';
-        UI.el('#schedNotifTitle').textContent = headerLabel;
-        UI.el('#schedNotifMeta').textContent = metaLabel;
-        const countEl = UI.el('#schedNotifCount');
-        if(countEl) countEl.textContent = String(deduped.length);
-        const visibleList = deduped;
-        UI.el('#schedNotifBody').innerHTML = renderPendingNotifs(visibleList);
-
-        const panelEl = modal ? modal.querySelector('.notification-popout') : null;
-        if(panelEl){
-          panelEl.classList.toggle('mailbox-compact-mode', compactMailboxMode);
-          panelEl.classList.toggle('mailbox-table-mode', mailboxTableMode);
-          if(compactMailboxMode || mailboxTableMode) panelEl.scrollTop = 0;
-        }
-
-        if(modal && !modal._ackBound){
-          modal._ackBound = true;
-          modal.addEventListener('click', async (e)=>{
-            const viewBtn = e && e.target ? e.target.closest('[data-view-tasks]') : null;
-            if(viewBtn){
-              try{ e.preventDefault(); }catch(_){ }
-              const id = String(viewBtn.getAttribute('data-view-tasks')||'');
-              const n = lastPending.find(x=>String(x.id||'')===id);
-              const distId = n ? String(n.distribution_id || '') : '';
-
-              if(!distId){
-                try{ UI.toast('Missing distribution reference in this notification.', 'warn'); }catch(_){ }
-                return;
-              }
-
-              const path = String(window.location.pathname || '').replace(/\/+$/,'');
-              const isMyTask = path === '/my_task' || path.endsWith('/my_task');
-              if(isMyTask){
-                try{
-                  window.dispatchEvent(new CustomEvent('mums:open_task_distribution', { detail: { distribution_id: distId } }));
-                  UI.closeModal('schedNotifModal');
-                }catch(_){ }
-              }else{
-                try{ window.location.href = `/my_task?dist=${encodeURIComponent(distId)}`; }catch(_){ window.location.href = '/my_task'; }
-              }
-              return;
-            }
-
-            const btn = e && e.target ? e.target.closest('[data-ack]') : null;
-            if(!btn) return;
-            const id = String(btn.getAttribute('data-ack')||'');
-            if(!id) return;
-            const row = btn.closest('[data-ack-row]');
-            try{
-              if(btn.dataset.busy==='1') return;
-              btn.dataset.busy='1';
-              btn.disabled = true;
-              const spin = btn.querySelector('.dashx-spin');
-              const lbl = btn.querySelector('.dashx-acklbl');
-              if(spin) { spin.style.display = 'inline-block'; spin.classList.add('on'); }
-              if(lbl) lbl.textContent = 'ACCEPTING…';
-            }catch(_){ }
-            const n = lastPending.find(x=>String(x.id||'')===id);
-            try{
-              const confirmResult = await confirmMailboxAssignmentFromNotif(n);
-              if(confirmResult && !confirmResult.ok){
-                UI.toast(confirmResult.message || 'Unable to accept case assignment.', 'warn');
-                try{
-                  btn.dataset.busy='0';
-                  btn.disabled = false;
-                  const spin = btn.querySelector('.dashx-spin');
-                  const lbl = btn.querySelector('.dashx-acklbl');
-                  if(spin) { spin.style.display = 'none'; spin.classList.remove('on'); }
-                  if(lbl) lbl.textContent = 'ACCEPT ✓';
-                }catch(_){ }
-                return;
-              }
-              ackNotif(n);
-              if(row){
-                row.classList.add('is-removing');
-                setTimeout(()=>{ ping(); }, 200);
-              }else{
-                ping();
-              }
-            }catch(_){
-              ping();
-            }
-          });
-        }
-
-        if(!isOpen){
-          const key = pendingKeyFor(latest);
-          if(!shownKeys.has(key)){
-            shownKeys.add(key);
-            UI.openModal('schedNotifModal');
-          }
-        }
-      };
-
-      let timer = setInterval(()=>{
-        ping();
-        updateTimers();
-      }, 1000);
-      const onStorage = (ev)=>{
-        if(!ev || !ev.key) return;
-        if(ev.key=== 'ums_schedule_notifs' || ev.key=== 'mums_schedule_notifs') ping();
-      };
-      window.addEventListener('storage', onStorage);
-      const onStore = (ev)=>{
-        try{
-          const key = ev && ev.detail ? String(ev.detail.key||'') : '';
-          if(key === 'ums_schedule_notifs' || key === 'mums_schedule_notifs') ping();
-        }catch(_){ }
-      };
-      window.addEventListener('mums:store', onStore);
-
-      if(channel){ channel.onmessage = ()=>ping(); }
-      ping();
-
-      return ()=>{
-        try{ clearInterval(timer); }catch(e){}
-        try{ window.removeEventListener('storage', onStorage); }catch(e){}
-        try{ window.removeEventListener('mums:store', onStore); }catch(e){}
-        try{ channel && channel.close(); }catch(e){}
-      };
-    },
-
-    initAppCursor(){
-      try{
-        if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return;
-        const mode = (localStorage.getItem('mums_cursor_mode')||'custom');
-        if(mode !== 'custom') return;
-        if(document.getElementById('appCursor')) return;
-
-        const cur = document.createElement('div');
-        cur.id = 'appCursor';
-        cur.className = 'app-cursor';
-        cur.innerHTML = '<div class="app-cursor-arrow"></div><div class="app-cursor-ibar"></div>';
-        document.body.appendChild(cur);
-        document.body.classList.add('app-cursor-on');
-
-        let x = window.innerWidth/2, y = window.innerHeight/2;
-
-        const isTextTarget = (el)=>{
-          if(!el) return false;
-          const tag = (el.tagName||'').toLowerCase();
-          if(tag==='input' || tag==='textarea' || tag==='select') return true;
-          if(el.isContentEditable) return true;
-          return false;
-        };
-
-        const update = (cx, cy)=>{
-          x = cx; y = cy;
-          cur.style.transform = `translate(${x}px, ${y}px)`;
-          const el = document.elementFromPoint(cx, cy);
-          cur.classList.toggle('is-text', isTextTarget(el));
-        };
-
-        const onMove = (ev)=>{ update(ev.clientX, ev.clientY); };
-        const onDown = ()=>cur.classList.add('is-down');
-        const onUp = ()=>cur.classList.remove('is-down');
-
-        window.addEventListener('mousemove', onMove, { passive:true });
-        window.addEventListener('mousedown', onDown, { passive:true });
-        window.addEventListener('mouseup', onUp, { passive:true });
-
-        update(x, y);
-
-        cur._cleanup = ()=>{
-          try{ window.removeEventListener('mousemove', onMove); }catch(_){}
-          try{ window.removeEventListener('mousedown', onDown); }catch(_){}
-          try{ window.removeEventListener('mouseup', onUp); }catch(_){}
-        };
-      }catch(e){}
-    },
-
-    setCursorMode(mode){
-      try{
-        const m = (mode==='system') ? 'system' : 'custom';
-        localStorage.setItem('mums_cursor_mode', m);
-        const cur = document.getElementById('appCursor');
-        if(m==='system'){
-          if(cur && cur._cleanup) cur._cleanup();
-          if(cur) cur.remove();
-          document.body.classList.remove('app-cursor-on');
-          return;
-        }
-        if(!cur) UI.initAppCursor();
-        document.body.classList.add('app-cursor-on');
-      }catch(e){ console.error('setCursorMode error', e); }
-    }
-  };
-
-  UI.bindDataClose = function(){
-    if(UI.__dataCloseBound) return;
-    UI.__dataCloseBound = true;
-    document.addEventListener('click', (e)=>{
-      const btn = e.target && e.target.closest ? e.target.closest('[data-close]') : null;
-      if(!btn) return;
-      const id = btn.getAttribute('data-close');
-      if(!id) return;
-      try{ UI.closeModal(id); }catch(_){}
-      e.preventDefault();
-      e.stopPropagation();
-    }, true);
-  };
-
-  UI.renderDashboard = function(root){
+            <th style="width:100px; color:#38bdf8;">Overall</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr style="background:rgba(15,23,42,0.8);">
+            <td colspan="2" style="font-weight:900; color:#cbd5e1; text-transform:uppercase; letter-spacing:1px;">Shift Aggregates</td>
+            ${footCells}
+            <td class="mbx-count-td" style="font-size:18px; color:#0ea5e9;"><span class="mbx-num" data-zero="${(totals.shiftTotal||0)===0 ? '1' : '0'}">${totals.shiftTotal||0}</span></td>
+          </tr>
+        </tfoot>
+      </table>
+    `;
+  }
+
+  let _assignUserId = null;
+  let _assignSending = false;
+  let _caseActionCtx = null;
+  let _caseActionBusy = false;
+  let _reassignBusy = false;
+
+  function _mbxAuthHeader(){
+    const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+    return jwt ? { Authorization: `Bearer ${jwt}` } : {};
+  }
+  function _mbxClientId(){
+    try{ return localStorage.getItem('mums_client_id') || ''; }catch(_){ return ''; }
+  }
+
+  function ensureAssignModalMounted(){
     try{
-      const Config = window.Config || {};
-      const Store = window.Store || {};
-      const Auth = window.Auth || {};
-      const me = (Auth.getUser ? (Auth.getUser()||{}) : {});
-
-      try{ if(root && root._dashCleanup) root._dashCleanup(); }catch(_){ }
-
-      const state = root._dashState || { filter: 'unread', q: '', sync: { mode:'offline', detail:'', lastOkAt:0 } };
-      state.sync = state.sync || { mode:'offline', detail:'', lastOkAt:0 };
-      root._dashState = state;
-
-      const tz = (Config && Config.TZ) || 'Asia/Manila';
-      const esc = (s)=> (window.UI && UI.esc) ? UI.esc(s) : String(s||'');
-      const pad2 = (n)=>String(n).padStart(2,'0');
-
-      const role = String(me.role||'');
-      const ROLES = (Config.ROLES || {});
-      const SA = ROLES.SUPER_ADMIN || 'SUPER_ADMIN';
-      const SU = ROLES.SUPER_USER || 'SUPER_USER';
-      const AD = ROLES.ADMIN || 'ADMIN';
-      const TL = ROLES.TEAM_LEAD || 'TEAM_LEAD';
-      const isAdmin = role===SA || role===SU || role===AD;
-      const isLead = role===TL;
-
-      const _parseHM = (hm)=>{
-        try{ if(UI && typeof UI.parseHM==='function') return UI.parseHM(hm); }catch(_){ }
-        try{
-          const s = String(hm||'0:0').split(':');
-          const h = Math.max(0, Math.min(23, parseInt(s[0]||'0',10)||0));
-          const m = Math.max(0, Math.min(59, parseInt(s[1]||'0',10)||0));
-          return h*60+m;
-        }catch(_){ return 0; }
-      };
-
-      const inBucket = (nowMin, b)=>{
-        const s = _parseHM(b.start);
-        const e = _parseHM(b.end);
-        const wrap = e <= s;
-        if(!wrap) return nowMin >= s && nowMin < e;
-        return (nowMin >= s) || (nowMin < e);
-      };
-
-      function manilaDateFromTs(ts){
-        try{ return new Date(new Date(Number(ts||0)).toLocaleString('en-US', { timeZone: tz })); }catch(_){ return new Date(Number(ts||0)); }
-      }
-      function isoFromManilaDate(d){
-        try{ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }catch(_){ return ''; }
-      }
-
-      const nowText = ()=>{
-        try{
-          return new Date().toLocaleString('en-CA', {
-            timeZone: tz, weekday:'short', year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
-          });
-        }catch(_){ return ''; }
-      };
-
-      function buildModel(){
-        const parts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null)) || {};
-        const duty = (UI.getDutyWindow ? UI.getDutyWindow(parts) : null);
-        const dutyCur = duty && duty.current ? duty.current : null;
-        const dutyNext = duty && duty.next ? duty.next : null;
-        const secLeft = duty && Number.isFinite(Number(duty.secLeft)) ? Number(duty.secLeft) : 0;
-
-        const teamLabel = (Config.teamLabel && me.teamId!=null) ? Config.teamLabel(me.teamId) : (me.teamId||'—');
-        const dutyLabel = dutyCur ? (dutyCur.label||dutyCur.id||'—') : '—';
-        const nextLabel = dutyNext ? (dutyNext.label||dutyNext.id||'—') : '—';
-
-        const allCases = (Store.getCases ? (Store.getCases()||[]) : []);
-        const isOpen = (c)=>{
-          const st = String((c && (c.status||c.state)) || '').toLowerCase();
-          return !st || (st!=='closed' && st!=='done' && st!=='resolved');
-        };
-        const openCases = allCases.filter(c=>c && isOpen(c));
-        const myOpen = openCases.filter(c=>c && String(c.assigneeId||'')===String(me.id||''));
-
-        const notifsAll = (Store.getNotifs ? (Store.getNotifs()||[]) : []);
-        const notifsTeam = me.teamId ? notifsAll.filter(n=>n && n.teamId===me.teamId) : notifsAll;
-        const myNotifs = notifsTeam.filter(n=>n && Array.isArray(n.recipients) && me.id && n.recipients.includes(me.id));
-        const myUnread = myNotifs.filter(n=>!(n.acks && n.acks[me.id]));
-
-        const shiftKey = dutyCur ? String(dutyCur.id||'') : '';
-        const table = (shiftKey && Store.getMailboxTable) ? Store.getMailboxTable(shiftKey) : null;
-        const nowMin = (UI.minutesOfDay ? UI.minutesOfDay(parts) : (Number(parts.hh||0)*60 + Number(parts.mm||0)));
-
-        let activeBucketId = '';
-        let bucketLabel = '';
-        let bucketManager = '';
-        let mbx = {
-          shiftKey, hasTable: !!table, totalAssigned: 0, totalConfirmed: 0, totalOpen: 0, bucketAssigned: 0, bucketOpen: 0, avgRespMin: 0, byBucket: [], byRole: [], topAssignees: []
-        };
-
-        if(table && typeof table==='object'){
-          const buckets = Array.isArray(table.buckets) ? table.buckets : [];
-          const assigns = Array.isArray(table.assignments) ? table.assignments : [];
-          const totalAssigned = assigns.length;
-
-          const bActive = buckets.find(b=>b && inBucket(nowMin, b)) || buckets[0] || null;
-          activeBucketId = bActive ? String(bActive.id||'') : '';
-          bucketLabel = bActive ? `${String(bActive.start||'')}–${String(bActive.end||'')}` : '';
-
-          try{
-            const bm = table.meta && table.meta.bucketManagers ? table.meta.bucketManagers[activeBucketId] : null;
-            bucketManager = bm && bm.name ? String(bm.name) : '';
-          }catch(_){ bucketManager=''; }
-
-          const confirmed = assigns.filter(a=>a && Number(a.confirmedAt||0) > 0);
-          const open = assigns.filter(a=>a && !(Number(a.confirmedAt||0) > 0));
-          const inB = (a)=> String(a.bucketId||'') === activeBucketId;
-
-          const confirmedDur = confirmed.map(a=> (Number(a.confirmedAt||0) - Number(a.assignedAt||0))).filter(ms=>Number.isFinite(ms) && ms>0);
-          const avgRespMs = confirmedDur.length ? (confirmedDur.reduce((x,y)=>x+y,0) / confirmedDur.length) : 0;
-
-          mbx.totalAssigned = assigns.length;
-          mbx.totalConfirmed = confirmed.length;
-          mbx.totalOpen = open.length;
-          mbx.bucketAssigned = assigns.filter(a=>a && inB(a)).length;
-          mbx.bucketOpen = open.filter(a=>a && inB(a)).length;
-          mbx.avgRespMin = avgRespMs ? Math.round(avgRespMs/60000) : 0;
-
-          const byB = {};
-          for(const a of assigns){
-            if(!a) continue;
-            const bid = String(a.bucketId||'');
-            byB[bid] = byB[bid] || { bucketId: bid, assigned:0, open:0, confirmed:0 };
-            byB[bid].assigned++;
-            if(Number(a.confirmedAt||0)>0) byB[bid].confirmed++; else byB[bid].open++;
-          }
-          mbx.byBucket = buckets.map(b=>{
-            const bid = String(b && b.id || '');
-            const row = byB[bid] || { bucketId: bid, assigned:0, open:0, confirmed:0 };
-            return {
-              bucketId: bid, label: b ? `${String(b.start||'')}–${String(b.end||'')}` : bid, assigned: row.assigned, open: row.open, confirmed: row.confirmed, isActive: bid === activeBucketId
-            };
-          });
-
-          const users = (Store.getUsers ? (Store.getUsers()||[]) : []);
-          const roleById = {};
-          for(const u of users){ if(!u) continue; roleById[String(u.id||'')] = String(u.role||'MEMBER'); }
-          const byRole = {};
-          for(const a of assigns){
-            if(!a) continue;
-            const rid = roleById[String(a.assigneeId||'')] || 'MEMBER';
-            byRole[rid] = (byRole[rid]||0) + 1;
-          }
-          mbx.byRole = Object.keys(byRole).sort((a,b)=>byRole[b]-byRole[a]).map(r=>({ role:r, count: byRole[r], pct: totalAssigned ? Math.round((byRole[r]/totalAssigned)*100) : 0 }));
-
-          const byA = {};
-          for(const a of assigns){
-            if(!a) continue;
-            const uid = String(a.assigneeId||'');
-            byA[uid] = (byA[uid]||0) + 1;
-          }
-          const nameById = {};
-          for(const u of users){ if(u) nameById[String(u.id||'')] = String(u.name||u.username||''); }
-          mbx.topAssignees = Object.keys(byA).sort((a,b)=>byA[b]-byA[a]).slice(0, 6).map(uid=>({ uid, name: nameById[uid] || uid, count: byA[uid], pct: totalAssigned ? Math.round((byA[uid]/totalAssigned)*100) : 0 }));
-        }
-
-        const logsAll = (Store.getLogs ? (Store.getLogs()||[]) : []);
-        const logs = me.teamId ? logsAll.filter(l=>l && (!l.teamId || String(l.teamId)===String(me.teamId))) : logsAll;
-
-        const nowM = manilaDateFromTs(Date.now());
-        const days = [];
-        for(let i=6;i>=0;i--){
-          const d = new Date(nowM.getTime());
-          d.setDate(d.getDate()-i);
-          const iso = isoFromManilaDate(d);
-          const wd = d.toLocaleDateString('en-US', { weekday:'short', timeZone: tz });
-          days.push({ iso, wd, label: `${wd} ${iso.slice(5)}` });
-        }
-        const dayIndex = {};
-        days.forEach((d, idx)=>{ dayIndex[d.iso] = idx; });
-
-        const bins = 6; 
-        const mat = Array.from({length: bins}, ()=> Array.from({length:7}, ()=>0));
-        const recentCut = Date.now() - (7*24*60*60*1000);
-
-        for(const e of logs){
-          if(!e || !e.ts) continue;
-          const ts = Number(e.ts)||0;
-          if(ts < recentCut) continue;
-          const md = manilaDateFromTs(ts);
-          const iso = isoFromManilaDate(md);
-          const di = dayIndex[iso];
-          if(di==null) continue;
-          const hr = md.getHours();
-          const bi = Math.max(0, Math.min(bins-1, Math.floor(hr/4)));
-          mat[bi][di] += 1;
-        }
-
-        let maxV = 0;
-        for(const row of mat){ for(const v of row){ if(v>maxV) maxV=v; } }
-
-        return { parts, dutyCur, dutyNext, dutyLabel, nextLabel, secLeft, teamLabel, openCases: openCases.length, myOpen: myOpen.length, pendingAcks: myUnread.length, notifs: myNotifs, unreadNotifs: myUnread, mbx, activeBucketId, bucketLabel, bucketManager, heat: { days, mat, maxV }, logs };
-      }
-
-      function render(model){
-        const syncMode = String(state.sync.mode||'offline');
-        const syncLabel = (syncMode==='cloud') ? 'Realtime' : (syncMode==='poll') ? 'Polling' : (syncMode==='connecting') ? 'Connecting' : 'Offline';
-        const syncDot = (syncMode==='cloud') ? 'ok' : (syncMode==='poll' || syncMode==='connecting') ? 'warn' : 'bad';
-
-        const dutyCountdown = (UI && UI.formatDuration) ? UI.formatDuration(model.secLeft||0) : String(model.secLeft||0);
-
-        const card = (k,v,s)=>`<div class="ux-card dashx-card"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${s?`<div class="s">${esc(s)}</div>`:''}</div>`;
-
-        const heatRows = [];
-        heatRows.push(`<div></div>`);
-        for(const d of model.heat.days){ heatRows.push(`<div class="h">${esc(d.wd)}</div>`); }
-        const labels = ['00','04','08','12','16','20'];
-        for(let r=0;r<6;r++){
-          heatRows.push(`<div class="h" style="text-align:left;padding-left:4px">${labels[r]}</div>`);
-          for(let c=0;c<7;c++){
-            const v = model.heat.mat[r][c];
-            const maxV = model.heat.maxV || 1;
-            const level = v<=0 ? 0 : Math.min(4, Math.ceil((v/maxV)*4));
-            const alpha = 0.04 + (level*0.06);
-            const dayIso = model.heat.days[c].iso;
-            const title = `${dayIso} ${labels[r]}–${labels[r]=== '20' ? '24' : pad2((parseInt(labels[r],10)+4)%24)} • ${v} events`;
-            heatRows.push(`<div class="cell" title="${esc(title)}" style="background: rgba(255,255,255,${alpha.toFixed(3)})"></div>`);
-          }
-        }
-
-        const bucketRows = (model.mbx.hasTable && model.mbx.byBucket.length) ? model.mbx.byBucket.map(b=>{
-          const dot = b.isActive ? '<span class="badge ok" style="margin-left:8px">Now</span>' : '';
-          return `<div class="small" style="display:flex;justify-content:space-between;gap:10px;margin-top:6px"><div>${esc(b.label)}${dot}</div><div class="muted">${esc(b.open)} open • ${esc(b.assigned)} assigned</div></div>`;
-        }).join('') : `<div class="small muted" style="margin-top:8px">Mailbox table not loaded yet for this shift.</div>`;
-
-        const byRole = (model.mbx.byRole && model.mbx.byRole.length) ?
-          `<div class="small muted" style="margin-top:10px">Distribution by assignee role</div>
-           <div class="dashx-dist" style="margin-top:8px">
-             ${model.mbx.byRole.slice(0,6).map(r=>`<div class="dashx-dist-row"><div class="dashx-dist-left">${esc(r.role)}</div><div class="dashx-dist-mid"><div class="dashx-bar" role="img" aria-label="${esc(r.role)} ${esc(r.count)} (${esc(r.pct)}%)"><div class="fill" style="width:${Math.max(0, Math.min(100, Number(r.pct||0)))}%"></div></div></div><div class="dashx-dist-right muted">${esc(r.count)} • ${esc(r.pct)}%</div></div>`).join('')}
-           </div>` : '';
-
-        const topAsg = (model.mbx.topAssignees && model.mbx.topAssignees.length) ?
-          `<div class="small muted" style="margin-top:12px">Top assignees (distribution)</div>
-           <div class="dashx-top" style="margin-top:8px">
-             ${model.mbx.topAssignees.map(a=>`<div class="dashx-top-row"><div class="dashx-top-name">${esc(a.name)}</div><div class="dashx-top-meta muted">${esc(a.count)} • ${esc(a.pct)}%</div><div class="dashx-bar" role="img" aria-label="${esc(a.name)} ${esc(a.count)} (${esc(a.pct)}%)"><div class="fill" style="width:${Math.max(0, Math.min(100, Number(a.pct||0)))}%"></div></div></div>`).join('')}
-           </div>` : '';
-
-        root.innerHTML = `
-          <div class="dashx">
-            <div class="dashx-head">
+      if(document.getElementById('mbxAssignModal')) return;
+      const host = document.createElement('div');
+      host.className = 'modal task-modal-backdrop';
+      host.id = 'mbxAssignModal';
+      host.style.zIndex = '17000';
+      host.innerHTML = `
+        <div class="task-modal-glass" style="width:min(500px, 95vw); box-shadow: 0 0 50px rgba(14,165,233,0.15); border-color:rgba(56,189,248,0.3);">
+          <div class="modal-header-glass">
+            <h3 style="color:#f8fafc;">🎯 Route Case Assignment</h3>
+            <button class="btn-glass btn-glass-ghost" type="button" data-close="mbxAssignModal">✕ Cancel</button>
+          </div>
+          <div class="modal-body-scroll" style="gap:16px;">
+            <div style="background:rgba(255,255,255,0.02); padding:16px; border-radius:10px; border:1px solid rgba(255,255,255,0.05); display:grid; grid-template-columns:1fr 1fr; gap:16px;">
               <div>
-                <div class="ux-row" style="gap:12px">
-                  <h2 class="ux-h1" style="margin:0">Dashboard</h2>
-                  <span class="badge ${syncDot}" id="dashSyncBadge">${esc(syncLabel)}</span>
-                </div>
-                <div class="small muted ux-sub">
-                  <span id="dashNow">${esc(nowText())}</span> • Team: <b>${esc(model.teamLabel)}</b> • Duty: <b>${esc(model.dutyLabel)}</b> (next: ${esc(model.nextLabel)} in <span id="dashDutyLeft">${esc(dutyCountdown)}</span>)
-                </div>
+                <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Receiving Agent</label>
+                <input id="mbxAssignedTo" disabled style="width:100%; background:rgba(2,6,23,0.6); border:1px solid rgba(148,163,184,0.2); color:#f8fafc; padding:8px 12px; border-radius:6px; font-weight:700;" />
               </div>
-              <div class="dashx-actions">
-                <button class="btn" type="button" id="dashToggleSidebar">Toggle Sidebar</button>
-                <a class="btn" href="/mailbox">Assign Case</a>
-                <a class="btn" href="/${isAdmin||isLead ? 'master_schedule' : 'my_schedule'}">Schedule</a>
-                <a class="btn" href="/logs">Export Logs</a>
+              <div>
+                <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Time Block</label>
+                <input id="mbxBucketLbl" disabled style="width:100%; background:rgba(2,6,23,0.6); border:1px solid rgba(148,163,184,0.2); color:#38bdf8; padding:8px 12px; border-radius:6px; font-weight:700;" />
               </div>
             </div>
-            <div class="dashx-cards">
-              ${card('Active cases', String(model.openCases), isAdmin ? 'All open cases in system' : 'Your team workload signal')}
-              ${card('My active cases', String(model.myOpen), 'Assigned to you')}
-              ${card('Pending acknowledgements', String(model.pendingAcks), 'Schedule blocks awaiting your acknowledge')}
-              ${card('Mailbox shift load', model.mbx.hasTable ? String(model.mbx.totalOpen) : '—', model.mbx.hasTable ? `Open assignments (${esc(model.mbx.shiftKey||'shift')})` : 'Mailbox not loaded')}
+            
+            <div>
+              <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Case Reference Number <span style="color:#ef4444">*</span></label>
+              <input id="mbxCaseNo" placeholder="e.g. INC0001234" style="width:100%; background:rgba(2,6,23,0.6); border:1px solid rgba(56,189,248,0.4); color:#f8fafc; padding:10px 14px; border-radius:8px; font-size:15px; font-weight:800; outline:none; transition:box-shadow 0.2s;" onfocus="this.style.boxShadow='0 0 0 2px rgba(56,189,248,0.2)'" onblur="this.style.boxShadow='none'" />
             </div>
-            <div class="dashx-layout">
-              <div class="ux-card dashx-panel">
-                <div class="dashx-title">Team Activity Heatmap</div>
-                <div class="small muted" style="margin-top:6px">Last 7 days • 4-hour bins • Hover for counts</div>
-                <div class="dashx-heatmap" id="dashHeatmap">${heatRows.join('')}</div>
-                <div style="margin-top:14px" class="dashx-title">Notification Center</div>
-                <div class="dashx-notif-tools">
-                  <button class="dashx-filter ux-focusable" data-filter="unread" id="dashF_unread">Unread (${esc(model.unreadNotifs.length)})</button>
-                  <button class="dashx-filter ux-focusable" data-filter="schedule" id="dashF_schedule">Schedule (${esc(model.notifs.length)})</button>
-                  <button class="dashx-filter ux-focusable" data-filter="mailbox" id="dashF_mailbox">Mailbox</button>
-                  <button class="dashx-filter ux-focusable" data-filter="system" id="dashF_system">System</button>
-                  <button class="dashx-filter ux-focusable" data-filter="all" id="dashF_all">All</button>
-                  <input class="dashx-filter" style="flex:1;min-width:180px" id="dashNotifSearch" placeholder="Search…" value="${esc(state.q||'')}" />
-                </div>
-                <div class="dashx-notifs" id="dashNotifs"></div>
-              </div>
-              <div style="display:flex;flex-direction:column;gap:12px">
-                <div class="ux-card dashx-panel">
-                  <div class="dashx-title">Mailbox Analytics</div>
-                  <div class="small muted" style="margin-top:6px">Shift: <b>${esc(model.mbx.shiftKey||'—')}</b>${model.bucketLabel ? ` • Bucket: <b>${esc(model.bucketLabel)}</b>` : ''}${model.bucketManager ? ` • Manager: <b>${esc(model.bucketManager)}</b>` : ''}</div>
-                  ${model.mbx.hasTable ? `<div class="ux-row" style="margin-top:10px;gap:10px"><span class="badge">Assigned: ${esc(model.mbx.totalAssigned)}</span><span class="badge ok">Confirmed: ${esc(model.mbx.totalConfirmed)}</span><span class="badge warn">Open: ${esc(model.mbx.totalOpen)}</span><span class="badge">Avg response: ${esc(model.mbx.avgRespMin ? (model.mbx.avgRespMin+' min') : '—')}</span></div>` : ''}
-                  <div style="margin-top:10px">${bucketRows}</div>
-                  ${byRole}
-                  ${topAsg}
-                </div>
-                <div class="ux-card dashx-panel">
-                  <div class="dashx-title">Quick Navigation</div>
-                  <div class="small muted" style="margin-top:6px">Role-aware shortcuts</div>
-                  <div class="dashx-actions" style="margin-top:10px">
-                    <a class="btn" href="/my_schedule">My Schedule</a>
-                    <a class="btn" href="/mailbox">Mailbox</a>
-                    <a class="btn" href="/attendance">Attendance</a>
-                    <a class="btn" href="/tasks">Tasks</a>
-                    ${(isAdmin||isLead) ? `<a class="btn" href="/master_schedule">Master Schedule</a>` : ''}
-                    ${isAdmin ? `<a class="btn" href="/members">User Management</a>` : ''}
-                  </div>
-                </div>
-              </div>
+            <div>
+              <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Short Description (Optional)</label>
+              <input id="mbxDesc" placeholder="Context notes..." style="width:100%; background:rgba(2,6,23,0.6); border:1px solid rgba(148,163,184,0.3); color:#e2e8f0; padding:10px 14px; border-radius:8px; font-size:13px; outline:none;" />
             </div>
+            
+            <div id="mbxAssignErr" style="display:none; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; padding:10px; border-radius:8px; font-size:12px; font-weight:600;"></div>
           </div>
-        `;
+          <div class="modal-header-glass" style="border-top: 1px solid rgba(255,255,255,0.06); border-bottom:none; justify-content:flex-end; top:auto; bottom:0;">
+            <button class="btn-glass btn-glass-primary" type="button" id="mbxSendAssign" style="padding:10px 24px;">
+              <span id="mbxAssignSendLbl">Deploy Case 🚀</span>
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(host);
 
-        try{
-          const f = String(state.filter||'unread');
-          (root.querySelectorAll('.dashx-filter[data-filter]')||[]).forEach(b=>{
-            try{ b.classList.toggle('active', String(b.getAttribute('data-filter')||'')===f); }catch(_){ }
-          });
-        }catch(_){ }
+      host.querySelectorAll('[data-close="mbxAssignModal"]').forEach(b=>{
+        b.onclick = ()=>{ if(!_assignSending) UI.closeModal('mbxAssignModal'); };
+      });
+      host.addEventListener('click', (e)=>{
+        try{ if(e && e.target === host && !_assignSending) UI.closeModal('mbxAssignModal'); }catch(_){ }
+      });
+    }catch(e){ console.error('Failed to mount Assign Case modal', e); }
+  }
 
-        bindNotifCenter(model);
-        bindQuickActions();
-      }
-
-      function classifyActivity(a){
-        const act = String(a && a.action || '').toUpperCase();
-        if(act.startsWith('MAILBOX_')) return 'mailbox';
-        if(act.includes('SCHEDULE') || act.includes('ACK')) return 'schedule';
-        if(act.includes('ERROR') || act.includes('EXCEPTION') || act==='APP_ERROR') return 'system';
-        return 'other';
-      }
-
-      function renderNotifs(model){
-        const f = String(state.filter||'unread');
-        const q = String(state.q||'').trim().toLowerCase();
-        const items = [];
-
-        for(const n of (model.notifs||[])){
-          if(!n) continue;
-          const unread = !!(me.id && Array.isArray(n.recipients) && n.recipients.includes(me.id) && !(n.acks && n.acks[me.id]));
-          items.push({
-            type:'schedule', id: n.id, ts: Number(n.ts||0) || Date.now(), title: n.title || 'Schedule Updated',
-            body: n.body || '', from: n.fromName || 'Team Lead', unread, category:'schedule'
-          });
-        }
-
-        const logs = (model.logs||[]).slice(0, 60);
-        for(const l of logs){
-          if(!l) continue;
-          items.push({
-            type:'activity', id: String(l.ts||'') + '_' + String(l.action||''), ts: Number(l.ts||0) || 0,
-            title: String(l.action||'Activity'), body: [l.msg, l.detail].filter(Boolean).join('\\n'), from: l.actorName || '',
-            unread:false, category: classifyActivity(l)
-          });
-        }
-
-        items.sort((a,b)=> (b.ts||0) - (a.ts||0));
-
-        const filtered = items.filter(it=>{
-          if(f==='unread' && !it.unread) return false;
-          if(f==='schedule' && it.category!=='schedule') return false;
-          if(f==='mailbox' && it.category!=='mailbox') return false;
-          if(f==='system' && it.category!=='system') return false;
-          if(f!=='all' && f!=='unread' && f!=='schedule' && f!=='mailbox' && f!=='system') return true;
-          if(q){
-            const txt = (it.title+'\n'+it.body+'\n'+it.from).toLowerCase();
-            if(!txt.includes(q)) return false;
-          }
-          return true;
-        }).slice(0, 16);
-
-        const fmt = (ts)=>{
-          try{ return new Date(Number(ts||0)).toLocaleString('en-CA', { timeZone: tz, month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }); }catch(_){ return ''; }
-        };
-
-        if(!filtered.length){
-          return `<div class="small muted" style="padding:10px 2px">No items for this filter.</div>`;
-        }
-
-        return filtered.map(it=>{
-          const unreadCls = it.unread ? 'unread' : '';
-          const topRight = `<div class="small muted">${esc(fmt(it.ts))}</div>`;
-          const ackBtn = (it.type==='schedule' && it.unread) ? `<button class="btn dashx-ack" data-ack="${esc(it.id)}" type="button" aria-label="Acknowledge schedule notification"><span class="dashx-spin" aria-hidden="true"></span><span class="dashx-acklbl">Acknowledge</span></button>` : '';
-          const from = it.from ? `<div class="small muted">From: ${esc(it.from)}</div>` : '';
-          return `
-            <div class="dashx-notif ${unreadCls}">
-              <div class="top">
-                <div><div class="t">${esc(it.title)}</div>${from}</div>
-                <div style="display:flex;align-items:center;gap:10px">${topRight}${ackBtn}</div>
-              </div>
-              <div class="m">${esc(it.body||'')}</div>
-            </div>
-          `;
-        }).join('');
-      }
-
-      function bindNotifCenter(model){
-        const box = root.querySelector('#dashNotifs');
-        if(!box) return;
-        box.innerHTML = renderNotifs(model);
-
-        (root.querySelectorAll('.dashx-filter[data-filter]')||[]).forEach(btn=>{
-          btn.onclick = ()=>{
-            state.filter = String(btn.getAttribute('data-filter')||'all');
-            const next = buildModel();
-            render(next);
-          };
-        });
-
-        const inp = root.querySelector('#dashNotifSearch');
-        if(inp){
-          inp.oninput = ()=>{
-            state.q = String(inp.value||'');
-            const next = buildModel();
-            const list = root.querySelector('#dashNotifs');
-            if(list) list.innerHTML = renderNotifs(next);
-          };
-        }
-
-        (box.querySelectorAll('[data-ack]')||[]).forEach(b=>{
-          b.onclick = ()=>{
-            const id = String(b.getAttribute('data-ack')||'');
-            if(!id) return;
-            try{
-              if(b.dataset.busy==='1') return;
-              b.dataset.busy='1'; b.disabled = true;
-              const spin = b.querySelector('.dashx-spin');
-              const lbl = b.querySelector('.dashx-acklbl');
-              if(spin) spin.classList.add('on');
-              if(lbl) lbl.textContent = 'Acknowledging…';
-            }catch(_){ }
-
-            try{
-              Store.ackNotif && Store.ackNotif(id, me.id);
-              UI.toast && UI.toast('Acknowledged.');
-            }catch(e){
-              try{ UI.toast && UI.toast('Failed to acknowledge. Try again.', 'warn'); }catch(_){ }
-              try{
-                b.dataset.busy='0'; b.disabled = false;
-                const spin = b.querySelector('.dashx-spin');
-                const lbl = b.querySelector('.dashx-acklbl');
-                if(spin) spin.classList.remove('on');
-                if(lbl) lbl.textContent = 'Acknowledge';
-              }catch(_){ }
-              return;
-            }
-            try{ const next = buildModel(); render(next); }catch(_){
-              try{ const list = root.querySelector('#dashNotifs'); if(list){ const next = buildModel(); list.innerHTML = renderNotifs(next); } }catch(_){}
-            }
-          };
-        });
-      }
-
-      function bindQuickActions(){
-        const btn = root.querySelector('#dashToggleSidebar');
-        if(btn){ btn.onclick = ()=>{ try{ const t = document.getElementById('sidebarToggle'); if(t) t.click(); }catch(_){ } }; }
-      }
-
-      function softUpdateHeader(){
-        try{
-          const now = root.querySelector('#dashNow');
-          if(now) now.textContent = nowText();
-
-          const parts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null)) || {};
-          const duty = (UI.getDutyWindow ? UI.getDutyWindow(parts) : null);
-          const left = duty && Number.isFinite(Number(duty.secLeft)) ? Number(duty.secLeft) : 0;
-          const el = root.querySelector('#dashDutyLeft');
-          if(el && UI && UI.formatDuration) el.textContent = UI.formatDuration(left);
-        }catch(_){ }
-      }
-
-      function updateSyncBadge(){
-        try{
-          const b = root.querySelector('#dashSyncBadge');
-          if(!b) return;
-          const mode = String(state.sync.mode||'offline');
-          const label = (mode==='cloud') ? 'Realtime' : (mode==='poll') ? 'Polling' : (mode==='connecting') ? 'Connecting' : 'Offline';
-          b.textContent = label;
-          b.classList.remove('ok','warn','bad');
-          b.classList.add(mode==='cloud' ? 'ok' : (mode==='poll' || mode==='connecting') ? 'warn' : 'bad');
-        }catch(_){ }
-      }
-
-      const model = buildModel();
-      render(model);
-
-      try{ if(root._dashTimer) clearInterval(root._dashTimer); }catch(_){ }
-      root._dashTimer = setInterval(()=>{ softUpdateHeader(); }, 1000);
-
-      const onStore = (ev)=>{
-        try{
-          const k = ev && ev.detail ? String(ev.detail.key||'') : '';
-          if(!k) return;
-          if(k==='ums_cases' || k==='ums_schedule_notifs' || k==='mums_mailbox_tables' || k==='mums_mailbox_state' || k==='ums_activity_logs'){
-            const next = buildModel();
-            render(next);
-          }
-        }catch(_){ }
-      };
-      window.addEventListener('mums:store', onStore);
-
-      const onSync = (ev)=>{
-        try{
-          const d = (ev && ev.detail) ? ev.detail : {};
-          state.sync = { mode: d.mode || 'offline', detail: d.detail || '', lastOkAt: d.lastOkAt || 0 };
-          updateSyncBadge();
-        }catch(_){ }
-      };
-      window.addEventListener('mums:syncstatus', onSync);
-
-      const prevCleanup = root._cleanup;
-      root._dashCleanup = ()=>{
-        try{ if(root._dashTimer) clearInterval(root._dashTimer); }catch(_){ }
-        try{ root._dashTimer = null; }catch(_){ }
-        try{ window.removeEventListener('mums:store', onStore); }catch(_){ }
-        try{ window.removeEventListener('mums:syncstatus', onSync); }catch(_){ }
-      };
-      root._cleanup = ()=>{
-        try{ if(prevCleanup) prevCleanup(); }catch(_){ }
-        try{ if(root._dashCleanup) root._dashCleanup(); }catch(_){ }
-      };
-
-    }catch(err){
-      try{ console.error(err); }catch(_){ }
-      try{ root.innerHTML = `<h2 style="margin:0 0 10px">Dashboard</h2><div class="card pad">Failed to load dashboard. Please reload.</div>`; }catch(_){ }
-    }
-  };
-
-  UI.renderSchedule = function(root){
+  function setAssignSubmitting(on){
+    _assignSending = !!on;
     try{
-      const host = root || document.getElementById('main') || document.body;
-      if(window.Pages && typeof window.Pages.my_schedule === 'function'){
-        window.Pages.my_schedule(host);
+      const btn = UI.el('#mbxSendAssign');
+      const lbl = UI.el('#mbxAssignSendLbl');
+      if(btn) btn.disabled = !!on;
+      if(lbl) lbl.textContent = on ? 'Deploying...' : 'Deploy Case 🚀';
+    }catch(_){ }
+  }
+
+  async function mbxPost(path, body){
+    const res = await fetch(path, {
+      method:'POST',
+      headers: { 'Content-Type':'application/json', ..._mbxAuthHeader() },
+      body: JSON.stringify(body || {}),
+      cache:'no-store'
+    });
+    const data = await res.json().catch(()=>({}));
+    return { res, data };
+  }
+  
+  function openAssignModal(userId){
+    ensureAssignModalMounted();
+    const { table } = ensureShiftTables();
+    const u = (table.members||[]).find(x=>x.id===userId) || (Store.getUsers?Store.getUsers().find(x=>x.id===userId):null);
+    if(!u) return;
+
+    const activeId = computeActiveBucketId(table);
+    const bucket = (table.buckets||[]).find(b=>b.id===activeId) || table.buckets?.[0];
+    _assignUserId = userId;
+
+    UI.el('#mbxAssignedTo').value = u.name || u.username || '—';
+    UI.el('#mbxBucketLbl').value = bucket ? _mbxBucketLabel(bucket) : '—';
+    UI.el('#mbxCaseNo').value = '';
+    UI.el('#mbxDesc').value = '';
+    const err = UI.el('#mbxAssignErr');
+    if(err){ err.style.display='none'; err.textContent=''; }
+
+    UI.el('#mbxSendAssign').onclick = ()=>sendAssignment();
+    UI.openModal('mbxAssignModal');
+    setTimeout(()=>{ try{ UI.el('#mbxCaseNo').focus(); }catch(_){ } }, 60);
+  }
+
+  async function sendAssignment(){
+    const { shiftKey, table } = ensureShiftTables();
+    const uid = _assignUserId;
+    if(!uid) return;
+    if(_assignSending) return;
+
+    const caseNo = String(UI.el('#mbxCaseNo').value||'').trim();
+    const desc = String(UI.el('#mbxDesc').value||'').trim();
+
+    const err = (msg)=>{
+      const el = UI.el('#mbxAssignErr');
+      if(!el) return alert(msg);
+      el.textContent = `⚠️ ${msg}`;
+      el.style.display='block';
+    };
+
+    if(!caseNo) return err('Case Reference Number is strictly required.');
+
+    try{
+      const actorNow = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
+      if(!isPrivilegedRole(actorNow)){
+        const duty = getDuty();
+        const nowParts = (UI.mailboxNowParts ? UI.mailboxNowParts() : (UI.manilaNow ? UI.manilaNow() : null));
+        if(!eligibleForMailboxManager(actorNow, { teamId: duty?.current?.id, dutyTeam: duty?.current, nowParts })){
+          UI.toast('Mailbox Manager permission is not active.', 'warn');
+          return;
+        }
+      }
+    }catch(_){}
+
+    try{
+      const state = Store.getMailboxState ? Store.getMailboxState() : {};
+      const curKey = state.currentKey || shiftKey;
+      const prevKey = state.previousKey || '';
+      const tablesToCheck = [curKey, prevKey].filter(Boolean)
+        .map(k=>Store.getMailboxTable ? Store.getMailboxTable(k) : null)
+        .filter(Boolean);
+      const dup = tablesToCheck.some(t => (t.assignments||[]).some(a => String(a.caseNo||'').toLowerCase() === caseNo.toLowerCase()));
+      if(dup) return err('Duplicate Case # detected. Please verify uniqueness.');
+    }catch(_){}
+
+    setAssignSubmitting(true);
+    try{
+      const { res, data } = await mbxPost('/api/mailbox/assign', {
+        shiftKey,
+        assigneeId: uid,
+        caseNo,
+        desc,
+        clientId: _mbxClientId() || undefined
+      });
+
+      if(res.status === 401){
+        setAssignSubmitting(false);
+        UI.toast('Session expired. Please log in again.', 'warn');
         return;
       }
-      host.innerHTML = `<div class="card pad">My Schedule module not loaded. Please reload.</div>`;
-    }catch(err){
-      try{ console.error(err); }catch(_){ }
-      try{
-        const host = root || document.getElementById('main') || document.body;
-        host.innerHTML = `<div class="card pad">Failed to load My Schedule. Please reload.</div>`;
-      }catch(_){ }
-    }
-  };
 
-  // ENTERPRISE UPGRADE: God-Eye MS Teams Style Toast for Managers & Admins
-  UI.initMailboxManagerToasts = function() {
-    if(window._mbxToastEngineRunning) return;
-    window._mbxToastEngineRunning = true;
-
-    let knownAssignments = {};
-
-    if (!document.getElementById('ms-teams-toast-styles')) {
-        const s = document.createElement('style');
-        s.id = 'ms-teams-toast-styles';
-        s.textContent = `
-            @keyframes toastSlideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-            @keyframes toastSlideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(120%); opacity: 0; } }
-            @keyframes toastProgress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
-            
-            .ms-enterprise-toast {
-                position: relative; background: linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98));
-                backdrop-filter: blur(12px); border: 1px solid rgba(16,185,129,0.3); border-left: 4px solid #10b981;
-                border-radius: 12px; padding: 16px 20px; box-shadow: 0 15px 35px -5px rgba(0,0,0,0.6), 0 0 20px rgba(16,185,129,0.1);
-                display: flex; align-items: center; gap: 16px; width: 360px; pointer-events: auto; overflow: hidden;
-                animation: toastSlideIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-            }
-            .ms-enterprise-toast.hiding { animation: toastSlideOut 0.4s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards; }
-            
-            .ms-toast-close {
-                position: absolute; top: 8px; right: 8px; background: transparent; border: none;
-                color: #94a3b8; cursor: pointer; font-size: 14px; padding: 4px; border-radius: 4px;
-                transition: all 0.2s; line-height: 1; z-index: 10;
-            }
-            .ms-toast-close:hover { background: rgba(255,255,255,0.1); color: #f8fafc; }
-            
-            .ms-toast-progress {
-                position: absolute; bottom: 0; left: 0; height: 3px; background: linear-gradient(90deg, #0ea5e9, #10b981);
-                width: 100%; transform-origin: left; animation: toastProgress 6s linear forwards;
-            }
-        `;
-        document.head.appendChild(s);
-    }
-
-    window.addEventListener('mums:store', (e) => {
-        if(e?.detail?.key !== 'mums_mailbox_tables') return;
-
-        if(!isCurrentMailboxManager()) return;
-
-        const state = window.Store?.getMailboxState?.() || {};
-        const curKey = state.currentKey;
-        if(!curKey) return;
-        
-        const table = window.Store?.getMailboxTable?.(curKey);
-        if(!table || !Array.isArray(table.assignments)) return;
-
-        table.assignments.forEach(a => {
-           if (!a || !a.id) return;
-           const wasConfirmed = knownAssignments[a.id];
-           const isConfirmed = Number(a.confirmedAt||0) > 0;
-
-           if (!wasConfirmed && isConfirmed) {
-               const assignee = window.Store?.getUsers?.().find(u => u.id === a.assigneeId);
-               const name = assignee ? (assignee.name || assignee.username) : 'A team member';
-               showTeamsToast(name, a.caseNo || 'Unknown Case');
-           }
-           knownAssignments[a.id] = isConfirmed;
-        });
-    });
-
-    function isCurrentMailboxManager() {
-        try {
-            const u = window.Auth?.getUser?.();
-            if (!u) return false;
-            
-            const role = String(u.role || '').toUpperCase();
-            const SA = (window.Config && window.Config.ROLES && window.Config.ROLES.SUPER_ADMIN) ? window.Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
-            if (role === SA) return true;
-
-            const now = window.UI?.manilaNow?.();
-            if (!now) return false;
-            const nowMin = now.hh * 60 + now.mm;
-            const dow = new Date(now.isoDate + 'T00:00:00+08:00').getDay();
-            const blocks = window.Store?.getUserDayBlocks?.(u.id, dow) || [];
-            
-            for (const b of blocks) {
-                if (b.role !== 'mailbox_manager' && b.role !== 'mailbox_call') continue;
-                const sParts = String(b.start).split(':');
-                const eParts = String(b.end).split(':');
-                const s = (parseInt(sParts[0])||0)*60 + (parseInt(sParts[1])||0);
-                const e = (parseInt(eParts[0])||0)*60 + (parseInt(eParts[1])||0);
-                const wraps = e <= s;
-                const hit = !wraps ? (nowMin >= s && nowMin < e) : (nowMin >= s || nowMin < e);
-                if (hit) return true;
-            }
-            return false;
-        } catch(e) {
-            return false;
-        }
-    }
-
-    function showTeamsToast(name, caseNo) {
-        let container = document.getElementById('ms-teams-toast-container');
-        if(!container) {
-            container = document.createElement('div');
-            container.id = 'ms-teams-toast-container';
-            container.style.cssText = 'position:fixed; bottom:24px; right:24px; z-index:999999; display:flex; flex-direction:column; gap:10px; pointer-events:none;';
-            document.body.appendChild(container);
-        }
-
-        const toast = document.createElement('div');
-        toast.className = 'ms-enterprise-toast';
-        const initials = window.UI.initials ? window.UI.initials(name) : 'U';
-
-        toast.innerHTML = `
-            <div class="ms-toast-progress"></div>
-            <button class="ms-toast-close" onclick="this.parentElement.classList.add('hiding'); setTimeout(() => this.parentElement.remove(), 400);">✕</button>
-            
-            <div style="position:relative;">
-                <div style="width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg, #0ea5e9, #38bdf8); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:900; font-size:16px; box-shadow: 0 4px 10px rgba(14,165,233,0.3); border:2px solid rgba(255,255,255,0.1);">
-                    ${initials}
-                </div>
-                <div style="position:absolute; bottom:-4px; right:-4px; background:#10b981; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:900; color:#fff; border:2px solid #0f172a; box-shadow: 0 0 8px rgba(16,185,129,0.5);">✓</div>
-            </div>
-            
-            <div style="flex:1; min-width:0; padding-right:12px;">
-                <div style="font-size:11px; color:#10b981; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:2px;">Task Acknowledged</div>
-                <div style="font-size:14px; color:#f8fafc; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                    ${window.UI.esc(name)}
-                </div>
-                <div style="font-size:12px; color:#94a3b8; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                    Reference: <strong style="color:#e2e8f0;">${window.UI.esc(caseNo)}</strong>
-                </div>
-            </div>
-        `;
-
-        container.appendChild(toast);
-        try{ window.UI.playNotifSound?.(window.Auth?.getUser?.()?.id); }catch(e){}
-
-        setTimeout(() => {
-            if (!toast.classList.contains('hiding')) {
-                toast.classList.add('hiding');
-                setTimeout(() => toast.remove(), 400);
-            }
-        }, 6000);
-    }
-  };
-
-  window.UI = UI;
-
-  (function bindSyncStatus(){
-    function root(){ return document.getElementById("realtimeSyncStatus"); }
-    function set(mode, detail){
-      var el = root();
-      if (!el) return;
-      el.classList.remove("ok","poll","off");
-      if (mode === "realtime") el.classList.add("ok");
-      else if (mode === "connecting" || mode === "polling") el.classList.add("poll");
-      else el.classList.add("off");
-      var state = el.querySelector(".state");
-      if (state) {
-        state.textContent = (mode === "realtime") ? "Connected" : (mode === "connecting") ? "Connecting" : (mode === "polling") ? "Polling" : "Offline";
+      if(!res.ok || !data || !data.ok){
+        const msg = (data && (data.message || data.error)) ? String(data.message||data.error) : `Failed (${res.status})`;
+        setAssignSubmitting(false);
+        return err(msg);
       }
-      if (typeof detail === "string" && detail) el.title = detail;
+
+      try{
+        if(data.table) Store.saveMailboxTable && Store.saveMailboxTable(shiftKey, data.table, { fromRealtime:true });
+      }catch(_){}
+
+      setAssignSubmitting(false);
+      UI.closeModal('mbxAssignModal');
+      UI.toast('Case successfully routed.', 'success');
+      scheduleRender('assign-success');
+    }catch(e){
+      setAssignSubmitting(false);
+      return err(String(e?.message||e));
     }
-    window.addEventListener("mums:syncstatus", function(e){
-      try {
-        var d = e && e.detail ? e.detail : {};
-        set(String(d.mode||"offline"), String(d.detail||""));
-      } catch (_) {}
+  }
+
+  function getReassignCandidates(table, previousOwnerId){
+    try{
+      const teamId = String(table?.meta?.teamId || '');
+      const users = (Store.getUsers ? Store.getUsers() : []) || [];
+      return users
+        .filter(u=>u && u.status==='active' && String(u.teamId||'')===teamId && String(u.role||'')==='MEMBER' && String(u.id||'')!==String(previousOwnerId||''))
+        .map(u=>({ id:String(u.id||''), name:String(u.name||u.username||u.id||'N/A') }))
+        .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+    }catch(_){
+      return [];
+    }
+  }
+
+  function ensureCaseActionMenuMounted(){
+    try{
+      if(document.getElementById('mbxCaseActionModal')) return;
+      const host = document.createElement('div');
+      host.className = 'modal task-modal-backdrop';
+      host.id = 'mbxCaseActionModal';
+      host.style.zIndex = '17500';
+      host.innerHTML = `
+        <div class="task-modal-glass" style="width:min(400px, 90vw);">
+          <div class="modal-header-glass">
+            <h3>⚙️ Case Action Menu</h3>
+            <button class="btn-glass btn-glass-ghost" type="button" data-close="mbxCaseActionModal">✕</button>
+          </div>
+          <div class="modal-body-scroll" style="text-align:center;">
+            <div id="mbxCaseActionMeta" style="font-weight:800; color:#38bdf8; margin-bottom:20px; font-size:15px;"></div>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <button class="btn-glass btn-glass-primary" id="mbxActionReassign" type="button" style="padding:12px;">🔄 Re-route to another Agent</button>
+              <button class="btn-glass btn-glass-danger" id="mbxActionDelete" type="button" style="padding:12px;">🗑️ Delete Assignment</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(host);
+      host.querySelectorAll('[data-close="mbxCaseActionModal"]').forEach(b=>{
+        b.onclick = ()=>{ if(!_caseActionBusy) UI.closeModal('mbxCaseActionModal'); };
+      });
+      host.addEventListener('click', (e)=>{
+        try{ if(e && e.target === host && !_caseActionBusy) UI.closeModal('mbxCaseActionModal'); }catch(_){ }
+      });
+      const reassignBtn = host.querySelector('#mbxActionReassign');
+      if(reassignBtn) reassignBtn.onclick = ()=>openReassignModal();
+      const deleteBtn = host.querySelector('#mbxActionDelete');
+      if(deleteBtn) deleteBtn.onclick = ()=>confirmDeleteCase();
+    }catch(e){ console.error('Failed to mount case action menu', e); }
+  }
+
+  function ensureReassignModalMounted(){
+    try{
+      if(document.getElementById('mbxReassignModal')) return;
+      const host = document.createElement('div');
+      host.className = 'modal task-modal-backdrop';
+      host.id = 'mbxReassignModal';
+      host.style.zIndex = '18000';
+      host.innerHTML = `
+        <div class="task-modal-glass" style="width:min(500px, 95vw);">
+          <div class="modal-header-glass">
+            <h3>🔄 Reassign Case</h3>
+            <button class="btn-glass btn-glass-ghost" type="button" data-close="mbxReassignModal">✕</button>
+          </div>
+          <div class="modal-body-scroll" style="gap:16px;">
+            <div style="background:rgba(255,255,255,0.02); padding:16px; border-radius:10px; border:1px solid rgba(255,255,255,0.05); display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+              <div>
+                <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Case Reference</label>
+                <input id="mbxReassignCaseNo" disabled style="width:100%; background:rgba(2,6,23,0.6); border:1px solid rgba(148,163,184,0.2); color:#f8fafc; padding:8px 12px; border-radius:6px; font-weight:700;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:11px; font-weight:800; color:#ef4444; text-transform:uppercase; margin-bottom:6px;">Current Owner</label>
+                <input id="mbxPrevOwner" disabled style="width:100%; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.2); color:#fca5a5; padding:8px 12px; border-radius:6px; font-weight:700;" />
+              </div>
+            </div>
+            
+            <div>
+              <label style="display:block; font-size:11px; font-weight:800; color:#38bdf8; text-transform:uppercase; margin-bottom:6px;">Select New Assignee</label>
+              <select id="mbxReassignTo" style="width:100%; background:rgba(15,23,42,0.8); border:1px solid rgba(56,189,248,0.4); color:#f8fafc; padding:10px 14px; border-radius:8px; font-size:14px; font-weight:700; outline:none; cursor:pointer;"></select>
+            </div>
+            
+            <div id="mbxReassignErr" style="display:none; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; padding:10px; border-radius:8px; font-size:12px; font-weight:600;"></div>
+          </div>
+          <div class="modal-header-glass" style="border-top: 1px solid rgba(255,255,255,0.06); border-bottom:none; justify-content:flex-end; top:auto; bottom:0;">
+            <button class="btn-glass btn-glass-primary" type="button" id="mbxReassignSubmit">Execute Transfer 🚀</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(host);
+      host.querySelectorAll('[data-close="mbxReassignModal"]').forEach(b=>{
+        b.onclick = ()=>{ if(!_reassignBusy) UI.closeModal('mbxReassignModal'); };
+      });
+      host.addEventListener('click', (e)=>{
+        try{ if(e && e.target === host && !_reassignBusy) UI.closeModal('mbxReassignModal'); }catch(_){ }
+      });
+      const submit = host.querySelector('#mbxReassignSubmit');
+      if(submit) submit.onclick = ()=>submitReassign();
+    }catch(e){ console.error('Failed to mount reassign modal', e); }
+  }
+
+  function openCaseActionMenu(ctx){
+    ensureCaseActionMenuMounted();
+    const assignmentId = String(ctx?.assignmentId || '');
+    const caseNo = String(ctx?.caseNo || '').trim();
+    const ownerId = String(ctx?.ownerId || '');
+    if(!assignmentId || !caseNo) return;
+    _caseActionCtx = {
+      shiftKey: String(ctx?.shiftKey || ''),
+      assignmentId,
+      caseNo,
+      ownerId,
+      ownerName: String(ctx?.ownerName || ownerId || 'N/A')
+    };
+    const meta = UI.el('#mbxCaseActionMeta');
+    if(meta) meta.innerHTML = `Case: <span style="color:#f8fafc;">${_caseActionCtx.caseNo}</span><br><span style="font-size:12px; color:#94a3b8; font-weight:600;">Owner: ${_caseActionCtx.ownerName}</span>`;
+    UI.openModal('mbxCaseActionModal');
+  }
+
+  function openReassignModal(){
+    const ctx = _caseActionCtx;
+    if(!ctx) return;
+    const { shiftKey } = ensureShiftTables();
+    const table = Store.getMailboxTable ? Store.getMailboxTable(ctx.shiftKey || shiftKey) : null;
+    const candidates = getReassignCandidates(table || {}, ctx.ownerId);
+
+    const caseEl = UI.el('#mbxReassignCaseNo');
+    const prevEl = UI.el('#mbxPrevOwner');
+    const sel = UI.el('#mbxReassignTo');
+    const err = UI.el('#mbxReassignErr');
+    if(caseEl) caseEl.value = ctx.caseNo || 'N/A';
+    if(prevEl) prevEl.value = ctx.ownerName || 'N/A';
+    if(err){ err.style.display='none'; err.textContent=''; }
+
+    if(sel){
+      sel.innerHTML = candidates.length
+        ? `<option value="">-- Select Available Member --</option>${candidates.map(c=>`<option value="${UI.esc(c.id)}">${UI.esc(c.name)}</option>`).join('')}`
+        : '<option value="">No eligible member found in team</option>';
+    }
+
+    UI.closeModal('mbxCaseActionModal');
+    UI.openModal('mbxReassignModal');
+  }
+
+  async function submitReassign(){
+    if(_reassignBusy) return;
+    const ctx = _caseActionCtx;
+    if(!ctx) return;
+
+    const sel = UI.el('#mbxReassignTo');
+    const newAssigneeId = String(sel && sel.value || '').trim();
+    const errEl = UI.el('#mbxReassignErr');
+    const setErr = (msg)=>{
+      if(!errEl) return UI.toast(msg, 'warn');
+      errEl.textContent = `⚠️ ${msg}`;
+      errEl.style.display = 'block';
+    };
+    if(!newAssigneeId) return setErr('Please select a valid member for transfer.');
+
+    _reassignBusy = true;
+    const btn = UI.el('#mbxReassignSubmit');
+    if(btn) { btn.disabled = true; btn.textContent = 'Processing...'; }
+
+    try{
+      const { res, data } = await mbxPost('/api/mailbox/case_action', {
+        action: 'reassign',
+        shiftKey: ctx.shiftKey,
+        assignmentId: ctx.assignmentId,
+        newAssigneeId,
+        clientId: _mbxClientId() || undefined
+      });
+
+      if(res.status === 401){
+        UI.toast('Session expired. Please log in again.', 'warn');
+        return;
+      }
+
+      if(!res.ok || !data || !data.ok){
+        const msg = (data && (data.error || data.message)) ? String(data.error||data.message) : `Failed (${res.status})`;
+        return setErr(msg);
+      }
+
+      try{ if(data.table && Store.saveMailboxTable) Store.saveMailboxTable(ctx.shiftKey, data.table, { fromRealtime:true }); }catch(_){ }
+      UI.closeModal('mbxReassignModal');
+      UI.toast(`Case ${ctx.caseNo} successfully transferred.`, 'success');
+      scheduleRender('case-reassign-success');
+    }catch(e){
+      setErr(String(e?.message||e));
+    }finally{
+      _reassignBusy = false;
+      if(btn) { btn.disabled = false; btn.textContent = 'Execute Transfer 🚀'; }
+    }
+  }
+
+  async function confirmDeleteCase(){
+    const ctx = _caseActionCtx;
+    if(!ctx || _caseActionBusy) return;
+
+    const ok = await UI.confirm({
+      title: 'Delete Assignment',
+      message: `Are you sure you want to permanently delete Case ${ctx.caseNo}? This action removes it from monitoring.`,
+      okText: 'Yes, Delete',
+      cancelText: 'Cancel',
+      danger: true
     });
-    document.addEventListener("DOMContentLoaded", function(){ set("offline", "Starting sync..."); });
-  })();
+    if(!ok) return;
 
-  UI.initMailboxManagerToasts();
+    _caseActionBusy = true;
+    try{
+      const { res, data } = await mbxPost('/api/mailbox/case_action', {
+        action: 'delete',
+        shiftKey: ctx.shiftKey,
+        assignmentId: ctx.assignmentId,
+        clientId: _mbxClientId() || undefined
+      });
 
-})();
+      if(res.status === 401){
+        UI.toast('Session expired. Please log in again.', 'warn');
+        return;
+      }
+
+      if(!res.ok || !data || !data.ok){
+        const msg = (data && (data.error || data.message)) ? String(data.error||data.message) : `Failed (${res.status})`;
+        UI.toast(msg, 'warn');
+        return;
+      }
+
+      try{ if(data.table && Store.saveMailboxTable) Store.saveMailboxTable(ctx.shiftKey, data.table, { fromRealtime:true }); }catch(_){ }
+      UI.closeModal('mbxCaseActionModal');
+      UI.toast(`Case ${ctx.caseNo} deleted from records.`, 'success');
+      scheduleRender('case-delete-success');
+    }catch(e){
+      UI.toast(String(e?.message||e), 'warn');
+    }finally{
+      _caseActionBusy = false;
+    }
+  }
+
+  function exportCSV(table){
+    const buckets = table.buckets || [];
+    const members = table.members || [];
+    const totals = computeTotals(table);
+
+    const header = ['Shift', table.meta.teamLabel, 'ShiftKey', table.meta.shiftKey, 'ExportedAt', new Date().toISOString()];
+    const head2 = ['Member'].concat(buckets.map(b=>_mbxBucketLabel(b))).concat(['Total']);
+    const rows = [header, [], head2];
+
+    for(const m of members){
+      const r = [m.name];
+      for(const b of buckets){
+        r.push(String(safeGetCount(table, m.id, b.id)));
+      }
+      r.push(String(totals.rowTotals[m.id]||0));
+      rows.push(r);
+    }
+    const tRow = ['TOTAL'];
+    for(const b of buckets) tRow.push(String(totals.colTotals[b.id]||0));
+    tRow.push(String(totals.shiftTotal||0));
+    rows.push(tRow);
+
+    rows.push([]);
+    rows.push(['Assignments']);
+    rows.push(['Timestamp','Case #','Assigned To','Mailbox Time','Description','Assigned By']);
+    for(const a of (table.assignments||[]).slice().reverse()){
+      const assignee = (Store.getUsers?Store.getUsers().find(x=>x.id===a.assigneeId):null) || {};
+      const b = buckets.find(x=>x.id===a.bucketId) || {};
+      rows.push([String(a.assignedAt||''), a.caseNo||'', assignee.name||assignee.username||'', _mbxBucketLabel(b||{startMin:0,endMin:0}), a.desc||'', a.actorName||'']);
+    }
+
+    UI.downloadCSV(`mailbox_${table.meta.shiftKey.replace(/[^\w\-|T]/g,'_')}.csv`, rows);
+  }
+
+  function exportXLSX(table){
+    const buckets = table.buckets || [];
+    const members = table.members || [];
+    const totals = computeTotals(table);
+
+    const esc = (s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const th = `<tr><th>Member</th>${buckets.map(b=>`<th>${esc(_mbxBucketLabel(b))}</th>`).join('')}<th>Total</th></tr>`;
+    const trs = members.map(m=>{
+      const tds = buckets.map(b=>`<td>${safeGetCount(table,m.id,b.id)}</td>`).join('');
+      return `<tr><td>${esc(m.name)}</td>${tds}<td>${totals.rowTotals[m.id]||0}</td></tr>`;
+    }).join('');
+    const tfoot = `<tr><td><b>TOTAL</b></td>${buckets.map(b=>`<td><b>${totals.colTotals[b.id]||0}</b></td>`).join('')}<td><b>${totals.shiftTotal||0}</b></td></tr>`;
+
+    const assignRows = (table.assignments||[]).slice().reverse().map(a=>{
+      const assignee = (Store.getUsers?Store.getUsers().find(x=>x.id===a.assigneeId):null) || {};
+      const b = buckets.find(x=>x.id===a.bucketId) || {};
+      return `<tr>
+        <td>${new Date(a.assignedAt||0).toLocaleString()}</td>
+        <td>${esc(a.caseNo||'')}</td>
+        <td>${esc(assignee.name||assignee.username||'')}</td>
+        <td>${esc(_mbxBucketLabel(b||{startMin:0,endMin:0}))}</td>
+        <td>${esc(a.desc||'')}</td>
+        <td>${esc(a.actorName||'')}</td>
+      </tr>`;
+    }).join('');
+
+    const html = `
+      <html><head><meta charset="utf-8" /></head><body>
+      <h3>Mailbox Counter — ${esc(table.meta.teamLabel)}</h3>
+      <div>ShiftKey: ${esc(table.meta.shiftKey)}</div>
+      <table border="1" cellspacing="0" cellpadding="4">${th}${trs}${tfoot}</table>
+      <br/>
+      <h4>Assignments</h4>
+      <table border="1" cellspacing="0" cellpadding="4">
+        <tr><th>Timestamp</th><th>Case #</th><th>Assigned To</th><th>Mailbox Time</th><th>Description</th><th>Assigned By</th></tr>
+        ${assignRows}
+      </table>
+      </body></html>
+    `;
+    const blob = new Blob([html], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `mailbox_${table.meta.shiftKey.replace(/[^\w\-|T]/g,'_')}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  }
+
+  function exportPDF(table){
+    const w = window.open('', '_blank');
+    if(!w) return UI.toast('Popup blocked. Allow popups to export PDF.', 'warn');
+    const buckets = table.buckets || [];
+    const members = table.members || [];
+    const totals = computeTotals(table);
+
+    const esc = (s)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    const th = `<tr><th>Member</th>${buckets.map(b=>`<th>${esc(_mbxBucketLabel(b))}</th>`).join('')}<th>Total</th></tr>`;
+    const trs = members.map(m=>{
+      const tds = buckets.map(b=>`<td>${safeGetCount(table,m.id,b.id)}</td>`).join('');
+      return `<tr><td>${esc(m.name)}</td>${tds}<td>${totals.rowTotals[m.id]||0}</td></tr>`;
+    }).join('');
+    const tfoot = `<tr><td><b>TOTAL</b></td>${buckets.map(b=>`<td><b>${totals.colTotals[b.id]||0}</b></td>`).join('')}<td><b>${totals.shiftTotal||0}</b></td></tr>`;
+
+    w.document.write(`
+      <html><head><meta charset="utf-8"/>
+      <title>Mailbox Counter</title>
+      <style>
+        body{ font-family: Arial, sans-serif; padding: 18px; }
+        h2{ margin:0 0 6px; }
+        .meta{ color:#555; font-size:12px; margin-bottom:12px; }
+        table{ border-collapse: collapse; width:100%; font-size:12px; }
+        th,td{ border:1px solid #222; padding:6px; text-align:left; }
+        th{ background:#eee; }
+        @media print{ button{display:none} }
+      </style></head><body>
+      <h2>Mailbox Counter — ${esc(table.meta.teamLabel)}</h2>
+      <div class="meta">ShiftKey: ${esc(table.meta.shiftKey)} • Exported: ${new Date().toLocaleString()}</div>
+      <table>${th}${trs}${tfoot}</table>
+      <script>setTimeout(()=>{ window.print(); }, 250);<\/script>
+      </body></html>
+    `);
+    w.document.close();
+  }
+
+  let _inTick = false;
+  let _renderPending = false;
+  let _lastActiveBucketId = '';
+
+  function scheduleRender(reason){
+	  if(!isMailboxRouteActive()) return;
+    if(_renderPending) return;
+    _renderPending = true;
+
+    const run = ()=>{
+      _renderPending = false;
+      try{ render(); }catch(e){ console.error('Mailbox scheduled render failed', reason, e); }
+    };
+
+    try{
+      requestAnimationFrame(run);
+    }catch(_){
+      setTimeout(run, 0);
+    }
+  }
+
+  const onMailboxStoreEvent = (e)=>{
+    try{
+      const k = e && e.detail ? String(e.detail.key||'') : '';
+      if(
+        k === 'mailbox_override_cloud' || k === 'mailbox_time_override' ||
+        k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override' ||
+        k === 'mums_mailbox_tables' || k === 'mums_mailbox_state' ||
+        k === 'ums_weekly_schedules' || k === 'mums_schedule_blocks' ||
+        k === 'ums_users' || k === 'mums_team_config' ||
+        k === 'ums_activity_logs' || k === 'ums_cases'
+      ){
+        scheduleRender('mailbox-sync');
+      }
+    }catch(_){ }
+  };
+  try{ window.addEventListener('mums:store', onMailboxStoreEvent); }catch(_){ }
+
+  const onMailboxStorageEvent = (e)=>{
+    try{
+      if(!e || e.storageArea !== localStorage) return;
+      const k = String(e.key||'');
+      if(
+        k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override' ||
+        k === 'mums_mailbox_tables' || k === 'mums_mailbox_state' ||
+        k === 'ums_weekly_schedules' || k === 'mums_schedule_blocks' || k === 'ums_users' ||
+        k === 'mums_team_config' || k === 'ums_activity_logs' || k === 'ums_cases'
+      ){
+        try{
+          if(k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override'){
+            if(window.Store && Store.startMailboxOverrideSync) Store.startMailboxOverrideSync({ force:true });
+          }
+        }catch(_){ }
+        scheduleRender('storage-sync');
+      }
+    }catch(_){ }
+  };
+  try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
+
+  function startTimerLoop(){
+    try{ if(_timer) clearInterval(_timer); }catch(_){}
+    const tick = ()=>{
+      if(_inTick) return;
+      _inTick = true;
+      try{
+      const d = getDuty();
+      const el = UI.el('#dutyTimer');
+      if(el) el.textContent = UI.formatDuration(d.secLeft);
+
+      const curLbl = UI.el('#mbCurDutyLbl');
+      if(curLbl) curLbl.textContent = d.current.label;
+
+      try{
+        const me = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
+        const isSA = (me.role === (window.Config&&Config.ROLES?Config.ROLES.SUPER_ADMIN:'SUPER_ADMIN'));
+        const ov = (window.Store && Store.getMailboxTimeOverride) ? Store.getMailboxTimeOverride() : null;
+        const scope = ov ? String(ov.scope||'') : '';
+        const validMs = !!(ov && ov.enabled && Number(ov.ms) > 0);
+        const visible = !!(validMs && (scope === 'global' || isSA));
+        const pill = UI.el('#mbOverridePill');
+        const note = UI.el('#mbOverrideNote');
+
+        if(pill){
+          pill.textContent = (scope === 'global') ? 'GLOBAL OVERRIDE' : 'OVERRIDE';
+          pill.style.display = visible ? 'inline-flex' : 'none';
+        }
+        if(note){
+          if(visible && scope === 'global'){
+            let eff = validMs ? Number(ov.ms) : 0;
+            if(!ov.freeze){
+              const setAt = Number(ov.setAt)||Date.now();
+              eff = eff + Math.max(0, Date.now() - setAt);
+            }
+            const p = UI.manilaParts(new Date(eff || Date.now()));
+            const pad = (n)=>String(n).padStart(2,'0');
+            note.textContent = `Global Override Active — Effective Mailbox Time: ${pad(p.hh)}:${pad(p.mm)}:${pad(p.ss)}`;
+            note.style.display = 'block';
+          } else {
+            note.textContent = 'Countdown is in override mode';
+            note.style.display = visible ? 'block' : 'none';
+          }
+        }
+      }catch(_){ }
+
+      try{
+        refreshMemberDutyPills(root);
+        const timerEls = root.querySelectorAll('[data-assign-at]');
+        if(timerEls && timerEls.length){
+          const now = Date.now();
+          timerEls.forEach(el=>{
+            const ts = Number(el.getAttribute('data-assign-at')||0);
+            if(!ts) return;
+            const sec = Math.floor(Math.max(0, now - ts) / 1000);
+            const label = (UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`;
+            el.setAttribute('title', label);
+          });
+        }
+      }catch(_){ }
+
+      const { state } = ensureShiftTables();
+      try{
+        const { table } = ensureShiftTables();
+        const active = computeActiveBucketId(table);
+        const idxMap = {};
+        (table.buckets||[]).forEach((b,i)=>idxMap[b.id]=i);
+        const activeIdx = idxMap[active];
+        root.querySelectorAll('.mbx-counter-table th.active-head-col').forEach(n=>n.classList.remove('active-head-col'));
+        if(activeIdx !== undefined){
+          const timeHeads = root.querySelectorAll('.mbx-counter-table thead tr:last-child th');
+          // +2 because of Agent Profile & Live Status columns
+          if(timeHeads && timeHeads[activeIdx + 2]) timeHeads[activeIdx + 2].classList.add('active-head-col');
+        }
+      }catch(_){ }
+
+      const curKey = (Store.getMailboxState ? Store.getMailboxState().currentKey : '');
+      if(curKey && root._lastShiftKey && curKey !== root._lastShiftKey){
+        scheduleRender('shift-change');
+      }
+      root._lastShiftKey = curKey || root._lastShiftKey;
+
+      try{
+        const t = (Store.getMailboxTable && curKey) ? Store.getMailboxTable(curKey) : null;
+        const bid = t ? computeActiveBucketId(t) : '';
+        if(bid && bid !== _lastActiveBucketId){
+          _lastActiveBucketId = bid;
+          scheduleRender('active-bucket-change');
+        }
+      }catch(_){ }
+
+      }finally{
+        _inTick = false;
+      }
+    };
+    tick();
+    _timer = setInterval(()=>{ try{ tick(); }catch(e){ console.error('Mailbox tick', e); } }, 1000);
+  }
+
+  function renderMailboxAnalyticsPanel(table, prevTable, totals, activeBucketId){
+    try{
+      const esc = UI.esc;
+      const users = (Store.getUsers ? Store.getUsers() : []) || [];
+      const byId = Object.fromEntries(users.map(u=>[String(u.id), u]));
+      const shiftTotal = Number(totals?.shiftTotal)||0;
+
+      const roleCounts = {};
+      const assigneeCounts = {};
+      for(const a of (table.assignments||[])){
+        if(!a) continue;
+        const aid = String(a.assigneeId||'');
+        if(!aid) continue;
+        assigneeCounts[aid] = (assigneeCounts[aid]||0) + 1;
+        const r = String(byId[aid]?.role || 'MEMBER');
+        roleCounts[r] = (roleCounts[r]||0) + 1;
+      }
+
+      const roleRows = Object.entries(roleCounts)
+        .sort((a,b)=>b[1]-a[1])
+        .slice(0, 8)
+        .map(([r,c])=>`<div class="mbx-ana-row"><div style="font-weight:600; color:#e2e8f0; font-size:12px;">${esc(r)}</div><div class="mbx-ana-badge">${c}</div></div>`)
+        .join('') || `<div class="small muted">No assignments yet.</div>`;
+
+      const bucketRows = (table.buckets||[]).map(b=>{
+        const c = Number(totals?.colTotals?.[b.id])||0;
+        const isActive = String(b.id) === String(activeBucketId||'');
+        return `<div class="mbx-ana-row">
+          <div style="font-weight:600; color:${isActive ? '#38bdf8' : '#94a3b8'}; font-size:12px;">
+             ${esc(_mbxBucketLabel(b))} ${isActive?' <span style="background:rgba(56,189,248,0.2); color:#7dd3fc; padding:2px 6px; border-radius:4px; font-size:9px; margin-left:6px;">ACTIVE</span>':''}
+          </div>
+          <div class="mbx-ana-badge" style="background:rgba(255,255,255,0.05); color:#e2e8f0;">${c}</div>
+        </div>`;
+      }).join('') || `<div class="small muted">No buckets.</div>`;
+
+      let rtSum = 0, rtN = 0;
+      for(const a of (table.assignments||[])){
+        if(!a || !a.confirmedAt || !a.assignedAt) continue;
+        const dt = Number(a.confirmedAt) - Number(a.assignedAt);
+        if(dt>0 && dt < 7*24*60*60*1000){ rtSum += dt; rtN += 1; }
+      }
+      const avgRT = rtN ? _mbxFmtDur(rtSum/rtN) : '—';
+
+      const top = Object.entries(assigneeCounts).sort((a,b)=>b[1]-a[1]).slice(0, 8);
+      const distRows = top.map(([id,c])=>{
+        const name = byId[id]?.name || byId[id]?.username || id.slice(0,6);
+        const pct = shiftTotal ? Math.round((c/shiftTotal)*100) : 0;
+        const w = Math.max(2, Math.min(100, pct));
+        return `<div style="padding:8px 0;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <div style="font-weight:700; color:#e2e8f0; font-size:12px;">${esc(name)}</div>
+            <div style="font-weight:900; color:#38bdf8; font-size:12px;">${c} <span style="opacity:0.6; font-size:10px;">(${pct}%)</span></div>
+          </div>
+          <div class="mbx-ana-bar-wrap"><div class="mbx-ana-bar-fill" style="width:${w}%"></div></div>
+        </div>`;
+      }).join('') || `<div class="small muted">No distribution yet.</div>`;
+
+      const prevTotal = prevTable ? (computeTotals(prevTable).shiftTotal||0) : 0;
+      const shiftRows = `
+        <div class="mbx-ana-row"><div style="font-weight:600; color:#e2e8f0; font-size:12px;">Current shift</div><div class="mbx-ana-badge" style="background:rgba(16,185,129,0.15); color:#34d399;">${shiftTotal}</div></div>
+        <div class="mbx-ana-row"><div style="font-weight:600; color:#94a3b8; font-size:12px;">Previous shift</div><div class="mbx-ana-badge" style="background:rgba(255,255,255,0.05); color:#94a3b8;">${prevTable ? prevTotal : '—'}</div></div>
+        <div class="mbx-ana-row"><div style="font-weight:600; color:#94a3b8; font-size:12px;">Avg Response</div><div class="mbx-ana-badge" style="background:rgba(255,255,255,0.05); color:#cbd5e1;">${esc(avgRT)}</div></div>
+      `;
+
+      return `
+        <div class="mbx-analytics-panel">
+          <div class="mbx-panel-head">
+            <div>
+              <h3 class="mbx-panel-title">Mailbox Analytics</h3>
+              <div class="mbx-panel-desc">Live synchronization of shift performance metrics.</div>
+            </div>
+            <div class="mbx-ana-badge" style="font-size:14px;">Total Cases: ${shiftTotal}</div>
+          </div>
+          <div class="mbx-analytics-grid">
+            <div class="mbx-ana-card">
+              <div style="font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:12px;">Shift Tracking</div>
+              ${shiftRows}
+            </div>
+            <div class="mbx-ana-card">
+              <div style="font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:12px;">Assignments per Role</div>
+              ${roleRows}
+            </div>
+            <div class="mbx-ana-card">
+              <div style="font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:12px;">Top Distribution</div>
+              ${distRows}
+            </div>
+          </div>
+        </div>
+      `;
+    }catch(e){ return ''; }
+  }
+
+  function getMyPendingAssignments(table){
+    const me = (window.Auth && Auth.getUser) ? (Auth.getUser()||{}) : {};
+    const uid = String(me.id||'');
+    if(!uid) return [];
+    return (table.assignments||[])
+      .filter(a => a && a.assigneeId === uid && !a.confirmedAt)
+      .slice(0, 50);
+  }
+
+  function renderMyAssignmentsPanel(table){
+    try{
+      const list = getMyPendingAssignments(table);
+      if(!list.length) return '';
+      const buckets = table.buckets || [];
+      const byId = Object.fromEntries(buckets.map(b=>[b.id,b]));
+      const esc = UI.esc;
+      const items = list.map(a=>{
+        const b = byId[a.bucketId] || {};
+        return `
+        <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:10px; padding:16px; display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; box-shadow:0 4px 12px rgba(245,158,11,0.05);">
+          <div>
+            <div style="font-size:15px; font-weight:900; color:#fcd34d; margin-bottom:4px;">${esc(a.caseNo||'')}</div>
+            <div style="font-size:12px; color:#fbbf24;">${esc(_mbxBucketLabel(b))}${a.desc ? ' • '+esc(a.desc) : ''}</div>
+          </div>
+          <button class="btn-glass btn-glass-action" data-confirm-assign="${esc(a.id)}">Acknowledge ✓</button>
+        </div>`;
+      }).join('');
+      
+      return `
+        <div class="mbx-analytics-panel" style="background:rgba(15,23,42,0.8); border-color:rgba(245,158,11,0.3);">
+          <div class="mbx-panel-head">
+            <div>
+              <h3 class="mbx-panel-title" style="color:#fcd34d;">⚠️ Action Required: My Pending Cases</h3>
+              <div class="mbx-panel-desc" style="color:#fbbf24; opacity:0.8;">Acknowledge tasks assigned to you to update the live matrix.</div>
+            </div>
+            <div class="mbx-ana-badge" style="background:rgba(245,158,11,0.2); color:#fcd34d; font-size:14px; border:1px solid rgba(245,158,11,0.4);">${list.length} Pending</div>
+          </div>
+          <div>${items}</div>
+        </div>
+      `;
+    }catch(_){ return ''; }
+  }
+
+  function buildCaseMonitoringMatrix(table, shiftKey){
+    const members = (table.members||[]).slice();
+    const by = {};
+    const memberById = {};
+    for(const m of members){ by[m.id] = []; memberById[m.id] = m; }
+
+    const mergedByCase = new Map();
+    function normalizedCaseKey(assigneeId, caseNo){
+      return `${String(assigneeId||'').trim()}|${String(caseNo||'').trim().toLowerCase()}`;
+    }
+    function upsertMerged(raw){
+      if(!raw) return;
+      const assigneeId = String(raw.assigneeId||'').trim();
+      const caseNo = String(raw.caseNo||raw.title||'').trim();
+      if(!assigneeId || !caseNo || !by[assigneeId]) return;
+      const key = normalizedCaseKey(assigneeId, caseNo);
+      const assignedAt = Number(raw.assignedAt||raw.createdAt||raw.ts||Date.now()) || Date.now();
+      const confirmedAt = Number(raw.confirmedAt||0) || 0;
+      const existing = mergedByCase.get(key);
+      if(!existing){
+        mergedByCase.set(key, {
+          id: String(raw.id || `merged_${assigneeId}_${caseNo}`),
+          caseNo,
+          assigneeId,
+          assignedAt,
+          confirmedAt,
+          assigneeName: String(raw.assigneeName || memberById[assigneeId]?.name || assigneeId || '').slice(0,120)
+        });
+        return;
+      }
+      existing.assignedAt = Math.max(Number(existing.assignedAt||0), assignedAt);
+      existing.confirmedAt = Math.max(Number(existing.confirmedAt||0), confirmedAt);
+      if(String(existing.id||'').startsWith('fallback_') && raw.id){
+        existing.id = String(raw.id);
+      }
+      if(!existing.assigneeName){
+        existing.assigneeName = String(raw.assigneeName || memberById[assigneeId]?.name || assigneeId || '').slice(0,120);
+      }
+    }
+
+    for(const a of (table.assignments||[])) upsertMerged(a);
+
+    try{
+      const allCases = (window.Store && Store.getCases) ? (Store.getCases()||[]) : [];
+      const key = String(shiftKey||'').trim();
+      for(const c of allCases){
+        if(!c || String(c.shiftKey||'').trim() !== key) continue;
+        upsertMerged({
+          id: String(c.id || ''),
+          caseNo: String(c.caseNo||c.title||'').trim(),
+          assigneeId: String(c.assigneeId||'').trim(),
+          assigneeName: String(c.assigneeName || c.assignee || '').trim(),
+          assignedAt: Number(c.createdAt||c.ts||Date.now()) || Date.now(),
+          confirmedAt: Number(c.confirmedAt||0) || 0
+        });
+      }
+    }catch(_){ }
+
+    for(const a of mergedByCase.values()){
+      if(!a || !by[a.assigneeId]) continue;
+      by[a.assigneeId].push(a);
+    }
+
+    const cols = members.map(m=>{
+      const list = by[m.id] || [];
+      return { id:m.id, name:m.name, count:list.length, list:list.slice().sort((a,b)=>(Number(b.assignedAt||b.ts||0)-Number(a.assignedAt||a.ts||0))) };
+    });
+    cols.sort((a,b)=>{
+      if(a.count !== b.count) return a.count - b.count;
+      return String(a.name||'').localeCompare(String(b.name||''));
+    });
+    const maxLen = Math.max(0, ...cols.map(c=>c.list.length));
+    const rows = [];
+    for(let i=0;i<maxLen;i++){
+      rows.push(cols.map(c=>c.list[i] || null));
+    }
+    return { cols, rows };
+  }
+
+  function renderCaseMonitoring(table, shiftKey){
+    const esc = UI.esc;
+    const m = buildCaseMonitoringMatrix(table, shiftKey);
+    if(!m.cols.length){
+      return `<div style="padding:30px; text-align:center; color:#94a3b8; font-weight:600;">No members found for this shift.</div>`;
+    }
+    const head = `<tr>
+      <th style="width:40px; text-align:center; background:rgba(15,23,42,0.95); position:sticky; top:0; z-index:10; border-bottom:1px solid rgba(255,255,255,0.08); padding:14px 10px; color:#64748b;">#</th>
+      ${m.cols.map(c=>`
+        <th style="background:rgba(15,23,42,0.95); position:sticky; top:0; z-index:10; border-bottom:1px solid rgba(255,255,255,0.08); padding:14px 10px;">
+           <div style="font-weight:800; font-size:12px; color:#e2e8f0; white-space:nowrap;">${esc(c.name)}</div>
+           <div style="font-size:10px; color:#38bdf8; font-weight:900; margin-top:4px;">${c.count} CASES</div>
+        </th>`).join('')}
+    </tr>`;
+
+    const body = m.rows.map((row, idx)=>{
+      const tds = row.map(a=>{
+        if(!a) return `<td style="border:1px solid rgba(255,255,255,0.02); background:transparent;"></td>`;
+        
+        const isConfirmed = !!a.confirmedAt;
+        const cls = isConfirmed ? 'mbx-mon-cell confirmed' : 'mbx-mon-cell';
+        const assignedAt = Number(a.assignedAt||0);
+        const sec = assignedAt ? Math.floor(Math.max(0, Date.now() - assignedAt) / 1000) : 0;
+        const timer = assignedAt ? ((UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`) : '';
+        
+        const statusHtml = isConfirmed
+          ? `<span class="mbx-stat-done" title="Acknowledged">✓</span>`
+          : `<span class="mbx-stat-wait" data-assign-at="${esc(assignedAt)}" title="Pending Acknowledgment (${esc(timer)})">⏳</span>`;
+          
+        const aid = esc(String(a.id||''));
+        const caseNo = esc(String(a.caseNo||''));
+        const ownerId = esc(String(a.assigneeId||''));
+        const ownerName = esc(String(a.assigneeName||''));
+        
+        return `
+          <td class="${cls}" data-case-action="1" data-assignment-id="${aid}" data-case-no="${caseNo}" data-owner-id="${ownerId}" data-owner-name="${ownerName}" title="Double-click to open Action Menu" style="border:1px solid rgba(255,255,255,0.04);">
+             <div class="mbx-case-badge ${isConfirmed ? '' : 'glow'}">
+                <span style="letter-spacing:0.5px;">${caseNo}</span>
+                ${statusHtml}
+             </div>
+          </td>`;
+      }).join('');
+      return `<tr><td style="text-align:center; font-size:11px; font-weight:800; color:#64748b; border:1px solid rgba(255,255,255,0.02);">${idx+1}</td>${tds}</tr>`;
+    }).join('');
+
+    return `
+      <style>
+        .mbx-case-badge.glow { border-color:rgba(245,158,11,0.4); box-shadow:0 0 10px rgba(245,158,11,0.1); }
+      </style>
+      <table class="mbx-mon-table" style="min-width:100%;">
+        <thead>${head}</thead>
+        <tbody>${body || `<tr><td colspan="${m.cols.length+1}" style="padding:40px; text-align:center; color:#64748b; font-weight:600;">No assignments have been distributed yet.</td></tr>`}</tbody>
+      </table>
+    `;
+  }
+
+  render();
+
+  root._cleanup = ()=>{
+	  try{ if(_timer) clearInterval(_timer); }catch(_){ }
+	  try{ window.removeEventListener('mums:store', onMailboxStoreEvent); }catch(_){ }
+	  try{ window.removeEventListener('storage', onMailboxStorageEvent); }catch(_){ }
+  };
+});
