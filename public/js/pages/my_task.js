@@ -31,7 +31,9 @@
     assigneeColumnIndex: -1,
     form: { title: '', description: '', reference_url: '', deadline: '', enable_daily_alerts: true },
     isSheetJsReady: false,
-    loginAlert: { open: false, totalOverdue: 0, distributions: [], isHourlyEscalation: false }
+    loginAlert: { open: false, totalOverdue: 0, distributions: [], isHourlyEscalation: false },
+    isFullscreen: false,       // ENTERPRISE: Added Fullscreen state
+    showWorkloadModal: false   // ENTERPRISE: Added Workload pop-up state
   };
 
   const LOGIN_ALERT_SESSION_KEY = 'mums:my_task:high_priority_login_alert_v2';
@@ -235,10 +237,10 @@
       /* HIGH LEVEL ENTERPRISE MODAL UI UPGRADE    */
       /* ========================================= */
       
-      .task-modal-glass::-webkit-scrollbar, .glass-table-container::-webkit-scrollbar { width: 6px; height: 6px; }
-      .task-modal-glass::-webkit-scrollbar-track, .glass-table-container::-webkit-scrollbar-track { background: transparent; }
-      .task-modal-glass::-webkit-scrollbar-thumb, .glass-table-container::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 10px; }
-      .task-modal-glass::-webkit-scrollbar-thumb:hover, .glass-table-container::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
+      .task-modal-glass::-webkit-scrollbar, .glass-table-container::-webkit-scrollbar, .modal-body-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+      .task-modal-glass::-webkit-scrollbar-track, .glass-table-container::-webkit-scrollbar-track, .modal-body-scroll::-webkit-scrollbar-track { background: transparent; }
+      .task-modal-glass::-webkit-scrollbar-thumb, .glass-table-container::-webkit-scrollbar-thumb, .modal-body-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 10px; }
+      .task-modal-glass::-webkit-scrollbar-thumb:hover, .glass-table-container::-webkit-scrollbar-thumb:hover, .modal-body-scroll::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
       .task-modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.8);backdrop-filter:blur(8px);z-index:14060;display:flex;align-items:center;justify-content:center;padding:20px;overflow:hidden;}
       
       .task-modal-glass{
@@ -246,8 +248,12 @@
         background:linear-gradient(145deg, rgba(15,23,42,0.95) 0%, rgba(2,6,23,0.98) 100%);
         border:1px solid rgba(148,163,184,.2); border-radius:16px; 
         box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.1);
-        display:flex; flex-direction:column;
+        display:flex; flex-direction:column; transition: all 0.3s ease;
       }
+
+      /* ENTERPRISE: Fullscreen Mode Classes */
+      .task-modal-glass.is-fullscreen { width: 98vw !important; height: 98vh !important; max-height: 98vh !important; border-radius:8px; }
+      .task-modal-glass.is-fullscreen .glass-table-container { max-height: calc(100vh - 400px) !important; }
       
       .modal-header-glass {
         padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -299,7 +305,7 @@
       .stat-label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
       .stat-value { font-size: 26px; font-weight: 900; color: #f8fafc; line-height: 1; letter-spacing: -1px; }
 
-      .glass-table-container { border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; overflow-x: auto; background: rgba(2,6,23,0.4); max-height: 380px; }
+      .glass-table-container { border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; overflow-y: auto; background: rgba(2,6,23,0.4); max-height: 380px; transition: max-height 0.3s; }
       .glass-table-container table { width:100%; border-collapse:collapse; }
       .glass-table-container th { background: rgba(15,23,42,0.9); color:#cbd5e1; font-weight:600; text-transform:uppercase; font-size:11px; letter-spacing:0.5px; padding:12px; border-bottom:1px solid rgba(255,255,255,0.05); position:sticky; top:0; z-index:5; backdrop-filter:blur(4px); }
       .glass-table-container td { padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); font-size:13px; vertical-align:middle; }
@@ -504,11 +510,84 @@
       };
     }).sort((a, b) => b.count - a.count);
 
+    let maxTasks = 0;
+    assigneeStats.forEach(s => { if(s.count > maxTasks) maxTasks = s.count; });
+
     const canSubmit = state.form.title.trim() && state.form.deadline && hasData && totalNeedsFix === 0 && !state.creating;
+
+    // PRE-COMPILE WORKLOAD MODAL HTML
+    let workloadModalHtml = '';
+    if (state.showWorkloadModal) {
+      const listHtml = assigneeStats.map(astat => {
+        const pct = maxTasks > 0 ? (astat.count / maxTasks) * 100 : 0;
+        return `
+          <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(148,163,184,0.2); border-radius:8px; padding:12px; margin-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+              <span style="color:#e2e8f0; font-weight:700; font-size:13px;">${esc(astat.name)}</span>
+              <span style="color:#38bdf8; font-weight:900; font-size:13px;">${astat.count} tasks</span>
+            </div>
+            <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:999px; overflow:hidden;">
+              <div style="height:100%; width:${pct}%; background:linear-gradient(90deg, #0ea5e9, #38bdf8); border-radius:999px;"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      workloadModalHtml = `
+        <div class="task-modal-backdrop" id="workloadModalBackdrop" style="z-index:15000; background:rgba(2,6,23,0.9);">
+          <div class="task-modal-glass" style="width:min(500px, 95vw); max-height:85vh;">
+            <div class="modal-header-glass">
+              <h3>📊 Workload Balance</h3>
+              <button class="btn-glass btn-glass-ghost" type="button" id="closeWorkloadModal" style="padding:6px 12px;">✕ Close</button>
+            </div>
+            <div class="modal-body-scroll">
+              <div class="task-meta" style="margin-bottom:4px;">Check distribution to avoid assigning too many tasks to a single member.</div>
+              <div style="margin-top:10px;">
+                ${listHtml || '<div class="task-empty">No members mapped yet.</div>'}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // PRE-COMPILE GRID HTML
+    const gridRowsHtml = state.parsedRows.map((row, idx) => {
+      const invalid = !row.assigned_to;
+      const optionsHtml = state.members.map((m) => {
+        const isSelected = String(row.assigned_to) === String(m.user_id) ? 'selected' : '';
+        return `<option value="${esc(m.user_id)}" ${isSelected}>${esc(m.name || m.username || m.user_id)}</option>`;
+      }).join('');
+      
+      const badgeHtml = invalid 
+        ? '<div style="background:rgba(239,68,68,0.2); color:#fca5a5; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid rgba(239,68,68,0.3);">NEEDS FIX</div>' 
+        : '<div style="background:rgba(34,197,94,0.2); color:#86efac; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid rgba(34,197,94,0.3);">READY</div>';
+
+      return `
+        <tr class="${invalid ? 'task-invalid' : ''}">
+          <td>
+            <div style="font-weight:700; color:#f8fafc; font-size:14px; margin-bottom:4px;">${esc(safeText(row.case_number, 'N/A'))}</div>
+            <div class="task-meta" style="font-size:11px; max-width:400px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(row.description)}">
+              <span style="color:#38bdf8; opacity:0.8;">Payload:</span> ${esc(row.description)}
+            </div>
+          </td>
+          <td>
+            <div style="font-weight:600; font-size:12px; color:${invalid ? '#ef4444' : '#94a3b8'}; margin-bottom:4px;">
+              Extracted: "${esc(safeText(row.assigned_name, 'Unknown'))}"
+            </div>
+            <select class="premium-input" data-assignee-fix="${idx}" style="padding:6px; font-size:12px; background:rgba(15,23,42,0.8);">
+              <option value="">-- Resolve Member --</option>
+              ${optionsHtml}
+            </select>
+          </td>
+          <td style="text-align:center;">${badgeHtml}</td>
+        </tr>
+      `;
+    }).join('');
 
     return `
       <div class="task-modal-backdrop" id="distributionModalBackdrop">
-        <div class="task-modal-glass" role="dialog" aria-modal="true" aria-label="Create Distribution Wizard">
+        <div class="task-modal-glass ${state.isFullscreen ? 'is-fullscreen' : ''}" role="dialog" aria-modal="true">
           
           <div class="modal-header-glass">
             <h3>✨ Create New Distribution</h3>
@@ -517,7 +596,7 @@
 
           <div class="modal-body-scroll">
             
-            <div class="glass-card">
+            <div class="glass-card" style="${state.isFullscreen ? 'display:none;' : ''}">
               <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
                 <div style="background:#0ea5e9; color:#fff; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold;">1</div>
                 <div class="task-title" style="margin:0;">Project Metadata & Escalation</div>
@@ -553,29 +632,34 @@
               </label>
             </div>
 
-            <div class="glass-card" style="margin-bottom:0; display:flex; flex-direction:column;">
+            <div class="glass-card" style="margin-bottom:0; display:flex; flex-direction:column; ${state.isFullscreen ? 'height:100%;' : ''}">
               
               <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
                 <div style="display:flex; align-items:center; gap:10px;">
                   <div style="background:#0ea5e9; color:#fff; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold;">2</div>
                   <div class="task-title" style="margin:0;">Enterprise Data Ingestion</div>
                 </div>
-                ${hasData ? `<button class="btn-glass btn-glass-ghost" type="button" id="btnReplaceFile" style="font-size:11px; padding:6px 12px; border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">🗑️ Discard & Reupload</button>` : ''}
+                
+                <div style="display:flex; gap:8px;">
+                  ${hasData ? `
+                    <button class="btn-glass btn-glass-ghost" type="button" id="btnToggleFullscreen" style="font-size:11px; padding:6px 12px; color:#38bdf8; border-color:rgba(56,189,248,0.3);">
+                      ${state.isFullscreen ? '↙️ Collapse View' : '↗️ Fullscreen Table'}
+                    </button>
+                    <button class="btn-glass btn-glass-ghost" type="button" id="btnReplaceFile" style="font-size:11px; padding:6px 12px; border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">🗑️ Discard & Reupload</button>
+                  ` : ''}
+                </div>
               </div>
 
               ${!hasData ? `
                 <div class="task-meta" style="margin-bottom:16px; margin-left:34px;">Upload any structured Excel/CSV file. The system will dynamically pack columns into the payload.</div>
-                
                 <div id="uploadZone" class="upload-zone-glass ${state.dragActive ? 'drag' : ''}">
                   <div class="upload-icon">📊</div>
                   <div style="font-weight:700;font-size:16px; color:#e2e8f0;">Drag & Drop your dataset here</div>
                   <div class="task-meta" style="margin:6px 0 16px 0;">Supports .xlsx, .xls, .csv</div>
-                  
                   <label class="btn-glass btn-glass-primary" style="display:inline-block; cursor:pointer;">
                     Browse Files
                     <input type="file" id="taskFileInput" accept=".xlsx,.xls,.csv" style="display:none;" />
                   </label>
-                  
                   ${state.parseError ? `<div style="color:#ef4444;margin-top:16px;font-size:13px;font-weight:bold;background:rgba(239,68,68,0.1);padding:8px;border-radius:4px;">⚠️ ${esc(state.parseError)}</div>` : ''}
                 </div>
               ` : `
@@ -594,19 +678,11 @@
                   </div>
                 </div>
 
-                <div style="background:rgba(2,6,23,0.4); padding:14px; border-radius:8px; border:1px solid rgba(255,255,255,0.05); margin-bottom:16px;">
-                  <div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
-                     <span>👥 Workload Distribution Preview</span>
-                  </div>
-                  <div style="display:flex; flex-wrap:wrap; gap:8px;">
-                    ${assigneeStats.map(astat => `
-                       <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(148,163,184,0.2); padding:4px 10px; border-radius:999px; font-size:12px; display:flex; align-items:center; gap:8px;">
-                          <span style="color:#e2e8f0; font-weight:600;">${esc(astat.name)}</span>
-                          <span style="background:rgba(56,189,248,0.2); color:#7dd3fc; padding:2px 6px; border-radius:999px; font-size:10px; font-weight:bold;">${astat.count} tasks</span>
-                       </div>
-                    `).join('')}
-                    ${assigneeStats.length === 0 ? '<span style="font-size:12px; color:#64748b;">No members successfully mapped yet. Please resolve pending items below.</span>' : ''}
-                  </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(2,6,23,0.4); padding:14px; border-radius:8px; border:1px solid rgba(255,255,255,0.05); margin-bottom:16px;">
+                  <div style="font-size:12px; color:#94a3b8;"><strong style="color:#e2e8f0;">${assigneeStats.length}</strong> members mapped. Balance the distribution to prevent burnout.</div>
+                  <button class="btn-glass btn-glass-primary" type="button" id="btnViewWorkload" style="padding:6px 14px; font-size:12px; background:rgba(56,189,248,0.1); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); box-shadow:none;">
+                    📊 View Workload Balance
+                  </button>
                 </div>
 
                 <div class="glass-table-container">
@@ -619,33 +695,7 @@
                       </tr>
                     </thead>
                     <tbody>
-                      ${state.parsedRows.map((row, idx) => {
-                        const invalid = !row.assigned_to;
-                        return `
-                          <tr class="${invalid ? 'task-invalid' : ''}">
-                            <td>
-                              <div style="font-weight:700; color:#f8fafc; font-size:14px; margin-bottom:4px;">${esc(safeText(row.case_number, 'N/A'))}</div>
-                              <div class="task-meta" style="font-size:11px; max-width:400px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(row.description)}">
-                                <span style="color:#38bdf8; opacity:0.8;">Payload:</span> ${esc(row.description)}
-                              </div>
-                            </td>
-                            <td>
-                              <div style="font-weight:600; font-size:12px; color:${invalid ? '#ef4444' : '#94a3b8'}; margin-bottom:4px;">
-                                Extracted: "${esc(safeText(row.assigned_name, 'Unknown'))}"
-                              </div>
-                              <select class="premium-input" data-assignee-fix="${idx}" style="padding:6px; font-size:12px; background:rgba(15,23,42,0.8);">
-                                <option value="">-- Resolve Member --</option>
-                                ${state.members.map((m) => `<option value="${esc(m.user_id)}" ${String(row.assigned_to) === String(m.user_id) ? 'selected' : ''}>${esc(m.name || m.username || m.user_id)}</option>`).join('')}
-                              </select>
-                            </td>
-                            <td style="text-align:center;">
-                              ${invalid 
-                                ? '<div style="background:rgba(239,68,68,0.2); color:#fca5a5; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid rgba(239,68,68,0.3);">NEEDS FIX</div>' 
-                                : '<div style="background:rgba(34,197,94,0.2); color:#86efac; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid rgba(34,197,94,0.3);">READY</div>'}
-                            </td>
-                          </tr>
-                        `;
-                      }).join('')}
+                      ${gridRowsHtml || '<tr><td colspan="3" class="task-meta" style="text-align:center; padding:30px;">No preview generated.</td></tr>'}
                     </tbody>
                   </table>
                 </div>
@@ -675,6 +725,7 @@
 
         </div>
       </div>
+      ${workloadModalHtml}
     `;
   }
 
@@ -916,6 +967,8 @@
       state.parsedRows = buildParsedRows(split.rows, detection, split.headers);
       state.assigneeColumnIndex = detection.assigneeColumnIndex;
       state.uploadMeta = { name: String(file.name || ''), rows: state.parsedRows.length, sheets: parsed.sheets };
+      // ENTERPRISE UX: Open fullscreen automatically when a large file is dropped
+      if(state.parsedRows.length > 50) state.isFullscreen = true;
     } catch (err) {
       state.parseError = String(err && err.message ? err.message : err);
       state.parsedRows = [];
@@ -926,6 +979,7 @@
     state.modalOpen = false; state.parseError = ''; state.dragActive = false;
     state.uploadMeta = { name: '', rows: 0, sheets: 0 }; state.parsedRows = [];
     state.form = { title: '', description: '', reference_url: '', deadline: '', enable_daily_alerts: true };
+    state.isFullscreen = false; state.showWorkloadModal = false;
     render();
   }
 
@@ -1025,12 +1079,40 @@
     if (el('#closeDistributionModal')) el('#closeDistributionModal').onclick = closeModal;
     if (el('#cancelDistributionCreate')) el('#cancelDistributionCreate').onclick = closeModal;
     
-    // Reset Data logic
+    // UI Toggles
+    if (el('#btnToggleFullscreen')) {
+      el('#btnToggleFullscreen').onclick = () => {
+        state.isFullscreen = !state.isFullscreen;
+        render();
+      };
+    }
+    if (el('#btnViewWorkload')) {
+      el('#btnViewWorkload').onclick = () => {
+        state.showWorkloadModal = true;
+        render();
+      };
+    }
+    if (el('#closeWorkloadModal')) {
+      el('#closeWorkloadModal').onclick = () => {
+        state.showWorkloadModal = false;
+        render();
+      };
+    }
+    if (el('#workloadModalBackdrop')) {
+      el('#workloadModalBackdrop').onclick = (e) => {
+        if(e.target === el('#workloadModalBackdrop')) {
+          state.showWorkloadModal = false;
+          render();
+        }
+      };
+    }
+
     if (el('#btnReplaceFile')) {
       el('#btnReplaceFile').onclick = () => {
         state.parsedRows = [];
         state.uploadMeta = { name: '', rows: 0, sheets: 0 };
         state.parseError = '';
+        state.isFullscreen = false;
         render();
       };
     }
@@ -1103,6 +1185,7 @@
       state.creating = false;
       if (!out.ok) { state.parseError = out.message || 'Failed'; render(); return; }
       state.form = { title: '', description: '', reference_url: '', deadline: '', enable_daily_alerts: true };
+      state.isFullscreen = false;
       closeModal(); await loadBaseData();
     };
   }
