@@ -42,8 +42,10 @@
       includeLead: false
     },
     
-    // ENTERPRISE UPGRADE: Delete Confirmation State
-    deleteModal: { open: false, distId: '', title: '' }
+    deleteModal: { open: false, distId: '', title: '' },
+
+    // ENTERPRISE UPGRADE: Filter State per Distribution
+    distributionFilters: {} 
   };
 
   const LOGIN_ALERT_SESSION_KEY = 'mums:my_task:high_priority_login_alert_v2';
@@ -73,12 +75,10 @@
 
   function findTaskItem(taskItemId) {
     const id = String(taskItemId || '');
-    // Search in assigned
     for (const group of state.assignedGroups) {
       const hit = (Array.isArray(group.items) ? group.items : []).find((r) => String(r.id || '') === id);
       if (hit) return { group, item: hit, source: 'assigned' };
     }
-    // Search in loaded distribution items
     for (const distId in state.distributionItemsById) {
       const items = state.distributionItemsById[distId];
       const hit = items.find((r) => String(r.id || '') === id);
@@ -142,6 +142,17 @@
     return normalized === '1' || normalized === 'true' || normalized === 't' || normalized === 'yes';
   }
 
+  // ENTERPRISE UPGRADE: Centralized Team Extractor Helper
+  function getMemberTeam(uid) {
+    if (!uid) return 'Unassigned';
+    const m = state.members.find(mem => String(mem.user_id || mem.id) === uid);
+    if (!m) return 'Unknown Member';
+    let t = m.duty || m.shift || m.team_name || m.team || m.team_id || m.department;
+    if (!t && m.teams) t = m.teams.duty || m.teams.name || m.teams.shift;
+    if (!t && m.user_metadata) t = m.user_metadata.duty || m.user_metadata.shift;
+    return t ? String(t).trim() : 'No Team Assigned';
+  }
+
   function computeLoginAlertData() {
     const distributions = {};
     let totalOverdue = 0;
@@ -186,10 +197,8 @@
     let alreadyShown = false;
     try { alreadyShown = sessionStorage.getItem(LOGIN_ALERT_SESSION_KEY) === '1'; } catch (_) {}
     if (alreadyShown) return;
-
     const info = computeLoginAlertData();
     if (info.distributions.length < 1) return;
-
     state.loginAlert = { open: true, ...info };
     try { sessionStorage.setItem(LOGIN_ALERT_SESSION_KEY, '1'); } catch (_) {}
   }
@@ -203,12 +212,10 @@
   function guessMember(rawValue) {
     const input = normalizeName(rawValue);
     if (!input) return null;
-
     let winner = null;
     state.members.forEach((member) => {
       const label = normalizeName(member.name || member.username || member.user_id);
       if (!label) return;
-
       let score = 0;
       if (label === input) score = 1;
       else if (label.includes(input) || input.includes(label)) score = 0.86;
@@ -223,11 +230,9 @@
     return winner;
   }
 
-  // ENTERPRISE UPGRADE: Export Engine
   async function exportDistributionToExcel(distId, title) {
     let items = state.distributionItemsById[distId];
     if (!items || items.length === 0) {
-      // Force load if not expanded yet
       state.loading = true; render();
       const out = await CloudTasks.distributionItems(distId);
       state.loading = false;
@@ -248,6 +253,7 @@
          'Site': safeText(i.site, 'N/A'),
          'Task Description Payload': i.description || '',
          'Assignee': assigneeName,
+         'Team/Shift': getMemberTeam(uid),
          'Status': normalizeItemStatus(i.status),
          'Deadline': safeDate(i.deadline || i.deadline_at || i.due_at),
          'Problem Notes': i.problem_notes || ''
@@ -340,7 +346,6 @@
       .task-overlay{position:absolute;inset:0;background:rgba(2,6,23,.7);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:40;border-radius:8px}
       .task-spinner{width:40px;height:40px;border-radius:999px;border:4px solid rgba(255,255,255,.1);border-top-color:#38bdf8;animation:taskSpin 1s linear infinite}
       
-      /* ENTERPRISE STATUS SELECTOR */
       .task-status-select{width:max-content;max-width:220px;padding:6px 12px;border-radius:6px;font-weight:700;font-size:12px;border:1px solid rgba(148,163,184,.2);background:rgba(15,23,42,.8);color:#e2e8f0;outline:none; cursor:pointer;}
       .task-status-select:disabled{opacity:.5;cursor:not-allowed}
       .task-status-select.status-pending{border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.1);color:#fcd34d}
@@ -348,6 +353,25 @@
       .task-status-select.status-completed{border-color:rgba(16,185,129,.4);background:rgba(16,185,129,.1);color:#6ee7b7}
       .task-status-select.status-problem{border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#fca5a5}
       .task-problem-notes{font-size:12px;color:#fca5a5;line-height:1.4;word-break:break-word;opacity:.9; background: rgba(239,68,68,0.1); padding: 8px; border-radius: 6px; border-left: 3px solid #ef4444; margin-top: 6px;}
+
+      /* ENTERPRISE UPGRADE: Interactive Summary & Team Progress Grid */
+      .enterprise-dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 16px; align-items: start; }
+      @media (max-width: 900px) { .enterprise-dashboard-grid { grid-template-columns: 1fr; } }
+      
+      .dist-filter-btn { display:flex; flex-direction:column; padding:10px 14px; border-radius:8px; border:1px solid rgba(255,255,255,0.05); background:rgba(2,6,23,0.6); cursor:pointer; transition:all 0.2s; outline:none; text-align:left; flex:1; min-width:80px; position:relative; overflow:hidden;}
+      .dist-filter-btn:hover { background:rgba(15,23,42,0.8); transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.2); }
+      .dist-filter-btn.active::before { content:''; position:absolute; inset:0; background:currentColor; opacity:0.05; }
+      
+      /* Active Filter Glowing Borders */
+      .dist-filter-btn.active[data-filter="Pending"] { border-color:#fcd34d; box-shadow:0 0 15px rgba(245,158,11,0.2); }
+      .dist-filter-btn.active[data-filter="Ongoing"] { border-color:#38bdf8; box-shadow:0 0 15px rgba(56,189,248,0.2); }
+      .dist-filter-btn.active[data-filter="With Problem"] { border-color:#ef4444; box-shadow:0 0 15px rgba(239,68,68,0.2); }
+      .dist-filter-btn.active[data-filter="Completed"] { border-color:#10b981; box-shadow:0 0 15px rgba(16,185,129,0.2); }
+
+      .team-progress-pill { background: rgba(15,23,42,0.6); border:1px solid rgba(255,255,255,0.04); padding: 8px 12px; border-radius: 6px; display:flex; flex-direction:column; gap:4px; margin-bottom:6px; }
+      .team-progress-pill-header { display:flex; justify-content:space-between; font-size:11px; font-weight:700; color:#e2e8f0; }
+      .team-progress-pill-rail { height:4px; background:rgba(2,6,23,0.8); border-radius:999px; overflow:hidden; }
+      .team-progress-pill-fill { height:100%; background:linear-gradient(90deg, #0ea5e9, #38bdf8); border-radius:999px; }
 
       /* ========================================= */
       /* MODAL UI UPGRADE    */
@@ -467,7 +491,6 @@
   function renderAssignedCard(group) {
     const id = String(group.distribution_id || 'unassigned');
     const total = Number(group.total_count || (Array.isArray(group.items) ? group.items.length : 0));
-    // Fix Real-time Sync: Use calculated done_count from state memory
     const done = Number(group.done_count || 0);
     const assignedAt = safeDate(group.assigned_at);
     const isOpen = state.expandedAssignedId === id;
@@ -567,7 +590,6 @@
   function renderDistributionCard(dist) {
     const id = String(dist.id || dist.distribution_id || '');
     const total = Number(dist.total_count || dist.total_items || 0);
-    // Real-time Sync computation
     const pending = Number(dist.pending_count || dist.pending_items || 0);
     const done = Math.max(0, total - pending);
     const isOpen = state.expandedDistributionId === id;
@@ -575,24 +597,87 @@
     const isComplete = total > 0 && done === total;
     const progressPct = percent(done, total);
 
-    // Summary calculation for loaded items
+    // ENTERPRISE UPGRADE: Filter Engine & Team Progress Data
+    const activeFilter = state.distributionFilters[id] || 'ALL';
+    
     let summaryHtml = '';
+    let filteredItems = items;
+
     if (isOpen && items.length > 0) {
-       let ready = 0, ongoing = 0, problem = 0, completed = 0;
+       let s_ready = 0, s_ongoing = 0, s_problem = 0, s_completed = 0;
+       const teamStats = {};
+
        items.forEach(i => {
+          // Status counting
           const s = normalizeItemStatus(i.status);
-          if (s === 'Pending') ready++;
-          else if (s === 'Ongoing') ongoing++;
-          else if (s === 'With Problem') problem++;
-          else completed++;
+          if (s === 'Pending') s_ready++;
+          else if (s === 'Ongoing') s_ongoing++;
+          else if (s === 'With Problem') s_problem++;
+          else s_completed++;
+
+          // Team Progress tracking
+          const uid = String(i.assigned_to || i.assignee_user_id || '').trim();
+          const tName = getMemberTeam(uid);
+          if(!teamStats[tName]) teamStats[tName] = { total: 0, done: 0 };
+          teamStats[tName].total++;
+          if (s === 'Completed') teamStats[tName].done++;
        });
+
+       // Apply Filter to Table
+       if (activeFilter !== 'ALL') {
+          filteredItems = items.filter(i => normalizeItemStatus(i.status) === activeFilter);
+       }
+
+       const teamProgressHtml = Object.keys(teamStats).map(t => {
+          const stat = teamStats[t];
+          const pct = Math.round((stat.done / stat.total) * 100);
+          const isTeamDone = stat.done === stat.total;
+          return `
+             <div class="team-progress-pill">
+                <div class="team-progress-pill-header">
+                   <span>${esc(t)}</span>
+                   <span style="color:${isTeamDone ? '#34d399' : '#38bdf8'};">${stat.done}/${stat.total} (${pct}%)</span>
+                </div>
+                <div class="team-progress-pill-rail">
+                   <div class="team-progress-pill-fill" style="width:${pct}%; ${isTeamDone ? 'background:#10b981;' : ''}"></div>
+                </div>
+             </div>
+          `;
+       }).join('');
+
        summaryHtml = `
-          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; background:rgba(2,6,23,0.5); padding:10px 14px; border-radius:8px; border:1px solid rgba(255,255,255,0.05);">
-             <div style="font-size:12px; font-weight:700; color:#94a3b8; display:flex; align-items:center; margin-right:10px;">📊 QUICK SUMMARY:</div>
-             <div class="stat-box" style="padding:6px 10px; min-width:auto; border-left:2px solid #cbd5e1;"><span class="stat-label">Pending</span><span class="stat-value" style="font-size:16px;">${ready}</span></div>
-             <div class="stat-box" style="padding:6px 10px; min-width:auto; border-left:2px solid #38bdf8;"><span class="stat-label">Ongoing</span><span class="stat-value" style="font-size:16px; color:#38bdf8;">${ongoing}</span></div>
-             <div class="stat-box" style="padding:6px 10px; min-width:auto; border-left:2px solid #ef4444;"><span class="stat-label">Problem</span><span class="stat-value" style="font-size:16px; color:#f87171;">${problem}</span></div>
-             <div class="stat-box" style="padding:6px 10px; min-width:auto; border-left:2px solid #10b981;"><span class="stat-label">Done</span><span class="stat-value" style="font-size:16px; color:#34d399;">${completed}</span></div>
+          <div class="enterprise-dashboard-grid">
+             <div style="background:rgba(15,23,42,0.5); padding:16px; border-radius:12px; border:1px solid rgba(255,255,255,0.05);">
+                <div style="font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+                   <span>📊 Interactive Summary</span>
+                   ${activeFilter !== 'ALL' ? `<span style="color:#38bdf8; font-size:10px;">Filter Active: ${activeFilter}</span>` : ''}
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                   <button type="button" class="dist-filter-btn ${activeFilter === 'Pending' ? 'active' : ''}" data-dist="${esc(id)}" data-filter="Pending" style="color:#fcd34d;">
+                      <span style="font-size:10px; font-weight:800; opacity:0.8;">PENDING</span>
+                      <span style="font-size:20px; font-weight:900;">${s_ready}</span>
+                   </button>
+                   <button type="button" class="dist-filter-btn ${activeFilter === 'Ongoing' ? 'active' : ''}" data-dist="${esc(id)}" data-filter="Ongoing" style="color:#38bdf8;">
+                      <span style="font-size:10px; font-weight:800; opacity:0.8;">ONGOING</span>
+                      <span style="font-size:20px; font-weight:900;">${s_ongoing}</span>
+                   </button>
+                   <button type="button" class="dist-filter-btn ${activeFilter === 'With Problem' ? 'active' : ''}" data-dist="${esc(id)}" data-filter="With Problem" style="color:#fca5a5;">
+                      <span style="font-size:10px; font-weight:800; opacity:0.8;">PROBLEM</span>
+                      <span style="font-size:20px; font-weight:900;">${s_problem}</span>
+                   </button>
+                   <button type="button" class="dist-filter-btn ${activeFilter === 'Completed' ? 'active' : ''}" data-dist="${esc(id)}" data-filter="Completed" style="color:#6ee7b7;">
+                      <span style="font-size:10px; font-weight:800; opacity:0.8;">DONE</span>
+                      <span style="font-size:20px; font-weight:900;">${s_completed}</span>
+                   </button>
+                </div>
+             </div>
+
+             <div style="background:rgba(15,23,42,0.5); padding:16px; border-radius:12px; border:1px solid rgba(255,255,255,0.05); max-height:130px; overflow-y:auto;">
+                <div style="font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:12px;">👥 Team Progress</div>
+                <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap:8px;">
+                   ${teamProgressHtml}
+                </div>
+             </div>
           </div>
        `;
     }
@@ -648,10 +733,11 @@
             <table>
               <thead><tr><th>Task Info</th><th>Site</th><th>Assignee</th><th>Status</th><th>Deadline</th></tr></thead>
               <tbody>
-                ${items.map((item) => {
+                ${filteredItems.map((item) => {
                   const uid = String(item.assigned_to || item.assignee_user_id || '').trim();
                   const member = state.members.find(m => String(m.user_id || m.id) === uid);
                   const assigneeName = member ? (member.name || member.username || uid) : (uid || 'N/A');
+                  const tName = getMemberTeam(uid);
                   
                   const s = normalizeItemStatus(item.status);
                   let pillStyle = 'background:rgba(245,158,11,0.1); color:#fcd34d; border:1px solid rgba(245,158,11,0.2);';
@@ -666,7 +752,10 @@
                         <div class="task-meta" style="font-size:11px; max-width:300px; white-space:normal;">${esc(item.description || '')}</div>
                       </td>
                       <td style="color:#e2e8f0; font-size:13px;">${esc(safeText(item.site, 'N/A'))}</td>
-                      <td style="font-weight:600; color:#f8fafc; font-size:13px;">${esc(assigneeName)}</td>
+                      <td>
+                         <div style="font-weight:600; color:#f8fafc; font-size:13px;">${esc(assigneeName)}</div>
+                         <div style="font-size:10px; color:#94a3b8; margin-top:2px;">${esc(tName)}</div>
+                      </td>
                       <td>
                          <span style="display:inline-block; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; ${pillStyle}">
                            ${esc(s)}
@@ -676,7 +765,7 @@
                       <td style="color:#94a3b8; font-size:12px;">${esc(safeDate(item.deadline || item.deadline_at || item.due_at))}</td>
                     </tr>
                   `;
-                }).join('') || '<tr><td colspan="5" class="task-meta" style="text-align:center; padding:20px;">No task items found for this batch.</td></tr>'}
+                }).join('') || `<<tr><td colspan="5" class="task-meta" style="text-align:center; padding:30px;">No tasks found matching filter: <strong>${esc(activeFilter)}</strong></td></tr>`}
               </tbody>
             </table>
           </div>
@@ -739,7 +828,6 @@
     `;
   }
 
-  // ENTERPRISE UPGRADE: Delete Confirmation Modal
   function renderDeleteConfirmModal() {
     return `
       <div class="task-modal-backdrop" id="deleteModalBackdrop" style="z-index:18000; background:rgba(2,6,23,0.95);">
@@ -765,31 +853,16 @@
 
   function renderModal() {
     const hasData = state.parsedRows.length > 0;
-    
-    let totalReady = 0;
-    let totalNeedsFix = 0;
-    const assigneeCounts = {};
-
+    let totalReady = 0; let totalNeedsFix = 0; const assigneeCounts = {};
     state.parsedRows.forEach(row => {
-      if (row.assigned_to) {
-        totalReady++;
-        assigneeCounts[row.assigned_to] = (assigneeCounts[row.assigned_to] || 0) + 1;
-      } else {
-        totalNeedsFix++;
-      }
+      if (row.assigned_to) { totalReady++; assigneeCounts[row.assigned_to] = (assigneeCounts[row.assigned_to] || 0) + 1; } 
+      else { totalNeedsFix++; }
     });
-
     const assigneeStats = Object.keys(assigneeCounts).map(uid => {
       const member = state.members.find(m => String(m.user_id || m.id) === uid);
-      return {
-        name: member ? (member.name || member.username || uid) : uid,
-        count: assigneeCounts[uid]
-      };
+      return { name: member ? (member.name || member.username || uid) : uid, count: assigneeCounts[uid] };
     }).sort((a, b) => b.count - a.count);
-
-    let maxTasks = 0;
-    assigneeStats.forEach(s => { if(s.count > maxTasks) maxTasks = s.count; });
-
+    let maxTasks = 0; assigneeStats.forEach(s => { if(s.count > maxTasks) maxTasks = s.count; });
     const canSubmit = state.form.title.trim() && state.form.deadline && hasData && totalNeedsFix === 0 && !state.creating;
 
     let workloadModalHtml = '';
@@ -808,7 +881,6 @@
           </div>
         `;
       }).join('');
-
       workloadModalHtml = `
         <div class="task-modal-backdrop" id="workloadModalBackdrop" style="z-index:15000; background:rgba(2,6,23,0.9);">
           <div class="task-modal-glass" style="width:min(500px, 95vw); max-height:85vh;">
@@ -818,9 +890,7 @@
             </div>
             <div class="modal-body-scroll">
               <div class="task-meta" style="margin-bottom:4px;">Check distribution to avoid assigning too many tasks to a single member.</div>
-              <div style="margin-top:10px;">
-                ${listHtml || '<div class="task-empty">No members mapped yet.</div>'}
-              </div>
+              <div style="margin-top:10px;">${listHtml || '<div class="task-empty">No members mapped yet.</div>'}</div>
             </div>
           </div>
         </div>
@@ -835,9 +905,7 @@
            if (!t && m.user_metadata) t = m.user_metadata.duty || m.user_metadata.shift;
            return t ? String(t).trim() : null;
        }).filter(Boolean))];
-
        const teamOptionsHtml = extractedTeams.map(t => `<option value="${esc(t)}" ${state.autoAssign.group === t ? 'selected' : ''}>${esc(t)}</option>`).join('');
-
        autoAssignModalHtml = `
          <div class="task-modal-backdrop" id="autoAssignBackdrop" style="z-index:16000; background:rgba(2,6,23,0.92);">
            <div class="task-modal-glass" style="width:min(550px, 95vw); border-color:#8b5cf6; box-shadow: 0 0 40px rgba(139,92,246,0.15);">
@@ -846,40 +914,27 @@
                <button class="btn-glass btn-glass-ghost" type="button" id="closeAutoAssign">✕ Close</button>
              </div>
              <div class="modal-body-scroll" style="gap:20px;">
-               
                <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); padding:14px; border-radius:8px; display:flex; gap:12px; align-items:flex-start;">
                  <span style="font-size:20px;">⚠️</span>
                  <div style="color:#fcd34d; font-size:13px; line-height:1.45;">
                    <strong>Override Notice:</strong> Executing Auto-Assign will <strong style="color:#f8fafc;">erase all existing manual assignments</strong> in your current preview and distribute the tasks equally among the selected group.
                  </div>
                </div>
-
                <div class="glass-card" style="padding:20px;">
                  <label class="premium-label" style="margin-bottom:8px;">1. Select Target Group (Shift/Team)</label>
-                 
-                 ${extractedTeams.length === 0 ? 
-                   `<div style="color:#ef4444; font-size:12px; font-weight:700; background:rgba(239,68,68,0.1); padding:8px; border-radius:4px; margin-bottom:16px;">
-                     ⚠️ No Team/Shift data detected in API. Only 'All Members' is available. Please check if backend SELECT query includes the 'duty' column.
-                    </div>` 
-                   : ''
-                 }
-
+                 ${extractedTeams.length === 0 ? `<div style="color:#ef4444; font-size:12px; font-weight:700; background:rgba(239,68,68,0.1); padding:8px; border-radius:4px; margin-bottom:16px;">⚠️ No Team/Shift data detected in API. Only 'All Members' is available. Please check if backend SELECT query includes the 'duty' column.</div>` : ''}
                  <select class="premium-input" id="autoAssignGroupSelect" style="margin-bottom:16px;">
                    <option value="ALL" ${state.autoAssign.group === 'ALL' ? 'selected' : ''}>All Available Members</option>
                    ${teamOptionsHtml}
                  </select>
-
                  <label class="premium-checkbox-container" style="padding:12px 14px; margin-top:8px;">
                    <input type="checkbox" id="autoAssignLeadCheck" ${state.autoAssign.includeLead ? 'checked' : ''} style="width:18px; height:18px; accent-color:#8b5cf6;">
                    <div style="font-size:14px; font-weight:600; color:#e2e8f0;">Include Team Lead in distribution</div>
                  </label>
                </div>
-
              </div>
              <div class="modal-header-glass" style="border-top: 1px solid rgba(255,255,255,0.06); border-bottom:none; justify-content:flex-end; top:auto; bottom:0;">
-               <button class="btn-glass btn-glass-action" type="button" id="executeAutoAssign" style="background:linear-gradient(145deg, #8b5cf6, #7c3aed); box-shadow: 0 4px 12px rgba(139,92,246,0.3);">
-                 Execute Equal Distribution 🚀
-               </button>
+               <button class="btn-glass btn-glass-action" type="button" id="executeAutoAssign" style="background:linear-gradient(145deg, #8b5cf6, #7c3aed); box-shadow: 0 4px 12px rgba(139,92,246,0.3);">Execute Equal Distribution 🚀</button>
              </div>
            </div>
          </div>
@@ -892,27 +947,18 @@
         const isSelected = String(row.assigned_to) === String(m.user_id) ? 'selected' : '';
         return `<option value="${esc(m.user_id)}" ${isSelected}>${esc(m.name || m.username || m.user_id)}</option>`;
       }).join('');
-      
       const badgeHtml = invalid 
         ? '<div style="background:rgba(239,68,68,0.2); color:#fca5a5; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid rgba(239,68,68,0.3);">NEEDS FIX</div>' 
         : '<div style="background:rgba(34,197,94,0.2); color:#86efac; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid rgba(34,197,94,0.3);">READY</div>';
-
       return `
         <tr class="${invalid ? 'task-invalid' : ''}">
           <td>
             <div style="font-weight:700; color:#f8fafc; font-size:14px; margin-bottom:4px;">${esc(safeText(row.case_number, 'N/A'))}</div>
-            <div class="task-meta" style="font-size:11px; max-width:400px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(row.description)}">
-              <span style="color:#38bdf8; opacity:0.8;">Payload:</span> ${esc(row.description)}
-            </div>
+            <div class="task-meta" style="font-size:11px; max-width:400px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(row.description)}"><span style="color:#38bdf8; opacity:0.8;">Payload:</span> ${esc(row.description)}</div>
           </td>
           <td style="width:240px;">
-            <div style="font-weight:600; font-size:12px; color:${invalid ? '#ef4444' : '#94a3b8'}; margin-bottom:4px;">
-              Extracted: "${esc(safeText(row.assigned_name, 'Unknown'))}"
-            </div>
-            <select class="premium-input" data-assignee-fix="${idx}" style="padding:6px; font-size:12px; background:rgba(15,23,42,0.8);">
-              <option value="">-- Resolve Member --</option>
-              ${optionsHtml}
-            </select>
+            <div style="font-weight:600; font-size:12px; color:${invalid ? '#ef4444' : '#94a3b8'}; margin-bottom:4px;">Extracted: "${esc(safeText(row.assigned_name, 'Unknown'))}"</div>
+            <select class="premium-input" data-assignee-fix="${idx}" style="padding:6px; font-size:12px; background:rgba(15,23,42,0.8);"><option value="">-- Resolve Member --</option>${optionsHtml}</select>
           </td>
           <td style="width:120px; text-align:center;">${badgeHtml}</td>
         </tr>
@@ -922,152 +968,81 @@
     return `
       <div class="task-modal-backdrop" id="distributionModalBackdrop">
         <div class="task-modal-glass ${state.isFullscreen ? 'is-fullscreen' : ''}" role="dialog" aria-modal="true">
-          
           <div class="modal-header-glass">
             <h3>✨ Create New Distribution</h3>
-            ${!state.isFullscreen ? `
-              <button class="btn-glass btn-glass-ghost" type="button" id="closeDistributionModal" style="padding:6px 12px; border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">✕ Cancel & Close</button>
-            ` : ''}
+            ${!state.isFullscreen ? `<button class="btn-glass btn-glass-ghost" type="button" id="closeDistributionModal" style="padding:6px 12px; border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">✕ Cancel & Close</button>` : ''}
           </div>
-
           <div class="modal-body-scroll">
-            
             <div class="glass-card" style="${state.isFullscreen ? 'display:none;' : ''}">
               <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
                 <div style="background:#0ea5e9; color:#fff; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold;">1</div>
                 <div class="task-title" style="margin:0;">Project Metadata & Escalation</div>
               </div>
-              
               <div class="grid-header-split">
-                <div>
-                  <label class="premium-label" for="distTitleInput">Project Title <span style="color:#ef4444">*</span></label>
-                  <input class="premium-input" id="distTitleInput" type="text" value="${esc(state.form.title)}" placeholder="e.g. Q3 Custom Screen Remapping" autocomplete="off" />
-                </div>
-                <div>
-                  <label class="premium-label" for="distDeadlineInput">Project Deadline <span style="color:#ef4444">*</span></label>
-                  <input class="premium-input" id="distDeadlineInput" type="datetime-local" value="${esc(state.form.deadline)}" required style="color-scheme: dark;" />
-                </div>
+                <div><label class="premium-label" for="distTitleInput">Project Title <span style="color:#ef4444">*</span></label><input class="premium-input" id="distTitleInput" type="text" value="${esc(state.form.title)}" placeholder="e.g. Q3 Custom Screen Remapping" autocomplete="off" /></div>
+                <div><label class="premium-label" for="distDeadlineInput">Project Deadline <span style="color:#ef4444">*</span></label><input class="premium-input" id="distDeadlineInput" type="datetime-local" value="${esc(state.form.deadline)}" required style="color-scheme: dark;" /></div>
               </div>
-
-              <div style="margin-top:16px;">
-                <label class="premium-label" for="distDescriptionInput">Global Description</label>
-                <textarea class="premium-input" id="distDescriptionInput" rows="2" placeholder="Provide context or instructions for the whole batch...">${esc(state.form.description)}</textarea>
-              </div>
-              
-              <div style="margin-top:16px;">
-                <label class="premium-label" for="distReferenceInput">Work Instruction URL</label>
-                <input class="premium-input" id="distReferenceInput" type="url" value="${esc(state.form.reference_url)}" placeholder="https://confluence.yourcompany.com/..." autocomplete="off" />
-              </div>
-
+              <div style="margin-top:16px;"><label class="premium-label" for="distDescriptionInput">Global Description</label><textarea class="premium-input" id="distDescriptionInput" rows="2" placeholder="Provide context or instructions for the whole batch...">${esc(state.form.description)}</textarea></div>
+              <div style="margin-top:16px;"><label class="premium-label" for="distReferenceInput">Work Instruction URL</label><input class="premium-input" id="distReferenceInput" type="url" value="${esc(state.form.reference_url)}" placeholder="https://confluence.yourcompany.com/..." autocomplete="off" /></div>
               <label class="premium-checkbox-container" style="margin-top:16px;">
                 <input id="distEnableDailyAlerts" type="checkbox" ${state.form.enable_daily_alerts ? 'checked' : ''} style="width:18px; height:18px; accent-color:#0ea5e9;" />
-                <div>
-                  <div style="font-size:14px; font-weight:600; color:#e2e8f0;">Enable Smart Reminders & Escalation</div>
-                  <div style="font-size:12px; color:#94a3b8; margin-top:2px;">Sends daily alerts. <strong style="color:#f8fafc;">Escalates to HOURLY alerts</strong> for members and Team Lead on the actual deadline day.</div>
-                </div>
+                <div><div style="font-size:14px; font-weight:600; color:#e2e8f0;">Enable Smart Reminders & Escalation</div><div style="font-size:12px; color:#94a3b8; margin-top:2px;">Sends daily alerts. <strong style="color:#f8fafc;">Escalates to HOURLY alerts</strong> for members and Team Lead on the actual deadline day.</div></div>
               </label>
             </div>
-
             <div class="glass-card" style="margin-bottom:0; display:flex; flex-direction:column; padding: ${state.isFullscreen ? '0' : '20px'}; border: ${state.isFullscreen ? 'none' : ''}; background: ${state.isFullscreen ? 'transparent' : ''}; ${state.isFullscreen ? 'flex:1; height:100%; overflow:hidden;' : ''}">
-              
               <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
                 <div style="display:flex; align-items:center; gap:10px;">
                   <div style="background:#0ea5e9; color:#fff; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold;">2</div>
                   <div class="task-title" style="margin:0;">Enterprise Data Ingestion</div>
                 </div>
-                
                 <div style="display:flex; gap:8px;">
                   ${hasData ? `
                     <button class="btn-glass btn-glass-ghost" type="button" id="btnToggleFullscreen" style="font-size:11px; padding:6px 12px; color:#38bdf8; border-color:rgba(56,189,248,0.3); background:rgba(56,189,248,0.05);">
                       ${state.isFullscreen ? '↙️ Exit Fullscreen' : '↗️ Fullscreen View'}
                     </button>
-                    ${!state.isFullscreen ? `
-                      <button class="btn-glass btn-glass-ghost" type="button" id="btnReplaceFile" style="font-size:11px; padding:6px 12px; border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">🗑️ Discard & Reupload</button>
-                    ` : ''}
+                    ${!state.isFullscreen ? `<button class="btn-glass btn-glass-ghost" type="button" id="btnReplaceFile" style="font-size:11px; padding:6px 12px; border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">🗑️ Discard & Reupload</button>` : ''}
                   ` : ''}
                 </div>
               </div>
-
               ${!hasData ? `
                 <div class="task-meta" style="margin-bottom:16px; margin-left:34px;">Upload any structured Excel/CSV file. The system will dynamically pack columns into the payload.</div>
                 <div id="uploadZone" class="upload-zone-glass ${state.dragActive ? 'drag' : ''}">
                   <div class="upload-icon">📊</div>
                   <div style="font-weight:700;font-size:16px; color:#e2e8f0;">Drag & Drop your dataset here</div>
                   <div class="task-meta" style="margin:6px 0 16px 0;">Supports .xlsx, .xls, .csv</div>
-                  <label class="btn-glass btn-glass-primary" style="display:inline-block; cursor:pointer;">
-                    Browse Files
-                    <input type="file" id="taskFileInput" accept=".xlsx,.xls,.csv" style="display:none;" />
-                  </label>
+                  <label class="btn-glass btn-glass-primary" style="display:inline-block; cursor:pointer;">Browse Files<input type="file" id="taskFileInput" accept=".xlsx,.xls,.csv" style="display:none;" /></label>
                   ${state.parseError ? `<div style="color:#ef4444;margin-top:16px;font-size:13px;font-weight:bold;background:rgba(239,68,68,0.1);padding:8px;border-radius:4px;">⚠️ ${esc(state.parseError)}</div>` : ''}
                 </div>
               ` : `
                 <div class="stat-container">
-                  <div class="stat-box" style="border-left: 3px solid #38bdf8;">
-                    <div class="stat-label">Total Rows</div>
-                    <div class="stat-value">${state.parsedRows.length}</div>
-                  </div>
-                  <div class="stat-box" style="border-left: 3px solid #22c55e;">
-                    <div class="stat-label">Ready (Mapped)</div>
-                    <div class="stat-value" style="color:#4ade80;">${totalReady}</div>
-                  </div>
-                  <div class="stat-box" style="border-left: 3px solid ${totalNeedsFix > 0 ? '#ef4444' : '#64748b'};">
-                    <div class="stat-label">Needs Fix</div>
-                    <div class="stat-value" style="color:${totalNeedsFix > 0 ? '#f87171' : '#cbd5e1'};">${totalNeedsFix}</div>
-                  </div>
+                  <div class="stat-box" style="border-left: 3px solid #38bdf8;"><div class="stat-label">Total Rows</div><div class="stat-value">${state.parsedRows.length}</div></div>
+                  <div class="stat-box" style="border-left: 3px solid #22c55e;"><div class="stat-label">Ready (Mapped)</div><div class="stat-value" style="color:#4ade80;">${totalReady}</div></div>
+                  <div class="stat-box" style="border-left: 3px solid ${totalNeedsFix > 0 ? '#ef4444' : '#64748b'};"><div class="stat-label">Needs Fix</div><div class="stat-value" style="color:${totalNeedsFix > 0 ? '#f87171' : '#cbd5e1'};">${totalNeedsFix}</div></div>
                 </div>
-
                 <div class="enterprise-toolbar">
                   <div style="font-size:12px; color:#94a3b8;"><strong style="color:#e2e8f0;">${assigneeStats.length}</strong> members mapped. Balance the distribution to prevent burnout.</div>
                   <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                     <button class="btn-glass btn-glass-primary" type="button" id="btnOpenAutoAssign" style="padding:6px 14px; font-size:12px; background:linear-gradient(145deg, #8b5cf6, #d97706); border:none; box-shadow: 0 4px 12px rgba(245,158,11,0.3);">
-                       ✨ Auto-Assign Wizard
-                     </button>
-                     <button class="btn-glass btn-glass-primary" type="button" id="btnViewWorkload" style="padding:6px 14px; font-size:12px; background:rgba(56,189,248,0.1); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); box-shadow:none;">
-                       📊 View Workload Balance
-                     </button>
+                     <button class="btn-glass btn-glass-primary" type="button" id="btnOpenAutoAssign" style="padding:6px 14px; font-size:12px; background:linear-gradient(145deg, #8b5cf6, #d97706); border:none; box-shadow: 0 4px 12px rgba(245,158,11,0.3);">✨ Auto-Assign Wizard</button>
+                     <button class="btn-glass btn-glass-primary" type="button" id="btnViewWorkload" style="padding:6px 14px; font-size:12px; background:rgba(56,189,248,0.1); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); box-shadow:none;">📊 View Workload Balance</button>
                   </div>
                 </div>
-
                 <div class="glass-table-container">
                   <table>
-                    <thead>
-                      <tr>
-                        <th>Task Reference & Data Summary</th>
-                        <th style="width:240px;">Assignee Matching</th>
-                        <th style="width:120px; text-align:center;">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${gridRowsHtml || '<tr><td colspan="3" class="task-meta" style="text-align:center; padding:30px;">No preview generated.</td></tr>'}
-                    </tbody>
+                    <thead><tr><th>Task Reference & Data Summary</th><th style="width:240px;">Assignee Matching</th><th style="width:120px; text-align:center;">Status</th></tr></thead>
+                    <tbody>${gridRowsHtml || '<tr><td colspan="3" class="task-meta" style="text-align:center; padding:30px;">No preview generated.</td></tr>'}</tbody>
                   </table>
                 </div>
-                
-                ${totalNeedsFix > 0 ? `
-                  <div style="display:flex; align-items:center; gap:8px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:10px 14px; margin-top:16px;">
-                    <span style="font-size:18px;">⚠️</span>
-                    <div style="color:#fcd34d; font-size:13px; font-weight:600;">Action Required: Please resolve ${totalNeedsFix} unmatched member(s) to enable submission.</div>
-                  </div>
-                ` : ''}
+                ${totalNeedsFix > 0 ? `<div style="display:flex; align-items:center; gap:8px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:10px 14px; margin-top:16px;"><span style="font-size:18px;">⚠️</span><div style="color:#fcd34d; font-size:13px; font-weight:600;">Action Required: Please resolve ${totalNeedsFix} unmatched member(s) to enable submission.</div></div>` : ''}
               `}
-              
             </div>
           </div>
-
           <div class="modal-header-glass" style="border-top: 1px solid rgba(255,255,255,0.06); border-bottom:none; justify-content:space-between; top:auto; bottom:0;">
-            <div class="task-meta">
-              ${canSubmit ? `<span style="color:#86efac; font-weight:700;">✓ Ready to deploy ${state.parsedRows.length} tasks</span>` : 'Complete all mandatory fields (Title, Deadline) and resolve members to continue.'}
-            </div>
+            <div class="task-meta">${canSubmit ? `<span style="color:#86efac; font-weight:700;">✓ Ready to deploy ${state.parsedRows.length} tasks</span>` : 'Complete all mandatory fields (Title, Deadline) and resolve members to continue.'}</div>
             <div style="display:flex; gap:12px;">
-              ${!state.isFullscreen ? `
-                <button class="btn-glass btn-glass-ghost" type="button" id="cancelDistributionCreate">Cancel</button>
-              ` : ''}
-              <button class="btn-glass btn-glass-primary" type="button" id="submitDistribution" style="padding:8px 24px;" ${!canSubmit ? 'disabled' : ''}>
-                ${state.creating ? 'Deploying...' : 'Launch Distribution 🚀'}
-              </button>
+              ${!state.isFullscreen ? `<button class="btn-glass btn-glass-ghost" type="button" id="cancelDistributionCreate">Cancel</button>` : ''}
+              <button class="btn-glass btn-glass-primary" type="button" id="submitDistribution" style="padding:8px 24px;" ${!canSubmit ? 'disabled' : ''}>${state.creating ? 'Deploying...' : 'Launch Distribution 🚀'}</button>
             </div>
           </div>
-
         </div>
       </div>
       ${workloadModalHtml}
@@ -1105,7 +1080,6 @@
   function renderLoginAlertModal() {
     const info = state.loginAlert || {};
     const now = Date.now();
-    
     return `
       <div class="task-modal-backdrop" id="loginAlertBackdrop">
         <div class="login-alert-modal" role="dialog" aria-modal="true">
@@ -1114,35 +1088,17 @@
               ${info.isHourlyEscalation ? '🚨 HOURLY ESCALATION ACTIVE' : '⚠️ DAILY TASK REMINDER'}
             </div>
           </div>
-          
-          <div style="font-size:24px;font-weight:900;line-height:1.2; letter-spacing:-0.5px;">
-            Action Required: Pending Tasks
-          </div>
-          
-          <div class="login-alert-summary" style="margin-top:4px;">
-            You have <strong style="color:#ef4444; font-size:16px;">${esc(String(info.totalOverdue || 0))}</strong> overdue tasks, and several active distributions awaiting completion.
-          </div>
-          
+          <div style="font-size:24px;font-weight:900;line-height:1.2; letter-spacing:-0.5px;">Action Required: Pending Tasks</div>
+          <div class="login-alert-summary" style="margin-top:4px;">You have <strong style="color:#ef4444; font-size:16px;">${esc(String(info.totalOverdue || 0))}</strong> overdue tasks, and several active distributions awaiting completion.</div>
           <div style="max-height: 280px; overflow-y: auto; display:flex; flex-direction:column; gap:10px; margin-top: 8px; padding-right:6px;" class="task-modal-glass">
              ${(info.distributions || []).map(d => {
                const daysLeft = Math.ceil((d.deadlineMs - now) / (1000*60*60*24));
                const isDueToday = daysLeft === 0;
                const isOverdue = daysLeft < 0;
-               
-               let urgencyColor = '#38bdf8'; 
-               let urgencyText = `${daysLeft} days left`;
-               
-               if (isOverdue) {
-                 urgencyColor = '#ef4444'; 
-                 urgencyText = `OVERDUE by ${Math.abs(daysLeft)} days`;
-               } else if (isDueToday) {
-                 urgencyColor = '#f59e0b'; 
-                 urgencyText = `DUE TODAY (Hourly Alerting)`;
-               } else if (daysLeft === 1) {
-                 urgencyColor = '#eab308'; 
-                 urgencyText = `Due Tomorrow`;
-               }
-
+               let urgencyColor = '#38bdf8'; let urgencyText = `${daysLeft} days left`;
+               if (isOverdue) { urgencyColor = '#ef4444'; urgencyText = `OVERDUE by ${Math.abs(daysLeft)} days`; } 
+               else if (isDueToday) { urgencyColor = '#f59e0b'; urgencyText = `DUE TODAY (Hourly Alerting)`; } 
+               else if (daysLeft === 1) { urgencyColor = '#eab308'; urgencyText = `Due Tomorrow`; }
                return `
                  <div style="background: rgba(15,23,42,0.6); border-left: 4px solid ${urgencyColor}; padding: 14px; border-radius: 8px; border-top:1px solid rgba(255,255,255,0.02); border-right:1px solid rgba(255,255,255,0.02); border-bottom:1px solid rgba(255,255,255,0.02);">
                     <div style="font-weight: 800; color: #f8fafc; font-size: 14px; margin-bottom:6px;">${esc(d.title)}</div>
@@ -1154,10 +1110,7 @@
                `;
              }).join('')}
           </div>
-
-          <div class="login-alert-actions">
-             <button class="btn-glass btn-glass-primary" type="button" id="loginAlertAcknowledge" style="width:100%; padding:12px; font-size:14px;">Acknowledge & Proceed to Work</button>
-          </div>
+          <div class="login-alert-actions"><button class="btn-glass btn-glass-primary" type="button" id="loginAlertAcknowledge" style="width:100%; padding:12px; font-size:14px;">Acknowledge & Proceed to Work</button></div>
         </div>
       </div>
     `;
@@ -1372,6 +1325,33 @@
       await loadDistributionItems(id); state.loading = false; render();
     });
 
+    // ENTERPRISE UPGRADE: Filter Box Toggles
+    els('.dist-filter-btn').forEach((btn) => {
+       btn.onclick = (e) => {
+          e.stopPropagation(); // Prevent accordion from collapsing
+          const distId = btn.getAttribute('data-dist');
+          const filter = btn.getAttribute('data-filter');
+          if (state.distributionFilters[distId] === filter) {
+             state.distributionFilters[distId] = 'ALL'; // Toggle off
+          } else {
+             state.distributionFilters[distId] = filter; // Set filter
+          }
+          
+          // Lock scroll before render
+          const cardEl = document.getElementById(`assignedGroup_${distId}`) || el(`[data-toggle-dist="${distId}"]`).parentElement;
+          const gridEl = cardEl ? cardEl.querySelector('.task-grid') : null;
+          const gridScroll = gridEl ? gridEl.scrollTop : 0;
+          
+          render();
+          
+          requestAnimationFrame(() => {
+             const newCardEl = document.getElementById(`assignedGroup_${distId}`) || root.querySelector(`[data-toggle-dist="${distId}"]`).parentElement;
+             const newGridEl = newCardEl ? newCardEl.querySelector('.task-grid') : null;
+             if (newGridEl) newGridEl.scrollTop = gridScroll;
+          });
+       };
+    });
+
     els('[data-item-status]').forEach((select) => select.onchange = async () => {
       const id = String(select.getAttribute('data-item-status') || ''); if (!id) return;
       const next = normalizeItemStatus(select.value);
@@ -1391,7 +1371,6 @@
         UI && UI.toast && UI.toast(out.message || 'Failed to update', 'danger'); return;
       }
       
-      // ENTERPRISE UPGRADE: Real-time Progress Bar Sync
       item.status = next; 
       item.problem_notes = null;
       
@@ -1444,7 +1423,6 @@
       }
     }
 
-    // Export & Delete Distribution Handlers
     els('.btn-export-dist').forEach(btn => {
        btn.onclick = (e) => {
          e.stopPropagation();
@@ -1464,7 +1442,6 @@
        };
     });
 
-    // Delete Modal Events
     if (state.deleteModal && state.deleteModal.open) {
       const cancelDelete = () => { state.deleteModal = { open: false, distId: '', title: '' }; render(); };
       if (el('#cancelDeleteBtn')) el('#cancelDeleteBtn').onclick = cancelDelete;
@@ -1473,14 +1450,12 @@
         el('#confirmDeleteBtn').onclick = async () => {
            state.loading = true; render();
            try {
-             // Mock delete endpoint check (assuming backend structure)
              if (window.CloudTasks && CloudTasks.deleteDistribution) {
                 const out = await CloudTasks.deleteDistribution(state.deleteModal.distId);
                 if (!out.ok) throw new Error(out.message || "Failed to delete");
              } else {
                 console.warn("CloudTasks.deleteDistribution not implemented on client API layer. UI proceeding to remove state.");
              }
-             // Success path: Reload base data
              state.deleteModal = { open: false, distId: '', title: '' };
              await loadBaseData(); 
            } catch(err) {
