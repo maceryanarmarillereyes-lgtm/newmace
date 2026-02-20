@@ -1,72 +1,151 @@
 const { sendJson, requireAuthedUser, roleFlags, serviceSelect } = require('./_common');
-module.exports = async (req, res) => {
-try {
-const auth = await requireAuthedUser(req);
-if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
-// Lead/Admin Override: Use the authoritative role string from profile
-const rawRole = auth.profile ? String(auth.profile.role || '').toUpperCase() : '';
-const flags = roleFlags(rawRole);
-const isSuper = flags.isAdmin || flags.isLead || ['TEAM_LEAD', 'ADMIN', 'SUPER_ADMIN', 'SUPER_USER'].includes(rawRole);
-const myTeamId = auth.profile ? auth.profile.team_id : null;
-const limit = Number(req.query.limit) || 20;
-const offset = Number(req.query.offset) || 0;
-// 1. Fetch Distributions
-const dOut = await serviceSelect('task_distributions', `select=*&order=created_at.desc&limit=${limit}&offset=${offset}`);
-const dists = dOut.ok && Array.isArray(dOut.json) ? dOut.json : [];
-if (!dists.length) return sendJson(res, 200, { ok: true, distributions: [], has_more: false });
-// FIX: Quote UUIDs for PostgREST
-const distIds = dists.map((d) => d.id).filter(Boolean);
-const inList = distIds.map(id => `"${id}"`).join(',');
-// 2. Fetch ALL items linked to these batches
-const tOut = await serviceSelect(
-  'task_items',
-  `select=id,distribution_id,assigned_to,status,case_number,case_no,site&distribution_id=in.(${inList})`
-);
-const items = tOut.ok ? (tOut.json || []) : [];
-// 3. Profiles Hydration
-const userIds = [...new Set(items.map((i) => i.assigned_to).filter(Boolean))];
-const profilesById = {};
-if (userIds.length) {
-  const pOut = await serviceSelect(
-    'mums_profiles',
-    `select=user_id,name,username,team_id&user_id=in.(${userIds.join(',')})`
-  );
-  if (pOut.ok) (pOut.json || []).forEach((p) => { profilesById[p.user_id] = p; });
+const ITEM_DISTRIBUTION_COLUMNS = ['distribution_id', 'task_distribution_id'];
+const ASSIGNEE_COLUMNS = ['assigned_to', 'assignee_user_id', 'assigned_user_id'];
+
+function encodeInList(values) {
+  return values
+    .map((value) => encodeURIComponent(String(value || '').trim()))
+    .filter(Boolean)
+    .join(',');
 }
-// 4. Aggregate
-const response = dists.map((d) => {
-  const dItems = items.filter((i) => i.distribution_id === d.id);
-  const byMember = {};
-  dItems.forEach((it) => {
-    const mId = it.assigned_to;
-    if (!mId) return;
-    const prof = profilesById[mId] || {};
-    // REVISED VISIBILITY: Only filter if user is NOT a Lead/Admin
-    if (!isSuper && myTeamId && prof.team_id) {
-      if (String(prof.team_id).toLowerCase() !== String(myTeamId).toLowerCase()) return;
+
+function readFirstField(row, fields) {
+  const source = row && typeof row === 'object' ? row : {};
+  for (const field of fields) {
+    const value = String(source[field] || '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
+async function selectItemsByDistributionIds(distributionIds) {
+  const ids = Array.isArray(distributionIds) ? distributionIds.map((id) => String(id || '').trim()).filter(Boolean) : [];
+  if (!ids.length) return { rows: [], distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
+
+  const inList = encodeInList(ids);
+  for (const key of ITEM_DISTRIBUTION_COLUMNS) {
+    const out = await serviceSelect('task_items', `select=*&${encodeURIComponent(key)}=in.(${inList})`);
+    if (out.ok) {
+      return {
+        rows: Array.isArray(out.json) ? out.json : [],
+        distributionColumn: key
+      };
     }
-    if (!byMember[mId]) {
-      byMember[mId] = { user_id: mId, name: prof.name || prof.username || mId, total: 0, completed: 0, pending: 0, with_problem: 0, items: [] };
+  }
+
+  return { rows: [], distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
+}
+
+module.exports = async (req, res) => {
+  try {
+    const auth = await requireAuthedUser(req);
+    if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+
+    const rawRole = auth.profile ? String(auth.profile.role || '').toUpperCase() : '';
+    const flags = roleFlags(rawRole);
+    const isSuper = flags.isAdmin || flags.isLead || ['TEAM_LEAD', 'ADMIN', 'SUPER_ADMIN', 'SUPER_USER'].includes(rawRole);
+    const myTeamId = auth.profile ? auth.profile.team_id : null;
+
+    const limit = Math.max(1, Math.min(20, Number(req.query.limit) || 20));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+
+    const dOut = await serviceSelect('task_distributions', `select=*&order=created_at.desc&limit=${limit}&offset=${offset}`);
+    const dists = dOut.ok && Array.isArray(dOut.json) ? dOut.json : [];
+    if (!dists.length) return sendJson(res, 200, { ok: true, distributions: [], has_more: false });
+
+    const distIds = dists.map((d) => d && d.id).filter(Boolean);
+    const itemsResult = await selectItemsByDistributionIds(distIds);
+    const items = itemsResult.rows;
+    const itemDistributionColumn = itemsResult.distributionColumn;
+
+    const userIds = [...new Set(items.map((i) => readFirstField(i, ASSIGNEE_COLUMNS)).filter(Boolean))];
+    const profilesById = {};
+    if (userIds.length) {
+      const userInList = encodeInList(userIds);
+      const pOut = await serviceSelect(
+        'mums_profiles',
+        `select=user_id,name,username,team_id&user_id=in.(${userInList})`
+      );
+      if (pOut.ok && Array.isArray(pOut.json)) {
+        pOut.json.forEach((p) => {
+          if (p && p.user_id) profilesById[String(p.user_id)] = p;
+        });
+      }
     }
-    const m = byMember[mId];
-    const s = String(it.status || '').toLowerCase();
-    m.total += 1;
-    if (s.includes('complete') || s === 'done') m.completed += 1;
-    else if (s.includes('problem')) m.with_problem += 1;
-    else m.pending += 1;
-    m.items.push({ id: it.id, case_number: it.case_number || it.case_no || 'N/A', site: it.site || 'N/A', status: it.status });
-  });
-  const members = Object.values(byMember)
-    .map((m) => ({ ...m, completion_pct: m.total ? Math.round((m.completed / m.total) * 100) : 0 }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  if (!isSuper && !members.length) return null;
-  return {
-    id: d.id, title: d.title, created_at: d.created_at, created_by_name: d.created_by_name || 'System',
-    totals: members.reduce((acc, m) => { acc.total += m.total; acc.pending += m.pending; acc.with_problem += m.with_problem; return acc; }, { total: 0, pending: 0, with_problem: 0 }),
-    members
-  };
-}).filter(Boolean);
-return sendJson(res, 200, { ok: true, distributions: response, has_more: dists.length === limit });
-} catch (err) { return sendJson(res, 500, { ok: false, message: err.message }); }
+
+    const response = dists
+      .map((d) => {
+        const distId = d && d.id ? String(d.id) : '';
+        const dItems = items.filter((i) => String(i && i[itemDistributionColumn] ? i[itemDistributionColumn] : '') === distId);
+        const byMember = {};
+
+        dItems.forEach((it) => {
+          const mId = readFirstField(it, ASSIGNEE_COLUMNS);
+          if (!mId) return;
+
+          const prof = profilesById[mId] || {};
+          if (!isSuper && myTeamId && prof.team_id) {
+            if (String(prof.team_id).toLowerCase() !== String(myTeamId).toLowerCase()) return;
+          }
+
+          if (!byMember[mId]) {
+            byMember[mId] = {
+              user_id: mId,
+              name: prof.name || prof.username || mId,
+              total: 0,
+              completed: 0,
+              pending: 0,
+              with_problem: 0,
+              items: []
+            };
+          }
+
+          const member = byMember[mId];
+          const status = String((it && it.status) || '').toLowerCase();
+          member.total += 1;
+          if (status.includes('complete') || status === 'done') member.completed += 1;
+          else if (status.includes('problem')) member.with_problem += 1;
+          else member.pending += 1;
+
+          member.items.push({
+            id: it && it.id,
+            case_number: (it && (it.case_number || it.case_no)) || 'N/A',
+            site: (it && it.site) || 'N/A',
+            status: it && it.status
+          });
+        });
+
+        const members = Object.values(byMember)
+          .map((member) => ({
+            ...member,
+            completion_pct: member.total ? Math.round((member.completed / member.total) * 100) : 0
+          }))
+          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+
+        if (!isSuper && !members.length) return null;
+
+        return {
+          id: d.id,
+          title: d.title,
+          created_at: d.created_at,
+          created_by_name: d.created_by_name || 'System',
+          totals: members.reduce(
+            (acc, member) => {
+              acc.total += Number(member.total || 0);
+              acc.pending += Number(member.pending || 0);
+              acc.with_problem += Number(member.with_problem || 0);
+              return acc;
+            },
+            { total: 0, pending: 0, with_problem: 0 }
+          ),
+          members
+        };
+      })
+      .filter(Boolean);
+
+    return sendJson(res, 200, { ok: true, distributions: response, has_more: dists.length === limit });
+  } catch (err) {
+    return sendJson(res, 500, { ok: false, message: err.message });
+  }
 };
