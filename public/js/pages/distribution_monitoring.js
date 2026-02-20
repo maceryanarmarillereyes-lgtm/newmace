@@ -1,8 +1,16 @@
+/* File: public/js/pages/distribution_monitoring.js */
+
 // Phase 3: Command Center (Team Lead Monitoring Dashboard)
 (function(){
   const UI = window.UI;
   const Config = window.Config;
   const CloudTasks = window.CloudTasks;
+
+  // ENTERPRISE UPGRADE: Capture global user context for Team Isolation
+  const currentUser = (window.Auth && typeof window.Auth.getUser === 'function') ? window.Auth.getUser() : {};
+  const currentUserRole = String(currentUser.role || '').toUpperCase();
+  const currentUserTeamId = String(currentUser.teamId || currentUser.team_id || '').trim().toLowerCase();
+  const currentUserDuty = String(currentUser.duty || '').trim().toLowerCase();
 
   function canView(){
     try{
@@ -17,9 +25,9 @@
 
   function pctColor(pct){
     const v = Number(pct||0);
-    if(v >= 80) return 'rgba(34,197,94,.85)';   // green
-    if(v >= 50) return 'rgba(245,158,11,.85)';  // yellow
-    return 'rgba(239,68,68,.85)';               // red
+    if(v >= 80) return 'rgba(16, 185, 129, .85)';   // Green
+    if(v >= 50) return 'rgba(56, 189, 248, .85)';   // Blue (Ongoing)
+    return 'rgba(239, 68, 68, .85)';                // Red (Problem/Delayed)
   }
 
   function fmtDate(iso){
@@ -48,39 +56,44 @@
 
   function buildModal(){
     return `
-<div class="modal" id="distReassignModal" aria-hidden="true">
-  <div class="panel" style="max-width:720px">
-    <div class="head">
+<div class="modal" id="distReassignModal" aria-hidden="true" style="background:rgba(2,6,23,0.85); backdrop-filter:blur(10px);">
+  <div class="panel" style="max-width:720px; background:linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98)); border:1px solid rgba(56,189,248,0.3); border-radius:16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);">
+    <div class="head" style="border-bottom: 1px solid rgba(255,255,255,0.06); padding:20px 24px;">
       <div>
-        <div style="font-weight:900;letter-spacing:.02em">Manage Pending Tasks</div>
-        <div class="muted" id="distReassignSub" style="font-size:12px;margin-top:2px">Transfer pending tasks to another member</div>
-      </div>
-      <button class="btn" data-action="close">Close</button>
-    </div>
-    <div class="body" style="padding:14px">
-      <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
-        <div>
-          <div class="muted" style="font-size:12px;font-weight:800;margin-bottom:6px">From</div>
-          <div id="distReassignFrom" style="font-weight:900"></div>
+        <div style="font-weight:900; letter-spacing:-0.5px; font-size:18px; color:#f8fafc; display:flex; align-items:center; gap:8px;">
+          🔄 Transfer Pending Tasks
         </div>
-        <div>
-          <div class="muted" style="font-size:12px;font-weight:800;margin-bottom:6px">To</div>
-          <select class="input" id="distReassignTo"></select>
+        <div class="muted" id="distReassignSub" style="font-size:12px; margin-top:4px; color:#94a3b8;">Re-distribute workload to another team member</div>
+      </div>
+      <button class="btn ghost" data-action="close" style="color:#fca5a5; border:1px solid rgba(239,68,68,0.3);">✕ Cancel</button>
+    </div>
+    <div class="body" style="padding:24px;">
+      <div class="grid" style="grid-template-columns:1fr 1fr; gap:16px;">
+        <div style="background:rgba(255,255,255,0.02); padding:14px; border-radius:8px; border:1px solid rgba(255,255,255,0.05);">
+          <div class="muted" style="font-size:11px; font-weight:800; text-transform:uppercase; margin-bottom:6px; color:#94a3b8;">📤 From</div>
+          <div id="distReassignFrom" style="font-weight:900; color:#f8fafc; font-size:14px;"></div>
+        </div>
+        <div style="background:rgba(255,255,255,0.02); padding:14px; border-radius:8px; border:1px solid rgba(255,255,255,0.05);">
+          <div class="muted" style="font-size:11px; font-weight:800; text-transform:uppercase; margin-bottom:6px; color:#94a3b8;">📥 To (Eligible Member)</div>
+          <select class="input" id="distReassignTo" style="width:100%; background:rgba(2,6,23,0.5); border-color:rgba(148,163,184,0.3); color:#e2e8f0; border-radius:6px; padding:8px; outline:none;"></select>
         </div>
       </div>
 
-      <div class="dist-items-wrap" style="margin-top:12px">
-        <div class="dist-items-head">
-          <label class="dist-items-selectall"><input type="checkbox" id="distReassignSelectAll"> Select All</label>
-          <div class="muted" id="distReassignInfo" style="font-size:12px"></div>
+      <div class="dist-items-wrap" style="margin-top:20px; border:1px solid rgba(148,163,184,0.2); border-radius:10px; background:rgba(15,23,42,0.6);">
+        <div class="dist-items-head" style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <label class="dist-items-selectall" style="cursor:pointer; display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="distReassignSelectAll" style="width:16px; height:16px; accent-color:#38bdf8;"> 
+            <span style="font-weight:800; color:#e2e8f0;">Select All Tasks</span>
+          </label>
+          <div class="muted" id="distReassignInfo" style="font-size:12px; font-weight:600; color:#38bdf8;"></div>
         </div>
-        <div class="dist-items-scroll">
-          <table class="dist-items-table">
+        <div class="dist-items-scroll" style="max-height:260px; overflow-y:auto;">
+          <table class="dist-items-table" style="width:100%; border-collapse:collapse;">
             <thead>
               <tr>
-                <th style="width:46px">#</th>
-                <th>Case #</th>
-                <th>Site</th>
+                <th style="width:46px; background:rgba(15,23,42,0.9); padding:10px;">Select</th>
+                <th style="background:rgba(15,23,42,0.9); padding:10px;">Case Reference</th>
+                <th style="background:rgba(15,23,42,0.9); padding:10px;">Site</th>
               </tr>
             </thead>
             <tbody id="distReassignItems"></tbody>
@@ -88,8 +101,8 @@
         </div>
       </div>
 
-      <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:10px">
-        <button class="btn primary" id="distReassignConfirm">Transfer Selected</button>
+      <div style="margin-top:20px; display:flex; justify-content:flex-end;">
+        <button class="btn primary" id="distReassignConfirm" style="background:linear-gradient(145deg, #0ea5e9, #0284c7); border:none; padding:10px 24px; font-weight:800; font-size:13px; box-shadow:0 4px 12px rgba(14,165,233,0.3); border-radius:8px;">Execute Transfer 🚀</button>
       </div>
     </div>
   </div>
@@ -101,35 +114,35 @@
 
     if(!canView()){
       root.innerHTML = `
-        <div class="card">
-          <div class="card-head"><div class="card-title">Command Center</div></div>
-          <div class="card-body">You do not have access to this page.</div>
+        <div class="card" style="background:rgba(15,23,42,0.5); border:1px solid rgba(239,68,68,0.3); padding:20px; border-radius:12px;">
+          <div class="card-head"><div class="card-title" style="color:#fca5a5;">🛑 Access Denied</div></div>
+          <div class="card-body" style="color:#e2e8f0;">You do not have administrative or lead privileges to view the Command Center.</div>
         </div>`;
       return;
     }
 
     root.innerHTML = `
-      <div class="card">
-        <div class="card-head" style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div class="card" style="background:transparent; border:none; padding:0;">
+        <div class="card-head" style="display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:20px; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:16px;">
           <div>
-            <div class="card-title">Command Center</div>
-            <div class="muted" style="margin-top:4px">Team Lead monitoring for member progress, problems, and pending task transfers.</div>
+            <div class="card-title" style="font-size:24px; font-weight:900; color:#f8fafc; letter-spacing:-0.5px;">📡 Command Center</div>
+            <div class="muted" style="margin-top:6px; color:#94a3b8; font-size:13px;">Team Lead monitoring interface for workload progress, blocking issues, and dynamic transfers.</div>
           </div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button class="btn" id="ccRefresh">Refresh</button>
+          <div style="display:flex; gap:8px; align-items:center;">
+            ${currentUserRole === 'TEAM_LEAD' ? `<span style="background:rgba(56,189,248,0.1); border:1px solid rgba(56,189,248,0.2); padding:6px 12px; border-radius:8px; color:#38bdf8; font-size:12px; font-weight:800;">Filtered to: ${currentUser.duty || currentUser.teamId || 'Your Team'}</span>` : ''}
+            <button class="btn" id="ccRefresh" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:8px; font-weight:700;">🔄 Sync Dashboard</button>
           </div>
         </div>
-        <div class="card-body">
+        <div class="card-body" style="padding:0;">
           <div id="ccList"></div>
-          <div style="display:flex;justify-content:center;margin-top:14px">
-            <button class="btn" id="ccLoadMore">Load more (20)</button>
+          <div style="display:flex;justify-content:center;margin-top:20px">
+            <button class="btn ghost" id="ccLoadMore" style="background:rgba(15,23,42,0.6); border-radius:999px;">Load more history (20)</button>
           </div>
         </div>
       </div>
       ${buildModal()}
     `;
 
-    // Wire modal buttons
     const modal = UI.el('#distReassignModal');
     if(modal){
       modal.addEventListener('click', (e)=>{
@@ -160,12 +173,48 @@
 
       const html = [];
       if(!state.dists.length){
-        html.push(`<div class="task-empty">No active distributions found. Click refresh to sync.</div>`);
+        html.push(`<div class="task-empty" style="padding:40px; text-align:center; border:1px dashed rgba(255,255,255,0.1); border-radius:12px; color:#94a3b8;">No active distributions found. Click sync to update.</div>`);
       }
 
       state.dists.forEach((d)=>{
-        const totals = d.totals || {};
-        const members = Array.isArray(d.members) ? d.members : [];
+        let members = Array.isArray(d.members) ? d.members : [];
+        
+        // ==========================================
+        // ENTERPRISE UPGRADE: STRICT TEAM ISOLATION 
+        // ==========================================
+        if (currentUserRole === 'TEAM_LEAD') {
+            members = members.filter(m => {
+                const mTeamId = String(m.team_id || m.teamId || '').trim().toLowerCase();
+                const mDuty = String(m.duty || m.shift || '').trim().toLowerCase();
+                
+                let isMatch = false;
+                if (currentUserTeamId && mTeamId && currentUserTeamId === mTeamId) isMatch = true;
+                if (currentUserDuty && mDuty && currentUserDuty === mDuty) isMatch = true;
+                
+                return isMatch;
+            });
+            
+            // SECURITY: If the team lead has zero members involved in this specific batch, hide it entirely!
+            if (members.length === 0) return;
+        }
+
+        // RECALCULATE localized totals strictly based on VISIBLE members
+        let dTotal = 0, dProb = 0, dPend = 0, dDone = 0;
+        
+        if (currentUserRole === 'TEAM_LEAD') {
+            members.forEach(m => {
+                dTotal += Number(m.total || 0);
+                dDone += Number(m.completed || 0);
+                dProb += Number(m.with_problem || 0);
+            });
+            dPend = dTotal - dDone;
+        } else {
+            // Admins see global totals
+            dTotal = Number(d.totals?.total || 0);
+            dProb = Number(d.totals?.with_problem || 0);
+            dPend = Number(d.totals?.pending || 0);
+        }
+
         const distId = String(d.id || '');
         const distTitle = UI.esc(d.title || 'Untitled');
         const createdBy = UI.esc(d.created_by_name || 'System');
@@ -176,32 +225,37 @@
               <div class="dist-info">
                 <div class="dist-badge">BATCH ID: ${UI.esc(distId ? distId.slice(0, 8) : 'N/A')}</div>
                 <h3 class="dist-title">${distTitle}</h3>
-                <div class="dist-meta">Lead: <b>${createdBy}</b> • ${UI.esc(fmtDate(d.created_at))}</div>
+                <div class="dist-meta">Deployer: <b>${createdBy}</b> • ${UI.esc(fmtDate(d.created_at))}</div>
               </div>
               <div class="dist-actions">
-                <button class="btn tiny ghost" data-export="${UI.esc(distId)}">Export CSV</button>
+                <button class="btn tiny primary" data-export="${UI.esc(distId)}" style="background:rgba(56,189,248,0.1); border:1px solid rgba(56,189,248,0.4); color:#38bdf8; font-weight:800; border-radius:6px; box-shadow:none;">CSV Export</button>
               </div>
             </div>
+            
             <div class="dist-summary-pills">
-              <div class="s-pill blue">Tasks: ${totals.total||0}</div>
-              <div class="s-pill ${totals.with_problem ? 'red pulse' : 'gray'}">Problems: ${totals.with_problem||0}</div>
-              <div class="s-pill gold">Pending: ${totals.pending||0}</div>
+              <div class="s-pill blue">Tasks: ${dTotal}</div>
+              <div class="s-pill ${dProb > 0 ? 'red pulse' : 'gray'}">Problems: ${dProb}</div>
+              <div class="s-pill gold">Pending: ${dPend}</div>
             </div>
+            
             <div class="member-grid-compact">
               ${members.map((m)=>{
-                const pct = Number(m.completion_pct||0);
+                const mTotal = Number(m.total||0);
+                const mDone = Number(m.completed||0);
+                const pct = mTotal > 0 ? Math.min(100, Math.round((mDone / mTotal) * 100)) : 0;
+                
                 return `
                   <div class="member-mini-card">
                     <div class="m-info">
                       <span class="m-name">${UI.esc(m.name || 'Unknown')}</span>
-                      <span class="m-stat">${m.completed||0}/${m.total||0}</span>
+                      <span class="m-stat">${mDone}/${mTotal} tasks</span>
                     </div>
                     <div class="m-progress-wrap">
                       <div class="m-progress-bar" style="width:${pct}%; background:${pctColor(pct)}"></div>
                     </div>
                     <div class="m-actions">
                       ${(m.with_problem||0) > 0 ? '<span class="err-dot" title="Has Problem"></span>' : ''}
-                      <button class="m-manage-btn" data-manage="${UI.esc(distId)}" data-from="${UI.esc(m.user_id || '')}">Manage</button>
+                      <button class="m-manage-btn" data-manage="${UI.esc(distId)}" data-from="${UI.esc(m.user_id || '')}">Transfer</button>
                     </div>
                   </div>`;
               }).join('')}
@@ -217,48 +271,38 @@
         s.id = 'cc-enterprise-styles';
         s.textContent = `
           .enterprise-dashboard-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
-          .enterprise-dist-card { background:rgba(30, 41, 59, 0.4); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:16px; transition:transform .2s ease, border-color .2s ease; box-shadow:0 8px 24px rgba(0,0,0,.18); }
-          .enterprise-dist-card:hover { transform:translateY(-2px); border-color:rgba(56,189,248,.35); }
-          .dist-header { display:flex; justify-content:space-between; gap:10px; margin-bottom:12px; }
+          .enterprise-dist-card { background:linear-gradient(145deg, rgba(30, 41, 59, 0.4), rgba(15,23,42,0.6)); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:20px; transition:transform .2s ease, border-color .2s ease; box-shadow:0 8px 24px rgba(0,0,0,.15), inset 0 1px 0 rgba(255,255,255,0.02); }
+          .enterprise-dist-card:hover { transform:translateY(-2px); border-color:rgba(56,189,248,.35); box-shadow:0 12px 30px rgba(0,0,0,.25); }
+          .dist-header { display:flex; justify-content:space-between; gap:10px; margin-bottom:14px; align-items:flex-start; }
           .dist-info { min-width:0; }
-          .dist-badge { font-size:10px; color:#38bdf8; font-weight:800; letter-spacing:.08em; }
-          .dist-title { font-size:16px; margin:4px 0; color:#f8fafc; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-          .dist-meta { font-size:11px; color:#94a3b8; }
-          .dist-summary-pills { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:15px; }
-          .s-pill { padding:4px 10px; border-radius:999px; font-size:10px; font-weight:800; border:1px solid rgba(255,255,255,0.1); }
-          .s-pill.blue { background:rgba(56, 189, 248, 0.1); color:#38bdf8; }
-          .s-pill.red.pulse { background:rgba(239, 68, 68, 0.2); color:#ef4444; border-color:#ef4444; animation:ccPulse 2s infinite; }
-          .s-pill.gray { background:rgba(148,163,184,.12); color:#94a3b8; }
-          .s-pill.gold { background:rgba(245, 158, 11, .15); color:#fbbf24; }
+          .dist-badge { font-size:10px; color:#38bdf8; font-weight:900; letter-spacing:.08em; background:rgba(56,189,248,0.1); padding:2px 8px; border-radius:4px; display:inline-block; margin-bottom:4px; }
+          .dist-title { font-size:17px; font-weight:800; margin:4px 0; color:#f8fafc; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; letter-spacing:-0.5px; }
+          .dist-meta { font-size:12px; color:#94a3b8; }
+          .dist-summary-pills { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; background:rgba(2,6,23,0.4); padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.03); }
+          .s-pill { padding:4px 10px; border-radius:6px; font-size:11px; font-weight:800; border:1px solid rgba(255,255,255,0.1); text-transform:uppercase; letter-spacing:0.5px; }
+          .s-pill.blue { background:rgba(56, 189, 248, 0.1); color:#38bdf8; border-color:rgba(56,189,248,0.3); }
+          .s-pill.red.pulse { background:rgba(239, 68, 68, 0.15); color:#fca5a5; border-color:rgba(239,68,68,0.4); box-shadow:0 0 10px rgba(239,68,68,0.2); }
+          .s-pill.gray { background:rgba(148,163,184,.12); color:#94a3b8; border-color:transparent;}
+          .s-pill.gold { background:rgba(245, 158, 11, .15); color:#fcd34d; border-color:rgba(245,158,11,0.3); }
           .member-grid-compact { display:flex; flex-direction:column; gap:8px; }
-          .member-mini-card { background:rgba(15, 23, 42, 0.3); border:1px solid rgba(255,255,255,.06); border-radius:8px; padding:8px 12px; display:grid; grid-template-columns:minmax(0,1fr) 120px auto; align-items:center; gap:10px; }
+          .member-mini-card { background:rgba(15, 23, 42, 0.5); border:1px solid rgba(255,255,255,.04); border-radius:8px; padding:10px 14px; display:grid; grid-template-columns:minmax(0,1fr) 140px auto; align-items:center; gap:12px; transition:background 0.2s;}
+          .member-mini-card:hover { background:rgba(30, 41, 59, 0.6); }
           .m-name { font-size:13px; font-weight:700; color:#e2e8f0; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-          .m-stat { font-size:10px; color:#94a3b8; }
-          .m-progress-wrap { height:6px; background:rgba(255,255,255,0.05); border-radius:10px; overflow:hidden; }
+          .m-stat { font-size:11px; color:#94a3b8; font-weight:600; }
+          .m-progress-wrap { height:6px; background:rgba(2,6,23,0.8); border-radius:10px; overflow:hidden; border:1px solid rgba(255,255,255,0.02);}
           .m-progress-bar { height:100%; border-radius:10px; }
-          .m-actions { display:flex; justify-content:flex-end; align-items:center; gap:8px; }
-          .m-manage-btn { background:transparent; border:1px solid #38bdf8; color:#38bdf8; font-size:10px; padding:2px 8px; border-radius:4px; cursor:pointer; }
-          .m-manage-btn:hover { background:#38bdf8; color:#0f172a; }
-          .err-dot { width:8px; height:8px; background:#ef4444; border-radius:50%; display:inline-block; box-shadow:0 0 8px #ef4444; }
-          .dist-items-wrap { border:1px solid rgba(148,163,184,.25); border-radius:10px; background:rgba(15,23,42,.42); }
-          .dist-items-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border-bottom:1px solid rgba(148,163,184,.2); }
-          .dist-items-selectall { display:flex; align-items:center; gap:6px; font-size:11px; color:#cbd5e1; font-weight:700; }
-          .dist-items-scroll { max-height:220px; overflow:auto; }
-          .dist-items-table { width:100%; border-collapse:collapse; font-size:11px; }
-          .dist-items-table th { text-align:left; color:#94a3b8; font-weight:800; padding:7px 10px; position:sticky; top:0; background:rgba(15,23,42,.92); }
-          .dist-items-table td { padding:6px 10px; border-top:1px solid rgba(148,163,184,.14); color:#e2e8f0; }
-          .dist-items-table tr:hover td { background:rgba(56,189,248,.08); }
-          .dist-item-checkbox { width:14px; height:14px; accent-color:#38bdf8; }
-          .dist-item-empty { text-align:center; color:#94a3b8; }
-          @keyframes ccPulse { 0% { opacity: 1; } 50% { opacity: .5; } 100% { opacity: 1; } }
-
+          .m-actions { display:flex; justify-content:flex-end; align-items:center; gap:10px; }
+          .m-manage-btn { background:transparent; border:1px solid #0ea5e9; color:#38bdf8; font-size:11px; font-weight:700; padding:4px 10px; border-radius:6px; cursor:pointer; transition:all 0.2s; }
+          .m-manage-btn:hover { background:#0ea5e9; color:#fff; box-shadow:0 4px 10px rgba(14,165,233,0.3); }
+          .err-dot { width:10px; height:10px; background:#ef4444; border-radius:50%; display:inline-block; box-shadow:0 0 8px #ef4444; }
+          
           @media (max-width: 1200px) {
             .enterprise-dashboard-grid { grid-template-columns:1fr; }
           }
           @media (max-width: 600px) {
-            .member-mini-card { grid-template-columns:1fr; }
+            .member-mini-card { grid-template-columns:1fr; gap:8px;}
             .m-progress-wrap { width:100%; }
-            .m-actions { justify-content:flex-start; }
+            .m-actions { justify-content:flex-start; margin-top:4px;}
           }
         `;
         document.head.appendChild(s);
@@ -307,8 +351,7 @@
         UI.toast(out.message || 'Export failed', { variant: 'danger' });
         return;
       }
-      // Try to extract filename from content-disposition.
-      let name = `distribution_${distId}.csv`;
+      let name = `MUMS_CommandCenter_Export_${distId}.csv`;
       try{
         const cd = out.disposition || '';
         const m = cd.match(/filename\*=UTF-8''([^;]+)|filename=\"([^\"]+)\"|filename=([^;]+)/i);
@@ -357,9 +400,8 @@
 
       const fromMemberId = String((from && (from.user_id || from.id)) || '').trim();
       fromEl.textContent = `${from.name || fromMemberId} (${fromMemberId})`;
-      subEl.textContent = `${dist.title || 'Distribution'} • Select pending tasks to transfer`;
+      subEl.textContent = `${dist.title || 'Distribution'} • Select tasks to isolate & transfer`;
 
-      // Build Global Roster starting with the full team_roster API payload
       const globalTeamRoster = {};
       if (Array.isArray(state.team_roster)) {
         state.team_roster.forEach(m => {
@@ -367,7 +409,7 @@
           if(mid) globalTeamRoster[mid] = m;
         });
       }
-      // Append any active dist members as fallback
+      
       state.dists.forEach(d => {
         if(Array.isArray(d.members)){
           d.members.forEach(m => {
@@ -376,13 +418,31 @@
           });
         }
       });
-      const fromTeamId = String(from.team_id || '').trim().toLowerCase();
-      // STRICT TEAM ISOLATION FILTER
+      
+      // ==========================================
+      // ENTERPRISE UPGRADE: DROPDOWN TARGET ISOLATION
+      // ==========================================
       const opts = Object.values(globalTeamRoster)
         .filter((m) => {
           const isSelf = String(m.user_id || m.id || '').trim() === String(fromMemberId);
-          const mTeamId = String(m.team_id || '').trim().toLowerCase();
-          const isSameTeam = !fromTeamId || !mTeamId || (mTeamId === fromTeamId);
+          const mTeamId = String(m.team_id || m.teamId || '').trim().toLowerCase();
+          const mDuty = String(m.duty || m.shift || '').trim().toLowerCase();
+          
+          let isSameTeam = false;
+          if (currentUserRole === 'TEAM_LEAD') {
+              // Strictly force the list to match the Lead's team
+              if (currentUserTeamId && mTeamId === currentUserTeamId) isSameTeam = true;
+              if (currentUserDuty && mDuty === currentUserDuty) isSameTeam = true;
+          } else {
+              // Admin mode: Match the specific member's team
+              const fromTeamId = String(from.team_id || from.teamId || '').trim().toLowerCase();
+              const fromDuty = String(from.duty || from.shift || '').trim().toLowerCase();
+              if (!fromTeamId && !fromDuty) isSameTeam = true; // allow fallback if completely null
+              else {
+                  if (fromTeamId && mTeamId === fromTeamId) isSameTeam = true;
+                  if (fromDuty && mDuty === fromDuty) isSameTeam = true;
+              }
+          }
           return !isSelf && isSameTeam;
         })
         .sort((a,b) => (a.name || '').localeCompare(b.name || ''))
@@ -390,20 +450,26 @@
           const memberId = String(m.user_id || m.id || '').trim();
           return `<option value="${UI.esc(memberId)}">${UI.esc(m.name || memberId)}</option>`;
         });
-      toSel.innerHTML = opts.join('') || '<option value="">No other members</option>';
+        
+      toSel.innerHTML = opts.join('') || '<option value="">No other team members available in this shift</option>';
 
       const memberItems = Array.isArray(from.items) ? from.items : [];
       const pendingItems = memberItems.filter((it)=>String(it && it.status || '').trim().toLowerCase() === 'pending');
       if(tbody){
         tbody.setAttribute('data-total', String(pendingItems.length));
         if(!pendingItems.length){
-          tbody.innerHTML = '<tr><td colspan="3" class="dist-item-empty">No pending tasks available.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="3" class="dist-item-empty" style="padding:20px;">No pending tasks left. Great job!</td></tr>';
         }else{
           tbody.innerHTML = pendingItems.map((it)=>{
             const itemId = String(it && it.id || '').trim();
             const caseNo = it && (it.case_number || it.case_no) ? String(it.case_number || it.case_no) : 'N/A';
             const site = it && it.site ? String(it.site) : 'N/A';
-            return `<tr><td><input class="dist-item-checkbox" type="checkbox" data-item-id="${UI.esc(itemId)}"></td><td>${UI.esc(caseNo)}</td><td>${UI.esc(site)}</td></tr>`;
+            return `
+              <tr>
+                <td><input class="dist-item-checkbox" type="checkbox" data-item-id="${UI.esc(itemId)}"></td>
+                <td style="font-weight:700; color:#f8fafc;">${UI.esc(caseNo)}</td>
+                <td style="color:#cbd5e1;">${UI.esc(site)}</td>
+              </tr>`;
           }).join('');
         }
       }
@@ -428,7 +494,7 @@
       if(!ctx) return;
       const toUser = String((UI.el('#distReassignTo') && UI.el('#distReassignTo').value) || '').trim();
       if(!toUser){
-        UI.toast('Select a recipient', { variant: 'danger' });
+        UI.toast('Select an eligible team member first', { variant: 'danger' });
         return;
       }
 
@@ -437,7 +503,7 @@
       try{
         const selectedItemIds = getModalSelectedItemIds();
         if(!selectedItemIds.length){
-          UI.toast('Select at least one pending task', { variant: 'danger' });
+          UI.toast('Select at least one task to transfer.', { variant: 'danger' });
           btn.disabled = false;
           return;
         }
@@ -448,11 +514,11 @@
           selected_item_ids: selectedItemIds
         });
         if(!out.ok){
-          UI.toast(out.message || out.error || 'Transfer failed', { variant: 'danger' });
+          UI.toast(out.message || out.error || 'Transfer protocol failed', { variant: 'danger' });
           btn.disabled = false;
           return;
         }
-        UI.toast(`Transferred ${out.data && out.data.moved != null ? out.data.moved : 0} pending task(s).`, { variant: 'success' });
+        UI.toast(`Successfully routed ${out.data && out.data.moved != null ? out.data.moved : 0} tasks to the new agent.`, { variant: 'success' });
         UI.closeModal('distReassignModal');
         await loadNext(true);
       }catch(e){
@@ -517,7 +583,6 @@
     // Initial load
     loadNext(true);
 
-    // Cleanup
     return () => {
       try{ UI.closeModal('distReassignModal'); }catch(_){ }
     };
