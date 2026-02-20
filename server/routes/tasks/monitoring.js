@@ -1,7 +1,6 @@
 const { sendJson, requireAuthedUser, roleFlags, serviceSelect } = require('./_common');
 
 const ITEM_DISTRIBUTION_COLUMNS = ['distribution_id', 'task_distribution_id'];
-const ASSIGNEE_COLUMNS = ['assigned_to', 'assignee_user_id', 'assigned_user_id'];
 
 function encodeInList(values) {
   return values
@@ -10,22 +9,16 @@ function encodeInList(values) {
     .join(',');
 }
 
-function readFirstField(row, fields) {
-  const source = row && typeof row === 'object' ? row : {};
-  for (const field of fields) {
-    const value = String(source[field] || '').trim();
-    if (value) return value;
-  }
-  return '';
-}
-
 async function selectItemsByDistributionIds(distributionIds) {
   const ids = Array.isArray(distributionIds) ? distributionIds.map((id) => String(id || '').trim()).filter(Boolean) : [];
   if (!ids.length) return { rows: [], distributionColumn: ITEM_DISTRIBUTION_COLUMNS[0] };
 
   const inList = encodeInList(ids);
   for (const key of ITEM_DISTRIBUTION_COLUMNS) {
-    const out = await serviceSelect('task_items', `select=*&${encodeURIComponent(key)}=in.(${inList})`);
+    const out = await serviceSelect(
+      'task_items',
+      `select=id,${encodeURIComponent(key)},assigned_to,status,case_number,case_no,site&${encodeURIComponent(key)}=in.(${inList})`
+    );
     if (out.ok) {
       return {
         rows: Array.isArray(out.json) ? out.json : [],
@@ -59,7 +52,7 @@ module.exports = async (req, res) => {
     const items = itemsResult.rows;
     const itemDistributionColumn = itemsResult.distributionColumn;
 
-    const userIds = [...new Set(items.map((i) => readFirstField(i, ASSIGNEE_COLUMNS)).filter(Boolean))];
+    const userIds = [...new Set(items.map((i) => i && i.assigned_to).filter(Boolean))];
     const profilesById = {};
     if (userIds.length) {
       const userInList = encodeInList(userIds);
@@ -69,7 +62,7 @@ module.exports = async (req, res) => {
       );
       if (pOut.ok && Array.isArray(pOut.json)) {
         pOut.json.forEach((p) => {
-          if (p && p.user_id) profilesById[String(p.user_id)] = p;
+          if (p && p.user_id) profilesById[p.user_id] = p;
         });
       }
     }
@@ -81,7 +74,7 @@ module.exports = async (req, res) => {
         const byMember = {};
 
         dItems.forEach((it) => {
-          const mId = readFirstField(it, ASSIGNEE_COLUMNS);
+          const mId = it && it.assigned_to ? String(it.assigned_to) : '';
           if (!mId) return;
 
           const prof = profilesById[mId] || {};
