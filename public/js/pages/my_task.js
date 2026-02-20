@@ -35,7 +35,6 @@
     isFullscreen: false,       
     showWorkloadModal: false,
     
-    // ENTERPRISE: Auto-Assign Wizard State
     autoAssign: {
       open: false,
       group: 'ALL',
@@ -526,7 +525,6 @@
 
     const canSubmit = state.form.title.trim() && state.form.deadline && hasData && totalNeedsFix === 0 && !state.creating;
 
-    // PRE-COMPILE WORKLOAD MODAL HTML
     let workloadModalHtml = '';
     if (state.showWorkloadModal) {
       const listHtml = assigneeStats.map(astat => {
@@ -562,11 +560,18 @@
       `;
     }
 
-    // ENTERPRISE UPGRADE: DYNAMIC AUTO-ASSIGN WIZARD HTML
+    // ENTERPRISE UPGRADE: Deep-Search Shotgun Extractor
     let autoAssignModalHtml = '';
     if (state.autoAssign.open) {
-       // Extract unique teams/shifts dynamically from available members using member.duty (prioritized)
-       const extractedTeams = [...new Set(state.members.map(m => m.duty || m.team_name || m.team || m.shift || '').filter(Boolean))];
+       
+       const extractedTeams = [...new Set(state.members.map(m => {
+           // Shotgun strategy to find the team/shift property
+           let t = m.duty || m.shift || m.team_name || m.team || m.team_id || m.department;
+           if (!t && m.teams) t = m.teams.duty || m.teams.name || m.teams.shift;
+           if (!t && m.user_metadata) t = m.user_metadata.duty || m.user_metadata.shift;
+           return t ? String(t).trim() : null;
+       }).filter(Boolean))];
+
        const teamOptionsHtml = extractedTeams.map(t => `<option value="${esc(t)}" ${state.autoAssign.group === t ? 'selected' : ''}>${esc(t)}</option>`).join('');
 
        autoAssignModalHtml = `
@@ -587,6 +592,14 @@
 
                <div class="glass-card" style="padding:20px;">
                  <label class="premium-label" style="margin-bottom:8px;">1. Select Target Group (Shift/Team)</label>
+                 
+                 ${extractedTeams.length === 0 ? 
+                   `<div style="color:#ef4444; font-size:12px; font-weight:700; background:rgba(239,68,68,0.1); padding:8px; border-radius:4px; margin-bottom:16px;">
+                     ⚠️ No Team/Shift data detected in API. Only 'All Members' is available. Please check if backend SELECT query includes the 'duty' column.
+                    </div>` 
+                   : ''
+                 }
+
                  <select class="premium-input" id="autoAssignGroupSelect" style="margin-bottom:16px;">
                    <option value="ALL" ${state.autoAssign.group === 'ALL' ? 'selected' : ''}>All Available Members</option>
                    ${teamOptionsHtml}
@@ -609,7 +622,6 @@
        `;
     }
 
-    // PRE-COMPILE GRID HTML
     const gridRowsHtml = state.parsedRows.map((row, idx) => {
       const invalid = !row.assigned_to;
       const optionsHtml = state.members.map((m) => {
@@ -1211,7 +1223,6 @@
     if (el('#autoAssignLeadCheck')) {
       el('#autoAssignLeadCheck').onchange = (e) => {
         state.autoAssign.includeLead = e.target.checked;
-        // No full render needed for checkbox check, just state update
       };
     }
     if (el('#executeAutoAssign')) {
@@ -1226,12 +1237,15 @@
         const targetGroup = state.autoAssign.group;
         const includeLead = state.autoAssign.includeLead;
 
-        // Filter eligible members
+        // Filter eligible members using the same shotgun strategy
         const eligible = state.members.filter(m => {
           // Team filter
           if (targetGroup !== 'ALL') {
-            const mTeam = m.duty || m.team_name || m.team || m.shift || '';
-            if (mTeam !== targetGroup) return false;
+            let mTeam = m.duty || m.shift || m.team_name || m.team || m.team_id || m.department;
+            if (!mTeam && m.teams) mTeam = m.teams.duty || m.teams.name || m.teams.shift;
+            if (!mTeam && m.user_metadata) mTeam = m.user_metadata.duty || m.user_metadata.shift;
+            
+            if (String(mTeam).trim() !== targetGroup) return false;
           }
           // Lead filter
           if (!includeLead && isLead(m)) return false;
