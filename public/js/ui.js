@@ -1677,16 +1677,16 @@
             .mbx-accept-btn:hover { background: linear-gradient(145deg, #34d399, #10b981) !important; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(16,185,129,0.4) !important; }
           </style>
           <div class="mbx-assign-table-wrap glass-table-container" role="region" aria-label="Pending case assignments" style="border:1px solid rgba(255,255,255,0.06); border-radius:10px; overflow-x:auto; background:rgba(2,6,23,0.5);">
-            <table class="mbx-assign-table" role="table" style="width:100%; min-width:750px; border-collapse:collapse;">
+            <table class="mbx-assign-table" role="table" style="width:100%; min-width:800px; border-collapse:collapse;">
               <thead>
                 <tr>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08);">No.</th>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08);">Timestamp</th>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08);">Case #</th>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08);">Description</th>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08);">Assigned By</th>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08);">Elapsed</th>
-                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:right;">Action</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:5;">No.</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:5;">Timestamp</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:5;">Case #</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:5;">Description</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:5;">Assigned By</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:5;">Elapsed</th>
+                  <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:right; position:sticky; top:0; z-index:5;">Action</th>
                 </tr>
               </thead>
               <tbody>${rows}</tbody>
@@ -2559,11 +2559,47 @@
     }
   };
 
+  // ================================================================
+  // ENTERPRISE UPGRADE: God-Eye MS Teams Style Toast for Managers
+  // ================================================================
   UI.initMailboxManagerToasts = function() {
     if(window._mbxToastEngineRunning) return;
     window._mbxToastEngineRunning = true;
 
     let knownAssignments = {};
+
+    // Inject Enterprise Toast CSS globally
+    if (!document.getElementById('ms-teams-toast-styles')) {
+        const s = document.createElement('style');
+        s.id = 'ms-teams-toast-styles';
+        s.textContent = `
+            @keyframes toastSlideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+            @keyframes toastSlideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(120%); opacity: 0; } }
+            @keyframes toastProgress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+            
+            .ms-enterprise-toast {
+                position: relative; background: linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98));
+                backdrop-filter: blur(12px); border: 1px solid rgba(16,185,129,0.3); border-left: 4px solid #10b981;
+                border-radius: 12px; padding: 16px 20px; box-shadow: 0 15px 35px -5px rgba(0,0,0,0.6), 0 0 20px rgba(16,185,129,0.1);
+                display: flex; align-items: center; gap: 16px; width: 360px; pointer-events: auto; overflow: hidden;
+                animation: toastSlideIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            }
+            .ms-enterprise-toast.hiding { animation: toastSlideOut 0.4s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards; }
+            
+            .ms-toast-close {
+                position: absolute; top: 8px; right: 8px; background: transparent; border: none;
+                color: #94a3b8; cursor: pointer; font-size: 14px; padding: 4px; border-radius: 4px;
+                transition: all 0.2s; line-height: 1; z-index: 10;
+            }
+            .ms-toast-close:hover { background: rgba(255,255,255,0.1); color: #f8fafc; }
+            
+            .ms-toast-progress {
+                position: absolute; bottom: 0; left: 0; height: 3px; background: linear-gradient(90deg, #0ea5e9, #10b981);
+                width: 100%; transform-origin: left; animation: toastProgress 6s linear forwards;
+            }
+        `;
+        document.head.appendChild(s);
+    }
 
     window.addEventListener('mums:store', (e) => {
         if(e?.detail?.key !== 'mums_mailbox_tables') return;
@@ -2627,35 +2663,40 @@
         }
 
         const toast = document.createElement('div');
-        toast.style.cssText = 'background:linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98)); border:1px solid rgba(16,185,129,0.4); border-left:4px solid #10b981; border-radius:8px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,0.5); display:flex; align-items:center; gap:12px; transform:translateX(120%); opacity:0; transition:all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); width:320px; pointer-events:auto;';
+        toast.className = 'ms-enterprise-toast';
+        const initials = window.UI.initials ? window.UI.initials(name) : 'U';
 
         toast.innerHTML = `
-            <div style="background:rgba(16,185,129,0.15); width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; border:1px solid rgba(16,185,129,0.3);">
-                ✅
-            </div>
-            <div style="flex:1; min-width:0;">
-                <div style="font-size:12px; color:#94a3b8; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Case Accepted</div>
-                <div style="font-size:14px; color:#f8fafc; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;">
-                    <span style="color:#34d399;">${window.UI.esc(name)}</span>
+            <div class="ms-toast-progress"></div>
+            <button class="ms-toast-close" onclick="this.parentElement.classList.add('hiding'); setTimeout(() => this.parentElement.remove(), 400);">✕</button>
+            
+            <div style="position:relative;">
+                <div style="width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg, #0ea5e9, #38bdf8); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:900; font-size:16px; box-shadow: 0 4px 10px rgba(14,165,233,0.3); border:2px solid rgba(255,255,255,0.1);">
+                    ${initials}
                 </div>
-                <div style="font-size:12px; color:#cbd5e1; margin-top:2px;">Ref: <strong style="color:#e2e8f0;">${window.UI.esc(caseNo)}</strong></div>
+                <div style="position:absolute; bottom:-4px; right:-4px; background:#10b981; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:900; color:#fff; border:2px solid #0f172a; box-shadow: 0 0 8px rgba(16,185,129,0.5);">✓</div>
+            </div>
+            
+            <div style="flex:1; min-width:0; padding-right:12px;">
+                <div style="font-size:11px; color:#10b981; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:2px;">Task Acknowledged</div>
+                <div style="font-size:14px; color:#f8fafc; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    ${window.UI.esc(name)}
+                </div>
+                <div style="font-size:12px; color:#94a3b8; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    Reference: <strong style="color:#e2e8f0;">${window.UI.esc(caseNo)}</strong>
+                </div>
             </div>
         `;
 
         container.appendChild(toast);
-
         try{ window.UI.playNotifSound?.(window.Auth?.getUser?.()?.id); }catch(e){}
 
-        requestAnimationFrame(() => {
-            toast.style.transform = 'translateX(0)';
-            toast.style.opacity = '1';
-        });
-
         setTimeout(() => {
-            toast.style.transform = 'translateX(120%)';
-            toast.style.opacity = '0';
-            setTimeout(() => toast.remove(), 400);
-        }, 5000);
+            if (!toast.classList.contains('hiding')) {
+                toast.classList.add('hiding');
+                setTimeout(() => toast.remove(), 400);
+            }
+        }, 6000);
     }
   };
 
