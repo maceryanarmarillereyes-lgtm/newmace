@@ -216,32 +216,83 @@
     style.id = 'my-task-dashboard-style';
     style.textContent = `
       /* Base & Existing Styles */
-      .task-shell{position:relative;display:flex;flex-direction:column;gap:14px;color:#e2e8f0;}
-      .task-header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-      .task-section{display:flex;flex-direction:column;gap:10px}
-      .task-section-title{font-size:15px;font-weight:800;display:flex;align-items:center;gap:6px;color:#f8fafc;}
-      .task-card{background:rgba(15,23,42,.7);border-radius:8px;padding:14px;border:1px solid rgba(148,163,184,.14)}
-      .task-empty{padding:24px 12px;text-align:center;color:#9ca3af;border:1px dashed rgba(255,255,255,.2);border-radius:8px}
-      .task-meta{font-size:12px;color:#9ca3af}
-      .task-title{font-size:16px;font-weight:800;line-height:1.3;margin-bottom:4px;color:#f1f5f9;}
-      .task-tabs{display:flex;gap:8px;flex-wrap:wrap}
-      .task-tab{border:1px solid rgba(148,163,184,.35);border-radius:999px;background:rgba(15,23,42,.45);padding:6px 12px;color:#cbd5e1;cursor:pointer;font-weight:600;transition:all 0.2s;}
-      .task-tab:hover{background:rgba(56,189,248,.1);border-color:rgba(56,189,248,.4);}
-      .task-tab.active{background:rgba(56,189,248,.24);border-color:rgba(56,189,248,.65);color:#e0f2fe}
-      .task-ref{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid rgba(148,163,184,.45);border-radius:999px;text-decoration:none;color:#22d3ee;margin-left:8px}
-      .task-progress-rail{height:8px;background:rgba(148,163,184,.24);border-radius:999px;overflow:hidden}
-      .task-progress-fill{height:100%;background:linear-gradient(90deg,#10b981,#06b6d4)}
-      .task-grid-wrap{max-height:0;overflow:hidden;opacity:0;transition:max-height .24s ease, opacity .2s ease;margin-top:0}
-      .task-grid-wrap.open{max-height:550px;opacity:1;margin-top:10px}
-      .task-grid table{width:100%;border-collapse:collapse}
-      .task-grid th,.task-grid td{padding:9px;border-bottom:1px solid rgba(148,163,184,.16);font-size:13px;text-align:left;vertical-align:top}
-      .task-grid tbody tr:hover{background:rgba(148,163,184,.08)}
-      .task-overlay{position:absolute;inset:0;background:rgba(2,6,23,.56);display:flex;align-items:center;justify-content:center;z-index:40;border-radius:8px}
-      .task-spinner{width:32px;height:32px;border-radius:999px;border:4px solid rgba(255,255,255,.25);border-top-color:#22d3ee;animation:taskSpin 1s linear infinite}
-      .task-accordion{display:block;width:100%;text-align:left;border:none;background:transparent;color:inherit;padding:0;cursor:pointer}
+      .task-shell{position:relative;display:flex;flex-direction:column;gap:20px;color:#e2e8f0; padding: 10px 0;}
+      .task-header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 16px;}
+      .task-title-main { font-size: 24px; font-weight: 900; color: #f8fafc; margin: 0; letter-spacing: -0.5px;}
+      .task-section{display:flex;flex-direction:column;gap:12px; margin-top: 8px;}
       
+      /* ENTERPRISE UPGRADE: Section Titles */
+      .task-section-title{
+        font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px; color:#e2e8f0;
+        text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;
+      }
+      .task-section-title .badge-count {
+        background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 900;
+      }
+
+      /* ENTERPRISE UPGRADE: Enhanced Main Cards */
+      .task-card{
+        background:linear-gradient(145deg, rgba(30,41,59,0.4), rgba(15,23,42,0.6));
+        border-radius:12px; padding:18px 20px; 
+        border:1px solid rgba(255,255,255,0.06);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.02);
+        transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+      .task-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(56, 189, 248, 0.3);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.05);
+      }
+      
+      .task-accordion{display:block;width:100%;text-align:left;border:none;background:transparent;color:inherit;padding:0;cursor:pointer; outline:none;}
+      
+      .task-title{font-size:17px;font-weight:800;line-height:1.3;margin-bottom:6px;color:#f8fafc; display:flex; align-items:center; gap:8px;}
+      .task-meta{font-size:12px;color:#94a3b8; line-height: 1.4;}
+      .task-meta strong { color: #cbd5e1; }
+      
+      /* ENTERPRISE UPGRADE: Thick Neon Progress Bar */
+      .task-progress-rail{height:10px;background:rgba(2,6,23,0.6);border-radius:999px;overflow:hidden; margin-top:12px; border: 1px solid rgba(255,255,255,0.03); box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);}
+      .task-progress-fill{height:100%;background:linear-gradient(90deg,#0ea5e9,#38bdf8); border-radius:999px; transition: width 0.4s ease-out;}
+      .task-progress-fill.complete { background:linear-gradient(90deg,#10b981,#34d399); box-shadow: 0 0 10px rgba(16,185,129,0.4); }
+
+      .task-empty{padding:30px 20px;text-align:center;color:#64748b;border:1px dashed rgba(255,255,255,.1);border-radius:12px; background: rgba(15,23,42,0.3); font-size: 14px; font-weight: 600;}
+      
+      /* TABS */
+      .task-tabs{display:flex;gap:10px;flex-wrap:wrap}
+      .task-tab{
+        border:1px solid rgba(148,163,184,.2);border-radius:8px;background:rgba(15,23,42,.6);
+        padding:8px 16px;color:#cbd5e1;cursor:pointer;font-weight:600; font-size: 13px;
+        transition:all 0.2s; display:flex; align-items:center; gap:6px;
+      }
+      .task-tab:hover{background:rgba(56,189,248,.1);border-color:rgba(56,189,248,.4); color:#f8fafc;}
+      .task-tab.active{background:linear-gradient(145deg, #0ea5e9, #0284c7); border-color:#38bdf8; color:#fff; box-shadow: 0 4px 12px rgba(14,165,233,0.3);}
+
+      .task-ref{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid rgba(148,163,184,.45);border-radius:999px;text-decoration:none;color:#22d3ee;margin-left:8px; transition: all 0.2s;}
+      .task-ref:hover { background: rgba(34,211,238,0.1); }
+
+      /* GRID INNER */
+      .task-grid-wrap{max-height:0;overflow:hidden;opacity:0;transition:max-height .3s ease, opacity .2s ease;margin-top:0}
+      .task-grid-wrap.open{max-height:800px;opacity:1;margin-top:16px; border-top: 1px solid rgba(255,255,255,0.05); padding-top:16px;}
+      .task-grid { border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); overflow: hidden; }
+      .task-grid table{width:100%;border-collapse:collapse; background: rgba(2,6,23,0.4); }
+      .task-grid th{padding:12px;border-bottom:1px solid rgba(255,255,255,.05);font-size:11px; font-weight:700; text-align:left; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; background: rgba(15,23,42,0.8);}
+      .task-grid td{padding:12px;border-bottom:1px solid rgba(255,255,255,.02);font-size:13px;text-align:left;vertical-align:top}
+      .task-grid tbody tr:hover{background:rgba(255,255,255,.02)}
+      
+      .task-overlay{position:absolute;inset:0;background:rgba(2,6,23,.7);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:40;border-radius:8px}
+      .task-spinner{width:40px;height:40px;border-radius:999px;border:4px solid rgba(255,255,255,.1);border-top-color:#38bdf8;animation:taskSpin 1s linear infinite}
+      
+      /* ENTERPRISE STATUS SELECTOR */
+      .task-status-select{width:max-content;max-width:220px;padding:6px 12px;border-radius:6px;font-weight:700;font-size:12px;border:1px solid rgba(148,163,184,.2);background:rgba(15,23,42,.8);color:#e2e8f0;outline:none; cursor:pointer;}
+      .task-status-select:disabled{opacity:.5;cursor:not-allowed}
+      .task-status-select.status-pending{border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.1);color:#fcd34d}
+      .task-status-select.status-ongoing{border-color:rgba(56,189,248,.4);background:rgba(56,189,248,.1);color:#7dd3fc}
+      .task-status-select.status-completed{border-color:rgba(16,185,129,.4);background:rgba(16,185,129,.1);color:#6ee7b7}
+      .task-status-select.status-problem{border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#fca5a5}
+      .task-problem-notes{font-size:12px;color:#fca5a5;line-height:1.4;word-break:break-word;opacity:.9; background: rgba(239,68,68,0.1); padding: 8px; border-radius: 6px; border-left: 3px solid #ef4444; margin-top: 6px;}
+
       /* ========================================= */
-      /* HIGH LEVEL ENTERPRISE MODAL UI UPGRADE    */
+      /* MODAL UI UPGRADE    */
       /* ========================================= */
       
       .task-modal-glass::-webkit-scrollbar, .glass-table-container::-webkit-scrollbar, .modal-body-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -328,23 +379,18 @@
       }
       .btn-glass-ghost { background: transparent; color: #94a3b8; border-color: rgba(148,163,184,0.3); }
       .btn-glass-ghost:hover { background: rgba(148,163,184,0.1); color: #f8fafc; }
-      .btn-glass-primary { background: #0ea5e9; color: #fff; box-shadow: 0 4px 12px rgba(14,165,233,0.3); }
-      .btn-glass-primary:hover:not(:disabled) { background: #0284c7; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(14,165,233,0.4); }
-      .btn-glass-primary:disabled { background: rgba(14,165,233,0.4); color: rgba(255,255,255,0.5); cursor: not-allowed; box-shadow:none; }
+      .btn-glass-primary { background: linear-gradient(145deg, #0ea5e9, #0284c7); color: #fff; box-shadow: 0 4px 12px rgba(14,165,233,0.3); border:1px solid rgba(56,189,248,0.4); }
+      .btn-glass-primary:hover:not(:disabled) { background: linear-gradient(145deg, #38bdf8, #0ea5e9); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(14,165,233,0.4); }
+      .btn-glass-primary:disabled { background: rgba(14,165,233,0.2); color: rgba(255,255,255,0.4); border-color:transparent; cursor: not-allowed; box-shadow:none; }
       
-      .btn-glass-action { background: linear-gradient(145deg, #10b981, #059669); color: #fff; border:none; box-shadow: 0 4px 12px rgba(16,185,129,0.3); }
-      .btn-glass-action:hover:not(:disabled) { background: #047857; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(16,185,129,0.4); }
+      .btn-glass-action { background: linear-gradient(145deg, #10b981, #059669); color: #fff; border:1px solid rgba(52,211,153,0.4); box-shadow: 0 4px 12px rgba(16,185,129,0.3); }
+      .btn-glass-action:hover:not(:disabled) { background: linear-gradient(145deg, #34d399, #10b981); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(16,185,129,0.4); }
 
       .task-invalid{background:rgba(239,68,68,.08) !important; border-left:3px solid #ef4444;}
-      .task-status-select{width:max-content;max-width:220px;padding:6px 10px;border-radius:999px;font-weight:800;font-size:12px;border:1px solid rgba(148,163,184,.28);background:rgba(15,23,42,.55);color:#e2e8f0;outline:none}
-      .task-status-select:disabled{opacity:.65;cursor:not-allowed}
-      .task-status-select.status-pending{border-color:rgba(245,158,11,.55);background:rgba(245,158,11,.14);color:#fde68a}
-      .task-status-select.status-ongoing{border-color:rgba(59,130,246,.55);background:rgba(59,130,246,.14);color:#bfdbfe}
-      .task-status-select.status-completed{border-color:rgba(16,185,129,.55);background:rgba(16,185,129,.14);color:#a7f3d0}
-      .task-status-select.status-problem{border-color:rgba(239,68,68,.55);background:rgba(239,68,68,.14);color:#fecaca}
-      .task-problem-notes{font-size:12px;color:#fecaca;line-height:1.3;word-break:break-word;opacity:.95}
+      
       .task-modal-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
       .task-modal-error{font-size:12px;color:#fecaca;background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.25);padding:10px 12px;border-radius:8px}
+      
       .login-alert-modal{width:min(600px,96vw);max-height:calc(100vh - 100px);overflow:auto;background:linear-gradient(145deg,rgba(15,23,42,.98),rgba(2,6,23,.95));backdrop-filter:blur(14px);border:1px solid rgba(248,113,113,.4);box-shadow:0 18px 48px rgba(2,6,23,.8), inset 0 1px 0 rgba(255,255,255,0.05);border-radius:16px;padding:24px;color:#f8fafc;display:flex;flex-direction:column;gap:16px}
       .login-alert-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:rgba(239,68,68,.2);border:1px solid rgba(248,113,113,.45);color:#fca5a5;font-size:12px;font-weight:800;width:max-content; text-transform:uppercase; letter-spacing:0.5px;}
       .login-alert-actions{display:flex;justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.05); padding-top:16px; margin-top:8px;}
@@ -364,30 +410,48 @@
     const assignedAt = safeDate(group.assigned_at);
     const isOpen = state.expandedAssignedId === id;
     const items = Array.isArray(group.items) ? group.items : [];
+    const isComplete = total > 0 && done === total;
+    const progressPct = percent(done, total);
 
     return `
-      <article class="task-card" id="assignedGroup_${esc(id)}">
+      <article class="task-card" id="assignedGroup_${esc(id)}" style="${isComplete ? 'border-color: rgba(16,185,129,0.3);' : ''}">
         <button class="task-accordion" type="button" data-toggle-assigned="${esc(id)}" aria-expanded="${isOpen ? 'true' : 'false'}">
-          <div class="task-title">${esc(safeText(group.project_title, 'Untitled Distribution'))} <span class="chev">▾</span> <span class="small muted">(Click to view tasks)</span></div>
-          <div class="task-meta">Assigned by: ${esc(safeText(group.assigner_name, 'N/A'))} • ${esc(assignedAt)}</div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap">
-            <div class="task-meta">${esc(done)} / ${esc(total)} complete</div>
-            <div class="task-meta">${esc(percent(done, total))}%</div>
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+             <div>
+                <div class="task-title">
+                   ${isComplete ? '✅ ' : '📋 '} ${esc(safeText(group.project_title, 'Untitled Distribution'))}
+                </div>
+                <div class="task-meta" style="margin-top:2px;">
+                   Assigned by: <strong>${esc(safeText(group.assigner_name, 'N/A'))}</strong> • ${esc(assignedAt)}
+                </div>
+             </div>
+             <div style="background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px; font-size: 12px; color: #cbd5e1; font-weight: 600; display:flex; gap:6px; align-items:center;">
+                <span style="font-size:14px; transform: ${isOpen ? 'rotate(180deg)' : 'rotate(0deg)'}; transition: transform 0.2s;">▾</span>
+                ${isOpen ? 'Hide Tasks' : 'View Tasks'}
+             </div>
           </div>
-          <div class="task-progress-rail" style="margin-top:6px"><div class="task-progress-fill" style="width:${percent(done, total)}%"></div></div>
+          
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:16px;">
+            <div class="task-meta">Progress: <strong style="color:${isComplete ? '#34d399' : '#f8fafc'}; font-size:14px;">${esc(done)} / ${esc(total)}</strong> tasks</div>
+            <div style="font-weight:900; font-size:16px; color:${isComplete ? '#10b981' : '#38bdf8'};">${esc(progressPct)}%</div>
+          </div>
+          <div class="task-progress-rail">
+             <div class="task-progress-fill ${isComplete ? 'complete' : ''}" style="width:${progressPct}%"></div>
+          </div>
         </button>
+        
         <div class="task-grid-wrap ${isOpen ? 'open' : ''}">
-          <div class="task-grid" style="overflow:auto">
+          <div class="task-grid">
             <table>
               <thead><tr><th>Task Info</th><th>Site</th><th>Status</th><th>Deadline</th></tr></thead>
               <tbody>
                 ${items.map((item) => `
                   <tr>
                     <td>
-                      <div style="font-weight:700">${esc(safeText(item.case_number || item.case_no, 'N/A'))}</div>
-                      <div class="task-meta" style="font-size:11px; margin-top:2px; max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(item.description || '')}">${esc(item.description || '')}</div>
+                      <div style="font-weight:800; color:#f8fafc; font-size:13px; margin-bottom:4px;">${esc(safeText(item.case_number || item.case_no, 'N/A'))}</div>
+                      <div class="task-meta" style="font-size:11px; max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(item.description || '')}">${esc(item.description || '')}</div>
                     </td>
-                    <td>${esc(safeText(item.site, 'N/A'))}</td>
+                    <td style="color:#e2e8f0; font-size:13px;">${esc(safeText(item.site, 'N/A'))}</td>
                     <td>
                       ${(() => {
                         const raw = normalizeItemStatus(item.status);
@@ -396,7 +460,7 @@
                         const isSaving = !!state.savingStatusByItemId[String(item.id || '')];
                         const notes = String(item.problem_notes || '');
                         return `
-                          <div style="display:flex;flex-direction:column;gap:6px">
+                          <div style="display:flex;flex-direction:column;">
                             <select class="task-status-select ${statusClass(shown)}" data-item-status="${esc(String(item.id || ''))}" ${isSaving ? 'disabled' : ''}>
                               ${STATUS_OPTIONS.map((opt) => `<option value="${esc(opt)}" ${normalizeItemStatus(opt) === shown ? 'selected' : ''}>${esc(opt)}</option>`).join('')}
                             </select>
@@ -405,9 +469,9 @@
                         `;
                       })()}
                     </td>
-                    <td>${esc(safeDate(item.deadline || item.deadline_at || item.due_at))}</td>
+                    <td style="color:#94a3b8; font-size:12px;">${esc(safeDate(item.deadline || item.deadline_at || item.due_at))}</td>
                   </tr>
-                `).join('') || '<tr><td colspan="4" class="task-meta">No assigned items</td></tr>'}
+                `).join('') || '<tr><td colspan="4" class="task-meta" style="text-align:center; padding:20px;">No assigned items</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -417,10 +481,16 @@
   }
 
   function renderAssignedPanel() {
+    const count = state.assignedGroups.length;
     return `
       <section class="task-section">
-        <div class="task-section-title">📥 My Assigned Tasks</div>
-        ${state.assignedGroups.length ? state.assignedGroups.map(renderAssignedCard).join('') : '<div class="task-empty">No assigned tasks yet</div>'}
+        <div class="task-section-title">
+          📥 My Assigned Tasks
+          ${count > 0 ? `<span class="badge-count">${count}</span>` : ''}
+        </div>
+        <div style="display:flex; flex-direction:column; gap:16px;">
+           ${count ? state.assignedGroups.map(renderAssignedCard).join('') : '<div class="task-empty">You have no pending tasks at the moment. Excellent work!</div>'}
+        </div>
       </section>
     `;
   }
@@ -432,23 +502,41 @@
     const done = Math.max(0, total - pending);
     const isOpen = state.expandedDistributionId === id;
     const items = isOpen ? (state.distributionItemsById[id] || []) : [];
+    const isComplete = total > 0 && done === total;
+    const progressPct = percent(done, total);
 
     return `
-      <article class="task-card">
+      <article class="task-card" style="${isComplete ? 'border-color: rgba(16,185,129,0.3); opacity:0.9;' : ''}">
         <button class="task-accordion" type="button" data-toggle-dist="${esc(id)}" aria-expanded="${isOpen ? 'true' : 'false'}">
-          <div class="task-title">${esc(safeText(dist.title, 'Untitled Distribution'))}</div>
-          <div class="task-meta">
-            ${esc(safeText(dist.description, 'N/A'))}
-            ${/^https?:\/\//i.test(String(dist.reference_url || '')) ? `<a class="task-ref" href="${esc(dist.reference_url)}" target="_blank" rel="noopener" title="Open Work Instruction">🔗</a>` : ''}
+          
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+             <div>
+                <div class="task-title">
+                   ${isComplete ? '✅ ' : '🚀 '} ${esc(safeText(dist.title, 'Untitled Distribution'))}
+                </div>
+                <div class="task-meta" style="margin-top:2px; max-width:80%;">
+                   ${esc(safeText(dist.description, 'No description provided.'))}
+                   ${/^https?:\/\//i.test(String(dist.reference_url || '')) ? `<a class="task-ref" href="${esc(dist.reference_url)}" target="_blank" rel="noopener" title="Open Work Instruction">🔗</a>` : ''}
+                </div>
+             </div>
+             <div style="background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px; font-size: 12px; color: #cbd5e1; font-weight: 600; display:flex; gap:6px; align-items:center;">
+                <span style="font-size:14px; transform: ${isOpen ? 'rotate(180deg)' : 'rotate(0deg)'}; transition: transform 0.2s;">▾</span>
+                ${isOpen ? 'Hide Tracking' : 'Track Members'}
+             </div>
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap">
-            <div class="task-meta">${esc(done)} / ${esc(total)} complete</div>
-            <div class="task-meta">${esc(percent(done, total))}%</div>
+
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:16px;">
+            <div class="task-meta">Overall Progress: <strong style="color:${isComplete ? '#34d399' : '#f8fafc'}; font-size:14px;">${esc(done)} / ${esc(total)}</strong> tasks completed</div>
+            <div style="font-weight:900; font-size:16px; color:${isComplete ? '#10b981' : '#38bdf8'};">${esc(progressPct)}%</div>
           </div>
-          <div class="task-progress-rail" style="margin-top:6px"><div class="task-progress-fill" style="width:${percent(done, total)}%"></div></div>
+          <div class="task-progress-rail">
+             <div class="task-progress-fill ${isComplete ? 'complete' : ''}" style="width:${progressPct}%"></div>
+          </div>
+
         </button>
+        
         <div class="task-grid-wrap ${isOpen ? 'open' : ''}">
-          <div class="task-grid" style="overflow:auto">
+          <div class="task-grid">
             <table>
               <thead><tr><th>Task Info</th><th>Site</th><th>Assignee</th><th>Status</th><th>Deadline</th></tr></thead>
               <tbody>
@@ -456,19 +544,32 @@
                   const uid = String(item.assigned_to || item.assignee_user_id || '').trim();
                   const member = state.members.find(m => String(m.user_id || m.id) === uid);
                   const assigneeName = member ? (member.name || member.username || uid) : (uid || 'N/A');
+                  
+                  // Read-only status pill for distribution management
+                  const s = normalizeItemStatus(item.status);
+                  let pillStyle = 'background:rgba(245,158,11,0.1); color:#fcd34d; border:1px solid rgba(245,158,11,0.2);';
+                  if (s === 'Ongoing') pillStyle = 'background:rgba(56,189,248,0.1); color:#7dd3fc; border:1px solid rgba(56,189,248,0.2);';
+                  if (s === 'Completed') pillStyle = 'background:rgba(16,185,129,0.1); color:#6ee7b7; border:1px solid rgba(16,185,129,0.2);';
+                  if (s === 'With Problem') pillStyle = 'background:rgba(239,68,68,0.1); color:#fca5a5; border:1px solid rgba(239,68,68,0.2);';
+
                   return `
                     <tr>
                       <td>
-                        <div style="font-weight:700">${esc(safeText(item.case_number || item.case_no, 'N/A'))}</div>
-                        <div class="task-meta" style="font-size:11px; margin-top:2px; max-width:250px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(item.description || '')}">${esc(item.description || '')}</div>
+                        <div style="font-weight:800; color:#f8fafc; font-size:13px; margin-bottom:4px;">${esc(safeText(item.case_number || item.case_no, 'N/A'))}</div>
+                        <div class="task-meta" style="font-size:11px; max-width:250px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(item.description || '')}">${esc(item.description || '')}</div>
                       </td>
-                      <td>${esc(safeText(item.site, 'N/A'))}</td>
-                      <td>${esc(assigneeName)}</td>
-                      <td>${esc(safeText(item.status, 'PENDING'))}</td>
-                      <td>${esc(safeDate(item.deadline || item.deadline_at || item.due_at))}</td>
+                      <td style="color:#e2e8f0; font-size:13px;">${esc(safeText(item.site, 'N/A'))}</td>
+                      <td style="font-weight:600; color:#f8fafc; font-size:13px;">${esc(assigneeName)}</td>
+                      <td>
+                         <span style="display:inline-block; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; ${pillStyle}">
+                           ${esc(s)}
+                         </span>
+                         ${s === 'With Problem' && item.problem_notes ? `<div class="task-meta" style="margin-top:4px; font-size:11px; color:#fca5a5;">📝 ${esc(item.problem_notes)}</div>` : ''}
+                      </td>
+                      <td style="color:#94a3b8; font-size:12px;">${esc(safeDate(item.deadline || item.deadline_at || item.due_at))}</td>
                     </tr>
                   `;
-                }).join('') || '<tr><td colspan="5" class="task-meta">No task items</td></tr>'}
+                }).join('') || '<tr><td colspan="5" class="task-meta" style="text-align:center; padding:20px;">No task items found for this batch.</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -486,14 +587,24 @@
     });
     return `
       <section class="task-section">
-        <div class="task-section-title">📌 ONGOING (Active Batches)</div>
-        ${ongoing.length ? ongoing.map(renderDistributionCard).join('') : '<div class="task-empty">No ongoing distributions</div>'}
+        <div class="task-section-title">
+          📌 Active Deployments
+          ${ongoing.length > 0 ? `<span class="badge-count">${ongoing.length}</span>` : ''}
+        </div>
+        <div style="display:flex; flex-direction:column; gap:16px;">
+           ${ongoing.length ? ongoing.map(renderDistributionCard).join('') : '<div class="task-empty">No active distributions deployed.</div>'}
+        </div>
       </section>
-      <section class="task-section">
+      
+      <section class="task-section" style="margin-top: 32px;">
         <details>
-          <summary class="task-section-title">✅ COMPLETED (100% Done)</summary>
-          <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
-            ${completed.length ? completed.map(renderDistributionCard).join('') : '<div class="task-empty">No completed distributions</div>'}
+          <summary class="task-section-title" style="cursor:pointer; opacity:0.8;">
+             ✅ Completed Archives
+             <span class="badge-count" style="background: rgba(16,185,129,0.1); color: #10b981;">${completed.length}</span>
+             <span style="font-size:12px; color:#64748b; font-weight:normal; text-transform:none;">(Click to expand)</span>
+          </summary>
+          <div style="display:flex;flex-direction:column;gap:16px;margin-top:16px">
+            ${completed.length ? completed.map(renderDistributionCard).join('') : '<div class="task-empty">Archive is empty.</div>'}
           </div>
         </details>
       </section>
@@ -684,7 +795,7 @@
           <div class="modal-header-glass">
             <h3>✨ Create New Distribution</h3>
             ${!state.isFullscreen ? `
-              <button class="btn-glass btn-glass-ghost" type="button" id="closeDistributionModal" style="padding:6px 12px;">✕ Close</button>
+              <button class="btn-glass btn-glass-ghost" type="button" id="closeDistributionModal" style="padding:6px 12px; border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">✕ Cancel & Close</button>
             ` : ''}
           </div>
 
@@ -736,7 +847,7 @@
                 
                 <div style="display:flex; gap:8px;">
                   ${hasData ? `
-                    <button class="btn-glass btn-glass-ghost" type="button" id="btnToggleFullscreen" style="font-size:11px; padding:6px 12px; color:#38bdf8; border-color:rgba(56,189,248,0.3);">
+                    <button class="btn-glass btn-glass-ghost" type="button" id="btnToggleFullscreen" style="font-size:11px; padding:6px 12px; color:#38bdf8; border-color:rgba(56,189,248,0.3); background:rgba(56,189,248,0.05);">
                       ${state.isFullscreen ? '↙️ Exit Fullscreen' : '↗️ Fullscreen View'}
                     </button>
                     ${!state.isFullscreen ? `
@@ -817,9 +928,6 @@
               ${canSubmit ? `<span style="color:#86efac; font-weight:700;">✓ Ready to deploy ${state.parsedRows.length} tasks</span>` : 'Complete all mandatory fields (Title, Deadline) and resolve members to continue.'}
             </div>
             <div style="display:flex; gap:12px;">
-              ${!state.isFullscreen ? `
-                <button class="btn-glass btn-glass-ghost" type="button" id="cancelDistributionCreate">Cancel</button>
-              ` : ''}
               <button class="btn-glass btn-glass-primary" type="button" id="submitDistribution" style="padding:8px 24px;" ${!canSubmit ? 'disabled' : ''}>
                 ${state.creating ? 'Deploying...' : 'Launch Distribution 🚀'}
               </button>
@@ -926,11 +1034,11 @@
       <section class="task-shell">
         ${state.loading || state.creating ? '<div class="task-overlay"><div class="task-spinner"></div></div>' : ''}
         <header class="task-header">
-          <h2 class="task-title-main">My Task</h2>
+          <h2 class="task-title-main">My Task Dashboard</h2>
           <nav class="task-tabs">
             <button type="button" class="task-tab ${state.activeTab === 'assigned' ? 'active' : ''}" id="tabAssigned">📥 My Assigned Tasks</button>
             <button type="button" class="task-tab ${state.activeTab === 'distribution' ? 'active' : ''}" id="tabDistribution">🚀 Distribution Management</button>
-            <button type="button" class="btn primary" id="openDistributionModal" ${state.activeTab === 'distribution' ? '' : 'style="display:none"'}>+ Create Distribution</button>
+            <button type="button" class="btn-glass btn-glass-primary" id="openDistributionModal" ${state.activeTab === 'distribution' ? '' : 'style="display:none"'}>+ Create Distribution</button>
           </nav>
         </header>
         ${state.activeTab === 'assigned' ? renderAssignedPanel() : renderDistributionPanel()}
@@ -1231,7 +1339,6 @@
       };
     }
 
-    // Hide the "Discard" button in Fullscreen mode. Bind only if it exists.
     if (el('#btnReplaceFile')) {
       el('#btnReplaceFile').onclick = () => {
         state.parsedRows = [];
