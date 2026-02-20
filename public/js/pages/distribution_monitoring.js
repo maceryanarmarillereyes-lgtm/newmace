@@ -355,10 +355,21 @@
       fromEl.textContent = `${from.name || fromMemberId} (${fromMemberId})`;
       subEl.textContent = `${dist.title || 'Distribution'} • Select pending tasks to transfer`;
 
-      const opts = members
-        .filter((m)=>String((m && (m.user_id || m.id)) || '')!==String(fromMemberId))
-        .map((m)=>{
-          const memberId = String((m && (m.user_id || m.id)) || '').trim();
+      // NEW: Create a global team roster from ALL active distributions to ensure complete dropdown
+      const globalTeamRoster = {};
+      state.dists.forEach(d => {
+        if(Array.isArray(d.members)){
+          d.members.forEach(m => {
+            const mid = String(m.user_id || m.id || '').trim();
+            if(mid) globalTeamRoster[mid] = m;
+          });
+        }
+      });
+      const opts = Object.values(globalTeamRoster)
+        .filter((m) => String(m.user_id || m.id || '').trim() !== String(fromMemberId))
+        .sort((a,b) => (a.name || '').localeCompare(b.name || ''))
+        .map((m) => {
+          const memberId = String(m.user_id || m.id || '').trim();
           return `<option value="${UI.esc(memberId)}">${UI.esc(m.name || memberId)}</option>`;
         });
       toSel.innerHTML = opts.join('') || '<option value="">No other members</option>';
