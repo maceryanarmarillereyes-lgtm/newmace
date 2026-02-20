@@ -120,7 +120,6 @@
     return normalized === '1' || normalized === 'true' || normalized === 't' || normalized === 'yes';
   }
 
-  // ENTERPRISE UPGRADE: High Level Notification Data Compiler
   function computeLoginAlertData() {
     const distributions = {};
     let totalOverdue = 0;
@@ -243,7 +242,7 @@
       .task-modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.8);backdrop-filter:blur(8px);z-index:14060;display:flex;align-items:center;justify-content:center;padding:20px;overflow:hidden;}
       
       .task-modal-glass{
-        width:min(1000px,100%); max-height:90vh; overflow-y:auto; overflow-x:hidden;
+        width:min(1100px,100%); max-height:94vh; overflow:hidden;
         background:linear-gradient(145deg, rgba(15,23,42,0.95) 0%, rgba(2,6,23,0.98) 100%);
         border:1px solid rgba(148,163,184,.2); border-radius:16px; 
         box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.1);
@@ -253,14 +252,18 @@
       .modal-header-glass {
         padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.06);
         display:flex; justify-content:space-between; align-items:center;
-        background: rgba(15,23,42,0.6); position:sticky; top:0; z-index:10; backdrop-filter:blur(10px);
+        background: rgba(15,23,42,0.6); z-index:10; backdrop-filter:blur(10px); flex-shrink:0;
       }
       
       .modal-header-glass h3 { margin:0; font-size:18px; font-weight:800; color:#f8fafc; letter-spacing:-0.5px; display:flex; align-items:center; gap:8px;}
       
+      .modal-body-scroll {
+        padding: 24px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:20px;
+      }
+
       .glass-card {
         background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);
-        border-radius: 12px; padding: 20px; margin-bottom: 20px;
+        border-radius: 12px; padding: 20px;
         box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
       }
       
@@ -282,7 +285,7 @@
       .premium-checkbox-container:hover { border-color:rgba(148,163,184,0.3); background:rgba(15,23,42,0.6); }
       
       .upload-zone-glass {
-        border: 2px dashed rgba(56,189,248,0.3); border-radius: 12px; padding: 30px 20px;
+        border: 2px dashed rgba(56,189,248,0.3); border-radius: 12px; padding: 40px 20px;
         text-align: center; transition: all 0.3s ease; background: rgba(56,189,248,0.03);
         cursor:pointer; position:relative; overflow:hidden;
       }
@@ -292,23 +295,27 @@
       }
       .upload-icon { font-size:32px; margin-bottom:12px; opacity:0.8; }
       
-      .glass-table-container { border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; overflow-x: auto; background: rgba(2,6,23,0.4); }
+      .stat-box { background: rgba(15,23,42,0.6); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 4px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.02); }
+      .stat-label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+      .stat-value { font-size: 26px; font-weight: 900; color: #f8fafc; line-height: 1; letter-spacing: -1px; }
+
+      .glass-table-container { border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; overflow-x: auto; background: rgba(2,6,23,0.4); max-height: 380px; }
       .glass-table-container table { width:100%; border-collapse:collapse; }
-      .glass-table-container th { background: rgba(15,23,42,0.8); color:#cbd5e1; font-weight:600; text-transform:uppercase; font-size:11px; letter-spacing:0.5px; padding:12px; border-bottom:1px solid rgba(255,255,255,0.05); position:sticky; top:0; }
+      .glass-table-container th { background: rgba(15,23,42,0.9); color:#cbd5e1; font-weight:600; text-transform:uppercase; font-size:11px; letter-spacing:0.5px; padding:12px; border-bottom:1px solid rgba(255,255,255,0.05); position:sticky; top:0; z-index:5; backdrop-filter:blur(4px); }
       .glass-table-container td { padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); font-size:13px; vertical-align:middle; }
       .glass-table-container tr:last-child td { border-bottom:none; }
-      .glass-table-container tr:hover { background: rgba(255,255,255,0.02); }
+      .glass-table-container tr:hover { background: rgba(255,255,255,0.03); }
       
       .btn-glass {
         padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 13px;
-        cursor: pointer; transition: all 0.2s; outline: none; border: 1px solid transparent;
+        cursor: pointer; transition: all 0.2s; outline: none; border: 1px solid transparent; display:inline-flex; align-items:center; gap:6px; justify-content:center;
       }
       .btn-glass-ghost { background: transparent; color: #94a3b8; border-color: rgba(148,163,184,0.3); }
       .btn-glass-ghost:hover { background: rgba(148,163,184,0.1); color: #f8fafc; }
       .btn-glass-primary { background: #0ea5e9; color: #fff; box-shadow: 0 4px 12px rgba(14,165,233,0.3); }
       .btn-glass-primary:hover:not(:disabled) { background: #0284c7; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(14,165,233,0.4); }
       .btn-glass-primary:disabled { background: rgba(14,165,233,0.4); color: rgba(255,255,255,0.5); cursor: not-allowed; box-shadow:none; }
-      .task-invalid{background:rgba(239,68,68,.1) !important; border-left:3px solid #ef4444;}
+      .task-invalid{background:rgba(239,68,68,.08) !important; border-left:3px solid #ef4444;}
       .task-status-select{width:max-content;max-width:220px;padding:6px 10px;border-radius:999px;font-weight:800;font-size:12px;border:1px solid rgba(148,163,184,.28);background:rgba(15,23,42,.55);color:#e2e8f0;outline:none}
       .task-status-select:disabled{opacity:.65;cursor:not-allowed}
       .task-status-select.status-pending{border-color:rgba(245,158,11,.55);background:rgba(245,158,11,.14);color:#fde68a}
@@ -474,9 +481,31 @@
   }
 
   function renderModal() {
-    const unresolved = unresolvedRowsCount();
-    // Validate submit condition including the new deadline field
-    const canSubmit = state.form.title.trim() && state.form.deadline && state.parsedRows.length > 0 && unresolved === 0 && !state.creating;
+    const hasData = state.parsedRows.length > 0;
+    
+    // ENTERPRISE UPGRADE: Analytics Engine
+    let totalReady = 0;
+    let totalNeedsFix = 0;
+    const assigneeCounts = {};
+
+    state.parsedRows.forEach(row => {
+      if (row.assigned_to) {
+        totalReady++;
+        assigneeCounts[row.assigned_to] = (assigneeCounts[row.assigned_to] || 0) + 1;
+      } else {
+        totalNeedsFix++;
+      }
+    });
+
+    const assigneeStats = Object.keys(assigneeCounts).map(uid => {
+      const member = state.members.find(m => String(m.user_id || m.id) === uid);
+      return {
+        name: member ? (member.name || member.username || uid) : uid,
+        count: assigneeCounts[uid]
+      };
+    }).sort((a, b) => b.count - a.count);
+
+    const canSubmit = state.form.title.trim() && state.form.deadline && hasData && totalNeedsFix === 0 && !state.creating;
 
     return `
       <div class="task-modal-backdrop" id="distributionModalBackdrop">
@@ -487,7 +516,7 @@
             <button class="btn-glass btn-glass-ghost" type="button" id="closeDistributionModal" style="padding:6px 12px;">✕ Close</button>
           </div>
 
-          <div style="padding: 24px;">
+          <div class="modal-body-scroll">
             
             <div class="glass-card">
               <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
@@ -525,83 +554,117 @@
               </label>
             </div>
 
-            <div class="glass-card" style="margin-bottom:0;">
-              <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
-                <div style="background:#0ea5e9; color:#fff; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold;">2</div>
-                <div class="task-title" style="margin:0;">Enterprise Data Ingestion</div>
-              </div>
-              <div class="task-meta" style="margin-bottom:16px; margin-left:34px;">Upload any structured Excel/CSV file. The system will dynamically pack columns into the payload.</div>
+            <div class="glass-card" style="margin-bottom:0; display:flex; flex-direction:column;">
               
-              <div id="uploadZone" class="upload-zone-glass ${state.dragActive ? 'drag' : ''}">
-                <div class="upload-icon">📊</div>
-                <div style="font-weight:700;font-size:16px; color:#e2e8f0;">Drag & Drop your dataset here</div>
-                <div class="task-meta" style="margin:6px 0 16px 0;">Supports .xlsx, .xls, .csv</div>
-                
-                <label class="btn-glass btn-glass-primary" style="display:inline-block; cursor:pointer;">
-                  Browse Files
-                  <input type="file" id="taskFileInput" accept=".xlsx,.xls,.csv" style="display:none;" />
-                </label>
-                
-                <div class="task-meta" style="margin-top:12px; color:#38bdf8; font-weight:600;">
-                  ${esc(state.uploadMeta.name ? `📄 ${state.uploadMeta.name} • ${state.uploadMeta.rows} rows detected` : '')}
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <div style="background:#0ea5e9; color:#fff; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold;">2</div>
+                  <div class="task-title" style="margin:0;">Enterprise Data Ingestion</div>
                 </div>
-                ${state.parseError ? `<div style="color:#ef4444;margin-top:8px;font-size:13px;font-weight:bold;background:rgba(239,68,68,0.1);padding:6px;border-radius:4px;">⚠️ ${esc(state.parseError)}</div>` : ''}
+                ${hasData ? `<button class="btn-glass btn-glass-ghost" type="button" id="btnReplaceFile" style="font-size:11px; padding:6px 12px; border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">🗑️ Discard & Reupload</button>` : ''}
               </div>
 
-              <div class="glass-table-container" style="margin-top:20px; max-height:350px;">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Task Reference & Data Summary</th>
-                      <th style="width:220px;">Assignee Matching</th>
-                      <th style="width:100px; text-align:center;">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${state.parsedRows.map((row, idx) => {
-                      const invalid = !row.assigned_to;
-                      return `
-                        <tr class="${invalid ? 'task-invalid' : ''}">
-                          <td>
-                            <div style="font-weight:700; color:#f8fafc; font-size:14px; margin-bottom:4px;">${esc(safeText(row.case_number, 'N/A'))}</div>
-                            <div class="task-meta" style="font-size:11px; max-width:400px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(row.description)}">
-                              <span style="color:#38bdf8; opacity:0.8;">Payload:</span> ${esc(row.description)}
-                            </div>
-                          </td>
-                          <td>
-                            <div style="font-weight:600; font-size:12px; color:${invalid ? '#ef4444' : '#94a3b8'}; margin-bottom:4px;">
-                              Extracted: "${esc(safeText(row.assigned_name, 'Unknown'))}"
-                            </div>
-                            <select class="premium-input" data-assignee-fix="${idx}" style="padding:6px; font-size:12px; background:rgba(15,23,42,0.8);">
-                              <option value="">-- Resolve Member --</option>
-                              ${state.members.map((m) => `<option value="${esc(m.user_id)}" ${String(row.assigned_to) === String(m.user_id) ? 'selected' : ''}>${esc(m.name || m.username || m.user_id)}</option>`).join('')}
-                            </select>
-                          </td>
-                          <td style="text-align:center;">
-                            ${invalid 
-                              ? '<div style="background:rgba(239,68,68,0.2); color:#fca5a5; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid rgba(239,68,68,0.3);">NEEDS FIX</div>' 
-                              : '<div style="background:rgba(34,197,94,0.2); color:#86efac; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid rgba(34,197,94,0.3);">READY</div>'}
-                          </td>
-                        </tr>
-                      `;
-                    }).join('') || '<tr><td colspan="3" class="task-meta" style="text-align:center; padding:30px;">Drop a file above to generate the data mapping preview.</td></tr>'}
-                  </tbody>
-                </table>
-              </div>
-              
-              ${unresolved > 0 ? `
-                <div style="display:flex; align-items:center; gap:8px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:10px 14px; margin-top:16px;">
-                  <span style="font-size:18px;">⚠️</span>
-                  <div style="color:#fcd34d; font-size:13px; font-weight:600;">Action Required: Please resolve ${esc(unresolved)} unmatched member(s) to enable submission.</div>
+              ${!hasData ? `
+                <div class="task-meta" style="margin-bottom:16px; margin-left:34px;">Upload any structured Excel/CSV file. The system will dynamically pack columns into the payload.</div>
+                
+                <div id="uploadZone" class="upload-zone-glass ${state.dragActive ? 'drag' : ''}">
+                  <div class="upload-icon">📊</div>
+                  <div style="font-weight:700;font-size:16px; color:#e2e8f0;">Drag & Drop your dataset here</div>
+                  <div class="task-meta" style="margin:6px 0 16px 0;">Supports .xlsx, .xls, .csv</div>
+                  
+                  <label class="btn-glass btn-glass-primary" style="display:inline-block; cursor:pointer;">
+                    Browse Files
+                    <input type="file" id="taskFileInput" accept=".xlsx,.xls,.csv" style="display:none;" />
+                  </label>
+                  
+                  ${state.parseError ? `<div style="color:#ef4444;margin-top:16px;font-size:13px;font-weight:bold;background:rgba(239,68,68,0.1);padding:8px;border-radius:4px;">⚠️ ${esc(state.parseError)}</div>` : ''}
                 </div>
-              ` : ''}
+              ` : `
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:12px; margin-bottom:16px;">
+                  <div class="stat-box" style="border-left: 3px solid #38bdf8;">
+                    <div class="stat-label">Total Rows</div>
+                    <div class="stat-value">${state.parsedRows.length}</div>
+                  </div>
+                  <div class="stat-box" style="border-left: 3px solid #22c55e;">
+                    <div class="stat-label">Ready (Mapped)</div>
+                    <div class="stat-value" style="color:#4ade80;">${totalReady}</div>
+                  </div>
+                  <div class="stat-box" style="border-left: 3px solid ${totalNeedsFix > 0 ? '#ef4444' : '#64748b'};">
+                    <div class="stat-label">Needs Fix</div>
+                    <div class="stat-value" style="color:${totalNeedsFix > 0 ? '#f87171' : '#cbd5e1'};">${totalNeedsFix}</div>
+                  </div>
+                </div>
+
+                <div style="background:rgba(2,6,23,0.4); padding:14px; border-radius:8px; border:1px solid rgba(255,255,255,0.05); margin-bottom:16px;">
+                  <div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                     <span>👥 Workload Distribution Preview</span>
+                  </div>
+                  <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                    ${assigneeStats.map(astat => `
+                       <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(148,163,184,0.2); padding:4px 10px; border-radius:999px; font-size:12px; display:flex; align-items:center; gap:8px;">
+                          <span style="color:#e2e8f0; font-weight:600;">${esc(astat.name)}</span>
+                          <span style="background:rgba(56,189,248,0.2); color:#7dd3fc; padding:2px 6px; border-radius:999px; font-size:10px; font-weight:bold;">${astat.count} tasks</span>
+                       </div>
+                    `).join('')}
+                    ${assigneeStats.length === 0 ? '<span style="font-size:12px; color:#64748b;">No members successfully mapped yet. Please resolve pending items below.</span>' : ''}
+                  </div>
+                </div>
+
+                <div class="glass-table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Task Reference & Data Summary</th>
+                        <th style="width:220px;">Assignee Matching</th>
+                        <th style="width:100px; text-align:center;">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${state.parsedRows.map((row, idx) => {
+                        const invalid = !row.assigned_to;
+                        return \`
+                          <tr class="\${invalid ? 'task-invalid' : ''}">
+                            <td>
+                              <div style="font-weight:700; color:#f8fafc; font-size:14px; margin-bottom:4px;">\${esc(safeText(row.case_number, 'N/A'))}</div>
+                              <div class="task-meta" style="font-size:11px; max-width:400px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="\${esc(row.description)}">
+                                <span style="color:#38bdf8; opacity:0.8;">Payload:</span> \${esc(row.description)}
+                              </div>
+                            </td>
+                            <td>
+                              <div style="font-weight:600; font-size:12px; color:\${invalid ? '#ef4444' : '#94a3b8'}; margin-bottom:4px;">
+                                Extracted: "\${esc(safeText(row.assigned_name, 'Unknown'))}"
+                              </div>
+                              <select class="premium-input" data-assignee-fix="\${idx}" style="padding:6px; font-size:12px; background:rgba(15,23,42,0.8);">
+                                <option value="">-- Resolve Member --</option>
+                                \${state.members.map((m) => \`<option value="\${esc(m.user_id)}" \${String(row.assigned_to) === String(m.user_id) ? 'selected' : ''}>\${esc(m.name || m.username || m.user_id)}</option>\`).join('')}
+                              </select>
+                            </td>
+                            <td style="text-align:center;">
+                              \${invalid 
+                                ? '<div style="background:rgba(239,68,68,0.2); color:#fca5a5; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid rgba(239,68,68,0.3);">NEEDS FIX</div>' 
+                                : '<div style="background:rgba(34,197,94,0.2); color:#86efac; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid rgba(34,197,94,0.3);">READY</div>'}
+                            </td>
+                          </tr>
+                        \`;
+                      }).join('')}
+                    </tbody>
+                  </table>
+                </div>
+                
+                ${totalNeedsFix > 0 ? \`
+                  <div style="display:flex; align-items:center; gap:8px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:10px 14px; margin-top:16px;">
+                    <span style="font-size:18px;">⚠️</span>
+                    <div style="color:#fcd34d; font-size:13px; font-weight:600;">Action Required: Please resolve \${totalNeedsFix} unmatched member(s) to enable submission.</div>
+                  </div>
+                \` : ''}
+              `}
               
             </div>
           </div>
 
           <div class="modal-header-glass" style="border-top: 1px solid rgba(255,255,255,0.06); border-bottom:none; justify-content:space-between; top:auto; bottom:0;">
             <div class="task-meta">
-              ${canSubmit ? `<span style="color:#86efac; font-weight:700;">✓ Ready to deploy ${state.parsedRows.length} tasks</span>` : 'Complete all mandatory fields (Title, Deadline) and resolve members to continue.'}
+              ${canSubmit ? \`<span style="color:#86efac; font-weight:700;">✓ Ready to deploy \${state.parsedRows.length} tasks</span>\` : 'Complete all mandatory fields (Title, Deadline) and resolve members to continue.'}
             </div>
             <div style="display:flex; gap:12px;">
               <button class="btn-glass btn-glass-ghost" type="button" id="cancelDistributionCreate">Cancel</button>
@@ -641,7 +704,6 @@
     `;
   }
 
-  // ENTERPRISE UPGRADE: Dynamic Notification UI
   function renderLoginAlertModal() {
     const info = state.loginAlert || {};
     const now = Date.now();
@@ -669,17 +731,17 @@
                const isDueToday = daysLeft === 0;
                const isOverdue = daysLeft < 0;
                
-               let urgencyColor = '#38bdf8'; // Blue (Safe)
+               let urgencyColor = '#38bdf8'; 
                let urgencyText = `${daysLeft} days left`;
                
                if (isOverdue) {
-                 urgencyColor = '#ef4444'; // Red
+                 urgencyColor = '#ef4444'; 
                  urgencyText = `OVERDUE by ${Math.abs(daysLeft)} days`;
                } else if (isDueToday) {
-                 urgencyColor = '#f59e0b'; // Orange
+                 urgencyColor = '#f59e0b'; 
                  urgencyText = `DUE TODAY (Hourly Alerting)`;
                } else if (daysLeft === 1) {
-                 urgencyColor = '#eab308'; // Yellow
+                 urgencyColor = '#eab308'; 
                  urgencyText = `Due Tomorrow`;
                }
 
@@ -964,6 +1026,16 @@
     if (el('#closeDistributionModal')) el('#closeDistributionModal').onclick = closeModal;
     if (el('#cancelDistributionCreate')) el('#cancelDistributionCreate').onclick = closeModal;
     
+    // Reset Data logic
+    if (el('#btnReplaceFile')) {
+      el('#btnReplaceFile').onclick = () => {
+        state.parsedRows = [];
+        state.uploadMeta = { name: '', rows: 0, sheets: 0 };
+        state.parseError = '';
+        render();
+      };
+    }
+
     const checkSubmitBtn = () => {
       const canSubmit = state.form.title.trim() && state.form.deadline && state.parsedRows.length > 0 && unresolvedRowsCount() === 0 && !state.creating;
       if (el('#submitDistribution')) el('#submitDistribution').disabled = !canSubmit;
@@ -980,6 +1052,7 @@
     if (el('#distDescriptionInput')) el('#distDescriptionInput').oninput = () => state.form.description = String(el('#distDescriptionInput').value || '');
     if (el('#distReferenceInput')) el('#distReferenceInput').oninput = () => state.form.reference_url = String(el('#distReferenceInput').value || '');
     if (el('#distEnableDailyAlerts')) el('#distEnableDailyAlerts').onchange = () => state.form.enable_daily_alerts = !!el('#distEnableDailyAlerts').checked;
+    
     if (el('#taskFileInput')) el('#taskFileInput').onchange = () => handleFile(el('#taskFileInput').files[0]);
     
     const zone = el('#uploadZone');
@@ -995,7 +1068,7 @@
       if (Number.isFinite(idx) && state.parsedRows[idx]) {
         state.parsedRows[idx].assigned_to = String(select.value || '');
         
-        const modalEl = root.querySelector('.task-modal-glass');
+        const modalEl = root.querySelector('.modal-body-scroll');
         const gridEl = root.querySelector('.glass-table-container');
         const modalScroll = modalEl ? modalEl.scrollTop : 0;
         const gridScroll = gridEl ? gridEl.scrollTop : 0;
@@ -1003,7 +1076,7 @@
         render();
         
         requestAnimationFrame(() => {
-          const newModalEl = root.querySelector('.task-modal-glass');
+          const newModalEl = root.querySelector('.modal-body-scroll');
           const newGridEl = root.querySelector('.glass-table-container');
           if (newModalEl) newModalEl.scrollTop = modalScroll;
           if (newGridEl) newGridEl.scrollTop = gridScroll;
@@ -1014,7 +1087,6 @@
     if (el('#submitDistribution')) el('#submitDistribution').onclick = async () => {
       if (!state.form.title.trim() || !state.form.deadline || !state.parsedRows.length || unresolvedRowsCount() > 0) return;
       
-      // ENTERPRISE UPGRADE: Pass the master deadline to every item payload
       const items = state.parsedRows.filter((r) => r.assigned_to).map((r) => ({
         case_number: r.case_number || 'N/A',
         site: r.site || 'N/A',
