@@ -6,13 +6,14 @@ module.exports = async (req, res) => {
     if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
     const flags = roleFlags(auth.profile && auth.profile.role);
-    const isSuper = flags.isAdmin || flags.isLead;
-    const myTeamId = (req.query && req.query.team_id) || (auth.profile ? auth.profile.team_id : null);
+    // Lead/Admin Override: Use the authoritative role from profile
+    const rawRole = auth.profile ? String(auth.profile.role || '').toUpperCase() : '';
+    const isSuper = flags.isAdmin || flags.isLead || ['TEAM_LEAD', 'ADMIN', 'SUPER_ADMIN'].includes(rawRole);
 
     const limit = Number(req.query.limit) || 20;
     const offset = Number(req.query.offset) || 0;
 
-    // 1. Fetch Distributions (The Batch Cards)
+    // 1. Fetch Batch Cards
     const dOut = await serviceSelect('task_distributions', `select=*&order=created_at.desc&limit=${limit}&offset=${offset}`);
     const dists = dOut.ok && Array.isArray(dOut.json) ? dOut.json : [];
     if (!dists.length) return sendJson(res, 200, { ok: true, distributions: [], has_more: false });
@@ -20,22 +21,25 @@ module.exports = async (req, res) => {
     const distIds = dists.map((d) => d.id).filter(Boolean);
     const inList = distIds.join(',');
 
-    // 2. Fetch ALL items using verified schema column: distribution_id
+    // 2. Fetch ALL items linked to these batches
     const tOut = await serviceSelect(
       'task_items',
       `select=id,distribution_id,assigned_to,status,case_number,case_no,site&distribution_id=in.(${inList})`
     );
     const items = tOut.ok ? (tOut.json || []) : [];
 
-    // 3. Profiles Hydration (Fetch Lead/Admin info + Assigned Members)
+    // 3. Profiles Hydration
     const userIds = [...new Set(items.map((i) => i.assigned_to).filter(Boolean))];
     const profilesById = {};
     if (userIds.length) {
-      const pOut = await serviceSelect('mums_profiles', `select=user_id,name,username,team_id&user_id=in.(${userIds.join(',')})`);
+      const pOut = await serviceSelect(
+        'mums_profiles',
+        `select=user_id,name,username,team_id&user_id=in.(${userIds.join(',')})`
+      );
       if (pOut.ok) (pOut.json || []).forEach((p) => { profilesById[p.user_id] = p; });
     }
 
-    // 4. Grouping & Visibility Logic
+    // 4. Grouping with Visibility Override
     const response = dists.map((d) => {
       const dItems = items.filter((i) => i.distribution_id === d.id);
       const byMember = {};
@@ -45,8 +49,12 @@ module.exports = async (req, res) => {
         if (!mId) return;
         const prof = profilesById[mId] || {};
 
-        // REVISED TEAM ISOLATION: Lead/Admin always sees members of their distributions.
-        if (!isSuper && myTeamId && prof.team_id && String(prof.team_id).toLowerCase() !== String(myTeamId).toLowerCase()) return;
+        // FORCE VISIBILITY: If user is Lead/Admin, they see everyone in the batch.
+        if (!isSuper) {
+          const myTeamId = auth.profile ? auth.profile.team_id : null;
+          if (myTeamId && prof.team_id && String(prof.team_id).toLowerCase() !== String(myTeamId).toLowerCase()) return;
+        }
+
         if (!byMember[mId]) {
           byMember[mId] = {
             user_id: mId,
@@ -60,12 +68,18 @@ module.exports = async (req, res) => {
         }
 
         const m = byMember[mId];
-        const s = String(it.status || '').trim().toLowerCase(); // Enum-safe mapping
+        const s = String(it.status || '').toLowerCase();
         m.total += 1;
         if (s.includes('complete') || s === 'done') m.completed += 1;
         else if (s.includes('problem')) m.with_problem += 1;
         else m.pending += 1;
-        m.items.push({ id: it.id, case_number: it.case_number || it.case_no || 'N/A', site: it.site || 'N/A', status: it.status });
+
+        m.items.push({
+          id: it.id,
+          case_number: it.case_number || it.case_no || 'N/A',
+          site: it.site || 'N/A',
+          status: it.status
+        });
       });
 
       const members = Object.values(byMember)
@@ -75,6 +89,7 @@ module.exports = async (req, res) => {
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
+      // If no members match the filter, only hide for non-super users
       if (!isSuper && !members.length) return null;
 
       return {
