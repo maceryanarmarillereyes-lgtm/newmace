@@ -29,12 +29,12 @@
     uploadMeta: { name: '', rows: 0, sheets: 0 },
     parsedRows: [],
     assigneeColumnIndex: -1,
-    form: { title: '', description: '', reference_url: '', enable_daily_alerts: false },
+    form: { title: '', description: '', reference_url: '', deadline: '', enable_daily_alerts: true },
     isSheetJsReady: false,
-    loginAlert: { open: false, overdueCount: 0, distributionTitle: '', nearestDeadline: '' }
+    loginAlert: { open: false, totalOverdue: 0, distributions: [], isHourlyEscalation: false }
   };
 
-  const LOGIN_ALERT_SESSION_KEY = 'mums:my_task:high_priority_login_alert_shown';
+  const LOGIN_ALERT_SESSION_KEY = 'mums:my_task:high_priority_login_alert_v2';
   const STATUS_OPTIONS = ['Pending', 'Ongoing', 'Completed', 'With Problem'];
 
   function normalizeItemStatus(value) {
@@ -120,36 +120,45 @@
     return normalized === '1' || normalized === 'true' || normalized === 't' || normalized === 'yes';
   }
 
-  function isOverdue(value) {
-    if (!value) return false;
-    const d = new Date(value);
-    return !Number.isNaN(d.getTime()) && d.getTime() < Date.now();
-  }
-
+  // ENTERPRISE UPGRADE: High Level Notification Data Compiler
   function computeLoginAlertData() {
-    let overdueCount = 0;
-    let distributionTitle = '';
-    let nearestDeadline = '';
-    let nearestMs = Number.POSITIVE_INFINITY;
+    const distributions = {};
+    let totalOverdue = 0;
+    let isHourlyEscalation = false;
+    const now = Date.now();
 
     state.assignedGroups.forEach((group) => {
       if (!isDailyAlertsEnabled(group && group.enable_daily_alerts)) return;
+      const distTitle = safeText(group.project_title, 'Untitled Distribution');
+
       (Array.isArray(group.items) ? group.items : []).forEach((item) => {
         const status = normalizeItemStatus(item && item.status);
         if (status !== 'Pending' && status !== 'Ongoing') return;
-        const deadline = item && (item.deadline || item.deadline_at || item.due_at);
-        if (!isOverdue(deadline)) return;
 
-        overdueCount += 1;
+        const deadline = item && (item.deadline || item.deadline_at || item.due_at);
+        if (!deadline) return;
+
         const ms = new Date(deadline).getTime();
-        if (ms < nearestMs) {
-          nearestMs = ms;
-          distributionTitle = safeText(group && group.project_title, 'Untitled Distribution');
-          nearestDeadline = safeDate(deadline);
+        const diffHours = (ms - now) / (1000 * 60 * 60);
+
+        if (diffHours <= 24 && diffHours >= -24) isHourlyEscalation = true; 
+        if (diffHours < 0) totalOverdue += 1;
+
+        if (!distributions[distTitle]) {
+          distributions[distTitle] = { pendingCount: 0, deadlineMs: ms };
+        }
+        distributions[distTitle].pendingCount += 1;
+        if (ms < distributions[distTitle].deadlineMs) {
+          distributions[distTitle].deadlineMs = ms;
         }
       });
     });
-    return { overdueCount, distributionTitle, nearestDeadline };
+
+    const distList = Object.keys(distributions)
+      .map(k => ({ title: k, ...distributions[k] }))
+      .sort((a,b) => a.deadlineMs - b.deadlineMs);
+
+    return { totalOverdue, distributions: distList, isHourlyEscalation };
   }
 
   function maybeShowLoginAlertOncePerSession() {
@@ -158,9 +167,9 @@
     if (alreadyShown) return;
 
     const info = computeLoginAlertData();
-    if (info.overdueCount < 1) return;
+    if (info.distributions.length < 1) return;
 
-    state.loginAlert = { open: true, overdueCount: info.overdueCount, distributionTitle: info.distributionTitle, nearestDeadline: info.nearestDeadline };
+    state.loginAlert = { open: true, ...info };
     try { sessionStorage.setItem(LOGIN_ALERT_SESSION_KEY, '1'); } catch (_) {}
   }
 
@@ -309,11 +318,14 @@
       .task-problem-notes{font-size:12px;color:#fecaca;line-height:1.3;word-break:break-word;opacity:.95}
       .task-modal-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
       .task-modal-error{font-size:12px;color:#fecaca;background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.25);padding:10px 12px;border-radius:8px}
-      .login-alert-modal{width:min(560px,96vw);max-height:calc(100vh - 150px);overflow:auto;background:linear-gradient(145deg,rgba(15,23,42,.96),rgba(30,41,59,.9));backdrop-filter:blur(14px);border:1px solid rgba(248,113,113,.36);box-shadow:0 18px 48px rgba(2,6,23,.6);border-radius:14px;padding:18px;color:#f8fafc;display:flex;flex-direction:column;gap:12px}
-      .login-alert-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(239,68,68,.2);border:1px solid rgba(248,113,113,.45);color:#fecaca;font-size:12px;font-weight:800;width:max-content}
-      .login-alert-summary{font-size:13px;color:#cbd5e1;line-height:1.45;background:rgba(15,23,42,.58);border:1px solid rgba(248,113,113,.24);border-radius:10px;padding:10px 12px}
-      .login-alert-actions{display:flex;justify-content:flex-end}
+      .login-alert-modal{width:min(600px,96vw);max-height:calc(100vh - 100px);overflow:auto;background:linear-gradient(145deg,rgba(15,23,42,.98),rgba(2,6,23,.95));backdrop-filter:blur(14px);border:1px solid rgba(248,113,113,.4);box-shadow:0 18px 48px rgba(2,6,23,.8), inset 0 1px 0 rgba(255,255,255,0.05);border-radius:16px;padding:24px;color:#f8fafc;display:flex;flex-direction:column;gap:16px}
+      .login-alert-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:rgba(239,68,68,.2);border:1px solid rgba(248,113,113,.45);color:#fca5a5;font-size:12px;font-weight:800;width:max-content; text-transform:uppercase; letter-spacing:0.5px;}
+      .login-alert-actions{display:flex;justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.05); padding-top:16px; margin-top:8px;}
+      
+      .grid-header-split { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+      @media (max-width: 600px) { .grid-header-split { grid-template-columns: 1fr; } }
       @keyframes taskSpin{to{transform:rotate(360deg)}}
+      @keyframes pulseAlert{0%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}70%{box-shadow:0 0 0 10px rgba(239,68,68,0)}100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}}
     `;
     document.head.appendChild(style);
   }
@@ -463,6 +475,9 @@
 
   function renderModal() {
     const unresolved = unresolvedRowsCount();
+    // Validate submit condition including the new deadline field
+    const canSubmit = state.form.title.trim() && state.form.deadline && state.parsedRows.length > 0 && unresolved === 0 && !state.creating;
+
     return `
       <div class="task-modal-backdrop" id="distributionModalBackdrop">
         <div class="task-modal-glass" role="dialog" aria-modal="true" aria-label="Create Distribution Wizard">
@@ -477,31 +492,35 @@
             <div class="glass-card">
               <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
                 <div style="background:#0ea5e9; color:#fff; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold;">1</div>
-                <div class="task-title" style="margin:0;">Project Metadata</div>
+                <div class="task-title" style="margin:0;">Project Metadata & Escalation</div>
               </div>
               
-              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
-                <div style="grid-column: 1 / -1;">
+              <div class="grid-header-split">
+                <div>
                   <label class="premium-label" for="distTitleInput">Project Title <span style="color:#ef4444">*</span></label>
                   <input class="premium-input" id="distTitleInput" type="text" value="${esc(state.form.title)}" placeholder="e.g. Q3 Custom Screen Remapping" autocomplete="off" />
                 </div>
-                
-                <div style="grid-column: 1 / -1;">
-                  <label class="premium-label" for="distDescriptionInput">Global Description</label>
-                  <textarea class="premium-input" id="distDescriptionInput" rows="2" placeholder="Provide context or instructions for the whole batch...">${esc(state.form.description)}</textarea>
+                <div>
+                  <label class="premium-label" for="distDeadlineInput">Project Deadline <span style="color:#ef4444">*</span></label>
+                  <input class="premium-input" id="distDeadlineInput" type="datetime-local" value="${esc(state.form.deadline)}" required style="color-scheme: dark;" />
                 </div>
-                
-                <div style="grid-column: 1 / -1;">
-                  <label class="premium-label" for="distReferenceInput">Work Instruction URL</label>
-                  <input class="premium-input" id="distReferenceInput" type="url" value="${esc(state.form.reference_url)}" placeholder="https://confluence.yourcompany.com/..." autocomplete="off" />
-                </div>
+              </div>
+
+              <div style="margin-top:16px;">
+                <label class="premium-label" for="distDescriptionInput">Global Description</label>
+                <textarea class="premium-input" id="distDescriptionInput" rows="2" placeholder="Provide context or instructions for the whole batch...">${esc(state.form.description)}</textarea>
+              </div>
+              
+              <div style="margin-top:16px;">
+                <label class="premium-label" for="distReferenceInput">Work Instruction URL</label>
+                <input class="premium-input" id="distReferenceInput" type="url" value="${esc(state.form.reference_url)}" placeholder="https://confluence.yourcompany.com/..." autocomplete="off" />
               </div>
 
               <label class="premium-checkbox-container" style="margin-top:16px;">
                 <input id="distEnableDailyAlerts" type="checkbox" ${state.form.enable_daily_alerts ? 'checked' : ''} style="width:18px; height:18px; accent-color:#0ea5e9;" />
                 <div>
-                  <div style="font-size:14px; font-weight:600; color:#e2e8f0;">Enable Daily Reminders</div>
-                  <div style="font-size:12px; color:#94a3b8; margin-top:2px;">Automated notifications for incomplete tasks (Phase 4 Automation)</div>
+                  <div style="font-size:14px; font-weight:600; color:#e2e8f0;">Enable Smart Reminders & Escalation</div>
+                  <div style="font-size:12px; color:#94a3b8; margin-top:2px;">Sends daily alerts. <strong style="color:#f8fafc;">Escalates to HOURLY alerts</strong> for members and Team Lead on the actual deadline day.</div>
                 </div>
               </label>
             </div>
@@ -582,11 +601,11 @@
 
           <div class="modal-header-glass" style="border-top: 1px solid rgba(255,255,255,0.06); border-bottom:none; justify-content:space-between; top:auto; bottom:0;">
             <div class="task-meta">
-              ${state.parsedRows.length > 0 && unresolved === 0 ? `<span style="color:#86efac; font-weight:700;">✓ Ready to deploy ${state.parsedRows.length} tasks</span>` : 'Complete all fields to continue'}
+              ${canSubmit ? `<span style="color:#86efac; font-weight:700;">✓ Ready to deploy ${state.parsedRows.length} tasks</span>` : 'Complete all mandatory fields (Title, Deadline) and resolve members to continue.'}
             </div>
             <div style="display:flex; gap:12px;">
               <button class="btn-glass btn-glass-ghost" type="button" id="cancelDistributionCreate">Cancel</button>
-              <button class="btn-glass btn-glass-primary" type="button" id="submitDistribution" style="padding:8px 24px;" ${state.creating || unresolved > 0 || !state.parsedRows.length || !state.form.title.trim() ? 'disabled' : ''}>
+              <button class="btn-glass btn-glass-primary" type="button" id="submitDistribution" style="padding:8px 24px;" ${!canSubmit ? 'disabled' : ''}>
                 ${state.creating ? 'Deploying...' : 'Launch Distribution 🚀'}
               </button>
             </div>
@@ -604,7 +623,7 @@
     const err = String(state.problemModal.error || '').trim();
     return `
       <div class="task-modal-backdrop" id="problemModalBackdrop">
-        <div class="task-modal" role="dialog" aria-modal="true">
+        <div class="task-modal" role="dialog" aria-modal="true" style="width:min(500px, 95vw);">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
             <h3>${esc(title)}</h3>
             <button class="task-btn task-btn-ghost" type="button" id="problemModalClose">Close</button>
@@ -622,19 +641,63 @@
     `;
   }
 
+  // ENTERPRISE UPGRADE: Dynamic Notification UI
   function renderLoginAlertModal() {
     const info = state.loginAlert || {};
+    const now = Date.now();
+    
     return `
       <div class="task-modal-backdrop" id="loginAlertBackdrop">
         <div class="login-alert-modal" role="dialog" aria-modal="true">
-          <div class="login-alert-pill">⚠️ High Priority Login Alert</div>
-          <div style="font-size:22px;font-weight:900;line-height:1.2">Overdue tasks require immediate action</div>
-          <div class="login-alert-summary">
-            You have <strong>${esc(String(info.overdueCount || 0))}</strong> overdue task(s).<br>
-            Distribution: ${esc(info.distributionTitle)}<br>
-            Deadline: ${esc(info.nearestDeadline)}
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div class="login-alert-pill" style="${info.isHourlyEscalation ? 'animation: pulseAlert 2s infinite;' : ''}">
+              ${info.isHourlyEscalation ? '🚨 HOURLY ESCALATION ACTIVE' : '⚠️ DAILY TASK REMINDER'}
+            </div>
           </div>
-          <div class="login-alert-actions"><button class="task-btn task-btn-primary" type="button" id="loginAlertAcknowledge">Acknowledge</button></div>
+          
+          <div style="font-size:24px;font-weight:900;line-height:1.2; letter-spacing:-0.5px;">
+            Action Required: Pending Tasks
+          </div>
+          
+          <div class="login-alert-summary" style="margin-top:4px;">
+            You have <strong style="color:#ef4444; font-size:16px;">${esc(String(info.totalOverdue || 0))}</strong> overdue tasks, and several active distributions awaiting completion.
+          </div>
+          
+          <div style="max-height: 280px; overflow-y: auto; display:flex; flex-direction:column; gap:10px; margin-top: 8px; padding-right:6px;" class="task-modal-glass">
+             ${(info.distributions || []).map(d => {
+               const daysLeft = Math.ceil((d.deadlineMs - now) / (1000*60*60*24));
+               const isDueToday = daysLeft === 0;
+               const isOverdue = daysLeft < 0;
+               
+               let urgencyColor = '#38bdf8'; // Blue (Safe)
+               let urgencyText = `${daysLeft} days left`;
+               
+               if (isOverdue) {
+                 urgencyColor = '#ef4444'; // Red
+                 urgencyText = `OVERDUE by ${Math.abs(daysLeft)} days`;
+               } else if (isDueToday) {
+                 urgencyColor = '#f59e0b'; // Orange
+                 urgencyText = `DUE TODAY (Hourly Alerting)`;
+               } else if (daysLeft === 1) {
+                 urgencyColor = '#eab308'; // Yellow
+                 urgencyText = `Due Tomorrow`;
+               }
+
+               return `
+                 <div style="background: rgba(15,23,42,0.6); border-left: 4px solid ${urgencyColor}; padding: 14px; border-radius: 8px; border-top:1px solid rgba(255,255,255,0.02); border-right:1px solid rgba(255,255,255,0.02); border-bottom:1px solid rgba(255,255,255,0.02);">
+                    <div style="font-weight: 800; color: #f8fafc; font-size: 14px; margin-bottom:6px;">${esc(d.title)}</div>
+                    <div style="display:flex; justify-content: space-between; align-items:center; font-size: 13px; color: #94a3b8;">
+                       <span style="background:rgba(255,255,255,0.05); padding:4px 8px; border-radius:4px;">Pending Tasks: <strong style="color:#e2e8f0; font-size:14px;">${d.pendingCount}</strong></span>
+                       <span style="color: ${urgencyColor}; font-weight: 800; letter-spacing:0.5px;">${urgencyText}</span>
+                    </div>
+                 </div>
+               `;
+             }).join('')}
+          </div>
+
+          <div class="login-alert-actions">
+             <button class="btn-glass btn-glass-primary" type="button" id="loginAlertAcknowledge" style="width:100%; padding:12px; font-size:14px;">Acknowledge & Proceed to Work</button>
+          </div>
         </div>
       </div>
     `;
@@ -801,7 +864,7 @@
   function closeModal() {
     state.modalOpen = false; state.parseError = ''; state.dragActive = false;
     state.uploadMeta = { name: '', rows: 0, sheets: 0 }; state.parsedRows = [];
-    state.form = { title: '', description: '', reference_url: '', enable_daily_alerts: false };
+    state.form = { title: '', description: '', reference_url: '', deadline: '', enable_daily_alerts: true };
     render();
   }
 
@@ -900,9 +963,19 @@
     if (!state.modalOpen) return;
     if (el('#closeDistributionModal')) el('#closeDistributionModal').onclick = closeModal;
     if (el('#cancelDistributionCreate')) el('#cancelDistributionCreate').onclick = closeModal;
+    
+    const checkSubmitBtn = () => {
+      const canSubmit = state.form.title.trim() && state.form.deadline && state.parsedRows.length > 0 && unresolvedRowsCount() === 0 && !state.creating;
+      if (el('#submitDistribution')) el('#submitDistribution').disabled = !canSubmit;
+    };
+
     if (el('#distTitleInput')) el('#distTitleInput').oninput = () => {
       state.form.title = String(el('#distTitleInput').value || '');
-      if (el('#submitDistribution')) el('#submitDistribution').disabled = !state.form.title.trim() || unresolvedRowsCount() > 0 || !state.parsedRows.length || state.creating;
+      checkSubmitBtn();
+    };
+    if (el('#distDeadlineInput')) el('#distDeadlineInput').oninput = () => {
+      state.form.deadline = String(el('#distDeadlineInput').value || '');
+      checkSubmitBtn();
     };
     if (el('#distDescriptionInput')) el('#distDescriptionInput').oninput = () => state.form.description = String(el('#distDescriptionInput').value || '');
     if (el('#distReferenceInput')) el('#distReferenceInput').oninput = () => state.form.reference_url = String(el('#distReferenceInput').value || '');
@@ -939,13 +1012,17 @@
     });
 
     if (el('#submitDistribution')) el('#submitDistribution').onclick = async () => {
-      if (!state.form.title.trim() || !state.parsedRows.length || unresolvedRowsCount() > 0) return;
+      if (!state.form.title.trim() || !state.form.deadline || !state.parsedRows.length || unresolvedRowsCount() > 0) return;
+      
+      // ENTERPRISE UPGRADE: Pass the master deadline to every item payload
       const items = state.parsedRows.filter((r) => r.assigned_to).map((r) => ({
         case_number: r.case_number || 'N/A',
         site: r.site || 'N/A',
         description: r.description || '', 
-        assigned_to: r.assigned_to
+        assigned_to: r.assigned_to,
+        deadline: state.form.deadline 
       }));
+      
       state.creating = true; render();
       const out = await CloudTasks.createDistribution({
         title: state.form.title, description: state.form.description,
@@ -954,7 +1031,7 @@
       });
       state.creating = false;
       if (!out.ok) { state.parseError = out.message || 'Failed'; render(); return; }
-      state.form = { title: '', description: '', reference_url: '', enable_daily_alerts: false };
+      state.form = { title: '', description: '', reference_url: '', deadline: '', enable_daily_alerts: true };
       closeModal(); await loadBaseData();
     };
   }
