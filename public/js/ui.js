@@ -1420,7 +1420,6 @@
       return render;
     },
 
-    // ENTERPRISE UPGRADE: Glassmorphism Case Assigned Notification Modal
     startScheduleNotifListener(user){
       if(!user || !window.Store) return;
 
@@ -1428,7 +1427,6 @@
         const m = document.createElement('div');
         m.className = 'modal';
         m.id = 'schedNotifModal';
-        // HTML Injection for Glassmorphism
         m.innerHTML = `
           <div class="task-modal-backdrop" style="position:fixed; inset:0; background:rgba(2,6,23,0.85); backdrop-filter:blur(8px); z-index:99999; display:flex; align-items:center; justify-content:center; padding:20px;">
               <div class="task-modal-glass notification-popout" style="width:min(900px, 100vw); background:linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98)); border:1px solid rgba(56,189,248,0.3); border-radius:16px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.7); display:flex; flex-direction:column; max-height:90vh; overflow:hidden;">
@@ -1446,7 +1444,7 @@
                       <button class="btn-glass btn-glass-ghost" onclick="window.UI.closeModal('schedNotifModal')" style="padding:6px 12px; border:1px solid rgba(255,255,255,0.1); color:#cbd5e1; background:transparent; border-radius:8px; cursor:pointer;">✕</button>
                   </div>
                 </div>
-                <div class="body modal-body-scroll" id="schedNotifBody" style="padding:24px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:16px;"></div>
+                <div class="body modal-body-scroll" id="schedNotifBody" style="padding:24px; overflow-y:auto; overflow-x:hidden; flex:1; display:flex; flex-direction:column; gap:16px;"></div>
               </div>
           </div>
         `;
@@ -1547,6 +1545,7 @@
         `;
         return `${headline}${renderTaskSummary(summary)}`;
       };
+      
       const formatAssignTimer = (ts)=>{
         const assignedAt = Number(ts)||0;
         if(!assignedAt) return '00:00:00';
@@ -1641,7 +1640,6 @@
         }
       };
       
-      // ENTERPRISE UPGRADE: Glassmorphism Inner Table for Pending Assignments
       const renderMailboxAssignTable = (list)=>{
         const rows = (Array.isArray(list) ? list : []).map((n, index)=>{
           const assignedAt = Number((n && (n.assignedAt || n.ts)) || 0);
@@ -1675,10 +1673,11 @@
         return `
           <style>
             .mbx-assign-table tbody tr:hover { background: rgba(56,189,248,0.05); }
+            .mbx-accept-btn { white-space: nowrap; flex-shrink: 0; }
             .mbx-accept-btn:hover { background: linear-gradient(145deg, #34d399, #10b981) !important; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(16,185,129,0.4) !important; }
           </style>
-          <div class="mbx-assign-table-wrap glass-table-container" role="region" aria-label="Pending case assignments" style="border:1px solid rgba(255,255,255,0.06); border-radius:10px; overflow:hidden; background:rgba(2,6,23,0.5);">
-            <table class="mbx-assign-table" role="table" style="width:100%; border-collapse:collapse;">
+          <div class="mbx-assign-table-wrap glass-table-container" role="region" aria-label="Pending case assignments" style="border:1px solid rgba(255,255,255,0.06); border-radius:10px; overflow-x:auto; background:rgba(2,6,23,0.5);">
+            <table class="mbx-assign-table" role="table" style="width:100%; min-width:750px; border-collapse:collapse;">
               <thead>
                 <tr>
                   <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08);">No.</th>
@@ -2560,9 +2559,6 @@
     }
   };
 
-  // ==========================================
-  // ENTERPRISE UPGRADE: MAILBOX MANAGER TOAST ENGINE
-  // ==========================================
   UI.initMailboxManagerToasts = function() {
     if(window._mbxToastEngineRunning) return;
     window._mbxToastEngineRunning = true;
@@ -2572,7 +2568,6 @@
     window.addEventListener('mums:store', (e) => {
         if(e?.detail?.key !== 'mums_mailbox_tables') return;
 
-        // Security Check: Only active Mailbox Managers get the toast
         if(!isCurrentMailboxManager()) return;
 
         const state = window.Store?.getMailboxState?.() || {};
@@ -2588,7 +2583,6 @@
            const isConfirmed = Number(a.confirmedAt||0) > 0;
 
            if (!wasConfirmed && isConfirmed) {
-               // A transition from Pending -> Accepted just happened!
                const assignee = window.Store?.getUsers?.().find(u => u.id === a.assigneeId);
                const name = assignee ? (assignee.name || assignee.username) : 'A team member';
                showTeamsToast(name, a.caseNo || 'Unknown Case');
@@ -2691,7 +2685,6 @@
     document.addEventListener("DOMContentLoaded", function(){ set("offline", "Starting sync..."); });
   })();
 
-  // Initialize the MS Teams style Mailbox Manager Toast Engine on load
   UI.initMailboxManagerToasts();
 
 })();
