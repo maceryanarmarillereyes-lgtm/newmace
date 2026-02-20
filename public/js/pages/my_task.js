@@ -491,8 +491,8 @@
           </article>
 
           <article class="task-card">
-            <div class="task-title" style="font-size:15px">Section B: Universal Excel Adapter</div>
-            <div class="task-meta">Parser focuses on Task Data only: Case #, Site, and Assignee.</div>
+            <div class="task-title" style="font-size:15px">Section B: Enterprise Dynamic Adapter</div>
+            <div class="task-meta">Drag ANY Excel format. System automatically packs all columns into the Task Data payload.</div>
             <div id="uploadZone" class="upload-zone ${state.dragActive ? 'drag' : ''}" style="margin-top:10px">
               <div style="font-weight:700;font-size:16px">Drag & Drop File Here</div>
               <div class="task-meta" style="margin:8px 0">or select manually</div>
@@ -503,14 +503,16 @@
 
             <div style="margin-top:10px;overflow:auto" class="task-grid">
               <table>
-                <thead><tr><th>Case #</th><th>Site</th><th>Assignee</th><th>State</th></tr></thead>
+                <thead><tr><th>Task Reference &amp; Data Summary</th><th>Assignee</th><th>State</th></tr></thead>
                 <tbody>
                   ${state.parsedRows.map((row, idx) => {
                     const invalid = !row.assigned_to;
                     return `
                       <tr>
-                        <td>${esc(safeText(row.case_number, 'N/A'))}</td>
-                        <td>${esc(safeText(row.site, 'N/A'))}</td>
+                        <td>
+                          <div style="font-weight:700">${esc(safeText(row.case_number, 'N/A'))}</div>
+                          <div class="task-meta" style="margin-top:4px;line-height:1.35;word-break:break-word">${esc(safeText(row.description, 'N/A'))}</div>
+                        </td>
                         <td class="${invalid ? 'task-invalid' : ''}">
                           <div style="font-weight:600">${esc(safeText(row.assigned_name, 'Unknown Member'))}</div>
                           <select data-assignee-fix="${idx}" style="width:100%;margin-top:4px">
@@ -525,7 +527,7 @@
                         <td>${invalid ? '<span class="task-meta" style="color:#f59e0b">Needs Fix</span>' : '<span class="task-meta" style="color:#22c55e">Ready</span>'}</td>
                       </tr>
                     `;
-                  }).join('') || '<tr><td colspan="4" class="task-meta">Upload a file to preview parsed tasks.</td></tr>'}
+                  }).join('') || '<tr><td colspan="3" class="task-meta">Upload a file to preview parsed tasks.</td></tr>'}
                 </tbody>
               </table>
             </div>
@@ -741,17 +743,37 @@
     return { assigneeColumnIndex, siteColumnIndex };
   }
 
-  function buildParsedRows(dataRows, detection) {
+  function buildParsedRows(dataRows, detection, headers) {
     return dataRows.map((row) => {
       const values = Array.isArray(row) ? row : [];
-      const caseNumber = safeText(values[0], 'N/A');
-      const site = detection.siteColumnIndex >= 0 ? safeText(values[detection.siteColumnIndex], 'N/A') : 'N/A';
-      const assigneeName = detection.assigneeColumnIndex >= 0 ? String(values[detection.assigneeColumnIndex] || '').trim() : '';
+      const safeHeaders = Array.isArray(headers) ? headers : [];
+      let assigneeName = '';
+      if (detection.assigneeColumnIndex >= 0) assigneeName = String(values[detection.assigneeColumnIndex] || '').trim();
+
+      let site = 'N/A';
+      if (detection.siteColumnIndex >= 0) site = safeText(values[detection.siteColumnIndex], 'N/A');
+
+      const details = [];
+      let primaryReference = 'N/A';
+      let foundPrimary = false;
+
+      safeHeaders.forEach((header, idx) => {
+        const val = String(values[idx] || '').trim();
+        if (!val) return;
+        details.push(`${safeText(header, `Column ${idx + 1}`)}: ${val}`);
+        if (!foundPrimary && idx !== detection.assigneeColumnIndex && idx !== detection.siteColumnIndex) {
+          primaryReference = val;
+          foundPrimary = true;
+        }
+      });
+
+      const compiledDesc = details.join(' | ');
       const match = guessMember(assigneeName);
 
       return {
-        case_number: caseNumber,
+        case_number: primaryReference,
         site,
+        description: compiledDesc,
         assigned_name: assigneeName,
         assigned_to: match && match.score >= 0.72 ? String(match.member.user_id || '') : ''
       };
@@ -768,7 +790,7 @@
       const parsed = await fileToMatrix(file);
       const split = splitMatrix(parsed.matrix);
       const detection = detectColumns(split.headers, split.rows);
-      state.parsedRows = buildParsedRows(split.rows, detection);
+      state.parsedRows = buildParsedRows(split.rows, detection, split.headers);
       state.assigneeColumnIndex = detection.assigneeColumnIndex;
       state.uploadMeta = { name: String(file.name || ''), rows: state.parsedRows.length, sheets: parsed.sheets };
     } catch (err) {
@@ -1082,6 +1104,7 @@
           .map((row) => ({
             case_number: row.case_number || 'N/A',
             site: row.site || 'N/A',
+            description: row.description || '',
             assigned_to: row.assigned_to
           }));
 
