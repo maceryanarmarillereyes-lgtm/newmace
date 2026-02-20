@@ -1425,10 +1425,12 @@
 
       if(!document.getElementById('schedNotifModal')){
         const m = document.createElement('div');
-        m.className = 'modal';
+        m.className = 'modal'; 
         m.id = 'schedNotifModal';
+        m.style.zIndex = '99999';
+        m.style.background = 'rgba(2,6,23,0.85)';
+        m.style.backdropFilter = 'blur(8px)';
         m.innerHTML = `
-          <div class="task-modal-backdrop" style="position:fixed; inset:0; background:rgba(2,6,23,0.85); backdrop-filter:blur(8px); z-index:99999; display:flex; align-items:center; justify-content:center; padding:20px;">
               <div class="task-modal-glass notification-popout" style="width:min(900px, 100vw); background:linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98)); border:1px solid rgba(56,189,248,0.3); border-radius:16px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.7); display:flex; flex-direction:column; max-height:90vh; overflow:hidden;">
                 <div class="head modal-header-glass" style="padding:20px 24px; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.6);">
                   <div>
@@ -1446,7 +1448,6 @@
                 </div>
                 <div class="body modal-body-scroll" id="schedNotifBody" style="padding:24px; overflow-y:auto; overflow-x:hidden; flex:1; display:flex; flex-direction:column; gap:16px;"></div>
               </div>
-          </div>
         `;
         document.body.appendChild(m);
       }
@@ -2559,9 +2560,7 @@
     }
   };
 
-  // ================================================================
   // ENTERPRISE UPGRADE: God-Eye MS Teams Style Toast for Managers & Admins
-  // ================================================================
   UI.initMailboxManagerToasts = function() {
     if(window._mbxToastEngineRunning) return;
     window._mbxToastEngineRunning = true;
@@ -2630,8 +2629,7 @@
         try {
             const u = window.Auth?.getUser?.();
             if (!u) return false;
-
-            // ENTERPRISE UPGRADE: Super Admin Bypass (God-Eye View)
+            
             const role = String(u.role || '').toUpperCase();
             const SA = (window.Config && window.Config.ROLES && window.Config.ROLES.SUPER_ADMIN) ? window.Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
             if (role === SA) return true;
