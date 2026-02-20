@@ -1088,8 +1088,21 @@
       select.onchange = () => {
         const idx = Number(select.getAttribute('data-assignee-fix'));
         if (!Number.isFinite(idx) || !state.parsedRows[idx]) return;
+
+        const modalEl = root.querySelector('.task-modal');
+        const gridEl = root.querySelector('.task-modal .task-grid');
+        const modalScrollTop = modalEl ? modalEl.scrollTop : 0;
+        const gridScrollTop = gridEl ? gridEl.scrollTop : 0;
+
         state.parsedRows[idx].assigned_to = String(select.value || '');
         render();
+
+        requestAnimationFrame(() => {
+          const rebuiltModalEl = root.querySelector('.task-modal');
+          const rebuiltGridEl = root.querySelector('.task-modal .task-grid');
+          if (rebuiltModalEl) rebuiltModalEl.scrollTop = modalScrollTop;
+          if (rebuiltGridEl) rebuiltGridEl.scrollTop = gridScrollTop;
+        });
       };
     });
 
