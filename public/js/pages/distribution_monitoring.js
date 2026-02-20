@@ -365,8 +365,20 @@
           });
         }
       });
+      // GET SOURCE TEAM ID
+      const fromTeamId = String(from.team_id || '').trim().toLowerCase();
+      // STRICT TEAM ISOLATION FILTER
       const opts = Object.values(globalTeamRoster)
-        .filter((m) => String(m.user_id || m.id || '').trim() !== String(fromMemberId))
+        .filter((m) => {
+          const isSelf = String(m.user_id || m.id || '').trim() === String(fromMemberId);
+          const mTeamId = String(m.team_id || '').trim().toLowerCase();
+
+          // Only include members from the exact same team.
+          // (Fallback: if either user has no team assigned, allow visibility to prevent empty list)
+          const isSameTeam = !fromTeamId || !mTeamId || (mTeamId === fromTeamId);
+
+          return !isSelf && isSameTeam;
+        })
         .sort((a,b) => (a.name || '').localeCompare(b.name || ''))
         .map((m) => {
           const memberId = String(m.user_id || m.id || '').trim();

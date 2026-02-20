@@ -42,7 +42,15 @@ const response = dists.map(d => {
       const myTeamId = auth.profile?.team_id;
       if(myTeamId && prof.team_id && String(prof.team_id).toLowerCase() !== String(myTeamId).toLowerCase()) return;
     }
-    if(!memberBuckets[uid]) memberBuckets[uid] = { user_id: uid, name: prof.name || prof.username || uid, total:0, completed:0, pending:0, with_problem:0, items:[] };
+    // TEAM_ID INJECTED HERE FOR FRONTEND FILTERING
+    if(!memberBuckets[uid]) {
+      memberBuckets[uid] = { 
+        user_id: uid, 
+        name: prof.name || prof.username || uid, 
+        team_id: prof.team_id || null,
+        total:0, completed:0, pending:0, with_problem:0, items:[] 
+      };
+    }
     
     const m = memberBuckets[uid];
     const s = String(it.status || '').toLowerCase();
@@ -50,7 +58,6 @@ const response = dists.map(d => {
     if(s.includes('complete') || s === 'done') m.completed++;
     else if(s.includes('problem')) m.with_problem++;
     else m.pending++;
-    // DYNAMIC MAPPING: Fallback through possible columns to avoid UI crash
     m.items.push({ 
       id: it.id, 
       case_number: it.case_number || it.case_no || it.task_description || it.description || 'N/A', 
