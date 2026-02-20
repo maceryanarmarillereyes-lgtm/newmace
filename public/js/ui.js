@@ -2560,7 +2560,7 @@
   };
 
   // ================================================================
-  // ENTERPRISE UPGRADE: God-Eye MS Teams Style Toast for Managers
+  // ENTERPRISE UPGRADE: God-Eye MS Teams Style Toast for Managers & Admins
   // ================================================================
   UI.initMailboxManagerToasts = function() {
     if(window._mbxToastEngineRunning) return;
@@ -2568,7 +2568,6 @@
 
     let knownAssignments = {};
 
-    // Inject Enterprise Toast CSS globally
     if (!document.getElementById('ms-teams-toast-styles')) {
         const s = document.createElement('style');
         s.id = 'ms-teams-toast-styles';
@@ -2631,6 +2630,12 @@
         try {
             const u = window.Auth?.getUser?.();
             if (!u) return false;
+
+            // ENTERPRISE UPGRADE: Super Admin Bypass (God-Eye View)
+            const role = String(u.role || '').toUpperCase();
+            const SA = (window.Config && window.Config.ROLES && window.Config.ROLES.SUPER_ADMIN) ? window.Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
+            if (role === SA) return true;
+
             const now = window.UI?.manilaNow?.();
             if (!now) return false;
             const nowMin = now.hh * 60 + now.mm;
