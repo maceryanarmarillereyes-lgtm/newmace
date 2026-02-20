@@ -374,7 +374,7 @@ if (!createAllowed) {
         const cur = Auth.getUser();
         if(cur && cur.id===id){
           Auth.logout();
-          window.location.href = 'login.html';
+          window.location.href = '/login.html';
           return;
         }
       }catch(_){}

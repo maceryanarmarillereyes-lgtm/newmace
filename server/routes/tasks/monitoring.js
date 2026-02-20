@@ -1,146 +1,97 @@
 const { sendJson, requireAuthedUser, roleFlags, serviceSelect } = require('./_common');
-
-function normalizeStatus(raw){
-  const s = String(raw || '').trim().toLowerCase();
-  if(!s) return 'Pending';
-  if(s === 'completed' || s === 'done') return 'Completed';
-  if(s === 'ongoing' || s === 'in progress' || s === 'in_progress') return 'Ongoing';
-  if(s === 'with problem' || s === 'with_problem' || s === 'problem') return 'With Problem';
-  if(s === 'pending' || s === 'todo' || s === 'to do') return 'Pending';
-  // Preserve unknowns but title-case-ish
-  return raw;
-}
-
-function safeUuidList(ids){
-  return (ids || [])
-    .map((x) => String(x || '').trim())
-    .filter(Boolean)
-    .filter((x) => /^[0-9a-fA-F-]{20,}$/.test(x));
-}
-
 module.exports = async (req, res) => {
-  try {
-    res.setHeader('Cache-Control', 'no-store');
-    if (req.method !== 'GET') return sendJson(res, 405, { ok: false, error: 'method_not_allowed' });
+try {
+const auth = await requireAuthedUser(req);
+if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
-    const auth = await requireAuthedUser(req);
-    if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
-
-    const flags = roleFlags(auth.profile && auth.profile.role);
-    if (!flags.isAdmin && !flags.isLead) return sendJson(res, 403, { ok: false, error: 'forbidden' });
-
-    const limit = Math.max(1, Math.min(20, Number((req.query && req.query.limit) || 20)));
-    const offset = Math.max(0, Number((req.query && req.query.offset) || 0));
-
-    // Fetch distributions (latest first). We intentionally keep this small for Supabase Free Tier.
-    let dOut = await serviceSelect('task_distributions', `select=*&order=created_at.desc&limit=${limit}&offset=${offset}`);
-    if (!dOut.ok) return sendJson(res, 500, { ok: false, error: 'distributions_fetch_failed', details: dOut.json || dOut.text });
-
-    const dists = Array.isArray(dOut.json) ? dOut.json : [];
-    if (!dists.length) return sendJson(res, 200, { ok: true, limit, offset, distributions: [], has_more: false });
-
-    const distIds = safeUuidList(dists.map((d) => d && (d.id || d.distribution_id || d.task_distribution_id)));
-    if (!distIds.length) return sendJson(res, 200, { ok: true, limit, offset, distributions: [], has_more: dists.length === limit });
-
-    const inList = distIds.join(',');
-
-    // Fetch task items for these distributions.
-    // Prefer the canonical column (distribution_id) but fall back to legacy (task_distribution_id).
-    let tOut = await serviceSelect('task_items', `select=id,distribution_id,assigned_to,status,problem_notes,transferred_from,created_at,updated_at&distribution_id=in.(${inList})`);
-    if (!tOut.ok) {
-      tOut = await serviceSelect('task_items', `select=id,task_distribution_id,assigned_to,status,problem_notes,transferred_from,created_at,updated_at&task_distribution_id=in.(${inList})`);
-    }
-    const items = tOut.ok && Array.isArray(tOut.json) ? tOut.json : [];
-
-    const userIds = safeUuidList([
-      ...dists.map((d) => d && (d.created_by || d.created_by_user_id || d.owner_id || d.user_id)),
-      ...items.map((t) => t && t.assigned_to),
-      ...items.map((t) => t && t.transferred_from)
-    ]);
-
-    const uniqUserIds = Array.from(new Set(userIds));
-    const profilesById = {};
-
-    if (uniqUserIds.length) {
-      const userIn = uniqUserIds.join(',');
-      const pOut = await serviceSelect('mums_profiles', `select=user_id,name,username,role,team_id&user_id=in.(${userIn})`);
-      if (pOut.ok && Array.isArray(pOut.json)) {
-        pOut.json.forEach((p) => {
-          if (p && p.user_id) profilesById[String(p.user_id)] = p;
-        });
-      }
-    }
-
-    // Aggregate per distribution -> per member.
-    const byDist = {};
-    (items || []).forEach((t) => {
-      const distId = String(t.distribution_id || t.task_distribution_id || '').trim();
-      if (!distId) return;
-      if (!byDist[distId]) byDist[distId] = {};
-
-      const memberId = String(t.assigned_to || '').trim();
-      if (!memberId) return;
-      if (!byDist[distId][memberId]) {
-        const prof = profilesById[memberId] || {};
-        byDist[distId][memberId] = {
-          user_id: memberId,
-          name: String(prof.name || prof.username || memberId),
-          role: String(prof.role || ''),
-          total: 0,
-          pending: 0,
-          ongoing: 0,
-          completed: 0,
-          with_problem: 0
-        };
-      }
-
-      const s = normalizeStatus(t.status);
-      const row = byDist[distId][memberId];
-      row.total += 1;
-      if (s === 'Pending') row.pending += 1;
-      else if (s === 'Ongoing') row.ongoing += 1;
-      else if (s === 'Completed') row.completed += 1;
-      else if (s === 'With Problem') row.with_problem += 1;
+const userRole = String(auth.profile?.role || '').toUpperCase();
+const flags = roleFlags(userRole);
+const isSuper = flags.isAdmin || flags.isLead || ['TEAM_LEAD', 'ADMIN', 'SUPER_ADMIN', 'SUPER_USER'].includes(userRole);
+const myTeamId = auth.profile?.team_id;
+const limit = Number(req.query.limit) || 20;
+const offset = Number(req.query.offset) || 0;
+// 1. Fetch Batch Cards
+const dOut = await serviceSelect('task_distributions', `select=*&order=created_at.desc&limit=${limit}&offset=${offset}`);
+const dists = dOut.ok && Array.isArray(dOut.json) ? dOut.json : [];
+if (!dists.length) return sendJson(res, 200, { ok: true, distributions: [], team_roster: [], has_more: false });
+const distIds = dists.map(d => d.id).filter(Boolean);
+// 2. BULLETPROOF FETCH
+const itemPromises = distIds.map(async (id) => {
+  const out = await serviceSelect('task_items', `select=*&distribution_id=eq.${id}`);
+  return out.ok && Array.isArray(out.json) ? out.json : [];
+});
+const nestedItems = await Promise.all(itemPromises);
+const allItems = nestedItems.flat();
+// 3. Profiles Hydration & FULL TEAM ROSTER
+const userIds = [...new Set(allItems.map(i => i.assigned_to).filter(Boolean))];
+const profileMap = {};
+const teamRoster = [];
+// A. Hydrate profiles for active tasks
+if (userIds.length) {
+  const pOut = await serviceSelect('mums_profiles', `select=user_id,name,username,team_id&user_id=in.(${userIds.join(',')})`);
+  if (pOut.ok) (pOut.json || []).forEach(p => { profileMap[p.user_id] = p; });
+}
+// B. Fetch Full Roster for Lead's Dropdown (Includes 0-task members)
+if (myTeamId) {
+  const rOut = await serviceSelect('mums_profiles', `select=user_id,name,username,team_id&team_id=eq.${encodeURIComponent(myTeamId)}`);
+  if (rOut.ok) {
+    (rOut.json || []).forEach(p => {
+      profileMap[p.user_id] = p; // Ensure they are in the map
+      teamRoster.push({ user_id: p.user_id, name: p.name || p.username || p.user_id, team_id: p.team_id });
     });
-
-    const response = dists.map((d) => {
-      const id = String(d.id || '').trim();
-      const ownerId = String(d.created_by || d.created_by_user_id || d.owner_id || d.user_id || '').trim();
-      const ownerProf = profilesById[ownerId] || {};
-      const membersObj = byDist[id] || {};
-      const members = Object.values(membersObj)
-        .map((m) => {
-          const pct = m.total ? Math.round((m.completed / m.total) * 100) : 0;
-          return Object.assign({}, m, { completion_pct: pct });
-        })
-        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-
-      const totals = members.reduce((acc, m) => {
-        acc.total += m.total;
-        acc.pending += m.pending;
-        acc.ongoing += m.ongoing;
-        acc.completed += m.completed;
-        acc.with_problem += m.with_problem;
-        return acc;
-      }, { total: 0, pending: 0, ongoing: 0, completed: 0, with_problem: 0 });
-
-      return {
-        id,
-        title: d.title || 'Untitled Distribution',
-        description: d.description || '',
-        reference_url: d.reference_url || '',
-        created_at: d.created_at || null,
-        created_by: ownerId,
-        created_by_name: String(ownerProf.name || ownerProf.username || ownerId || ''),
-        enable_daily_alerts: d.enable_daily_alerts === true,
-        status: d.status || 'active',
-        totals,
-        members
-      };
-    });
-
-    return sendJson(res, 200, { ok: true, limit, offset, distributions: response, has_more: dists.length === limit });
-  } catch (err) {
-    return sendJson(res, 500, { ok: false, error: 'monitoring_failed', message: String(err && err.message ? err.message : err) });
   }
+} else if (isSuper) {
+  // Admin fallback: fetch all
+  const rOut = await serviceSelect('mums_profiles', `select=user_id,name,username,team_id`);
+  if (rOut.ok) {
+    (rOut.json || []).forEach(p => {
+      profileMap[p.user_id] = p;
+      teamRoster.push({ user_id: p.user_id, name: p.name || p.username || p.user_id, team_id: p.team_id });
+    });
+  }
+}
+// 4. Aggregation Loop
+const response = dists.map(d => {
+  const items = allItems.filter(i => i.distribution_id === d.id);
+  const memberBuckets = {};
+  items.forEach(it => {
+    const uid = it.assigned_to;
+    if(!uid) return;
+    const prof = profileMap[uid] || {};
+    if(!isSuper){
+      if(myTeamId && prof.team_id && String(prof.team_id).toLowerCase() !== String(myTeamId).toLowerCase()) return;
+    }
+    if(!memberBuckets[uid]) {
+      memberBuckets[uid] = { 
+        user_id: uid, name: prof.name || prof.username || uid, team_id: prof.team_id || null, 
+        total:0, completed:0, pending:0, with_problem:0, items:[] 
+      };
+    }
+    
+    const m = memberBuckets[uid];
+    const s = String(it.status || '').toLowerCase();
+    m.total++;
+    if(s.includes('complete') || s === 'done') m.completed++;
+    else if(s.includes('problem')) m.with_problem++;
+    else m.pending++;
+    m.items.push({ 
+      id: it.id, 
+      case_number: it.case_number || it.case_no || it.task_description || it.description || 'N/A', 
+      site: it.site || 'N/A', 
+      status: it.status 
+    });
+  });
+  const members = Object.values(memberBuckets).map(m => ({
+    ...m, completion_pct: m.total ? Math.round((m.completed / m.total) * 100) : 0
+  })).sort((a,b) => a.name.localeCompare(b.name));
+  if(!isSuper && !members.length) return null;
+  return {
+    id: d.id, title: d.title, created_at: d.created_at, created_by_name: d.created_by_name || 'System',
+    totals: members.reduce((acc, m) => { acc.total += m.total; acc.pending += m.pending; acc.with_problem += m.with_problem; return acc; }, {total:0,pending:0,with_problem:0}),
+    members
+  };
+}).filter(Boolean);
+// Inject team_roster into final response
+return sendJson(res, 200, { ok: true, distributions: response, team_roster: teamRoster, has_more: dists.length === limit });
+} catch (err) { return sendJson(res, 500, { ok: false, message: err.message }); }
 };
