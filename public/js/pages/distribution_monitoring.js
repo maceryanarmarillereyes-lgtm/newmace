@@ -146,6 +146,7 @@
       loading: false,
       done: false,
       dists: [],
+      team_roster: [],
       modalCtx: null,
     };
 
@@ -287,6 +288,9 @@
         const list = (out.data && out.data.distributions) ? out.data.distributions : [];
         const hasMore = !!(out.data && out.data.has_more);
         state.dists = state.dists.concat(list);
+        if (out.data && out.data.team_roster) {
+          state.team_roster = out.data.team_roster;
+        }
         state.offset += list.length;
         state.done = !hasMore || list.length < state.limit;
       }catch(e){
@@ -355,28 +359,30 @@
       fromEl.textContent = `${from.name || fromMemberId} (${fromMemberId})`;
       subEl.textContent = `${dist.title || 'Distribution'} • Select pending tasks to transfer`;
 
-      // NEW: Create a global team roster from ALL active distributions to ensure complete dropdown
+      // Build Global Roster starting with the full team_roster API payload
       const globalTeamRoster = {};
+      if (Array.isArray(state.team_roster)) {
+        state.team_roster.forEach(m => {
+          const mid = String(m.user_id || m.id || '').trim();
+          if(mid) globalTeamRoster[mid] = m;
+        });
+      }
+      // Append any active dist members as fallback
       state.dists.forEach(d => {
         if(Array.isArray(d.members)){
           d.members.forEach(m => {
             const mid = String(m.user_id || m.id || '').trim();
-            if(mid) globalTeamRoster[mid] = m;
+            if(mid && !globalTeamRoster[mid]) globalTeamRoster[mid] = m;
           });
         }
       });
-      // GET SOURCE TEAM ID
       const fromTeamId = String(from.team_id || '').trim().toLowerCase();
       // STRICT TEAM ISOLATION FILTER
       const opts = Object.values(globalTeamRoster)
         .filter((m) => {
           const isSelf = String(m.user_id || m.id || '').trim() === String(fromMemberId);
           const mTeamId = String(m.team_id || '').trim().toLowerCase();
-
-          // Only include members from the exact same team.
-          // (Fallback: if either user has no team assigned, allow visibility to prevent empty list)
           const isSameTeam = !fromTeamId || !mTeamId || (mTeamId === fromTeamId);
-
           return !isSelf && isSameTeam;
         })
         .sort((a,b) => (a.name || '').localeCompare(b.name || ''))
