@@ -34,6 +34,7 @@
     loginAlert: { open: false, totalOverdue: 0, distributions: [], isHourlyEscalation: false },
     isFullscreen: false,       
     showWorkloadModal: false,
+    confirmCloseModal: false, // ENTERPRISE: Unsaved Progress Safety Net
     
     autoAssign: {
       open: false,
@@ -308,13 +309,11 @@
       }
       .upload-icon { font-size:32px; margin-bottom:12px; opacity:0.8; }
       
-      /* ENTERPRISE UPGRADE: Compact Flex Stats Layout */
       .stat-container { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
       .stat-box { flex: 1; min-width: 180px; max-width: 250px; background: linear-gradient(145deg, rgba(30,41,59,0.5), rgba(15,23,42,0.8)); padding: 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 6px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 4px 6px -1px rgba(0,0,0,0.1); }
       .stat-label { font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
       .stat-value { font-size: 28px; font-weight: 900; color: #f8fafc; line-height: 1; letter-spacing: -1px; }
 
-      /* ENTERPRISE UPGRADE: Command Toolbar */
       .enterprise-toolbar { display:flex; justify-content:space-between; align-items:center; background:linear-gradient(90deg, rgba(15,23,42,0.8), rgba(2,6,23,0.6)); padding:12px 18px; border-radius:10px; border:1px solid rgba(255,255,255,0.06); margin-bottom:16px; flex-wrap:wrap; gap:12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
 
       .glass-table-container { border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; overflow-y: auto; background: rgba(2,6,23,0.5); max-height: 380px; transition: all 0.3s ease; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2); }
@@ -502,6 +501,28 @@
     `;
   }
 
+  // ENTERPRISE UPGRADE: Safety Net Confirm Modal
+  function renderConfirmCloseModal() {
+    return `
+      <div class="task-modal-backdrop" id="confirmCloseBackdrop" style="z-index:17000; background:rgba(2,6,23,0.95);">
+        <div class="task-modal-glass" style="width:min(450px, 95vw); border-color:rgba(239,68,68,0.5); box-shadow: 0 0 50px rgba(239,68,68,0.15);">
+          <div class="modal-header-glass" style="background:rgba(15,23,42,0.95); border-bottom:1px solid rgba(239,68,68,0.2);">
+            <h3 style="color:#fca5a5;">⚠️ Unsaved Progress</h3>
+          </div>
+          <div class="modal-body-scroll" style="gap:16px;">
+            <div style="font-size:14px; color:#e2e8f0; line-height:1.5;">
+              Are you sure you want to close? You have active configurations or uploaded data. <br><br><strong style="color:#ef4444;">Your work will not be saved.</strong>
+            </div>
+          </div>
+          <div class="modal-header-glass" style="border-top: 1px solid rgba(255,255,255,0.06); border-bottom:none; justify-content:flex-end; top:auto; bottom:0; gap:12px;">
+            <button class="btn-glass btn-glass-ghost" type="button" id="confirmCloseNo" style="color:#e2e8f0;">Return to Work</button>
+            <button class="btn-glass btn-glass-action" type="button" id="confirmCloseYes" style="background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid rgba(239,68,68,0.3); box-shadow:none;">Yes, Discard & Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function renderModal() {
     const hasData = state.parsedRows.length > 0;
     
@@ -664,7 +685,7 @@
           
           <div class="modal-header-glass">
             <h3>✨ Create New Distribution</h3>
-            <button class="btn-glass btn-glass-ghost" type="button" id="closeDistributionModal" style="padding:6px 12px;">✕ Close</button>
+            <button class="btn-glass btn-glass-ghost" type="button" id="closeDistributionModal" style="padding:6px 12px; ${state.isFullscreen ? 'border:1px solid rgba(239,68,68,0.3); color:#fca5a5;' : ''}">✕ Close</button>
           </div>
 
           <div class="modal-body-scroll">
@@ -716,7 +737,7 @@
                 <div style="display:flex; gap:8px;">
                   ${hasData ? `
                     <button class="btn-glass btn-glass-ghost" type="button" id="btnToggleFullscreen" style="font-size:11px; padding:6px 12px; color:#38bdf8; border-color:rgba(56,189,248,0.3);">
-                      ${state.isFullscreen ? '↙️ Exit Fullscreen' : '↗️ Fullscreen View'}
+                      ${state.isFullscreen ? '↙️ Collapse & View Metadata' : '↗️ Fullscreen Table'}
                     </button>
                     <button class="btn-glass btn-glass-ghost" type="button" id="btnReplaceFile" style="font-size:11px; padding:6px 12px; border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">🗑️ Discard & Reupload</button>
                   ` : ''}
@@ -805,6 +826,7 @@
       </div>
       ${workloadModalHtml}
       ${autoAssignModalHtml}
+      ${state.confirmCloseModal ? renderConfirmCloseModal() : ''}
     `;
   }
 
@@ -1058,6 +1080,7 @@
     state.uploadMeta = { name: '', rows: 0, sheets: 0 }; state.parsedRows = [];
     state.form = { title: '', description: '', reference_url: '', deadline: '', enable_daily_alerts: true };
     state.isFullscreen = false; state.showWorkloadModal = false; state.autoAssign.open = false;
+    state.confirmCloseModal = false;
     render();
   }
 
@@ -1153,9 +1176,29 @@
       }
     }
 
+    // ENTERPRISE UX: Safety Net Interceptor for closing the modal
+    const handleModalCloseRequest = () => {
+      const hasUnsavedChanges = state.parsedRows.length > 0 || state.form.title.trim() !== '' || state.form.deadline !== '';
+      if (hasUnsavedChanges) {
+        state.confirmCloseModal = true;
+        render();
+      } else {
+        closeModal();
+      }
+    };
+
     if (!state.modalOpen) return;
-    if (el('#closeDistributionModal')) el('#closeDistributionModal').onclick = closeModal;
-    if (el('#cancelDistributionCreate')) el('#cancelDistributionCreate').onclick = closeModal;
+    if (el('#closeDistributionModal')) el('#closeDistributionModal').onclick = handleModalCloseRequest;
+    if (el('#cancelDistributionCreate')) el('#cancelDistributionCreate').onclick = handleModalCloseRequest;
+    
+    // Safety Net Modal Events
+    if (state.confirmCloseModal) {
+      if (el('#confirmCloseNo')) el('#confirmCloseNo').onclick = () => { state.confirmCloseModal = false; render(); };
+      if (el('#confirmCloseYes')) el('#confirmCloseYes').onclick = closeModal;
+      if (el('#confirmCloseBackdrop')) el('#confirmCloseBackdrop').onclick = (e) => { 
+        if (e.target === el('#confirmCloseBackdrop')) { state.confirmCloseModal = false; render(); }
+      };
+    }
     
     // UI Toggles
     if (el('#btnToggleFullscreen')) {
