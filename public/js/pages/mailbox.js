@@ -31,10 +31,10 @@ function eligibleForMailboxManager(user, opts){
   if(!user) return false;
   opts = opts || {};
   const r = String(user.role||'');
-  const admin = (window.Config && Config.ROLES) ? Config.ROLES.ADMIN : 'ADMIN';
-  const superAdmin = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
-  const superUser = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_USER : 'SUPER_USER';
-  const teamLead = (window.Config && Config.ROLES) ? Config.ROLES.TEAM_LEAD : 'TEAM_LEAD';
+  const admin = (window.Config && window.Config.ROLES) ? window.Config.ROLES.ADMIN : 'ADMIN';
+  const superAdmin = (window.Config && window.Config.ROLES) ? window.Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
+  const superUser = (window.Config && window.Config.ROLES) ? window.Config.ROLES.SUPER_USER : 'SUPER_USER';
+  const teamLead = (window.Config && window.Config.ROLES) ? window.Config.ROLES.TEAM_LEAD : 'TEAM_LEAD';
 
   if(r===superAdmin || r===superUser || r===admin || r===teamLead) return true;
   if(opts.teamId && String(user.teamId||'') !== String(opts.teamId||'')) return false;
@@ -45,7 +45,6 @@ function eligibleForMailboxManager(user, opts){
   if(!UI || !Store || !nowParts) return false;
 
   const nowMin = _mbxMinutesOfDayFromParts(nowParts);
-
   if(opts.dutyTeam && !_mbxInDutyWindow(nowMin, opts.dutyTeam)) return false;
 
   const roleSet = new Set(['mailbox_manager','mailbox_call']);
@@ -217,8 +216,8 @@ function _mbxDutyTone(label){
   const me = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser()||{}) : {};
   let isManager = false;
 
-  // ENTERPRISE UPGRADE: Persistent UI State to prevent render flicker
-  root._uiState = root._uiState || {
+  // GLOBAL UI STATE: Prevents UI reset on realtime syncs
+  window.__mbxUiState = window.__mbxUiState || {
     showArchive: false,
     showAnalytics: false
   };
@@ -238,9 +237,7 @@ function _mbxDutyTone(label){
     return UI ? UI.getDutyWindow(nowParts) : { current:{}, next:{}, secLeft:0 };
   }
 
-  // =========================================================================
-  // BUG FIX 2: STRICT SCHEDULE EVALUATION FOR MAILBOX MANAGERS PER BUCKET
-  // =========================================================================
+  // BUG FIX: Strict schedule evaluation for the bucket
   function _mbxFindScheduledManagerForBucket(table, bucket){
     try{
       if(!table || !bucket) return '—';
@@ -254,35 +251,39 @@ function _mbxDutyTone(label){
       const bucketStartMin = Number(bucket.startMin)||0;
       const shiftStartMin = _mbxParseHM(table.meta.dutyStart || '00:00');
 
-      // Determine correct DOW for this specific bucket
       let targetDateISO = shiftStartISO;
       if (bucketStartMin < shiftStartMin && bucketStartMin <= 1440) {
-         // Bucket crossed midnight into the next day
          targetDateISO = window.UI && window.UI.addDaysISO ? window.UI.addDaysISO(shiftStartISO, 1) : shiftStartISO;
       }
       const targetDow = _mbxIsoDow(targetDateISO);
 
       const all = (window.Store && window.Store.getUsers ? window.Store.getUsers() : []) || [];
       const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
-
       const roleOrder = ['mailbox_manager','mailbox_call'];
+      const matchedNames = [];
 
-      for(const role of roleOrder){
-        for(const u of candidates){
-          const bl = window.Store && window.Store.getUserDayBlocks ? (window.Store.getUserDayBlocks(u.id, targetDow) || []) : [];
-          for(const b of bl){
-            if(String(b?.role||'') !== role) continue;
-            const s = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.start) : _mbxParseHM(b.start));
-            const e = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.end) : _mbxParseHM(b.end));
-            if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+      for(const u of candidates){
+        const bl = window.Store && window.Store.getUserDayBlocks ? (window.Store.getUserDayBlocks(u.id, targetDow) || []) : [];
+        let isMatched = false;
+        for(const b of bl){
+          if (isMatched) break;
+          if(!roleOrder.includes(String(b?.role||''))) continue;
+          
+          const s = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.start) : _mbxParseHM(b.start));
+          const e = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.end) : _mbxParseHM(b.end));
+          if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
 
-            const wraps = e <= s;
-            const hit = (!wraps && bucketStartMin >= s && bucketStartMin < e) || (wraps && (bucketStartMin >= s || bucketStartMin < e));
-            if(hit) return String(u.name||u.username||'—');
+          const bSegs = _mbxToSegments(bucketStartMin, Number(bucket.endMin)||0);
+          const schedSegs = _mbxToSegments(s, e);
+          
+          if(_mbxSegmentsOverlap(bSegs, schedSegs)){
+             matchedNames.push(String(u.name||u.username||'—'));
+             isMatched = true;
           }
         }
       }
-    }catch(e){ console.error("Schedule Evaluation Error", e); }
+      if (matchedNames.length > 0) return matchedNames.join(' & ');
+    }catch(e){ console.error("Schedule Eval Error", e); }
     return '—';
   }
 
@@ -472,19 +473,14 @@ function _mbxDutyTone(label){
     style.id = 'enterprise-mailbox-styles';
     style.textContent = `
       .mbx-shell { display:flex; flex-direction:column; gap:20px; padding-bottom: 30px; }
-      
-      /* Header & Controls */
       .mbx-header-bar { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:16px; flex-wrap:wrap; gap:14px; }
       .mbx-main-title { font-size: 26px; font-weight: 900; color: #f8fafc; margin: 0; letter-spacing: -0.5px; }
-      
-      /* Glassmorphism Button Standard */
       .btn-glass { padding: 8px 16px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s; outline: none; display:inline-flex; align-items:center; justify-content:center; gap:6px; border:none; }
       .btn-glass-ghost { background: rgba(255,255,255,0.05); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.1); }
       .btn-glass-ghost:hover { background: rgba(255,255,255,0.1); color: #f8fafc; border-color: rgba(255,255,255,0.2); }
       .btn-glass-primary { background: linear-gradient(145deg, #0ea5e9, #0284c7); color: #fff; border: 1px solid rgba(56,189,248,0.4); box-shadow: 0 4px 12px rgba(14,165,233,0.3); }
       .btn-glass-primary:hover:not(:disabled) { background: linear-gradient(145deg, #38bdf8, #0ea5e9); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(14,165,233,0.4); }
       
-      /* Top Summary Row (Current Shift, Timer, Permissions) */
       .mbx-summary-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; }
       .mbx-stat-box { background:linear-gradient(145deg, rgba(30,41,59,0.4), rgba(15,23,42,0.6)); border:1px solid rgba(255,255,255,0.06); border-radius:12px; padding:20px; box-shadow: 0 8px 24px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.02); display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; transition:transform 0.2s; }
       .mbx-stat-box:hover { transform: translateY(-2px); border-color: rgba(56,189,248,0.3); }
@@ -492,13 +488,11 @@ function _mbxDutyTone(label){
       .mbx-stat-val { font-size:24px; font-weight:900; color:#f8fafc; letter-spacing:-0.5px; }
       .mbx-stat-sub { font-size:12px; color:#64748b; margin-top:4px; font-weight:600; }
       .timer-display { font-variant-numeric: tabular-nums; font-family: 'Courier New', Courier, monospace; color:#38bdf8; text-shadow: 0 0 10px rgba(56,189,248,0.3); }
-
-      /* Analytics Panels */
+      
       .mbx-analytics-panel { background:rgba(2,6,23,0.4); border:1px solid rgba(255,255,255,0.04); border-radius:14px; padding:24px; margin-top:24px; transition:all 0.3s ease; }
       .mbx-panel-head { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:12px; margin-bottom:16px; }
       .mbx-panel-title { font-size:18px; font-weight:800; color:#f8fafc; margin:0; }
       .mbx-panel-desc { font-size:12px; color:#94a3b8; margin-top:4px; }
-      
       .mbx-analytics-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:20px; }
       @media (max-width: 900px) { .mbx-analytics-grid { grid-template-columns: 1fr; } }
       .mbx-ana-card { background:rgba(15,23,42,0.6); border:1px solid rgba(255,255,255,0.03); border-radius:10px; padding:16px; }
@@ -507,8 +501,7 @@ function _mbxDutyTone(label){
       .mbx-ana-badge { background:rgba(56,189,248,0.1); color:#38bdf8; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:800; }
       .mbx-ana-bar-wrap { height:6px; background:rgba(2,6,23,0.8); border-radius:999px; overflow:hidden; margin-top:6px; }
       .mbx-ana-bar-fill { height:100%; background:linear-gradient(90deg, #0ea5e9, #38bdf8); border-radius:999px; }
-
-      /* Counter Table Upgrade */
+      
       .mbx-counter-wrap { border:1px solid rgba(255,255,255,0.06); border-radius:12px; overflow-x:auto; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2); background:rgba(2,6,23,0.5); }
       .mbx-counter-table { width:100%; border-collapse:collapse; min-width:800px; }
       .mbx-counter-table th { background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#cbd5e1; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:10; backdrop-filter:blur(8px); }
@@ -526,8 +519,7 @@ function _mbxDutyTone(label){
       .duty-pill[data-tone="manager"] { background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); }
       .duty-pill[data-tone="call"] { background:rgba(245,158,11,0.15); color:#fbbf24; border:1px solid rgba(245,158,11,0.3); }
       .duty-pill[data-tone="break"] { background:rgba(239,68,68,0.1); color:#fca5a5; }
-
-      /* Case Monitoring Matrix */
+      
       .mbx-monitor-panel { border:1px solid rgba(255,255,255,0.06); border-radius:12px; background:rgba(15,23,42,0.4); overflow-x:auto; }
       .mbx-mon-table { width:100%; border-collapse:collapse; min-width:800px; }
       .mbx-mon-table th { background:rgba(15,23,42,0.9); padding:12px 10px; font-size:12px; font-weight:800; color:#cbd5e1; border-bottom:1px solid rgba(255,255,255,0.08); text-align:center; }
@@ -538,12 +530,11 @@ function _mbxDutyTone(label){
       .mbx-case-badge { display:inline-flex; align-items:center; gap:6px; background:rgba(2,6,23,0.8); padding:4px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); font-size:12px; font-weight:700; color:#f8fafc; }
       .mbx-stat-wait { color:#fcd34d; animation: mbxPulse 1.5s infinite; }
       .mbx-stat-done { color:#10b981; }
-      
       @keyframes mbxPulse { 0% { opacity:1; } 50% { opacity:0.5; } 100% { opacity:1; } }
 
-      /* Fixed Modals CSS (Removed .mbx-modal-backdrop display block interference) */
-      .mbx-modal-backdrop { position:fixed; inset:0; background:rgba(2,6,23,0.85); z-index:14060; display:none; align-items:center; justify-content:center; padding:20px; opacity:0; pointer-events:none; transition:opacity 0.3s; }
-      .mbx-modal-backdrop.open { display:flex; opacity:1; pointer-events:auto; }
+      /* Modals: Completely isolated custom class to prevent CSS collision */
+      .mbx-custom-backdrop { position:fixed; inset:0; background:rgba(2,6,23,0.85); backdrop-filter:blur(10px); z-index:99999; display:none; align-items:center; justify-content:center; padding:20px; opacity:0; pointer-events:none; transition:opacity 0.3s; }
+      .mbx-custom-backdrop.is-open { display:flex !important; opacity:1; pointer-events:auto; }
       .mbx-modal-glass { width:min(550px, 95vw); background:linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98)); border:1px solid rgba(56,189,248,0.3); border-radius:16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7); display:flex; flex-direction:column; overflow:hidden; }
       .mbx-modal-head { padding:20px 24px; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.6); }
       .mbx-modal-body { padding:24px; display:flex; flex-direction:column; gap:16px; }
@@ -552,12 +543,6 @@ function _mbxDutyTone(label){
       .mbx-input:disabled { opacity:0.6; cursor:not-allowed; }
     `;
     document.head.appendChild(style);
-
-    const applyInlineBlur = () => {
-       const bgs = document.querySelectorAll('.mbx-modal-backdrop');
-       bgs.forEach(bg => { bg.style.backdropFilter = 'blur(10px)'; });
-    };
-    setTimeout(applyInlineBlur, 50);
   }
 
   function resolveMemberDutyLabel(member, nowParts){
@@ -590,6 +575,52 @@ function _mbxDutyTone(label){
         node.title = `Current duty: ${dutyText}`;
       });
     }catch(_){ }
+  }
+
+  // --- RENDERING FUNCTIONS (MUST BE DEFINED BEFORE RENDER() CALL) ---
+  
+  function getMyPendingAssignments(table){
+    const me = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser()||{}) : {};
+    const uid = String(me.id||'');
+    if(!uid) return [];
+    return (table.assignments||[])
+      .filter(a => a && a.assigneeId === uid && !a.confirmedAt)
+      .slice(0, 50);
+  }
+
+  function renderMyAssignmentsPanel(table){
+    try{
+      const UI = window.UI;
+      const list = getMyPendingAssignments(table);
+      if(!list.length) return '';
+      const buckets = table.buckets || [];
+      const byId = Object.fromEntries(buckets.map(b=>[b.id,b]));
+      const esc = UI.esc;
+      const items = list.map(a=>{
+        const b = byId[a.bucketId] || {};
+        return `
+        <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:10px; padding:16px; display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; box-shadow:0 4px 12px rgba(245,158,11,0.05);">
+          <div>
+            <div style="font-size:15px; font-weight:900; color:#fcd34d; margin-bottom:4px;">${esc(a.caseNo||'')}</div>
+            <div style="font-size:12px; color:#fbbf24;">${esc(_mbxBucketLabel(b))}${a.desc ? ' • '+esc(a.desc) : ''}</div>
+          </div>
+          <button class="btn-glass btn-glass-action" data-confirm-assign="${esc(a.id)}">Acknowledge ✓</button>
+        </div>`;
+      }).join('');
+      
+      return `
+        <div class="mbx-analytics-panel" style="background:rgba(15,23,42,0.8); border-color:rgba(245,158,11,0.3);">
+          <div class="mbx-panel-head">
+            <div>
+              <h3 class="mbx-panel-title" style="color:#fcd34d;">⚠️ Action Required: My Pending Cases</h3>
+              <div class="mbx-panel-desc" style="color:#fbbf24; opacity:0.8;">Acknowledge tasks assigned to you to update the live matrix.</div>
+            </div>
+            <div class="mbx-ana-badge" style="background:rgba(245,158,11,0.2); color:#fcd34d; font-size:14px; border:1px solid rgba(245,158,11,0.4);">${list.length} Pending</div>
+          </div>
+          <div>${items}</div>
+        </div>
+      `;
+    }catch(_){ return ''; }
   }
 
   function renderTable(table, activeBucketId, totals, interactive){
@@ -656,6 +687,242 @@ function _mbxDutyTone(label){
     `;
   }
 
+  function _mbxFmtDur(ms){
+    ms = Number(ms)||0;
+    if(!Number.isFinite(ms) || ms <= 0) return '—';
+    const s = Math.round(ms/1000);
+    const h = Math.floor(s/3600);
+    const m = Math.floor((s%3600)/60);
+    const ss = s%60;
+    if(h>0) return `${h}h ${m}m`;
+    if(m>0) return `${m}m ${ss}s`;
+    return `${ss}s`;
+  }
+
+  function renderMailboxAnalyticsPanel(table, prevTable, totals, activeBucketId){
+    try{
+      const UI = window.UI;
+      const Store = window.Store;
+      const esc = UI.esc;
+      const users = (Store.getUsers ? Store.getUsers() : []) || [];
+      const byId = Object.fromEntries(users.map(u=>[String(u.id), u]));
+      const shiftTotal = Number(totals?.shiftTotal)||0;
+
+      const roleCounts = {};
+      const assigneeCounts = {};
+      for(const a of (table.assignments||[])){
+        if(!a) continue;
+        const aid = String(a.assigneeId||'');
+        if(!aid) continue;
+        assigneeCounts[aid] = (assigneeCounts[aid]||0) + 1;
+        const r = String(byId[aid]?.role || 'MEMBER');
+        roleCounts[r] = (roleCounts[r]||0) + 1;
+      }
+
+      const roleRows = Object.entries(roleCounts)
+        .sort((a,b)=>b[1]-a[1])
+        .slice(0, 8)
+        .map(([r,c])=>`<div class="mbx-ana-row"><div style="font-weight:600; color:#e2e8f0; font-size:12px;">${esc(r)}</div><div class="mbx-ana-badge">${c}</div></div>`)
+        .join('') || `<div class="small muted">No assignments yet.</div>`;
+
+      const bucketRows = (table.buckets||[]).map(b=>{
+        const c = Number(totals?.colTotals?.[b.id])||0;
+        const isActive = String(b.id) === String(activeBucketId||'');
+        return `<div class="mbx-ana-row">
+          <div style="font-weight:600; color:${isActive ? '#38bdf8' : '#94a3b8'}; font-size:12px;">
+             ${esc(_mbxBucketLabel(b))} ${isActive?' <span style="background:rgba(56,189,248,0.2); color:#7dd3fc; padding:2px 6px; border-radius:4px; font-size:9px; margin-left:6px;">ACTIVE</span>':''}
+          </div>
+          <div class="mbx-ana-badge" style="background:rgba(255,255,255,0.05); color:#e2e8f0;">${c}</div>
+        </div>`;
+      }).join('') || `<div class="small muted">No buckets.</div>`;
+
+      let rtSum = 0, rtN = 0;
+      for(const a of (table.assignments||[])){
+        if(!a || !a.confirmedAt || !a.assignedAt) continue;
+        const dt = Number(a.confirmedAt) - Number(a.assignedAt);
+        if(dt>0 && dt < 7*24*60*60*1000){ rtSum += dt; rtN += 1; }
+      }
+      const avgRT = rtN ? _mbxFmtDur(rtSum/rtN) : '—';
+
+      const top = Object.entries(assigneeCounts).sort((a,b)=>b[1]-a[1]).slice(0, 8);
+      const distRows = top.map(([id,c])=>{
+        const name = byId[id]?.name || byId[id]?.username || id.slice(0,6);
+        const pct = shiftTotal ? Math.round((c/shiftTotal)*100) : 0;
+        const w = Math.max(2, Math.min(100, pct));
+        return `<div style="padding:8px 0;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <div style="font-weight:700; color:#e2e8f0; font-size:12px;">${esc(name)}</div>
+            <div style="font-weight:900; color:#38bdf8; font-size:12px;">${c} <span style="opacity:0.6; font-size:10px;">(${pct}%)</span></div>
+          </div>
+          <div class="mbx-ana-bar-wrap"><div class="mbx-ana-bar-fill" style="width:${w}%"></div></div>
+        </div>`;
+      }).join('') || `<div class="small muted">No distribution yet.</div>`;
+
+      const prevTotal = prevTable ? (computeTotals(prevTable).shiftTotal||0) : 0;
+      const shiftRows = `
+        <div class="mbx-ana-row"><div style="font-weight:600; color:#e2e8f0; font-size:12px;">Current shift</div><div class="mbx-ana-badge" style="background:rgba(16,185,129,0.15); color:#34d399;">${shiftTotal}</div></div>
+        <div class="mbx-ana-row"><div style="font-weight:600; color:#94a3b8; font-size:12px;">Previous shift</div><div class="mbx-ana-badge" style="background:rgba(255,255,255,0.05); color:#94a3b8;">${prevTable ? prevTotal : '—'}</div></div>
+        <div class="mbx-ana-row"><div style="font-weight:600; color:#94a3b8; font-size:12px;">Avg Response</div><div class="mbx-ana-badge" style="background:rgba(255,255,255,0.05); color:#cbd5e1;">${esc(avgRT)}</div></div>
+      `;
+
+      return `
+        <div class="mbx-analytics-grid">
+          <div class="mbx-ana-card">
+            <div style="font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:12px;">Shift Tracking</div>
+            ${shiftRows}
+          </div>
+          <div class="mbx-ana-card">
+            <div style="font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:12px;">Assignments per Role</div>
+            ${roleRows}
+          </div>
+          <div class="mbx-ana-card">
+            <div style="font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:12px;">Top Distribution</div>
+            ${distRows}
+          </div>
+        </div>
+      `;
+    }catch(e){ return ''; }
+  }
+
+  function buildCaseMonitoringMatrix(table, shiftKey){
+    const members = (table.members||[]).slice();
+    const by = {};
+    const memberById = {};
+    for(const m of members){ by[m.id] = []; memberById[m.id] = m; }
+
+    const mergedByCase = new Map();
+    function normalizedCaseKey(assigneeId, caseNo){
+      return `${String(assigneeId||'').trim()}|${String(caseNo||'').trim().toLowerCase()}`;
+    }
+    function upsertMerged(raw){
+      if(!raw) return;
+      const assigneeId = String(raw.assigneeId||'').trim();
+      const caseNo = String(raw.caseNo||raw.title||'').trim();
+      if(!assigneeId || !caseNo || !by[assigneeId]) return;
+      const key = normalizedCaseKey(assigneeId, caseNo);
+      const assignedAt = Number(raw.assignedAt||raw.createdAt||raw.ts||Date.now()) || Date.now();
+      const confirmedAt = Number(raw.confirmedAt||0) || 0;
+      const existing = mergedByCase.get(key);
+      if(!existing){
+        mergedByCase.set(key, {
+          id: String(raw.id || `merged_${assigneeId}_${caseNo}`),
+          caseNo,
+          assigneeId,
+          assignedAt,
+          confirmedAt,
+          assigneeName: String(raw.assigneeName || memberById[assigneeId]?.name || assigneeId || '').slice(0,120)
+        });
+        return;
+      }
+      existing.assignedAt = Math.max(Number(existing.assignedAt||0), assignedAt);
+      existing.confirmedAt = Math.max(Number(existing.confirmedAt||0), confirmedAt);
+      if(String(existing.id||'').startsWith('fallback_') && raw.id){
+        existing.id = String(raw.id);
+      }
+      if(!existing.assigneeName){
+        existing.assigneeName = String(raw.assigneeName || memberById[assigneeId]?.name || assigneeId || '').slice(0,120);
+      }
+    }
+
+    for(const a of (table.assignments||[])) upsertMerged(a);
+
+    try{
+      const Store = window.Store;
+      const allCases = (Store && Store.getCases) ? (Store.getCases()||[]) : [];
+      const key = String(shiftKey||'').trim();
+      for(const c of allCases){
+        if(!c || String(c.shiftKey||'').trim() !== key) continue;
+        upsertMerged({
+          id: String(c.id || ''),
+          caseNo: String(c.caseNo||c.title||'').trim(),
+          assigneeId: String(c.assigneeId||'').trim(),
+          assigneeName: String(c.assigneeName || c.assignee || '').trim(),
+          assignedAt: Number(c.createdAt||c.ts||Date.now()) || Date.now(),
+          confirmedAt: Number(c.confirmedAt||0) || 0
+        });
+      }
+    }catch(_){ }
+
+    for(const a of mergedByCase.values()){
+      if(!a || !by[a.assigneeId]) continue;
+      by[a.assigneeId].push(a);
+    }
+
+    const cols = members.map(m=>{
+      const list = by[m.id] || [];
+      return { id:m.id, name:m.name, count:list.length, list:list.slice().sort((a,b)=>(Number(b.assignedAt||b.ts||0)-Number(a.assignedAt||a.ts||0))) };
+    });
+    cols.sort((a,b)=>{
+      if(a.count !== b.count) return a.count - b.count;
+      return String(a.name||'').localeCompare(String(b.name||''));
+    });
+    const maxLen = Math.max(0, ...cols.map(c=>c.list.length));
+    const rows = [];
+    for(let i=0;i<maxLen;i++){
+      rows.push(cols.map(c=>c.list[i] || null));
+    }
+    return { cols, rows };
+  }
+
+  function renderCaseMonitoring(table, shiftKey){
+    const UI = window.UI;
+    const esc = UI.esc;
+    const m = buildCaseMonitoringMatrix(table, shiftKey);
+    if(!m.cols.length){
+      return `<div style="padding:30px; text-align:center; color:#94a3b8; font-weight:600;">No members found for this shift.</div>`;
+    }
+    const head = `<tr>
+      <th style="width:40px; text-align:center; background:rgba(15,23,42,0.95); position:sticky; top:0; z-index:10; border-bottom:1px solid rgba(255,255,255,0.08); padding:14px 10px; color:#64748b;">#</th>
+      ${m.cols.map(c=>`
+        <th style="background:rgba(15,23,42,0.95); position:sticky; top:0; z-index:10; border-bottom:1px solid rgba(255,255,255,0.08); padding:14px 10px;">
+           <div style="font-weight:800; font-size:12px; color:#e2e8f0; white-space:nowrap;">${esc(c.name)}</div>
+           <div style="font-size:10px; color:#38bdf8; font-weight:900; margin-top:4px;">${c.count} CASES</div>
+        </th>`).join('')}
+    </tr>`;
+
+    const body = m.rows.map((row, idx)=>{
+      const tds = row.map(a=>{
+        if(!a) return `<td style="border:1px solid rgba(255,255,255,0.02); background:transparent;"></td>`;
+        
+        const isConfirmed = !!a.confirmedAt;
+        const cls = isConfirmed ? 'mbx-mon-cell confirmed' : 'mbx-mon-cell';
+        const assignedAt = Number(a.assignedAt||0);
+        const sec = assignedAt ? Math.floor(Math.max(0, Date.now() - assignedAt) / 1000) : 0;
+        const timer = assignedAt ? ((UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`) : '';
+        
+        const statusHtml = isConfirmed
+          ? `<span class="mbx-stat-done" title="Acknowledged">✓</span>`
+          : `<span class="mbx-stat-wait" data-assign-at="${esc(assignedAt)}" title="Pending Acknowledgment (${esc(timer)})">⏳</span>`;
+          
+        const aid = esc(String(a.id||''));
+        const caseNo = esc(String(a.caseNo||''));
+        const ownerId = esc(String(a.assigneeId||''));
+        const ownerName = esc(String(a.assigneeName||''));
+        
+        return `
+          <td class="${cls}" data-case-action="1" data-assignment-id="${aid}" data-case-no="${caseNo}" data-owner-id="${ownerId}" data-owner-name="${ownerName}" title="Double-click to open Action Menu" style="border:1px solid rgba(255,255,255,0.04);">
+             <div class="mbx-case-badge ${isConfirmed ? '' : 'glow'}">
+                <span style="letter-spacing:0.5px;">${caseNo}</span>
+                ${statusHtml}
+             </div>
+          </td>`;
+      }).join('');
+      return `<tr><td style="text-align:center; font-size:11px; font-weight:800; color:#64748b; border:1px solid rgba(255,255,255,0.02);">${idx+1}</td>${tds}</tr>`;
+    }).join('');
+
+    return `
+      <style>
+        .mbx-case-badge.glow { border-color:rgba(245,158,11,0.4); box-shadow:0 0 10px rgba(245,158,11,0.1); }
+      </style>
+      <table class="mbx-mon-table" style="min-width:100%;">
+        <thead>${head}</thead>
+        <tbody>${body || `<tr><td colspan="${m.cols.length+1}" style="padding:40px; text-align:center; color:#64748b; font-weight:600;">No assignments have been distributed yet.</td></tr>`}</tbody>
+      </table>
+    `;
+  }
+
+  // --- ACTIONS ---
+
   let _assignUserId = null;
   let _assignSending = false;
   let _caseActionCtx = null;
@@ -671,12 +938,21 @@ function _mbxDutyTone(label){
     try{ return localStorage.getItem('mums_client_id') || ''; }catch(_){ return ''; }
   }
 
+  function _openCustomModal(id){
+    const m = document.getElementById(id);
+    if(m) m.classList.add('is-open');
+  }
+  function _closeCustomModal(id){
+    const m = document.getElementById(id);
+    if(m) m.classList.remove('is-open');
+  }
+
   function ensureAssignModalMounted(){
     try{
       if(document.getElementById('mbxAssignModal')) return;
       const UI = window.UI;
       const host = document.createElement('div');
-      host.className = 'modal mbx-modal-backdrop';
+      host.className = 'mbx-custom-backdrop'; // ISOLATED CSS
       host.id = 'mbxAssignModal';
       host.innerHTML = `
         <div class="mbx-modal-glass">
@@ -717,10 +993,10 @@ function _mbxDutyTone(label){
       document.body.appendChild(host);
 
       host.querySelectorAll('[data-close="mbxAssignModal"]').forEach(b=>{
-        b.onclick = ()=>{ if(!_assignSending) UI.closeModal('mbxAssignModal'); };
+        b.onclick = ()=>{ if(!_assignSending) _closeCustomModal('mbxAssignModal'); };
       });
       host.addEventListener('click', (e)=>{
-        try{ if(e && e.target === host && !_assignSending) UI.closeModal('mbxAssignModal'); }catch(_){ }
+        try{ if(e && e.target === host && !_assignSending) _closeCustomModal('mbxAssignModal'); }catch(_){ }
       });
     }catch(e){ console.error('Failed to mount Assign modal', e); }
   }
@@ -767,7 +1043,7 @@ function _mbxDutyTone(label){
     if(err){ err.style.display='none'; err.textContent=''; }
 
     UI.el('#mbxSendAssign').onclick = ()=>sendAssignment();
-    UI.openModal('mbxAssignModal');
+    _openCustomModal('mbxAssignModal');
     setTimeout(()=>{ try{ UI.el('#mbxCaseNo').focus(); }catch(_){ } }, 60);
   }
 
@@ -842,7 +1118,7 @@ function _mbxDutyTone(label){
       }catch(_){}
 
       setAssignSubmitting(false);
-      UI.closeModal('mbxAssignModal');
+      _closeCustomModal('mbxAssignModal');
       UI.toast('Case successfully routed.', 'success');
       scheduleRender('assign-success');
     }catch(e){
@@ -871,7 +1147,7 @@ function _mbxDutyTone(label){
       if(document.getElementById('mbxCaseActionModal')) return;
       const UI = window.UI;
       const host = document.createElement('div');
-      host.className = 'modal mbx-modal-backdrop';
+      host.className = 'mbx-custom-backdrop'; // ISOLATED CSS
       host.id = 'mbxCaseActionModal';
       host.innerHTML = `
         <div class="mbx-modal-glass" style="width:min(400px, 90vw);">
@@ -890,10 +1166,10 @@ function _mbxDutyTone(label){
       `;
       document.body.appendChild(host);
       host.querySelectorAll('[data-close="mbxCaseActionModal"]').forEach(b=>{
-        b.onclick = ()=>{ if(!_caseActionBusy) UI.closeModal('mbxCaseActionModal'); };
+        b.onclick = ()=>{ if(!_caseActionBusy) _closeCustomModal('mbxCaseActionModal'); };
       });
       host.addEventListener('click', (e)=>{
-        try{ if(e && e.target === host && !_caseActionBusy) UI.closeModal('mbxCaseActionModal'); }catch(_){ }
+        try{ if(e && e.target === host && !_caseActionBusy) _closeCustomModal('mbxCaseActionModal'); }catch(_){ }
       });
       const reassignBtn = host.querySelector('#mbxActionReassign');
       if(reassignBtn) reassignBtn.onclick = ()=>openReassignModal();
@@ -907,7 +1183,7 @@ function _mbxDutyTone(label){
       if(document.getElementById('mbxReassignModal')) return;
       const UI = window.UI;
       const host = document.createElement('div');
-      host.className = 'modal mbx-modal-backdrop';
+      host.className = 'mbx-custom-backdrop'; // ISOLATED CSS
       host.id = 'mbxReassignModal';
       host.innerHTML = `
         <div class="mbx-modal-glass" style="width:min(500px, 95vw);">
@@ -941,10 +1217,10 @@ function _mbxDutyTone(label){
       `;
       document.body.appendChild(host);
       host.querySelectorAll('[data-close="mbxReassignModal"]').forEach(b=>{
-        b.onclick = ()=>{ if(!_reassignBusy) UI.closeModal('mbxReassignModal'); };
+        b.onclick = ()=>{ if(!_reassignBusy) _closeCustomModal('mbxReassignModal'); };
       });
       host.addEventListener('click', (e)=>{
-        try{ if(e && e.target === host && !_reassignBusy) UI.closeModal('mbxReassignModal'); }catch(_){ }
+        try{ if(e && e.target === host && !_reassignBusy) _closeCustomModal('mbxReassignModal'); }catch(_){ }
       });
       const submit = host.querySelector('#mbxReassignSubmit');
       if(submit) submit.onclick = ()=>submitReassign();
@@ -967,7 +1243,7 @@ function _mbxDutyTone(label){
     };
     const meta = UI.el('#mbxCaseActionMeta');
     if(meta) meta.innerHTML = `Case: <span style="color:#f8fafc;">${_caseActionCtx.caseNo}</span><br><span style="font-size:12px; color:#94a3b8; font-weight:600;">Owner: ${_caseActionCtx.ownerName}</span>`;
-    UI.openModal('mbxCaseActionModal');
+    _openCustomModal('mbxCaseActionModal');
   }
 
   function openReassignModal(){
@@ -993,8 +1269,8 @@ function _mbxDutyTone(label){
         : '<option value="">No eligible member found in team</option>';
     }
 
-    UI.closeModal('mbxCaseActionModal');
-    UI.openModal('mbxReassignModal');
+    _closeCustomModal('mbxCaseActionModal');
+    _openCustomModal('mbxReassignModal');
   }
 
   async function submitReassign(){
@@ -1038,7 +1314,7 @@ function _mbxDutyTone(label){
       }
 
       try{ if(data.table && Store.saveMailboxTable) Store.saveMailboxTable(ctx.shiftKey, data.table, { fromRealtime:true }); }catch(_){ }
-      UI.closeModal('mbxReassignModal');
+      _closeCustomModal('mbxReassignModal');
       UI.toast(`Case ${ctx.caseNo} successfully transferred.`, 'success');
       scheduleRender('case-reassign-success');
     }catch(e){
@@ -1085,13 +1361,59 @@ function _mbxDutyTone(label){
       }
 
       try{ if(data.table && Store.saveMailboxTable) Store.saveMailboxTable(ctx.shiftKey, data.table, { fromRealtime:true }); }catch(_){ }
-      UI.closeModal('mbxCaseActionModal');
+      _closeCustomModal('mbxCaseActionModal');
       UI.toast(`Case ${ctx.caseNo} deleted from records.`, 'success');
       scheduleRender('case-delete-success');
     }catch(e){
       UI.toast(String(e?.message||e), 'warn');
     }finally{
       _caseActionBusy = false;
+    }
+  }
+
+  async function confirmAssignment(shiftKey, assignmentId){
+    const UI = window.UI;
+    const Store = window.Store;
+    const me = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser()||{}) : {};
+    const uid = String(me.id||'');
+    if(!uid) return;
+
+    const table = (Store && Store.getMailboxTable ? Store.getMailboxTable(shiftKey) : null);
+    const a = table && Array.isArray(table.assignments) ? table.assignments.find(x=>x && x.id===assignmentId) : null;
+    if(!a) return;
+    if(String(a.assigneeId||'') !== uid){
+      UI.toast('You can only confirm your own assigned cases.', 'warn');
+      return;
+    }
+    if(a.confirmedAt) return;
+
+    try{
+      const { res, data } = await mbxPost('/api/mailbox/confirm', {
+        shiftKey,
+        assignmentId,
+        clientId: _mbxClientId() || undefined
+      });
+
+      if(res.status === 401){
+        UI.toast('Session expired. Please log in again.', 'warn');
+        try{ window.Auth && window.Auth.forceLogout && window.Auth.forceLogout('Session expired. Please log in again.'); }catch(_){}
+        return;
+      }
+
+      if(!res.ok || !data || !data.ok){
+        const msg = (data && (data.message || data.error)) ? String(data.message||data.error) : `Failed (${res.status})`;
+        UI.toast(msg, 'warn');
+        return;
+      }
+
+      try{
+        if(data.table && Store.saveMailboxTable) Store.saveMailboxTable(shiftKey, data.table, { fromRealtime:true });
+      }catch(_){}
+
+      UI.toast('Case confirmed.');
+      scheduleRender('confirm-success');
+    }catch(e){
+      UI.toast('Confirm failed: ' + String(e?.message||e), 'warn');
     }
   }
 
@@ -1220,156 +1542,7 @@ function _mbxDutyTone(label){
     w.document.close();
   }
 
-  let _timer = null;
-  let _inTick = false;
-  let _renderPending = false;
-  let _lastActiveBucketId = '';
-
-  function scheduleRender(reason){
-    if(!isMailboxRouteActive()) return;
-    if(_renderPending) return;
-    _renderPending = true;
-    const run = ()=>{
-      _renderPending = false;
-      try{ render(); }catch(e){ console.error('Mailbox scheduled render failed', reason, e); }
-    };
-    try{ requestAnimationFrame(run); }catch(_){ setTimeout(run, 0); }
-  }
-
-  const onMailboxStoreEvent = (e)=>{
-    try{
-      const k = e && e.detail ? String(e.detail.key||'') : '';
-      if(
-        k === 'mailbox_override_cloud' || k === 'mailbox_time_override' ||
-        k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override' ||
-        k === 'mums_mailbox_tables' || k === 'mums_mailbox_state' ||
-        k === 'ums_weekly_schedules' || k === 'mums_schedule_blocks' ||
-        k === 'ums_users' || k === 'mums_team_config' ||
-        k === 'ums_activity_logs' || k === 'ums_cases'
-      ){
-        scheduleRender('mailbox-sync');
-      }
-    }catch(_){ }
-  };
-
-  const onMailboxStorageEvent = (e)=>{
-    try{
-      if(!e || e.storageArea !== localStorage) return;
-      const k = String(e.key||'');
-      if(
-        k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override' ||
-        k === 'mums_mailbox_tables' || k === 'mums_mailbox_state' ||
-        k === 'ums_weekly_schedules' || k === 'mums_schedule_blocks' || k === 'ums_users' ||
-        k === 'mums_team_config' || k === 'ums_activity_logs' || k === 'ums_cases'
-      ){
-        try{
-          if(k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override'){
-            if(window.Store && window.Store.startMailboxOverrideSync) window.Store.startMailboxOverrideSync({ force:true });
-          }
-        }catch(_){ }
-        scheduleRender('storage-sync');
-      }
-    }catch(_){ }
-  };
-
-  function startTimerLoop(){
-    try{ if(_timer) clearInterval(_timer); }catch(_){}
-    const tick = ()=>{
-      if(_inTick) return;
-      _inTick = true;
-      try{
-      const d = getDuty();
-      const UI = window.UI;
-      const el = UI.el('#dutyTimer');
-      if(el) el.textContent = UI.formatDuration(d.secLeft);
-
-      const curLbl = UI.el('#mbCurDutyLbl');
-      if(curLbl) curLbl.textContent = d.current.label;
-
-      try{
-        const me = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser()||{}) : {};
-        const isSA = (me.role === (window.Config&&window.Config.ROLES?window.Config.ROLES.SUPER_ADMIN:'SUPER_ADMIN'));
-        const ov = (window.Store && window.Store.getMailboxTimeOverride) ? window.Store.getMailboxTimeOverride() : null;
-        const scope = ov ? String(ov.scope||'') : '';
-        const validMs = !!(ov && ov.enabled && Number.isFinite(Number(ov.ms)) && Number(ov.ms) > 0);
-        const visible = !!(validMs && (scope === 'global' || isSA));
-        const pill = UI.el('#mbOverridePill');
-        const note = UI.el('#mbOverrideNote');
-
-        if(pill){
-          pill.textContent = (scope === 'global') ? 'GLOBAL OVERRIDE' : 'OVERRIDE';
-          pill.style.display = visible ? 'inline-flex' : 'none';
-        }
-        if(note){
-          if(visible && scope === 'global'){
-            let eff = validMs ? Number(ov.ms) : 0;
-            if(!ov.freeze){
-              const setAt = Number(ov.setAt)||Date.now();
-              eff = eff + Math.max(0, Date.now() - setAt);
-            }
-            const p = UI.manilaParts(new Date(eff || Date.now()));
-            const pad = (n)=>String(n).padStart(2,'0');
-            note.textContent = `Global Override Active — Effective Mailbox Time: ${pad(p.hh)}:${pad(p.mm)}:${pad(p.ss)}`;
-            note.style.display = 'block';
-          } else {
-            note.textContent = 'Countdown is in override mode';
-            note.style.display = visible ? 'block' : 'none';
-          }
-        }
-      }catch(_){ }
-
-      try{
-        refreshMemberDutyPills(root);
-        const timerEls = root.querySelectorAll('[data-assign-at]');
-        if(timerEls && timerEls.length){
-          const now = Date.now();
-          timerEls.forEach(el=>{
-            const ts = Number(el.getAttribute('data-assign-at')||0);
-            if(!ts) return;
-            const sec = Math.floor(Math.max(0, now - ts) / 1000);
-            const label = (UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`;
-            el.setAttribute('title', label);
-          });
-        }
-      }catch(_){ }
-
-      const { state } = ensureShiftTables();
-      try{
-        const { table } = ensureShiftTables();
-        const active = computeActiveBucketId(table);
-        const idxMap = {};
-        (table.buckets||[]).forEach((b,i)=>idxMap[b.id]=i);
-        const activeIdx = idxMap[active];
-        root.querySelectorAll('.mbx-counter-table th.active-head-col').forEach(n=>n.classList.remove('active-head-col'));
-        if(activeIdx !== undefined){
-          const timeHeads = root.querySelectorAll('.mbx-counter-table thead tr:last-child th');
-          if(timeHeads && timeHeads[activeIdx + 2]) timeHeads[activeIdx + 2].classList.add('active-head-col');
-        }
-      }catch(_){ }
-
-      const Store = window.Store;
-      const curKey = (Store && Store.getMailboxState ? Store.getMailboxState().currentKey : '');
-      if(curKey && root._lastShiftKey && curKey !== root._lastShiftKey){
-        scheduleRender('shift-change');
-      }
-      root._lastShiftKey = curKey || root._lastShiftKey;
-
-      try{
-        const t = (Store && Store.getMailboxTable && curKey) ? Store.getMailboxTable(curKey) : null;
-        const bid = t ? computeActiveBucketId(t) : '';
-        if(bid && bid !== _lastActiveBucketId){
-          _lastActiveBucketId = bid;
-          scheduleRender('active-bucket-change');
-        }
-      }catch(_){ }
-
-      }finally{
-        _inTick = false;
-      }
-    };
-    tick();
-    _timer = setInterval(()=>{ try{ tick(); }catch(e){ console.error('Mailbox tick', e); } }, 1000);
-  }
+  // --- RENDER (MAIN UI) ---
 
   function render(){
     const UI = window.UI;
@@ -1402,8 +1575,8 @@ function _mbxDutyTone(label){
       }catch(_){ return ''; }
     })();
 
-    const showAnalytics = root._uiState.showAnalytics;
-    const showArchive = root._uiState.showArchive;
+    const showAnalytics = window.__mbxUiState.showAnalytics;
+    const showArchive = window.__mbxUiState.showArchive;
 
     root.innerHTML = `
       <div class="mbx-shell">
@@ -1522,7 +1695,7 @@ function _mbxDutyTone(label){
     if(tBtn){
       tBtn.disabled = !prevTable;
       tBtn.onclick = ()=>{
-        root._uiState.showArchive = !root._uiState.showArchive;
+        window.__mbxUiState.showArchive = !window.__mbxUiState.showArchive;
         render();
       };
     }
@@ -1530,7 +1703,7 @@ function _mbxDutyTone(label){
     const aBtn = UI && UI.el ? UI.el('#mbxToggleAnalytics') : null;
     if(aBtn){
       aBtn.onclick = () => {
-        root._uiState.showAnalytics = !root._uiState.showAnalytics;
+        window.__mbxUiState.showAnalytics = !window.__mbxUiState.showAnalytics;
         render();
       };
     }
@@ -1594,6 +1767,157 @@ function _mbxDutyTone(label){
     }
 
     startTimerLoop();
+  }
+
+  let _timer = null;
+  let _inTick = false;
+  let _renderPending = false;
+  let _lastActiveBucketId = '';
+
+  function scheduleRender(reason){
+    if(!isMailboxRouteActive()) return;
+    if(_renderPending) return;
+    _renderPending = true;
+    const run = ()=>{
+      _renderPending = false;
+      try{ render(); }catch(e){ console.error('Mailbox scheduled render failed', reason, e); }
+    };
+    try{ requestAnimationFrame(run); }catch(_){ setTimeout(run, 0); }
+  }
+
+  const onMailboxStoreEvent = (e)=>{
+    try{
+      const k = e && e.detail ? String(e.detail.key||'') : '';
+      if(
+        k === 'mailbox_override_cloud' || k === 'mailbox_time_override' ||
+        k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override' ||
+        k === 'mums_mailbox_tables' || k === 'mums_mailbox_state' ||
+        k === 'ums_weekly_schedules' || k === 'mums_schedule_blocks' ||
+        k === 'ums_users' || k === 'mums_team_config' ||
+        k === 'ums_activity_logs' || k === 'ums_cases'
+      ){
+        scheduleRender('mailbox-sync');
+      }
+    }catch(_){ }
+  };
+
+  const onMailboxStorageEvent = (e)=>{
+    try{
+      if(!e || e.storageArea !== localStorage) return;
+      const k = String(e.key||'');
+      if(
+        k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override' ||
+        k === 'mums_mailbox_tables' || k === 'mums_mailbox_state' ||
+        k === 'ums_weekly_schedules' || k === 'mums_schedule_blocks' || k === 'ums_users' ||
+        k === 'mums_team_config' || k === 'ums_activity_logs' || k === 'ums_cases'
+      ){
+        try{
+          if(k === 'mums_mailbox_time_override_cloud' || k === 'mums_mailbox_time_override'){
+            if(window.Store && window.Store.startMailboxOverrideSync) window.Store.startMailboxOverrideSync({ force:true });
+          }
+        }catch(_){ }
+        scheduleRender('storage-sync');
+      }
+    }catch(_){ }
+  };
+
+  function startTimerLoop(){
+    try{ if(_timer) clearInterval(_timer); }catch(_){}
+    const tick = ()=>{
+      if(_inTick) return;
+      _inTick = true;
+      try{
+      const d = getDuty();
+      const UI = window.UI;
+      const el = UI && UI.el ? UI.el('#dutyTimer') : null;
+      if(el) el.textContent = UI.formatDuration(d.secLeft);
+
+      const curLbl = UI && UI.el ? UI.el('#mbCurDutyLbl') : null;
+      if(curLbl) curLbl.textContent = d.current.label;
+
+      try{
+        const me = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser()||{}) : {};
+        const isSA = (me.role === (window.Config&&window.Config.ROLES?window.Config.ROLES.SUPER_ADMIN:'SUPER_ADMIN'));
+        const ov = (window.Store && window.Store.getMailboxTimeOverride) ? window.Store.getMailboxTimeOverride() : null;
+        const scope = ov ? String(ov.scope||'') : '';
+        const validMs = !!(ov && ov.enabled && Number.isFinite(Number(ov.ms)) && Number(ov.ms) > 0);
+        const visible = !!(validMs && (scope === 'global' || isSA));
+        const pill = UI && UI.el ? UI.el('#mbOverridePill') : null;
+        const note = UI && UI.el ? UI.el('#mbOverrideNote') : null;
+
+        if(pill){
+          pill.textContent = (scope === 'global') ? 'GLOBAL OVERRIDE' : 'OVERRIDE';
+          pill.style.display = visible ? 'inline-flex' : 'none';
+        }
+        if(note){
+          if(visible && scope === 'global'){
+            let eff = validMs ? Number(ov.ms) : 0;
+            if(!ov.freeze){
+              const setAt = Number(ov.setAt)||Date.now();
+              eff = eff + Math.max(0, Date.now() - setAt);
+            }
+            const p = UI.manilaParts(new Date(eff || Date.now()));
+            const pad = (n)=>String(n).padStart(2,'0');
+            note.textContent = `Global Override Active — Effective Mailbox Time: ${pad(p.hh)}:${pad(p.mm)}:${pad(p.ss)}`;
+            note.style.display = 'block';
+          } else {
+            note.textContent = 'Countdown is in override mode';
+            note.style.display = visible ? 'block' : 'none';
+          }
+        }
+      }catch(_){ }
+
+      try{
+        refreshMemberDutyPills(root);
+        const timerEls = root.querySelectorAll('[data-assign-at]');
+        if(timerEls && timerEls.length){
+          const now = Date.now();
+          timerEls.forEach(el=>{
+            const ts = Number(el.getAttribute('data-assign-at')||0);
+            if(!ts) return;
+            const sec = Math.floor(Math.max(0, now - ts) / 1000);
+            const label = (UI && UI.formatDuration) ? UI.formatDuration(sec) : `${sec}s`;
+            el.setAttribute('title', label);
+          });
+        }
+      }catch(_){ }
+
+      const { state } = ensureShiftTables();
+      try{
+        const { table } = ensureShiftTables();
+        const active = computeActiveBucketId(table);
+        const idxMap = {};
+        (table.buckets||[]).forEach((b,i)=>idxMap[b.id]=i);
+        const activeIdx = idxMap[active];
+        root.querySelectorAll('.mbx-counter-table th.active-head-col').forEach(n=>n.classList.remove('active-head-col'));
+        if(activeIdx !== undefined){
+          const timeHeads = root.querySelectorAll('.mbx-counter-table thead tr:last-child th');
+          if(timeHeads && timeHeads[activeIdx + 2]) timeHeads[activeIdx + 2].classList.add('active-head-col');
+        }
+      }catch(_){ }
+
+      const Store = window.Store;
+      const curKey = (Store && Store.getMailboxState ? Store.getMailboxState().currentKey : '');
+      if(curKey && root._lastShiftKey && curKey !== root._lastShiftKey){
+        scheduleRender('shift-change');
+      }
+      root._lastShiftKey = curKey || root._lastShiftKey;
+
+      try{
+        const t = (Store && Store.getMailboxTable && curKey) ? Store.getMailboxTable(curKey) : null;
+        const bid = t ? computeActiveBucketId(t) : '';
+        if(bid && bid !== _lastActiveBucketId){
+          _lastActiveBucketId = bid;
+          scheduleRender('active-bucket-change');
+        }
+      }catch(_){ }
+
+      }finally{
+        _inTick = false;
+      }
+    };
+    tick();
+    _timer = setInterval(()=>{ try{ tick(); }catch(e){ console.error('Mailbox tick', e); } }, 1000);
   }
 
   // BOOT THE PAGE
