@@ -565,8 +565,8 @@
     // ENTERPRISE UPGRADE: DYNAMIC AUTO-ASSIGN WIZARD HTML
     let autoAssignModalHtml = '';
     if (state.autoAssign.open) {
-       // Extract unique teams/shifts dynamically from available members
-       const extractedTeams = [...new Set(state.members.map(m => m.team_name || m.team || m.shift || '').filter(Boolean))];
+       // Extract unique teams/shifts dynamically from available members using member.duty (prioritized)
+       const extractedTeams = [...new Set(state.members.map(m => m.duty || m.team_name || m.team || m.shift || '').filter(Boolean))];
        const teamOptionsHtml = extractedTeams.map(t => `<option value="${esc(t)}" ${state.autoAssign.group === t ? 'selected' : ''}>${esc(t)}</option>`).join('');
 
        autoAssignModalHtml = `
@@ -586,7 +586,7 @@
                </div>
 
                <div class="glass-card" style="padding:20px;">
-                 <label class="premium-label" style="margin-bottom:8px;">1. Select Target Group</label>
+                 <label class="premium-label" style="margin-bottom:8px;">1. Select Target Group (Shift/Team)</label>
                  <select class="premium-input" id="autoAssignGroupSelect" style="margin-bottom:16px;">
                    <option value="ALL" ${state.autoAssign.group === 'ALL' ? 'selected' : ''}>All Available Members</option>
                    ${teamOptionsHtml}
@@ -1230,7 +1230,7 @@
         const eligible = state.members.filter(m => {
           // Team filter
           if (targetGroup !== 'ALL') {
-            const mTeam = m.team_name || m.team || m.shift || '';
+            const mTeam = m.duty || m.team_name || m.team || m.shift || '';
             if (mTeam !== targetGroup) return false;
           }
           // Lead filter
