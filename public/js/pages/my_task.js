@@ -483,7 +483,6 @@
   function renderModal() {
     const hasData = state.parsedRows.length > 0;
     
-    // ENTERPRISE UPGRADE: Analytics Engine
     let totalReady = 0;
     let totalNeedsFix = 0;
     const assigneeCounts = {};
@@ -622,41 +621,41 @@
                     <tbody>
                       ${state.parsedRows.map((row, idx) => {
                         const invalid = !row.assigned_to;
-                        return \`
-                          <tr class="\${invalid ? 'task-invalid' : ''}">
+                        return `
+                          <tr class="${invalid ? 'task-invalid' : ''}">
                             <td>
-                              <div style="font-weight:700; color:#f8fafc; font-size:14px; margin-bottom:4px;">\${esc(safeText(row.case_number, 'N/A'))}</div>
-                              <div class="task-meta" style="font-size:11px; max-width:400px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="\${esc(row.description)}">
-                                <span style="color:#38bdf8; opacity:0.8;">Payload:</span> \${esc(row.description)}
+                              <div style="font-weight:700; color:#f8fafc; font-size:14px; margin-bottom:4px;">${esc(safeText(row.case_number, 'N/A'))}</div>
+                              <div class="task-meta" style="font-size:11px; max-width:400px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(row.description)}">
+                                <span style="color:#38bdf8; opacity:0.8;">Payload:</span> ${esc(row.description)}
                               </div>
                             </td>
                             <td>
-                              <div style="font-weight:600; font-size:12px; color:\${invalid ? '#ef4444' : '#94a3b8'}; margin-bottom:4px;">
-                                Extracted: "\${esc(safeText(row.assigned_name, 'Unknown'))}"
+                              <div style="font-weight:600; font-size:12px; color:${invalid ? '#ef4444' : '#94a3b8'}; margin-bottom:4px;">
+                                Extracted: "${esc(safeText(row.assigned_name, 'Unknown'))}"
                               </div>
-                              <select class="premium-input" data-assignee-fix="\${idx}" style="padding:6px; font-size:12px; background:rgba(15,23,42,0.8);">
+                              <select class="premium-input" data-assignee-fix="${idx}" style="padding:6px; font-size:12px; background:rgba(15,23,42,0.8);">
                                 <option value="">-- Resolve Member --</option>
-                                \${state.members.map((m) => \`<option value="\${esc(m.user_id)}" \${String(row.assigned_to) === String(m.user_id) ? 'selected' : ''}>\${esc(m.name || m.username || m.user_id)}</option>\`).join('')}
+                                ${state.members.map((m) => `<option value="${esc(m.user_id)}" ${String(row.assigned_to) === String(m.user_id) ? 'selected' : ''}>${esc(m.name || m.username || m.user_id)}</option>`).join('')}
                               </select>
                             </td>
                             <td style="text-align:center;">
-                              \${invalid 
+                              ${invalid 
                                 ? '<div style="background:rgba(239,68,68,0.2); color:#fca5a5; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid rgba(239,68,68,0.3);">NEEDS FIX</div>' 
                                 : '<div style="background:rgba(34,197,94,0.2); color:#86efac; padding:4px 8px; border-radius:4px; font-size:11px; font-weight:700; border:1px solid rgba(34,197,94,0.3);">READY</div>'}
                             </td>
                           </tr>
-                        \`;
+                        `;
                       }).join('')}
                     </tbody>
                   </table>
                 </div>
                 
-                ${totalNeedsFix > 0 ? \`
+                ${totalNeedsFix > 0 ? `
                   <div style="display:flex; align-items:center; gap:8px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:10px 14px; margin-top:16px;">
                     <span style="font-size:18px;">⚠️</span>
-                    <div style="color:#fcd34d; font-size:13px; font-weight:600;">Action Required: Please resolve \${totalNeedsFix} unmatched member(s) to enable submission.</div>
+                    <div style="color:#fcd34d; font-size:13px; font-weight:600;">Action Required: Please resolve ${totalNeedsFix} unmatched member(s) to enable submission.</div>
                   </div>
-                \` : ''}
+                ` : ''}
               `}
               
             </div>
@@ -664,7 +663,7 @@
 
           <div class="modal-header-glass" style="border-top: 1px solid rgba(255,255,255,0.06); border-bottom:none; justify-content:space-between; top:auto; bottom:0;">
             <div class="task-meta">
-              ${canSubmit ? \`<span style="color:#86efac; font-weight:700;">✓ Ready to deploy \${state.parsedRows.length} tasks</span>\` : 'Complete all mandatory fields (Title, Deadline) and resolve members to continue.'}
+              ${canSubmit ? `<span style="color:#86efac; font-weight:700;">✓ Ready to deploy ${state.parsedRows.length} tasks</span>` : 'Complete all mandatory fields (Title, Deadline) and resolve members to continue.'}
             </div>
             <div style="display:flex; gap:12px;">
               <button class="btn-glass btn-glass-ghost" type="button" id="cancelDistributionCreate">Cancel</button>
