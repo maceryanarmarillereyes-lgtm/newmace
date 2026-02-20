@@ -247,19 +247,20 @@
       .task-modal-glass::-webkit-scrollbar-track, .glass-table-container::-webkit-scrollbar-track, .modal-body-scroll::-webkit-scrollbar-track { background: transparent; }
       .task-modal-glass::-webkit-scrollbar-thumb, .glass-table-container::-webkit-scrollbar-thumb, .modal-body-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 10px; }
       .task-modal-glass::-webkit-scrollbar-thumb:hover, .glass-table-container::-webkit-scrollbar-thumb:hover, .modal-body-scroll::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
-      .task-modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.8);backdrop-filter:blur(8px);z-index:14060;display:flex;align-items:center;justify-content:center;padding:20px;overflow:hidden;}
+      .task-modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.85);backdrop-filter:blur(10px);z-index:14060;display:flex;align-items:center;justify-content:center;padding:20px;overflow:hidden;}
       
       .task-modal-glass{
         width:min(1100px,100%); max-height:94vh; overflow:hidden;
-        background:linear-gradient(145deg, rgba(15,23,42,0.95) 0%, rgba(2,6,23,0.98) 100%);
+        background:linear-gradient(145deg, rgba(15,23,42,0.98) 0%, rgba(2,6,23,0.99) 100%);
         border:1px solid rgba(148,163,184,.2); border-radius:16px; 
         box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.1);
         display:flex; flex-direction:column; transition: all 0.3s ease;
       }
 
-      /* ENTERPRISE: Fullscreen Mode Classes */
-      .task-modal-glass.is-fullscreen { width: 98vw !important; height: 98vh !important; max-height: 98vh !important; border-radius:8px; }
-      .task-modal-glass.is-fullscreen .glass-table-container { max-height: calc(100vh - 400px) !important; }
+      /* ENTERPRISE: Fullscreen Mode UI Overhaul */
+      .task-modal-glass.is-fullscreen { width: 98vw !important; height: 98vh !important; max-height: 98vh !important; border-radius:10px; }
+      .task-modal-glass.is-fullscreen .modal-body-scroll { padding: 20px 30px; }
+      .task-modal-glass.is-fullscreen .glass-table-container { flex: 1; max-height: none !important; margin-bottom: 0; }
       
       .modal-header-glass {
         padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -307,13 +308,18 @@
       }
       .upload-icon { font-size:32px; margin-bottom:12px; opacity:0.8; }
       
-      .stat-box { background: rgba(15,23,42,0.6); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 4px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.02); }
-      .stat-label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
-      .stat-value { font-size: 26px; font-weight: 900; color: #f8fafc; line-height: 1; letter-spacing: -1px; }
+      /* ENTERPRISE UPGRADE: Compact Flex Stats Layout */
+      .stat-container { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+      .stat-box { flex: 1; min-width: 180px; max-width: 250px; background: linear-gradient(145deg, rgba(30,41,59,0.5), rgba(15,23,42,0.8)); padding: 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 6px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 4px 6px -1px rgba(0,0,0,0.1); }
+      .stat-label { font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+      .stat-value { font-size: 28px; font-weight: 900; color: #f8fafc; line-height: 1; letter-spacing: -1px; }
 
-      .glass-table-container { border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; overflow-y: auto; background: rgba(2,6,23,0.4); max-height: 380px; transition: max-height 0.3s; }
+      /* ENTERPRISE UPGRADE: Command Toolbar */
+      .enterprise-toolbar { display:flex; justify-content:space-between; align-items:center; background:linear-gradient(90deg, rgba(15,23,42,0.8), rgba(2,6,23,0.6)); padding:12px 18px; border-radius:10px; border:1px solid rgba(255,255,255,0.06); margin-bottom:16px; flex-wrap:wrap; gap:12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+
+      .glass-table-container { border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; overflow-y: auto; background: rgba(2,6,23,0.5); max-height: 380px; transition: all 0.3s ease; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2); }
       .glass-table-container table { width:100%; border-collapse:collapse; }
-      .glass-table-container th { background: rgba(15,23,42,0.9); color:#cbd5e1; font-weight:600; text-transform:uppercase; font-size:11px; letter-spacing:0.5px; padding:12px; border-bottom:1px solid rgba(255,255,255,0.05); position:sticky; top:0; z-index:5; backdrop-filter:blur(4px); }
+      .glass-table-container th { background: rgba(15,23,42,0.95); color:#cbd5e1; font-weight:700; text-transform:uppercase; font-size:11px; letter-spacing:0.5px; padding:14px 12px; border-bottom:1px solid rgba(255,255,255,0.08); position:sticky; top:0; z-index:5; backdrop-filter:blur(8px); }
       .glass-table-container td { padding:12px; border-bottom:1px solid rgba(255,255,255,0.02); font-size:13px; vertical-align:middle; }
       .glass-table-container tr:last-child td { border-bottom:none; }
       .glass-table-container tr:hover { background: rgba(255,255,255,0.03); }
@@ -560,12 +566,9 @@
       `;
     }
 
-    // ENTERPRISE UPGRADE: Deep-Search Shotgun Extractor
     let autoAssignModalHtml = '';
     if (state.autoAssign.open) {
-       
        const extractedTeams = [...new Set(state.members.map(m => {
-           // Shotgun strategy to find the team/shift property
            let t = m.duty || m.shift || m.team_name || m.team || m.team_id || m.department;
            if (!t && m.teams) t = m.teams.duty || m.teams.name || m.teams.shift;
            if (!t && m.user_metadata) t = m.user_metadata.duty || m.user_metadata.shift;
@@ -641,7 +644,7 @@
               <span style="color:#38bdf8; opacity:0.8;">Payload:</span> ${esc(row.description)}
             </div>
           </td>
-          <td>
+          <td style="width:240px;">
             <div style="font-weight:600; font-size:12px; color:${invalid ? '#ef4444' : '#94a3b8'}; margin-bottom:4px;">
               Extracted: "${esc(safeText(row.assigned_name, 'Unknown'))}"
             </div>
@@ -650,7 +653,7 @@
               ${optionsHtml}
             </select>
           </td>
-          <td style="text-align:center;">${badgeHtml}</td>
+          <td style="width:120px; text-align:center;">${badgeHtml}</td>
         </tr>
       `;
     }).join('');
@@ -702,7 +705,7 @@
               </label>
             </div>
 
-            <div class="glass-card" style="margin-bottom:0; display:flex; flex-direction:column; ${state.isFullscreen ? 'height:100%;' : ''}">
+            <div class="glass-card" style="margin-bottom:0; display:flex; flex-direction:column; padding: ${state.isFullscreen ? '0' : '20px'}; border: ${state.isFullscreen ? 'none' : ''}; background: ${state.isFullscreen ? 'transparent' : ''}; ${state.isFullscreen ? 'flex:1; height:100%; overflow:hidden;' : ''}">
               
               <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
                 <div style="display:flex; align-items:center; gap:10px;">
@@ -713,7 +716,7 @@
                 <div style="display:flex; gap:8px;">
                   ${hasData ? `
                     <button class="btn-glass btn-glass-ghost" type="button" id="btnToggleFullscreen" style="font-size:11px; padding:6px 12px; color:#38bdf8; border-color:rgba(56,189,248,0.3);">
-                      ${state.isFullscreen ? '↙️ Collapse View' : '↗️ Fullscreen Table'}
+                      ${state.isFullscreen ? '↙️ Exit Fullscreen' : '↗️ Fullscreen View'}
                     </button>
                     <button class="btn-glass btn-glass-ghost" type="button" id="btnReplaceFile" style="font-size:11px; padding:6px 12px; border:1px solid rgba(239,68,68,0.3); color:#fca5a5;">🗑️ Discard & Reupload</button>
                   ` : ''}
@@ -733,7 +736,7 @@
                   ${state.parseError ? `<div style="color:#ef4444;margin-top:16px;font-size:13px;font-weight:bold;background:rgba(239,68,68,0.1);padding:8px;border-radius:4px;">⚠️ ${esc(state.parseError)}</div>` : ''}
                 </div>
               ` : `
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:12px; margin-bottom:16px;">
+                <div class="stat-container">
                   <div class="stat-box" style="border-left: 3px solid #38bdf8;">
                     <div class="stat-label">Total Rows</div>
                     <div class="stat-value">${state.parsedRows.length}</div>
@@ -748,10 +751,9 @@
                   </div>
                 </div>
 
-                <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(2,6,23,0.4); padding:14px; border-radius:8px; border:1px solid rgba(255,255,255,0.05); margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                <div class="enterprise-toolbar">
                   <div style="font-size:12px; color:#94a3b8;"><strong style="color:#e2e8f0;">${assigneeStats.length}</strong> members mapped. Balance the distribution to prevent burnout.</div>
-                  
-                  <div style="display:flex; gap:10px;">
+                  <div style="display:flex; gap:10px; flex-wrap:wrap;">
                      <button class="btn-glass btn-glass-primary" type="button" id="btnOpenAutoAssign" style="padding:6px 14px; font-size:12px; background:linear-gradient(145deg, #8b5cf6, #d97706); border:none; box-shadow: 0 4px 12px rgba(245,158,11,0.3);">
                        ✨ Auto-Assign Wizard
                      </button>
@@ -766,8 +768,8 @@
                     <thead>
                       <tr>
                         <th>Task Reference & Data Summary</th>
-                        <th style="width:220px;">Assignee Matching</th>
-                        <th style="width:100px; text-align:center;">Status</th>
+                        <th style="width:240px;">Assignee Matching</th>
+                        <th style="width:120px; text-align:center;">Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1228,7 +1230,6 @@
     if (el('#executeAutoAssign')) {
       el('#executeAutoAssign').onclick = () => {
         
-        // Dynamic Lead Checker (checks role strings)
         const isLead = (m) => {
           const roleStr = String(m.role || m.user_role || m.designation || '').toLowerCase();
           return roleStr.includes('lead') || roleStr.includes('manager') || roleStr.includes('supervisor') || roleStr.includes('admin');
@@ -1237,9 +1238,7 @@
         const targetGroup = state.autoAssign.group;
         const includeLead = state.autoAssign.includeLead;
 
-        // Filter eligible members using the same shotgun strategy
         const eligible = state.members.filter(m => {
-          // Team filter
           if (targetGroup !== 'ALL') {
             let mTeam = m.duty || m.shift || m.team_name || m.team || m.team_id || m.department;
             if (!mTeam && m.teams) mTeam = m.teams.duty || m.teams.name || m.teams.shift;
@@ -1247,9 +1246,7 @@
             
             if (String(mTeam).trim() !== targetGroup) return false;
           }
-          // Lead filter
           if (!includeLead && isLead(m)) return false;
-
           return true;
         });
 
@@ -1258,13 +1255,11 @@
           return;
         }
 
-        // Apply Round-Robin Mathematics (Equal Distribution)
         state.parsedRows.forEach((row, idx) => {
           const member = eligible[idx % eligible.length];
           row.assigned_to = String(member.user_id || member.id);
         });
 
-        // Close modal and force UI update
         state.autoAssign.open = false;
         render();
       };
