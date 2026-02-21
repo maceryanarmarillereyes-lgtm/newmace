@@ -297,3 +297,133 @@ body[data-theme="monday_workspace"] .dashx-heatmap .hday,
 body[data-theme="monday_workspace"] .dashx-heatmap .hhr {
   color: #676879 !important;
 }
+
+/* =========================================================================
+   PHASE 4: ASSIGN TASKS (MEMBERS) & MAILBOX OVERHAUL
+   ========================================================================= */
+
+/* --- ASSIGN TASKS (MEMBERS PAGE) --- */
+body[data-theme="monday_workspace"] .members-timeline-toolbar,
+body[data-theme="monday_workspace"] .coverage-panel {
+  background: #FFFFFF !important;
+  border: 1px solid #E6E9EF !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.02) !important;
+  border-radius: 16px !important;
+}
+
+body[data-theme="monday_workspace"] .members-row {
+  background: #FFFFFF !important;
+  border: 1px solid #E6E9EF !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.02) !important;
+}
+body[data-theme="monday_workspace"] .members-row:hover {
+  border-color: #0073EA !important;
+  box-shadow: 0 4px 12px rgba(0,115,234,0.1) !important;
+}
+
+/* Timeline & Hour Grid */
+body[data-theme="monday_workspace"] .timeline {
+  background: #F5F6F8 !important;
+  border: 1px solid #E6E9EF !important;
+}
+body[data-theme="monday_workspace"] .timeline .tick {
+  border-left: 1px dashed #D5DCEA !important;
+}
+
+/* Task Blocks (Vibrant Monday Pills) */
+body[data-theme="monday_workspace"] .seg {
+  border-radius: 8px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+  border: none !important;
+}
+
+/* Coverage Meter Columns */
+body[data-theme="monday_workspace"] .cm-col {
+  background: #F5F6F8 !important;
+  border: 1px solid #E6E9EF !important;
+}
+body[data-theme="monday_workspace"] .cm-col.ok {
+  background: #E8FDEE !important; /* Monday Light Green */
+  border-color: #00C875 !important;
+}
+body[data-theme="monday_workspace"] .cm-col.bad {
+  background: #FFEBEE !important; /* Monday Light Red */
+  border-color: #E2445C !important;
+}
+
+/* Day Tabs */
+body[data-theme="monday_workspace"] .daytab {
+  background: #FFFFFF !important;
+  border: 1px solid #E6E9EF !important;
+  color: #676879 !important;
+}
+body[data-theme="monday_workspace"] .daytab.is-on {
+  background: #0073EA !important;
+  color: #FFFFFF !important;
+  border-color: #0073EA !important;
+  box-shadow: 0 4px 10px rgba(0,115,234,0.2) !important;
+}
+
+/* Leave Dropdown (White look) */
+body[data-theme="monday_workspace"] .members-page .leave-select {
+  background-color: #FFFFFF !important;
+  color: #323338 !important;
+  border: 1px solid #C3C6D4 !important;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23323338' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important;
+}
+body[data-theme="monday_workspace"] .members-page .leave-select option {
+  background-color: #FFFFFF !important;
+  color: #323338 !important;
+}
+
+
+/* --- MAILBOX PAGE --- */
+body[data-theme="monday_workspace"] .mbx-card,
+body[data-theme="monday_workspace"] .mbx-table-wrap {
+  background: #FFFFFF !important;
+  border: 1px solid #E6E9EF !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
+}
+
+/* Mailbox Table */
+body[data-theme="monday_workspace"] .table.mbx-table thead th {
+  background: #F5F6F8 !important;
+  color: #323338 !important;
+  border-bottom: 2px solid #E6E9EF !important;
+  font-weight: 800 !important;
+}
+body[data-theme="monday_workspace"] .table.mbx-table tbody td {
+  background: #FFFFFF !important;
+  color: #323338 !important;
+  border-bottom: 1px solid #E6E9EF !important;
+}
+body[data-theme="monday_workspace"] .table.mbx-table tbody tr:hover td {
+  background: #F8FBFF !important; /* Monday Hover Blue */
+}
+
+/* Duty Pills inside Mailbox */
+body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="manager"] {
+  background: #0073EA !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 2px 6px rgba(0,115,234,0.3) !important;
+}
+body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="call"] {
+  background: #00C875 !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 2px 6px rgba(0,200,117,0.3) !important;
+}
+body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="break"] {
+  background: #FDAB3D !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 2px 6px rgba(253,171,61,0.3) !important;
+}
+body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="idle"] {
+  background: #E6E9EF !important;
+  color: #676879 !important;
+  border: none !important;
+}
