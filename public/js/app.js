@@ -5,6 +5,9 @@
   let annTimer = null;
   let notifCleanup = null;
 
+  // State for Super Admin Theme Manager
+  let __themeEditMode = false;
+
   function showFatalError(err){
     try{
       console.error(err);
@@ -491,42 +494,55 @@
   }
 
   // =========================================================================
-  // BOSS THUNTER: ENTERPRISE THEME MANAGER (STRICT SUPER ADMIN VALIDATION)
+  // BOSS THUNTER: ULTIMATE BENTO THEME MANAGER (STRICT SA OVERRIDE)
   // =========================================================================
   function renderThemeGrid(){
     const grid = document.getElementById('themeGrid');
     if(!grid) return;
     
-    // 1. STRICT ROLE VALIDATION
+    // 1. STRICT ROLE VALIDATION (NO BYPASS)
     const user = (window.Auth && window.Auth.getUser) ? window.Auth.getUser() : null;
     const rawRole = String(user?.role || '').trim().toUpperCase().replace(/\s+/g,'_');
     const saRole = (window.Config && Config.ROLES && Config.ROLES.SUPER_ADMIN) ? String(Config.ROLES.SUPER_ADMIN).toUpperCase() : 'SUPER_ADMIN';
     const isSA = (rawRole === saRole) || (rawRole === 'SUPER_ADMIN');
 
-    // 2. INJECT ENTERPRISE CSS FOR THEME CARDS ONLY ONCE
-    if(!document.getElementById('mums-theme-v2-css')) {
+    // 2. INJECT ENTERPRISE BENTO CSS
+    if(!document.getElementById('mums-bento-theme-css')) {
         const s = document.createElement('style');
-        s.id = 'mums-theme-v2-css';
+        s.id = 'mums-bento-theme-css';
         s.textContent = `
-            .theme-grid-v2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 10px; }
-            .theme-card-v2 { background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; overflow: hidden; cursor: pointer; transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); display: flex; flex-direction: column; position: relative; }
-            .theme-card-v2:hover { transform: translateY(-4px) scale(1.01); border-color: rgba(56, 189, 248, 0.5); box-shadow: 0 15px 30px rgba(0,0,0,0.5), 0 0 15px rgba(56, 189, 248, 0.2); z-index: 2; }
-            .theme-card-v2.is-active { background: linear-gradient(180deg, rgba(15,23,42,0.8) 0%, rgba(2,132,199,0.2) 100%); border: 2px solid #38bdf8; box-shadow: 0 0 20px rgba(56,189,248,0.3), inset 0 0 15px rgba(56,189,248,0.2); }
-            .tc-badge { position: absolute; top: 12px; left: 12px; background: #38bdf8; color: #020617; font-size: 9px; font-weight: 900; padding: 3px 8px; border-radius: 999px; box-shadow: 0 2px 10px rgba(56,189,248,0.5); z-index: 5; letter-spacing: 0.5px; }
-            .tc-hidden-badge { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.7); color: #fca5a5; font-size: 9px; padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(239,68,68,0.3); backdrop-filter: blur(4px); z-index: 5; font-weight: 800; letter-spacing: 0.5px; }
-            .theme-card-v2.is-hidden { opacity: 0.5; filter: grayscale(50%); border: 1px dashed rgba(255,255,255,0.2); }
-            .theme-card-v2.is-hidden:hover { opacity: 1; filter: grayscale(0%); border: 1px dashed #38bdf8; }
-            .tc-swatch { height: 70px; display: flex; position: relative; border-bottom: 1px solid rgba(255,255,255,0.05); }
-            .tc-bg { flex: 1; background: var(--t-bg); }
-            .tc-panel { flex: 1; background: var(--t-panel); display: flex; align-items: center; justify-content: center; border-left: 1px solid rgba(255,255,255,0.05); }
-            .tc-accent { width: 50%; height: 6px; border-radius: 3px; background: var(--t-acc); box-shadow: 0 0 8px var(--t-acc); }
-            .tc-info { padding: 16px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
-            .tc-title { color: #f8fafc; font-size: 15px; font-weight: 900; letter-spacing: -0.3px; }
-            .tc-meta { color: #94a3b8; font-size: 11px; }
-            .tc-admin-tools { display: flex; border-top: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.3); }
-            .tc-btn { flex: 1; background: transparent; border: none; padding: 12px 10px; color: #cbd5e1; font-size: 11px; font-weight: 800; cursor: pointer; transition: all 0.2s; outline:none; }
-            .tc-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
-            .tc-btn.tc-del:hover { background: rgba(239,68,68,0.2); color: #fca5a5; }
+            .theme-bento { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+            .tb-card { background: rgba(15,23,42,0.5); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; padding: 16px; cursor: pointer; position: relative; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: inset 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
+            .tb-card:hover { transform: translateY(-4px); border-color: var(--t-acc); box-shadow: 0 10px 25px rgba(0,0,0,0.4), inset 0 0 15px rgba(255,255,255,0.05); background: rgba(15,23,42,0.8); }
+            .tb-card.active { border: 2px solid var(--t-acc); background: linear-gradient(145deg, rgba(15,23,42,0.9), rgba(255,255,255,0.03)); box-shadow: 0 0 25px rgba(14,165,233,0.3); }
+            .tb-card.active::before { content: '✓ ACTIVE'; position: absolute; top: -1px; left: 50%; transform: translateX(-50%); background: var(--t-acc); color: #000; font-size: 9px; font-weight: 900; padding: 2px 10px; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; z-index: 5; letter-spacing: 0.5px; }
+            
+            .t-mock { display: flex; height: 80px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 12px; background: var(--t-bg); box-shadow: 0 4px 10px rgba(0,0,0,0.2); pointer-events: none; }
+            .t-mock-side { width: 25%; background: var(--t-panel2); border-right: 1px solid rgba(255,255,255,0.05); }
+            .t-mock-main { flex: 1; display: flex; flex-direction: column; }
+            .t-mock-top { height: 18px; background: var(--t-panel); border-bottom: 1px solid rgba(255,255,255,0.05); }
+            .t-mock-content { flex: 1; display: flex; align-items: center; justify-content: center; }
+            .t-mock-acc { width: 60%; height: 6px; border-radius: 3px; background: var(--t-acc); box-shadow: 0 0 10px var(--t-acc); }
+
+            .tb-info { display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+            .tb-title { color: #f8fafc; font-size: 15px; font-weight: 900; letter-spacing: -0.3px; }
+            .tb-meta { color: #94a3b8; font-size: 11px; }
+
+            .tb-card.is-hidden { opacity: 0.6; border: 1px dashed rgba(255,255,255,0.3); }
+            .tb-card.is-hidden::after { content: 'HIDDEN'; position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.8); color: #94a3b8; font-size: 9px; font-weight: 900; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); }
+
+            /* Edit Mode Jiggle & Overlays */
+            .tb-card.jiggle { animation: jiggle 0.4s ease-in-out infinite alternate; }
+            @keyframes jiggle { 0% { transform: rotate(-1deg) scale(0.98); } 100% { transform: rotate(1deg) scale(1.02); } }
+            
+            .tb-overlay { position: absolute; inset: 0; background: rgba(2,6,23,0.85); backdrop-filter: blur(4px); z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+            .tb-card.jiggle .tb-overlay { opacity: 1; pointer-events: auto; }
+            
+            .tb-btn { width: 80%; padding: 8px; border-radius: 8px; border: none; font-size: 11px; font-weight: 900; cursor: pointer; transition: all 0.2s; display: flex; justify-content: center; align-items: center; gap: 6px; }
+            .tb-btn-hide { background: rgba(255,255,255,0.1); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.2); }
+            .tb-btn-hide:hover { background: rgba(255,255,255,0.2); color: #fff; }
+            .tb-btn-del { background: rgba(239,68,68,0.2); color: #fca5a5; border: 1px solid rgba(239,68,68,0.4); }
+            .tb-btn-del:hover { background: rgba(239,68,68,0.4); color: #fff; box-shadow: 0 0 15px rgba(239,68,68,0.4); }
         `;
         document.head.appendChild(s);
     }
@@ -536,68 +552,99 @@
 
     const saveMeta = () => {
         localStorage.setItem('mums_theme_meta', JSON.stringify(themeMeta));
-        renderThemeGrid();
+        renderThemeGrid(); // Instant refresh
     };
 
     const cur = Store.getTheme();
     const rawThemes = (Config && Array.isArray(Config.THEMES)) ? Config.THEMES : [];
 
-    // 3. APPLY STRICT FILTER FOR NORMAL USERS
+    // 3. BULLETPROOF FILTERING LOGIC
     const visibleThemes = rawThemes.filter(t => {
         const m = themeMeta[t.id] || {};
-        if(m.deleted) return false; // Deleted is globally purged from UI
-        if(m.hidden && !isSA) return false; // Hidden is strictly banned for non-SAs
+        if (m.deleted) return false; 
+        if (m.hidden) {
+            if (!isSA) return false; // Hard block normal users
+            if (isSA && !__themeEditMode) return false; // Hide from SA if not in edit mode! (CLEAN UI)
+        }
         return true;
     });
 
-    grid.className = 'theme-grid-v2';
-    grid.innerHTML = visibleThemes.map(t => {
+    // 4. SUPER ADMIN CONTROL BAR (Only visible to SA)
+    const adminBarHtml = isSA ? `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <div>
+               <div style="color:#f8fafc; font-weight:900; font-size:14px;">Theme Access Control</div>
+               <div class="small muted">Click Manage to configure which themes users can see.</div>
+            </div>
+            <button class="btn-glass ${__themeEditMode ? 'btn-glass-danger' : 'btn-glass-primary'}" id="toggleThemeEditBtn" style="padding:10px 16px;">
+                ${__themeEditMode ? '✅ Done Editing' : '⚙️ Manage Themes'}
+            </button>
+        </div>
+    ` : '';
+
+    // 5. BUILD BENTO CARDS
+    const cardsHtml = visibleThemes.map(t => {
       const m = themeMeta[t.id] || {};
       const active = t.id === cur;
       const fontName = (t.font ? String(t.font).split(',')[0].replace(/['"]/g,'').trim() : 'System');
       const isHidden = !!m.hidden;
 
-      const adminHtml = isSA ? `
-       <div class="tc-admin-tools">
-          <button class="tc-btn" data-hide-theme="${UI.esc(t.id)}" title="Toggle visibility" onclick="event.stopPropagation()">
-             ${isHidden ? '👁️ Unhide' : '👀 Hide'}
-          </button>
-          <button class="tc-btn tc-del" data-del-theme="${UI.esc(t.id)}" title="Delete theme" onclick="event.stopPropagation()">
-             🗑️ Delete
-          </button>
-       </div>
-      ` : '';
+      // The overlay is only active during SA __themeEditMode via the .jiggle class
+      const overlayHtml = `
+          <div class="tb-overlay">
+              <button class="tb-btn tb-btn-hide" data-hide-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">
+                  ${isHidden ? '👁️ UNHIDE THEME' : '👀 HIDE THEME'}
+              </button>
+              <button class="tb-btn tb-btn-del" data-del-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">
+                  🗑️ DELETE THEME
+              </button>
+          </div>
+      `;
 
       return `
-        <div class="theme-card-v2 ${active?'is-active':''} ${isHidden ? 'is-hidden' : ''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button" aria-label="Theme ${UI.esc(t.name)}">
-           ${active ? '<div class="tc-badge">ACTIVE</div>' : ''}
-           ${isHidden ? '<div class="tc-hidden-badge">HIDDEN</div>' : ''}
-           <div class="tc-swatch" style="--t-bg:${t.bg}; --t-panel:${t.panel}; --t-acc:${t.accent};">
-              <div class="tc-bg"></div>
-              <div class="tc-panel"><div class="tc-accent"></div></div>
+        <div class="tb-card ${active?'active':''} ${isHidden?'is-hidden':''} ${__themeEditMode?'jiggle':''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button">
+           <div class="t-mock" style="--t-bg:${t.bg}; --t-panel:${t.panel}; --t-panel2:${t.panel2}; --t-acc:${t.accent};">
+              <div class="t-mock-side"></div>
+              <div class="t-mock-main">
+                  <div class="t-mock-top"></div>
+                  <div class="t-mock-content"><div class="t-mock-acc"></div></div>
+              </div>
            </div>
-           <div class="tc-info">
-              <div class="tc-title">${UI.esc(t.name)}</div>
-              <div class="tc-meta">Font: ${UI.esc(fontName)}</div>
+           <div class="tb-info">
+              <div class="tb-title">${UI.esc(t.name)}</div>
+              <div class="tb-meta">Font: ${UI.esc(fontName)}</div>
            </div>
-           ${adminHtml}
+           ${isSA ? overlayHtml : ''}
         </div>
       `;
     }).join('') || '<div class="muted" style="grid-column:1/-1; text-align:center; padding:40px; font-size:16px;">No themes available.</div>';
 
-    // 4. BIND CLICK EVENTS
-    grid.querySelectorAll('.theme-card-v2').forEach(tile => {
+    grid.innerHTML = adminBarHtml + `<div class="theme-bento">${cardsHtml}</div>`;
+
+    // 6. EVENT BINDINGS
+    // Toggle Edit Mode
+    const toggleBtn = document.getElementById('toggleThemeEditBtn');
+    if(toggleBtn) {
+        toggleBtn.onclick = () => {
+            __themeEditMode = !__themeEditMode;
+            renderThemeGrid();
+        };
+    }
+
+    // Pick Theme
+    grid.querySelectorAll('.tb-card').forEach(tile => {
       const pick = (e) => {
-        if(e && e.target && e.target.closest('.tc-admin-tools')) return;
+        if(__themeEditMode) return; // Disable picking while editing
         const id = tile.dataset.theme;
         try{ if(Store && Store.dispatch) Store.dispatch('UPDATE_THEME', { id:id }); else Store.setTheme(id); }catch(_){ try{ Store.setTheme(id); }catch(__){} }
         try{ applyTheme(id); }catch(_){ }
-        renderThemeGrid();
+        renderThemeGrid(); 
       };
       tile.onclick = pick;
       tile.onkeydown = (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); pick(e); } };
     });
 
+    // SA Hide/Delete Actions
     if (isSA) {
         grid.querySelectorAll('[data-hide-theme]').forEach(btn => {
             btn.onclick = (e) => {
@@ -2948,9 +2995,6 @@ function route(){
     }
   }
 
-  // -----------------------------
-  // Reminders Engine (My / Team)
-  // -----------------------------
   const ReminderEngine = (function(){
     let started = false;
     let timer = null;
@@ -3819,6 +3863,7 @@ async function boot(){
     if(openThemeBtn){
       openThemeBtn.onclick = ()=>{
         UI.closeModal('settingsModal');
+        __themeEditMode = false; // Reset to normal view initially
         renderThemeGrid();
         UI.openModal('themeModal');
       };
