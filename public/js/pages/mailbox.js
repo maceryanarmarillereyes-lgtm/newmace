@@ -31,10 +31,10 @@ function eligibleForMailboxManager(user, opts){
   if(!user) return false;
   opts = opts || {};
   const r = String(user.role||'');
-  const admin = (window.Config && Config.ROLES) ? Config.ROLES.ADMIN : 'ADMIN';
-  const superAdmin = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
-  const superUser = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_USER : 'SUPER_USER';
-  const teamLead = (window.Config && Config.ROLES) ? Config.ROLES.TEAM_LEAD : 'TEAM_LEAD';
+  const admin = (window.Config && window.Config.ROLES) ? window.Config.ROLES.ADMIN : 'ADMIN';
+  const superAdmin = (window.Config && window.Config.ROLES) ? window.Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
+  const superUser = (window.Config && window.Config.ROLES) ? window.Config.ROLES.SUPER_USER : 'SUPER_USER';
+  const teamLead = (window.Config && window.Config.ROLES) ? window.Config.ROLES.TEAM_LEAD : 'TEAM_LEAD';
 
   if(r===superAdmin || r===superUser || r===admin || r===teamLead) return true;
   if(opts.teamId && String(user.teamId||'') !== String(opts.teamId||'')) return false;
@@ -216,24 +216,11 @@ function _mbxDutyTone(label){
   const me = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser()||{}) : {};
   let isManager = false;
 
-  // =========================================================================
-  // ENTERPRISE UPGRADE: Indestructible UI State using LocalStorage
-  // Prevents toggles from resetting during realtime syncs.
-  // =========================================================================
-  const UI_STATE_KEY = 'mums_mailbox_ui_prefs';
-  function getUiPrefs() {
-    try { 
-      return JSON.parse(localStorage.getItem(UI_STATE_KEY)) || { showArchive: false, showAnalytics: false }; 
-    } catch(e) { 
-      return { showArchive: false, showAnalytics: false }; 
-    }
-  }
-  function toggleUiPref(key) {
-    const prefs = getUiPrefs();
-    prefs[key] = !prefs[key];
-    localStorage.setItem(UI_STATE_KEY, JSON.stringify(prefs));
-    return prefs[key];
-  }
+  // GLOBAL UI STATE: Prevents UI reset on realtime syncs
+  window.__mbxUiState = window.__mbxUiState || {
+    showArchive: false,
+    showAnalytics: false
+  };
 
   function getDuty(){
     const UI = window.UI;
@@ -251,8 +238,8 @@ function _mbxDutyTone(label){
   }
 
   // =========================================================================
-  // BUG FIX 2: 100% STRICT SCHEDULE EVALUATION FOR MAILBOX MANAGERS
-  // Totally ignores manual fallbacks to prevent "Fernando Ramirez" ghosts.
+  // STRICT SCHEDULE EVALUATION FOR MAILBOX MANAGERS PER BUCKET
+  // (Removes actorName fallback that causes "Ghost Managers")
   // =========================================================================
   function _mbxFindScheduledManagerForBucket(table, bucket){
     try{
@@ -269,13 +256,13 @@ function _mbxDutyTone(label){
 
       let targetDateISO = shiftStartISO;
       if (bucketStartMin < shiftStartMin && bucketStartMin <= 1440) {
-         // Bucket crossed midnight into the next day
          targetDateISO = window.UI && window.UI.addDaysISO ? window.UI.addDaysISO(shiftStartISO, 1) : shiftStartISO;
       }
       const targetDow = _mbxIsoDow(targetDateISO);
 
       const all = (window.Store && window.Store.getUsers ? window.Store.getUsers() : []) || [];
       const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
+      const roleOrder = ['mailbox_manager','mailbox_call'];
       const matchedNames = [];
 
       for(const u of candidates){
@@ -284,15 +271,14 @@ function _mbxDutyTone(label){
         
         for(const b of bl){
           if (isMatched) break;
-          // Exact match on roles
           const r = String(b?.role||'').toLowerCase().trim().replace(/\s+/g, '_');
-          if(r !== 'mailbox_manager' && r !== 'mailbox_call') continue;
+          if(!roleOrder.includes(r)) continue;
           
           const s = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.start) : _mbxParseHM(b.start));
           const e = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.end) : _mbxParseHM(b.end));
-          if(!Number.isFinite(s) || !Number.isFinite(e) || s === e) continue;
+          if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+          if (s === e) continue; // Ignore 0-length invalid blocks
 
-          // STRICT HIT: The manager block MUST cover the EXACT START MINUTE of the bucket.
           const wraps = e <= s;
           const hit = (!wraps && bucketStartMin >= s && bucketStartMin < e) || (wraps && (bucketStartMin >= s || bucketStartMin < e));
           
@@ -303,7 +289,8 @@ function _mbxDutyTone(label){
         }
       }
       
-      if (matchedNames.length > 0) return [...new Set(matchedNames)].join(' & ');
+      const unique = [...new Set(matchedNames)];
+      if (unique.length > 0) return unique.join(' & ');
     }catch(e){ console.error("Schedule Eval Error", e); }
     return '—';
   }
@@ -1170,7 +1157,7 @@ function _mbxDutyTone(label){
       if(document.getElementById('mbxCaseActionModal')) return;
       const UI = window.UI;
       const host = document.createElement('div');
-      host.className = 'mbx-custom-backdrop'; 
+      host.className = 'mbx-custom-backdrop'; // ISOLATED CSS
       host.id = 'mbxCaseActionModal';
       host.innerHTML = `
         <div class="mbx-modal-glass" style="width:min(400px, 90vw);">
@@ -1206,7 +1193,7 @@ function _mbxDutyTone(label){
       if(document.getElementById('mbxReassignModal')) return;
       const UI = window.UI;
       const host = document.createElement('div');
-      host.className = 'mbx-custom-backdrop'; 
+      host.className = 'mbx-custom-backdrop'; // ISOLATED CSS
       host.id = 'mbxReassignModal';
       host.innerHTML = `
         <div class="mbx-modal-glass" style="width:min(500px, 95vw);">
