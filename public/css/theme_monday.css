@@ -178,3 +178,122 @@ body[data-theme="monday_workspace"] .wclock .wc-h,
 body[data-theme="monday_workspace"] .wclock .wc-m {
   color: #323338 !important;
 }
+
+
+/* =========================================================================
+   PHASE 3: DASHBOARD OVERHAUL (Monday.com Style)
+   ========================================================================= */
+
+/* Dashboard Header & Quick Actions */
+body[data-theme="monday_workspace"] .dashx-head .ux-h1 {
+  font-weight: 800 !important;
+  color: #1F2A44 !important;
+  letter-spacing: -0.5px !important;
+}
+body[data-theme="monday_workspace"] .dashx-actions .btn {
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  border-color: #C3C6D4 !important;
+}
+
+/* Dashboard KPI Cards (Active Cases, Pending, etc.) */
+body[data-theme="monday_workspace"] .dashx-cards .dashx-card {
+  background: #FFFFFF !important;
+  border: 1px solid #E6E9EF !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.02) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
+}
+body[data-theme="monday_workspace"] .dashx-cards .dashx-card:hover {
+  transform: translateY(-3px) !important;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.06) !important;
+  border-color: #0073EA !important;
+}
+body[data-theme="monday_workspace"] .dashx-card .v {
+  color: #0073EA !important; /* Monday Blue for values */
+  font-size: 28px !important;
+}
+body[data-theme="monday_workspace"] .dashx-card .k {
+  color: #323338 !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+}
+
+/* Dashboard Panels (Heatmap & Notifications Container) */
+body[data-theme="monday_workspace"] .dashx-panel {
+  background: #FFFFFF !important;
+  border: 1px solid #E6E9EF !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
+}
+body[data-theme="monday_workspace"] .dashx-title {
+  color: #1F2A44 !important;
+  font-weight: 800 !important;
+  font-size: 16px !important;
+}
+
+/* Notification Filters (Pill shaped, active blue) */
+body[data-theme="monday_workspace"] .dashx-filter {
+  border-radius: 999px !important;
+  border: 1px solid transparent !important;
+  background: #F5F6F8 !important;
+  color: #676879 !important;
+  font-weight: 600 !important;
+  padding: 6px 14px !important;
+}
+body[data-theme="monday_workspace"] .dashx-filter:hover {
+  background: #E6E9EF !important;
+  color: #323338 !important;
+}
+body[data-theme="monday_workspace"] .dashx-filter.active {
+  background: #CCE5FF !important;
+  color: #0073EA !important;
+  border: 1px solid rgba(0,115,234,0.3) !important;
+  box-shadow: none !important;
+}
+body[data-theme="monday_workspace"] input.dashx-filter {
+  background: #FFFFFF !important;
+  border: 1px solid #C3C6D4 !important;
+  border-radius: 10px !important;
+}
+
+/* Notification List Items */
+body[data-theme="monday_workspace"] .dashx-notif {
+  background: #FFFFFF !important;
+  border: 1px solid #E6E9EF !important;
+  border-radius: 8px !important;
+  border-left: 4px solid #E6E9EF !important; /* Thick left border for state */
+}
+body[data-theme="monday_workspace"] .dashx-notif.unread {
+  background: #F8FBFF !important;
+  border-color: #CCE5FF !important;
+  border-left: 4px solid #0073EA !important; /* Monday Blue Unread Indicator */
+}
+body[data-theme="monday_workspace"] .dashx-notif .t {
+  color: #323338 !important;
+}
+body[data-theme="monday_workspace"] .dashx-notif .m {
+  color: #676879 !important;
+}
+
+/* Distribution Bars (Mailbox Analytics) */
+body[data-theme="monday_workspace"] .dashx-bar {
+  background: #F5F6F8 !important;
+  border-color: #E6E9EF !important;
+  height: 10px !important;
+}
+body[data-theme="monday_workspace"] .dashx-bar .fill {
+  background: #00C875 !important; /* Monday Green */
+  border-radius: 999px !important;
+}
+
+/* Activity Heatmap overriding dark mode alpha colors */
+body[data-theme="monday_workspace"] .dashx-heatmap .cell {
+  border-color: #E6E9EF !important;
+  background: #F5F6F8 !important; /* Empty cell color */
+  position: relative;
+}
+body[data-theme="monday_workspace"] .dashx-heatmap .hday,
+body[data-theme="monday_workspace"] .dashx-heatmap .hhr {
+  color: #676879 !important;
+}
