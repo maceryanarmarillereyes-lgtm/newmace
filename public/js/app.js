@@ -8,7 +8,6 @@
   function showFatalError(err){
     try{
       console.error(err);
-      // Log fatal errors into Activity Logs (for reporting)
       try{
         if(window.Store && Store.addLog){
           const u = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
@@ -33,17 +32,14 @@
           </div>
         `;
       }
-    }catch(_){ /* ignore */ }
+    }catch(_){ }
   }
 
-  // Global safety net: surface uncaught errors in a controlled, user-friendly way.
-  // This is intentionally lightweight (no dependencies) and runs once per tab.
   try{
     if(!window.__mumsGlobalErrorBound){
       window.__mumsGlobalErrorBound = true;
       window.addEventListener('error', (ev)=>{
         try{
-          // Ignore resource load errors (script/css 404) here; devtools will still show them.
           if(ev && ev.target && (ev.target.tagName === 'SCRIPT' || ev.target.tagName === 'LINK')) return;
           const err = (ev && ev.error) ? ev.error : new Error(String(ev && ev.message || 'Unknown error'));
           showFatalError(err);
@@ -59,32 +55,26 @@
     }
   }catch(_){ }
 
-  // Reduce font-size until text fits its box (used for sidebar profile). Cheap and safe.
   function fitText(el, minPx, maxPx){
     try{
       if(!el) return;
       const min = Number(minPx||12);
       const max = Number(maxPx||22);
       el.style.fontSize = max + 'px';
-      // Force reflow
       void el.offsetHeight;
       let cur = max;
-      // Shrink while overflowing (height-wise) or causing horizontal overflow.
       while(cur > min && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1)){
         cur -= 1;
         el.style.fontSize = cur + 'px';
       }
-    }catch(e){ /* ignore */ }
+    }catch(e){ }
   }
 
-  // Theme application via CSS variables
   function applyTheme(themeId){
     const themes = (Config && Array.isArray(Config.THEMES)) ? Config.THEMES : [];
     const t = themes.find(x=>x.id===themeId) || themes[0];
     if(!t) return;
 
-    // Classic Style supports auto mode (follows OS preference) and an optional dark palette.
-    // Safe for other themes: only activates when t.mode === 'auto'.
     let modePref = (t.mode ? String(t.mode) : (String(t.id||'').includes('light') ? 'light' : 'dark'));
     let mode = modePref;
     if(modePref === 'auto'){
@@ -93,7 +83,6 @@
       }catch(_){ mode = 'light'; }
     }
 
-    // Choose palette for the computed mode (if provided)
     let tt = t;
     if(modePref === 'auto' && mode === 'dark' && t.dark && typeof t.dark === 'object'){
       try{ tt = Object.assign({}, t, t.dark); }catch(_){ tt = t; }
@@ -108,7 +97,6 @@
     r.style.setProperty('--border', tt.border);
     r.style.setProperty('--accent', tt.accent);
 
-    // Derived RGB vars for CSS rgba() usage (keeps themes consistent across light/dark)
     try{
       const hex = String(tt.accent||'').trim();
       const m = /^#?([0-9a-fA-F]{6})$/.exec(hex);
@@ -126,7 +114,6 @@
     r.style.setProperty('--bgRad1', tt.bgRad1);
     r.style.setProperty('--bgRad3', tt.bgRad3);
 
-    // Optional deeper theme controls
     try{
       if(tt.font) r.style.setProperty('--font', tt.font); else r.style.removeProperty('--font');
       if(tt.radius) r.style.setProperty('--radius', tt.radius); else r.style.removeProperty('--radius');
@@ -134,11 +121,9 @@
     }catch(_){ }
     try{
       document.body.dataset.theme = t.id;
-      // Expose theme mode for CSS (computed; supports classic auto-mode)
       document.body.dataset.mode = mode;
       document.documentElement.dataset.mode = mode;
       
-      // Fix16: semantic tokens + mode-specific control colors + accent contrast
       try{
         r.style.setProperty("--surface-0", tt.bg);
         r.style.setProperty("--surface-1", tt.panel);
@@ -162,11 +147,8 @@
     }catch(e){}
   }
 
-
-  // Fix16: Theme Lab (contrast/visibility checks)
   function _parseColor(str){
     const s = String(str||'').trim();
-    // #rgb or #rrggbb
     let m = /^#?([0-9a-f]{3})$/i.exec(s);
     if(m){
       const h = m[1];
@@ -177,7 +159,6 @@
       const h = m[1];
       return [int(h.slice(0,2)), int(h.slice(2,4)), int(h.slice(4,6))];
     }
-    // rgb/rgba
     m = /^rgba?\(([^)]+)\)$/i.exec(s);
     if(m){
       const parts = m[1].split(',').map(x=>parseFloat(x));
@@ -189,14 +170,10 @@
     function clamp(n){ n = Number(n); if(!Number.isFinite(n)) return 0; return Math.max(0, Math.min(255, n)); }
   }
 
-
-  // Hide Settings cards per-role (Option A: hidden completely when disabled)
   function applySettingsVisibility(user){
     try{
       if(!user || !window.Store || !Store.getRoleSettingsFeatures) return;
 
-      // Defensive role normalization: prevents accidental hiding when role strings differ
-      // (e.g., "Team Lead" vs "TEAM_LEAD") or when older sessions have legacy values.
       const rawRole = String(user.role||'').trim();
       const role = (Store && Store.normalizeRole) ? Store.normalizeRole(rawRole)
         : rawRole.toUpperCase().replace(/\s+/g,'_').replace(/-+/g,'_');
@@ -204,7 +181,6 @@
       const all = Store.getRoleSettingsFeatures();
       const feats = (all && all[role]) ? all[role] : null;
 
-      // If there is no explicit feature config for this role, do not hide anything.
       const hasAny = feats && typeof feats==='object' && Object.keys(feats).length>0;
       if(!hasAny){
         document.querySelectorAll('.settings-card').forEach(c=>{ try{ c.style.display=''; }catch(_){ } });
@@ -223,21 +199,16 @@
       };
 
       Object.keys(map).forEach(key=>{
-        // Default allow for forward-compat (new cards should appear unless explicitly disabled).
         const allowed = (key in feats) ? !!feats[key] : true;
         const btn = document.getElementById(map[key]);
         if(!btn) return;
         const card = btn.closest ? btn.closest('.settings-card') : null;
         if(card) card.style.display = allowed ? '' : 'none';
       });
-    }catch(e){ /* ignore */ }
+    }catch(e){ }
   };
 
-  // -----------------------------
-  // System Check (Super Admin / Super User)
-  // -----------------------------
   function bindSystemCheckModal(currentUser){
-    // Bind once
     if(window.__mumsSystemCheck && window.__mumsSystemCheck.bound) return;
 
     const els = {
@@ -300,7 +271,6 @@
       renderFindings([]);
 
       const findings = [];
-
       const steps = [];
       const addStep = (label, fn)=> steps.push({ label, fn });
 
@@ -521,85 +491,113 @@
   }
 
   // =========================================================================
-  // BOSS THUNTER: ENTERPRISE THEME MANAGER (SUPER ADMIN AUTHORITY)
+  // BOSS THUNTER: ENTERPRISE THEME MANAGER (STRICT SUPER ADMIN VALIDATION)
   // =========================================================================
   function renderThemeGrid(){
     const grid = document.getElementById('themeGrid');
     if(!grid) return;
     
+    // 1. STRICT ROLE VALIDATION
     const user = (window.Auth && window.Auth.getUser) ? window.Auth.getUser() : null;
-    const isSA = user && user.role === (window.Config && window.Config.ROLES ? window.Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN');
+    const rawRole = String(user?.role || '').trim().toUpperCase().replace(/\s+/g,'_');
+    const saRole = (window.Config && Config.ROLES && Config.ROLES.SUPER_ADMIN) ? String(Config.ROLES.SUPER_ADMIN).toUpperCase() : 'SUPER_ADMIN';
+    const isSA = (rawRole === saRole) || (rawRole === 'SUPER_ADMIN');
 
-    // Load persistent metadata for hidden/deleted themes
+    // 2. INJECT ENTERPRISE CSS FOR THEME CARDS ONLY ONCE
+    if(!document.getElementById('mums-theme-v2-css')) {
+        const s = document.createElement('style');
+        s.id = 'mums-theme-v2-css';
+        s.textContent = `
+            .theme-grid-v2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 10px; }
+            .theme-card-v2 { background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; overflow: hidden; cursor: pointer; transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); display: flex; flex-direction: column; position: relative; }
+            .theme-card-v2:hover { transform: translateY(-4px) scale(1.01); border-color: rgba(56, 189, 248, 0.5); box-shadow: 0 15px 30px rgba(0,0,0,0.5), 0 0 15px rgba(56, 189, 248, 0.2); z-index: 2; }
+            .theme-card-v2.is-active { background: linear-gradient(180deg, rgba(15,23,42,0.8) 0%, rgba(2,132,199,0.2) 100%); border: 2px solid #38bdf8; box-shadow: 0 0 20px rgba(56,189,248,0.3), inset 0 0 15px rgba(56,189,248,0.2); }
+            .tc-badge { position: absolute; top: 12px; left: 12px; background: #38bdf8; color: #020617; font-size: 9px; font-weight: 900; padding: 3px 8px; border-radius: 999px; box-shadow: 0 2px 10px rgba(56,189,248,0.5); z-index: 5; letter-spacing: 0.5px; }
+            .tc-hidden-badge { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.7); color: #fca5a5; font-size: 9px; padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(239,68,68,0.3); backdrop-filter: blur(4px); z-index: 5; font-weight: 800; letter-spacing: 0.5px; }
+            .theme-card-v2.is-hidden { opacity: 0.5; filter: grayscale(50%); border: 1px dashed rgba(255,255,255,0.2); }
+            .theme-card-v2.is-hidden:hover { opacity: 1; filter: grayscale(0%); border: 1px dashed #38bdf8; }
+            .tc-swatch { height: 70px; display: flex; position: relative; border-bottom: 1px solid rgba(255,255,255,0.05); }
+            .tc-bg { flex: 1; background: var(--t-bg); }
+            .tc-panel { flex: 1; background: var(--t-panel); display: flex; align-items: center; justify-content: center; border-left: 1px solid rgba(255,255,255,0.05); }
+            .tc-accent { width: 50%; height: 6px; border-radius: 3px; background: var(--t-acc); box-shadow: 0 0 8px var(--t-acc); }
+            .tc-info { padding: 16px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+            .tc-title { color: #f8fafc; font-size: 15px; font-weight: 900; letter-spacing: -0.3px; }
+            .tc-meta { color: #94a3b8; font-size: 11px; }
+            .tc-admin-tools { display: flex; border-top: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.3); }
+            .tc-btn { flex: 1; background: transparent; border: none; padding: 12px 10px; color: #cbd5e1; font-size: 11px; font-weight: 800; cursor: pointer; transition: all 0.2s; outline:none; }
+            .tc-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
+            .tc-btn.tc-del:hover { background: rgba(239,68,68,0.2); color: #fca5a5; }
+        `;
+        document.head.appendChild(s);
+    }
+
     let themeMeta = {};
     try { themeMeta = JSON.parse(localStorage.getItem('mums_theme_meta') || '{}'); } catch(e){}
 
     const saveMeta = () => {
         localStorage.setItem('mums_theme_meta', JSON.stringify(themeMeta));
-        renderThemeGrid(); // Refresh grid instantly
+        renderThemeGrid();
     };
 
     const cur = Store.getTheme();
     const rawThemes = (Config && Array.isArray(Config.THEMES)) ? Config.THEMES : [];
 
-    // Filter themes based on Authority
+    // 3. APPLY STRICT FILTER FOR NORMAL USERS
     const visibleThemes = rawThemes.filter(t => {
         const m = themeMeta[t.id] || {};
-        if(m.deleted) return false; // Deleted is gone for everyone
-        if(m.hidden && !isSA) return false; // Hidden is only visible to SA
+        if(m.deleted) return false; // Deleted is globally purged from UI
+        if(m.hidden && !isSA) return false; // Hidden is strictly banned for non-SAs
         return true;
     });
 
+    grid.className = 'theme-grid-v2';
     grid.innerHTML = visibleThemes.map(t => {
       const m = themeMeta[t.id] || {};
       const active = t.id === cur;
       const fontName = (t.font ? String(t.font).split(',')[0].replace(/['"]/g,'').trim() : 'System');
       const isHidden = !!m.hidden;
 
-      // Ensure buttons use the btn-glass styles injected in index.html
       const adminHtml = isSA ? `
-        <div class="theme-admin-controls">
-          <button class="btn-glass btn-glass-ghost" data-hide-theme="${UI.esc(t.id)}" title="${isHidden ? 'Show to all users' : 'Hide from users'}" onclick="event.stopPropagation()">
-            ${isHidden ? '👁️ Hidden' : '👀 Visible'}
+       <div class="tc-admin-tools">
+          <button class="tc-btn" data-hide-theme="${UI.esc(t.id)}" title="Toggle visibility" onclick="event.stopPropagation()">
+             ${isHidden ? '👁️ Unhide' : '👀 Hide'}
           </button>
-          <button class="btn-glass btn-glass-danger" data-del-theme="${UI.esc(t.id)}" title="Delete permanently" onclick="event.stopPropagation()">
-            🗑️ Delete
+          <button class="tc-btn tc-del" data-del-theme="${UI.esc(t.id)}" title="Delete theme" onclick="event.stopPropagation()">
+             🗑️ Delete
           </button>
-        </div>
+       </div>
       ` : '';
 
-      const activeBadge = active ? `<span style="background:rgba(56,189,248,0.2); color:#7dd3fc; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:900; margin-top:8px; display:inline-block; border:1px solid rgba(56,189,248,0.4); box-shadow:0 0 15px rgba(56,189,248,0.2);">ACTIVE THEME</span>` : '';
-
       return `
-        <div class="glass-theme-tile ${active?'active':''} ${isHidden ? 'is-hidden-theme' : ''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button" aria-label="Theme ${UI.esc(t.name)}">
-          <div class="theme-swatch-box" style="--t-bg:${t.bg}; --t-panel:${t.panel}; --t-acc:${t.accent};">
-             <div class="theme-swatch-p1"></div>
-             <div class="theme-swatch-p2"><div class="theme-swatch-acc"></div></div>
-          </div>
-          <div style="flex:1;">
-            <div class="tname" style="font-weight:900; font-size:16px; color:#f8fafc; letter-spacing:-0.5px;">${UI.esc(t.name)}</div>
-            <div class="tmeta" style="font-size:12px; color:#94a3b8; margin-top:4px;">Font: ${UI.esc(fontName)}</div>
-            ${activeBadge}
-          </div>
-          ${adminHtml}
+        <div class="theme-card-v2 ${active?'is-active':''} ${isHidden ? 'is-hidden' : ''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button" aria-label="Theme ${UI.esc(t.name)}">
+           ${active ? '<div class="tc-badge">ACTIVE</div>' : ''}
+           ${isHidden ? '<div class="tc-hidden-badge">HIDDEN</div>' : ''}
+           <div class="tc-swatch" style="--t-bg:${t.bg}; --t-panel:${t.panel}; --t-acc:${t.accent};">
+              <div class="tc-bg"></div>
+              <div class="tc-panel"><div class="tc-accent"></div></div>
+           </div>
+           <div class="tc-info">
+              <div class="tc-title">${UI.esc(t.name)}</div>
+              <div class="tc-meta">Font: ${UI.esc(fontName)}</div>
+           </div>
+           ${adminHtml}
         </div>
       `;
     }).join('') || '<div class="muted" style="grid-column:1/-1; text-align:center; padding:40px; font-size:16px;">No themes available.</div>';
 
-    // Bind Pick Event
-    grid.querySelectorAll('.glass-theme-tile').forEach(tile => {
+    // 4. BIND CLICK EVENTS
+    grid.querySelectorAll('.theme-card-v2').forEach(tile => {
       const pick = (e) => {
-        if(e && e.target && e.target.closest('.theme-admin-controls')) return; // Ignore clicks on admin buttons
+        if(e && e.target && e.target.closest('.tc-admin-tools')) return;
         const id = tile.dataset.theme;
         try{ if(Store && Store.dispatch) Store.dispatch('UPDATE_THEME', { id:id }); else Store.setTheme(id); }catch(_){ try{ Store.setTheme(id); }catch(__){} }
         try{ applyTheme(id); }catch(_){ }
-        renderThemeGrid(); // Re-render to move ACTIVE badge
+        renderThemeGrid();
       };
       tile.onclick = pick;
       tile.onkeydown = (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); pick(e); } };
     });
 
-    // Bind Super Admin Controls
     if (isSA) {
         grid.querySelectorAll('[data-hide-theme]').forEach(btn => {
             btn.onclick = (e) => {
@@ -620,7 +618,6 @@
                 themeMeta[tid] = themeMeta[tid] || {};
                 themeMeta[tid].deleted = true;
                 
-                // Fallback to ocean if they deleted the currently active theme
                 if(cur === tid) {
                     Store.dispatch ? Store.dispatch('UPDATE_THEME', { id:'ocean' }) : Store.setTheme('ocean');
                     applyTheme('ocean');
@@ -630,7 +627,6 @@
         });
     }
 
-    // Refresh Theme Lab (contrast checks)
     try{ renderThemeAudit(); }catch(_){ }
   }
 
@@ -804,7 +800,6 @@
 
       try{
         const cur = Store.getWorldClocks().slice();
-        const key = String(mins);
         const exists = cur.some(c=> Number(c && c.offsetMinutes) === mins);
         if(!exists){
           cur.push({
@@ -3479,9 +3474,6 @@ function route(){
   })();
   window.ReminderEngine = ReminderEngine;
 
-
-
-
   function openDataToolsModal(){
     try{
       const summary = document.getElementById('storageHealthSummary');
@@ -3815,7 +3807,7 @@ async function boot(){
         UI.openModal('soundSettingsModal');
       };
     }
-   const openProfileBtn = document.getElementById('openProfileBtn');
+    const openProfileBtn = document.getElementById('openProfileBtn');
     if(openProfileBtn){
       openProfileBtn.onclick = ()=>{
         UI.closeModal('settingsModal');
@@ -3823,7 +3815,6 @@ async function boot(){
       };
     }
 
-    // Theme settings
     const openThemeBtn = document.getElementById('openThemeBtn');
     if(openThemeBtn){
       openThemeBtn.onclick = ()=>{
@@ -3870,7 +3861,6 @@ async function boot(){
       };
     }
 
-    // Mailbox time override
     try{
       const card = document.getElementById('timeOverrideCard');
       const openMailboxTimeBtn = document.getElementById('openMailboxTimeBtn');
@@ -4136,8 +4126,6 @@ async function boot(){
 
     }catch(e){ console.error('Mailbox time override init error', e); }
 
-
-    // World clocks settings
     const openClocksBtn = document.getElementById('openClocksBtn');
     if(openClocksBtn){
       openClocksBtn.onclick = ()=>{
@@ -4157,7 +4145,6 @@ async function boot(){
       };
     }
 
-    // System Check (Super Admin / Super User)
     try{
       const sysCard = document.getElementById('systemCheckCard');
       const openSysBtn = document.getElementById('openSystemCheckBtn');
