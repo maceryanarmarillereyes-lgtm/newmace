@@ -31,10 +31,10 @@ function eligibleForMailboxManager(user, opts){
   if(!user) return false;
   opts = opts || {};
   const r = String(user.role||'');
-  const admin = (window.Config && Config.ROLES) ? Config.ROLES.ADMIN : 'ADMIN';
-  const superAdmin = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
-  const superUser = (window.Config && Config.ROLES) ? Config.ROLES.SUPER_USER : 'SUPER_USER';
-  const teamLead = (window.Config && Config.ROLES) ? Config.ROLES.TEAM_LEAD : 'TEAM_LEAD';
+  const admin = (window.Config && window.Config.ROLES) ? window.Config.ROLES.ADMIN : 'ADMIN';
+  const superAdmin = (window.Config && window.Config.ROLES) ? window.Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
+  const superUser = (window.Config && window.Config.ROLES) ? window.Config.ROLES.SUPER_USER : 'SUPER_USER';
+  const teamLead = (window.Config && window.Config.ROLES) ? window.Config.ROLES.TEAM_LEAD : 'TEAM_LEAD';
 
   if(r===superAdmin || r===superUser || r===admin || r===teamLead) return true;
   if(opts.teamId && String(user.teamId||'') !== String(opts.teamId||'')) return false;
@@ -216,7 +216,7 @@ function _mbxDutyTone(label){
   const me = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser()||{}) : {};
   let isManager = false;
 
-  // GLOBAL UI STATE: Prevents UI reset on realtime syncs and component remounts
+  // GLOBAL UI STATE: Prevents UI reset on realtime syncs
   window.__mbxUiState = window.__mbxUiState || {
     showArchive: false,
     showAnalytics: false
@@ -238,7 +238,8 @@ function _mbxDutyTone(label){
   }
 
   // =========================================================================
-  // BUG FIX 2: STRICT SCHEDULE EVALUATION FOR MAILBOX MANAGERS PER BUCKET
+  // STRICT SCHEDULE EVALUATION FOR MAILBOX MANAGERS PER BUCKET
+  // (Removes actorName fallback that causes "Ghost Managers")
   // =========================================================================
   function _mbxFindScheduledManagerForBucket(table, bucket){
     try{
@@ -253,16 +254,15 @@ function _mbxDutyTone(label){
       const bucketStartMin = Number(bucket.startMin)||0;
       const shiftStartMin = _mbxParseHM(table.meta.dutyStart || '00:00');
 
-      // Determine correct DOW for this specific bucket
       let targetDateISO = shiftStartISO;
       if (bucketStartMin < shiftStartMin && bucketStartMin <= 1440) {
-         // Bucket crossed midnight into the next day
          targetDateISO = window.UI && window.UI.addDaysISO ? window.UI.addDaysISO(shiftStartISO, 1) : shiftStartISO;
       }
       const targetDow = _mbxIsoDow(targetDateISO);
 
       const all = (window.Store && window.Store.getUsers ? window.Store.getUsers() : []) || [];
       const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
+      const roleOrder = ['mailbox_manager','mailbox_call'];
       const matchedNames = [];
 
       for(const u of candidates){
@@ -271,15 +271,14 @@ function _mbxDutyTone(label){
         
         for(const b of bl){
           if (isMatched) break;
-          // Normalize role safely to catch "Mailbox Manager", "mailbox manager", "mailbox_manager"
           const r = String(b?.role||'').toLowerCase().trim().replace(/\s+/g, '_');
-          if(r !== 'mailbox_manager' && r !== 'mailbox_call') continue;
+          if(!roleOrder.includes(r)) continue;
           
           const s = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.start) : _mbxParseHM(b.start));
           const e = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.end) : _mbxParseHM(b.end));
           if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+          if (s === e) continue; // Ignore 0-length invalid blocks
 
-          // Strict checking: The manager's block must cover the START TIME of the bucket
           const wraps = e <= s;
           const hit = (!wraps && bucketStartMin >= s && bucketStartMin < e) || (wraps && (bucketStartMin >= s || bucketStartMin < e));
           
@@ -289,7 +288,9 @@ function _mbxDutyTone(label){
           }
         }
       }
-      if (matchedNames.length > 0) return matchedNames.join(' & ');
+      
+      const unique = [...new Set(matchedNames)];
+      if (unique.length > 0) return unique.join(' & ');
     }catch(e){ console.error("Schedule Eval Error", e); }
     return '—';
   }
@@ -481,18 +482,15 @@ function _mbxDutyTone(label){
     style.textContent = `
       .mbx-shell { display:flex; flex-direction:column; gap:20px; padding-bottom: 30px; }
       
-      /* Header & Controls */
       .mbx-header-bar { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:16px; flex-wrap:wrap; gap:14px; }
       .mbx-main-title { font-size: 26px; font-weight: 900; color: #f8fafc; margin: 0; letter-spacing: -0.5px; }
       
-      /* Glassmorphism Button Standard */
       .btn-glass { padding: 8px 16px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s; outline: none; display:inline-flex; align-items:center; justify-content:center; gap:6px; border:none; }
       .btn-glass-ghost { background: rgba(255,255,255,0.05); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.1); }
       .btn-glass-ghost:hover { background: rgba(255,255,255,0.1); color: #f8fafc; border-color: rgba(255,255,255,0.2); }
       .btn-glass-primary { background: linear-gradient(145deg, #0ea5e9, #0284c7); color: #fff; border: 1px solid rgba(56,189,248,0.4); box-shadow: 0 4px 12px rgba(14,165,233,0.3); }
       .btn-glass-primary:hover:not(:disabled) { background: linear-gradient(145deg, #38bdf8, #0ea5e9); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(14,165,233,0.4); }
       
-      /* Top Summary Row (Current Shift, Timer, Permissions) */
       .mbx-summary-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; }
       .mbx-stat-box { background:linear-gradient(145deg, rgba(30,41,59,0.4), rgba(15,23,42,0.6)); border:1px solid rgba(255,255,255,0.06); border-radius:12px; padding:20px; box-shadow: 0 8px 24px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.02); display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; transition:transform 0.2s; }
       .mbx-stat-box:hover { transform: translateY(-2px); border-color: rgba(56,189,248,0.3); }
@@ -589,7 +587,7 @@ function _mbxDutyTone(label){
     }catch(_){ }
   }
 
-  // --- RENDERING FUNCTIONS (MUST BE DEFINED BEFORE RENDER() CALL) ---
+  // --- RENDERING FUNCTIONS ---
   
   function getMyPendingAssignments(table){
     const me = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser()||{}) : {};
@@ -964,7 +962,7 @@ function _mbxDutyTone(label){
       if(document.getElementById('mbxAssignModal')) return;
       const UI = window.UI;
       const host = document.createElement('div');
-      host.className = 'mbx-custom-backdrop'; // ISOLATED CSS
+      host.className = 'mbx-custom-backdrop'; 
       host.id = 'mbxAssignModal';
       host.innerHTML = `
         <div class="mbx-modal-glass">
