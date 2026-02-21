@@ -192,18 +192,17 @@ function _mbxDutyLabelForUser(user, nowParts){
     const UI = window.UI;
     if(!Store || !Config || !UI || !user) return '—';
     const p = nowParts || (UI.mailboxNowParts ? UI.mailboxNowParts() : UI.manilaNow());
-    const nowMin = UI.minutesOfDay(p);
+    const nowMin = (UI && UI.minutesOfDay) ? UI.minutesOfDay(p) : ((Number(p.hh)||0)*60 + (Number(p.mm)||0));
     const dow = _mbxIsoDow(p.isoDate); 
 
-    // BOSS THUNTER: Check today and yesterday to fix midnight wrap visibility!
     const dows = [dow, (dow+6)%7];
 
     for(let i=0; i<dows.length; i++){
       const di = dows[i];
       const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, di) || []) : [];
       for(const b of blocks){
-        const s = UI.parseHM(b.start);
-        const e = UI.parseHM(b.end);
+        const s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
+        const e = (UI && UI.parseHM) ? UI.parseHM(b.end) : _mbxParseHM(b.end);
         if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
         const wraps = e <= s;
         
@@ -267,78 +266,67 @@ function _mbxDutyTone(label){
   }
 
   // =========================================================================
-  // STRICT SCHEDULE EVALUATION (ABSOLUTE TIMELINE FIX FOR NO BLEED)
+  // STRICT SCHEDULE EVALUATION (DOUBLE-LAYERED DEFENSE)
   // =========================================================================
   function _mbxFindScheduledManagerForBucket(table, bucket){
     try{
       if(!table || !bucket) return '—';
       const teamId = String(table?.meta?.teamId||'');
       if(!teamId) return '—';
-      
-      const shiftKey = String(table?.meta?.shiftKey||'');
-      const datePart = (shiftKey.split('|')[1] || '').split('T')[0];
-      const shiftStartISO = datePart || (window.UI && window.UI.mailboxNowParts ? window.UI.mailboxNowParts().isoDate : (window.UI && window.UI.manilaNow ? window.UI.manilaNow().isoDate : ''));
-
-      const bucketStartMin = Number(bucket.startMin)||0;
-      const bucketEndMin = Number(bucket.endMin)||0;
-      const shiftStartMin = _mbxParseHM(table.meta.dutyStart || '00:00');
-
-      let targetDateISO = shiftStartISO;
-      if (bucketStartMin < shiftStartMin && bucketStartMin <= 1440) {
-         targetDateISO = window.UI && window.UI.addDaysISO ? window.UI.addDaysISO(shiftStartISO, 1) : shiftStartISO;
-      }
-      const targetDow = _mbxIsoDow(targetDateISO);
 
       const all = (window.Store && window.Store.getUsers ? window.Store.getUsers() : []) || [];
       const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
-      
-      const allowedRoles = ['mailbox_manager', 'mailbox manager'];
+
       const matchedNames = [];
-      
-      // BOSS THUNTER: Transform bucket into Absolute Continuous Timeline to prevent "Tomorrow Segment Collisions"
-      const bucketAbsStart = bucketStartMin;
-      const bucketAbsEnd = (bucketEndMin <= bucketStartMin) ? bucketEndMin + 1440 : bucketEndMin;
+      const UI = window.UI;
+      const shiftKey = String(table?.meta?.shiftKey||'');
+      const datePart = (shiftKey.split('|')[1] || '').split('T')[0];
+      const shiftStartISO = datePart || (UI && UI.mailboxNowParts ? UI.mailboxNowParts().isoDate : (UI && UI.manilaNow ? UI.manilaNow().isoDate : ''));
+
+      let bucketStartMin = Number(bucket.startMin)||0;
+      let bucketEndMin = Number(bucket.endMin)||0;
+      let bucketAbsEnd = (bucketEndMin <= bucketStartMin) ? bucketEndMin + 1440 : bucketEndMin;
 
       for(const u of candidates){
-        const userAbsSegs = [];
-        // Scan Yesterday, Today, Tomorrow offsets (-1440, 0, 1440)
-        const days = [
-          { dow: (targetDow + 6) % 7, offset: -1440 },
-          { dow: targetDow, offset: 0 },
-          { dow: (targetDow + 1) % 7, offset: 1440 }
+        // BOSS THUNTER LAYER 1: HARD REJECT!
+        // Kapag ang primary task or role niya ay "Call Available", automatic kick! No questions asked.
+        const taskStr = String(u.task || u.taskRole || u.primaryTask || u.schedule || '').toLowerCase();
+        if (taskStr.includes('call') || taskStr.includes('call_available') || taskStr.includes('mailbox_call')) {
+            continue;
+        }
+
+        // BOSS THUNTER LAYER 2: VISUAL PARITY SAMPLING
+        // Ite-test natin kung mag-reresolve to "Manager" ang Live Status niya sa oras ng bucket.
+        const points = [
+           bucketStartMin,
+           Math.floor((bucketStartMin + bucketAbsEnd) / 2),
+           bucketAbsEnd - 1
         ];
 
-        for (const d of days) {
-          const bl = window.Store && window.Store.getUserDayBlocks ? (window.Store.getUserDayBlocks(u.id, d.dow) || []) : [];
-          for (const b of bl) {
-            const rRaw = String(b?.role||'').toLowerCase().trim();
-            const r = rRaw.replace(/\s+/g, '_');
-            
-            if (!allowedRoles.includes(r) && !allowedRoles.includes(rRaw)) continue;
-            
-            const s = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.start) : _mbxParseHM(b.start));
-            const e = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.end) : _mbxParseHM(b.end));
-            if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
-            if (s === e) continue; 
-
-            // Map standard block to our absolute timeline constraint!
-            if (e <= s) {
-               userAbsSegs.push([s + d.offset, e + 1440 + d.offset]);
-            } else {
-               userAbsSegs.push([s + d.offset, e + d.offset]);
-            }
-          }
-        }
-
-        // Math checking for Segment Intersection (A overlaps B if A.start < B.end AND B.start < A.end)
-        for (const seg of userAbsSegs) {
-           if (seg[0] < bucketAbsEnd && bucketAbsStart < seg[1]) {
-              matchedNames.push(String(u.name||u.username||'—'));
-              break; 
+        let isMgr = false;
+        for (const p of points) {
+           const minOfDay = p % 1440;
+           let targetISO = shiftStartISO;
+           
+           if (p >= 1440 && UI && UI.addDaysISO) {
+              try{ targetISO = UI.addDaysISO(shiftStartISO, 1); }catch(_){}
+           }
+           
+           const hh = Math.floor(minOfDay / 60);
+           const mm = minOfDay % 60;
+           
+           const label = _mbxDutyLabelForUser(u, { hh, mm, isoDate: targetISO }).toLowerCase();
+           if (label.includes('manager')) {
+               isMgr = true;
+               break;
            }
         }
+
+        if (isMgr) {
+           matchedNames.push(String(u.name||u.username||'—'));
+        }
       }
-      
+
       const unique = [...new Set(matchedNames)];
       if (unique.length > 0) return unique.join(' & ');
     }catch(e){ console.error("Schedule Eval Error", e); }
