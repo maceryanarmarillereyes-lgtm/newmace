@@ -49,10 +49,10 @@
   async function mountTeamWorkloadPulse() {
     if (!isLeadView) return;
     let state = { rows: [], filter: '', subscription: null, refreshLock: false };
-    let watchTimer = null; // BOSS THUNTER FIX: The Watcher Reference
+    let watchTimer = null; // BOSS THUNTER FIX: The Auto-Refresh Watcher
 
     const renderWidget = () => {
-      // BOSS THUNTER FIX: Automatically recreate the mount point if the UI refresh destroys it!
+      // BOSS THUNTER FIX: Automatic revival of the component if UI.renderDashboard wipes it!
       let mount = root.querySelector('#teamWorkloadPulseMount');
       if (!mount) {
           const host = root.querySelector('.dashx');
@@ -61,7 +61,7 @@
               mount.id = 'teamWorkloadPulseMount';
               host.appendChild(mount);
           } else {
-              return; // Can't render if the parent is completely gone
+              return; 
           }
       }
 
@@ -135,7 +135,7 @@
                             </div>
                             <div class="small muted" style="margin-top:4px; color:#676879; font-weight:600;">${UI.esc(progress)}%</div>
                           </td>
-                          <td style="padding:12px 8px;"><span style="background:${badgeBg}; color:${badgeCol}; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:800; letter-spacing:0.5px;">${UI.esc(label)}</span></td>
+                          <td style="padding:12px 8px;"><span style="background:${badgeBg}; color:${badgeCol}; padding:4px 12px; border-radius:999px; font-size:11px; font-weight:800; letter-spacing:0.5px; text-transform:uppercase; display:inline-block;">${UI.esc(label)}</span></td>
                         </tr>
                       `;
                     }).join('') || '<tr><td colspan="5" class="muted" style="padding:12px 8px;">No workload rows for this distribution.</td></tr>'}
@@ -197,21 +197,27 @@
         root._cleanup = () => {
           try { if (prevCleanup) prevCleanup(); } catch (_) { }
           try { if (state.subscription) client.removeChannel(state.subscription); } catch (_) { }
-          try { if (watchTimer) clearInterval(watchTimer); } catch (_) { } // CLEAR THE WATCHER ON EXIT
+          try { if (watchTimer) clearInterval(watchTimer); } catch (_) { }
           state.subscription = null;
         };
       } catch (_) { }
     };
 
-    // BOSS THUNTER FIX: THE WATCHER! 
-    // This checks every 1 second if the UI Auto-Refresh killed the component. 
-    // If it did, it instantly re-injects the HTML.
+    // BOSS THUNTER FIX: THE WATCHER
+    // If the main dashboard auto-refreshes and kills the pulse div, this detects it and re-renders it within 1 second.
     watchTimer = setInterval(() => {
         const host = root.querySelector('.dashx');
         if (host && !root.querySelector('#teamWorkloadPulseMount')) {
-            renderWidget(); // Bring it back to life!
+            renderWidget(); 
         }
     }, 1000);
+
+    const host = root.querySelector('.dashx');
+    if (host && !root.querySelector('#teamWorkloadPulseMount')) {
+      const mount = document.createElement('div');
+      mount.id = 'teamWorkloadPulseMount';
+      host.appendChild(mount);
+    }
 
     await refreshData();
     await ensureRealtime();

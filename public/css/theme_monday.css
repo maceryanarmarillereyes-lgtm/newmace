@@ -3,14 +3,14 @@
    Strictly scoped to body[data-theme="monday_workspace"]
    ========================================================================= */
 
-/* --- PHASE 2: GLOBAL CANVAS & TYPOGRAPHY --- */
+/* --- GLOBAL CANVAS & TYPOGRAPHY --- */
 body[data-theme="monday_workspace"] {
-  background: #F5F6F8 !important; /* Soft gray Monday canvas */
+  background: #F5F6F8 !important; 
   color: #323338 !important;
   font-family: 'Poppins', 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
 }
 
-/* FLOATING WHITE BOARDS (Main Content & Panels) */
+/* FLOATING WHITE BOARDS */
 body[data-theme="monday_workspace"] .card,
 body[data-theme="monday_workspace"] .main,
 body[data-theme="monday_workspace"] .side,
@@ -21,7 +21,6 @@ body[data-theme="monday_workspace"] .right {
   box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
 }
 
-/* Adjust the Topbar to look like Monday's floating header */
 body[data-theme="monday_workspace"] .topbar {
   background: #FFFFFF !important;
   border: 1px solid #E6E9EF !important;
@@ -36,32 +35,24 @@ body[data-theme="monday_workspace"] .topbrand {
   background: transparent !important;
   padding: 0 !important;
 }
-
 body[data-theme="monday_workspace"] .brand-name {
   color: #323338 !important;
   text-shadow: none !important;
   font-weight: 800 !important;
   font-size: 22px !important;
 }
-
 body[data-theme="monday_workspace"] .brand-mark {
-  background: #0073EA !important; /* Monday Blue */
+  background: #0073EA !important; 
   box-shadow: 0 4px 10px rgba(0,115,234,0.3) !important;
   border-radius: 10px !important;
 }
-body[data-theme="monday_workspace"] .brand-mark::after {
-  color: #FFFFFF !important;
-  text-shadow: none !important;
-}
+body[data-theme="monday_workspace"] .brand-mark::after { color: #FFFFFF !important; text-shadow: none !important; }
 
-/* SIDEBAR NAVIGATION (Pill-shaped Active States) */
-body[data-theme="monday_workspace"] .side {
-  padding: 16px !important;
-}
-
+/* SIDEBAR NAVIGATION */
+body[data-theme="monday_workspace"] .side { padding: 16px !important; }
 body[data-theme="monday_workspace"] .nav a.nav-item,
 body[data-theme="monday_workspace"] .nav .nav-group-head {
-  border-radius: 999px !important; /* Pill shape */
+  border-radius: 999px !important; 
   padding: 10px 16px !important;
   margin-bottom: 4px !important;
   color: #676879 !important;
@@ -70,24 +61,13 @@ body[data-theme="monday_workspace"] .nav .nav-group-head {
   background: transparent !important;
   transition: all 0.2s ease !important;
 }
-
 body[data-theme="monday_workspace"] .nav a.nav-item:hover,
-body[data-theme="monday_workspace"] .nav .nav-group-head:hover {
-  background: #F0F2F5 !important;
-  color: #323338 !important;
-}
-
-body[data-theme="monday_workspace"] .nav a.nav-item.active {
-  background: #CCE5FF !important; /* Light blue active state */
-  color: #0073EA !important;
-  font-weight: 600 !important;
-}
-
-/* Remove default dark mode border lines */
+body[data-theme="monday_workspace"] .nav .nav-group-head:hover { background: #F0F2F5 !important; color: #323338 !important; }
+body[data-theme="monday_workspace"] .nav a.nav-item.active { background: #CCE5FF !important; color: #0073EA !important; font-weight: 600 !important; }
 body[data-theme="monday_workspace"] .nav a.nav-item.active::before { display: none !important; }
 body[data-theme="monday_workspace"] .nav-group.is-record-group .nav-group-kids::before { display: none !important; }
 
-/* GLOBAL BUTTONS (Rounded & Bubbly) */
+/* GLOBAL BUTTONS */
 body[data-theme="monday_workspace"] .btn {
   border-radius: 8px !important;
   font-weight: 600 !important;
@@ -96,492 +76,99 @@ body[data-theme="monday_workspace"] .btn {
   color: #323338 !important;
   box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
 }
-
-body[data-theme="monday_workspace"] .btn:hover {
-  background: #F0F2F5 !important;
-}
-
-body[data-theme="monday_workspace"] .btn.primary {
-  background: #0073EA !important;
-  border-color: #0073EA !important;
-  color: #FFFFFF !important;
-  border-radius: 24px !important; /* Monday primary buttons are pill shaped */
-}
-
-body[data-theme="monday_workspace"] .btn.primary:hover {
-  background: #0060C7 !important;
-  border-color: #0060C7 !important;
-  transform: translateY(-1px) !important;
-  box-shadow: 0 4px 10px rgba(0,115,234,0.3) !important;
-}
+body[data-theme="monday_workspace"] .btn:hover { background: #F0F2F5 !important; }
+body[data-theme="monday_workspace"] .btn.primary { background: #0073EA !important; border-color: #0073EA !important; color: #FFFFFF !important; border-radius: 24px !important; }
+body[data-theme="monday_workspace"] .btn.primary:hover { background: #0060C7 !important; border-color: #0060C7 !important; transform: translateY(-1px) !important; box-shadow: 0 4px 10px rgba(0,115,234,0.3) !important; }
 
 /* INPUTS & SEARCH BAR */
 body[data-theme="monday_workspace"] .input,
 body[data-theme="monday_workspace"] select,
-body[data-theme="monday_workspace"] textarea {
-  background: #FFFFFF !important;
-  border: 1px solid #C3C6D4 !important;
-  border-radius: 8px !important;
-  color: #323338 !important;
-}
-
+body[data-theme="monday_workspace"] textarea { background: #FFFFFF !important; border: 1px solid #C3C6D4 !important; border-radius: 8px !important; color: #323338 !important; }
 body[data-theme="monday_workspace"] .input:focus,
-body[data-theme="monday_workspace"] select:focus {
-  border-color: #0073EA !important;
-  box-shadow: 0 0 0 3px rgba(0,115,234,0.2) !important;
-}
+body[data-theme="monday_workspace"] select:focus { border-color: #0073EA !important; box-shadow: 0 0 0 3px rgba(0,115,234,0.2) !important; }
+body[data-theme="monday_workspace"] .top-global-search { border-radius: 999px !important; border: 1px solid #C3C6D4 !important; background: #FFFFFF !important; padding: 6px 16px !important; box-shadow: none !important; }
+body[data-theme="monday_workspace"] .top-global-search:focus-within { border-color: #0073EA !important; box-shadow: 0 0 0 3px rgba(0,115,234,0.2) !important; }
 
-body[data-theme="monday_workspace"] .top-global-search {
-  border-radius: 999px !important;
-  border: 1px solid #C3C6D4 !important;
-  background: #FFFFFF !important;
-  padding: 6px 16px !important;
-  box-shadow: none !important;
-}
-body[data-theme="monday_workspace"] .top-global-search:focus-within {
-  border-color: #0073EA !important;
-  box-shadow: 0 0 0 3px rgba(0,115,234,0.2) !important;
-}
-
-/* SIDEBAR PROFILE OVERRIDE */
-body[data-theme="monday_workspace"] .sp-photo-sm {
-  background: #CCE5FF !important;
-  border: 1px solid #0073EA !important;
-}
-body[data-theme="monday_workspace"] .sp-photo-sm .initials {
-  color: #0073EA !important;
-}
-body[data-theme="monday_workspace"] .sp-role {
-  background: #E4F2FF !important;
-  color: #0073EA !important;
-  border: none !important;
-  border-radius: 4px !important; /* Monday prefers subtle square badges for roles */
-}
+/* SIDEBAR PROFILE */
+body[data-theme="monday_workspace"] .sp-photo-sm { background: #CCE5FF !important; border: 1px solid #0073EA !important; }
+body[data-theme="monday_workspace"] .sp-photo-sm .initials { color: #0073EA !important; }
+body[data-theme="monday_workspace"] .sp-role { background: #E4F2FF !important; color: #0073EA !important; border: none !important; border-radius: 4px !important; }
 
 /* QUICK LINKS & BOTTOM DOCK */
 body[data-theme="monday_workspace"] .quicklinks-bar,
-body[data-theme="monday_workspace"] .online-users-bar {
-  background: rgba(255,255,255,0.85) !important;
-  border-top: 1px solid #E6E9EF !important;
-}
-body[data-theme="monday_workspace"] .qcircle {
-  background: #FFFFFF !important;
-  border: 1px solid #C3C6D4 !important;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.05) !important;
-}
-body[data-theme="monday_workspace"] .wclock {
-  background: #FFFFFF !important;
-  border: 1px solid #E6E9EF !important;
-  color: #323338 !important;
-}
-body[data-theme="monday_workspace"] .wclock .wc-h, 
-body[data-theme="monday_workspace"] .wclock .wc-m {
-  color: #323338 !important;
-}
+body[data-theme="monday_workspace"] .online-users-bar { background: rgba(255,255,255,0.85) !important; border-top: 1px solid #E6E9EF !important; }
+body[data-theme="monday_workspace"] .qcircle { background: #FFFFFF !important; border: 1px solid #C3C6D4 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.05) !important; }
+body[data-theme="monday_workspace"] .wclock { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; color: #323338 !important; }
+body[data-theme="monday_workspace"] .wclock .wc-h, body[data-theme="monday_workspace"] .wclock .wc-m { color: #323338 !important; }
 
-/* --- PHASE 3: DASHBOARD OVERHAUL --- */
+/* --- DASHBOARD OVERHAUL --- */
+body[data-theme="monday_workspace"] .dashx-head .ux-h1 { font-weight: 800 !important; color: #1F2A44 !important; letter-spacing: -0.5px !important; }
+body[data-theme="monday_workspace"] .dashx-actions .btn { border-radius: 8px !important; font-weight: 600 !important; border-color: #C3C6D4 !important; }
+body[data-theme="monday_workspace"] .dashx-cards .dashx-card { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; border-radius: 12px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.02) !important; transition: all 0.2s ease !important; }
+body[data-theme="monday_workspace"] .dashx-cards .dashx-card:hover { transform: translateY(-3px) !important; box-shadow: 0 8px 20px rgba(0,0,0,0.06) !important; border-color: #0073EA !important; }
+body[data-theme="monday_workspace"] .dashx-card .v { color: #0073EA !important; font-size: 28px !important; }
+body[data-theme="monday_workspace"] .dashx-card .k { color: #323338 !important; font-weight: 700 !important; font-size: 13px !important; }
 
-body[data-theme="monday_workspace"] .dashx-head .ux-h1 {
-  font-weight: 800 !important;
-  color: #1F2A44 !important;
-  letter-spacing: -0.5px !important;
-}
-body[data-theme="monday_workspace"] .dashx-actions .btn {
-  border-radius: 8px !important;
-  font-weight: 600 !important;
-  border-color: #C3C6D4 !important;
-}
+body[data-theme="monday_workspace"] .dashx-panel { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; border-radius: 16px !important; box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important; }
+body[data-theme="monday_workspace"] .dashx-title { color: #1F2A44 !important; font-weight: 800 !important; font-size: 16px !important; }
 
-body[data-theme="monday_workspace"] .dashx-cards .dashx-card {
-  background: #FFFFFF !important;
-  border: 1px solid #E6E9EF !important;
-  border-radius: 12px !important;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.02) !important;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
-}
-body[data-theme="monday_workspace"] .dashx-cards .dashx-card:hover {
-  transform: translateY(-3px) !important;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.06) !important;
-  border-color: #0073EA !important;
-}
-body[data-theme="monday_workspace"] .dashx-card .v {
-  color: #0073EA !important; /* Monday Blue for values */
-  font-size: 28px !important;
-}
-body[data-theme="monday_workspace"] .dashx-card .k {
-  color: #323338 !important;
-  font-weight: 700 !important;
-  font-size: 13px !important;
-}
+body[data-theme="monday_workspace"] .dashx-filter { border-radius: 999px !important; background: #F5F6F8 !important; color: #676879 !important; font-weight: 600 !important; padding: 6px 14px !important; border: 1px solid transparent !important; }
+body[data-theme="monday_workspace"] .dashx-filter.active { background: #CCE5FF !important; color: #0073EA !important; border: 1px solid rgba(0,115,234,0.3) !important; }
 
-body[data-theme="monday_workspace"] .dashx-panel {
-  background: #FFFFFF !important;
-  border: 1px solid #E6E9EF !important;
-  border-radius: 16px !important;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
-}
-body[data-theme="monday_workspace"] .dashx-title {
-  color: #1F2A44 !important;
-  font-weight: 800 !important;
-  font-size: 16px !important;
-}
+body[data-theme="monday_workspace"] .dashx-notif { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; border-radius: 8px !important; border-left: 4px solid #E6E9EF !important; }
+body[data-theme="monday_workspace"] .dashx-notif.unread { background: #F8FBFF !important; border-color: #CCE5FF !important; border-left: 4px solid #0073EA !important; }
+body[data-theme="monday_workspace"] .dashx-notif .t { color: #323338 !important; }
+body[data-theme="monday_workspace"] .dashx-notif .m { color: #676879 !important; }
 
-body[data-theme="monday_workspace"] .dashx-filter {
-  border-radius: 999px !important;
-  border: 1px solid transparent !important;
-  background: #F5F6F8 !important;
-  color: #676879 !important;
-  font-weight: 600 !important;
-  padding: 6px 14px !important;
-}
-body[data-theme="monday_workspace"] .dashx-filter:hover {
-  background: #E6E9EF !important;
-  color: #323338 !important;
-}
-body[data-theme="monday_workspace"] .dashx-filter.active {
-  background: #CCE5FF !important;
-  color: #0073EA !important;
-  border: 1px solid rgba(0,115,234,0.3) !important;
-  box-shadow: none !important;
-}
-body[data-theme="monday_workspace"] input.dashx-filter {
-  background: #FFFFFF !important;
-  border: 1px solid #C3C6D4 !important;
-  border-radius: 10px !important;
-}
+/* Dashboard Heatmap Fixes */
+body[data-theme="monday_workspace"] .dashx-heatmap { background: #FFFFFF !important; border-radius: 12px !important; border: 1px solid #E6E9EF !important; padding: 16px !important; }
+body[data-theme="monday_workspace"] .dashx-heatmap .hday, body[data-theme="monday_workspace"] .dashx-heatmap .hhr { color: #323338 !important; font-weight: 600 !important; font-size: 12px !important; }
+body[data-theme="monday_workspace"] .dashx-heatmap .cell { border-radius: 4px !important; border: 1px solid #E6E9EF !important; background: #F5F6F8 !important; }
 
-body[data-theme="monday_workspace"] .dashx-notif {
-  background: #FFFFFF !important;
-  border: 1px solid #E6E9EF !important;
-  border-radius: 8px !important;
-  border-left: 4px solid #E6E9EF !important; 
-}
-body[data-theme="monday_workspace"] .dashx-notif.unread {
-  background: #F8FBFF !important;
-  border-color: #CCE5FF !important;
-  border-left: 4px solid #0073EA !important; 
-}
-body[data-theme="monday_workspace"] .dashx-notif .t {
-  color: #323338 !important;
-}
-body[data-theme="monday_workspace"] .dashx-notif .m {
-  color: #676879 !important;
-}
+/* --- ASSIGN TASKS (MEMBERS) --- */
+body[data-theme="monday_workspace"] .members-timeline-toolbar, body[data-theme="monday_workspace"] .coverage-panel { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; border-radius: 16px !important; box-shadow: 0 4px 14px rgba(0,0,0,0.02) !important; }
+body[data-theme="monday_workspace"] .members-row { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; box-shadow: 0 2px 6px rgba(0,0,0,0.02) !important; }
+body[data-theme="monday_workspace"] .timeline { background: #F5F6F8 !important; border: 1px solid #E6E9EF !important; }
+body[data-theme="monday_workspace"] .cm-col { background: #F5F6F8 !important; border: 1px solid #E6E9EF !important; }
+body[data-theme="monday_workspace"] .cm-col.ok { background: #E8FDEE !important; border-color: #00C875 !important; }
+body[data-theme="monday_workspace"] .cm-col.bad { background: #FFEBEE !important; border-color: #E2445C !important; }
+body[data-theme="monday_workspace"] .daytab.is-on { background: #0073EA !important; color: #FFFFFF !important; border-color: #0073EA !important; }
 
-body[data-theme="monday_workspace"] .dashx-bar {
-  background: #F5F6F8 !important;
-  border-color: #E6E9EF !important;
-  height: 10px !important;
-}
-body[data-theme="monday_workspace"] .dashx-bar .fill {
-  background: #00C875 !important; 
-  border-radius: 999px !important;
-}
-
-body[data-theme="monday_workspace"] .dashx-heatmap .cell {
-  border-color: #E6E9EF !important;
-  background: #F5F6F8 !important; 
-  position: relative;
-}
-body[data-theme="monday_workspace"] .dashx-heatmap .hday,
-body[data-theme="monday_workspace"] .dashx-heatmap .hhr {
-  color: #676879 !important;
-}
-
-
-/* --- PHASE 4: ASSIGN TASKS (MEMBERS) & MAILBOX OVERHAUL --- */
-
-body[data-theme="monday_workspace"] .members-timeline-toolbar,
-body[data-theme="monday_workspace"] .coverage-panel {
-  background: #FFFFFF !important;
-  border: 1px solid #E6E9EF !important;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.02) !important;
-  border-radius: 16px !important;
-}
-
-body[data-theme="monday_workspace"] .members-row {
-  background: #FFFFFF !important;
-  border: 1px solid #E6E9EF !important;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.02) !important;
-}
-body[data-theme="monday_workspace"] .members-row:hover {
-  border-color: #0073EA !important;
-  box-shadow: 0 4px 12px rgba(0,115,234,0.1) !important;
-}
-
-body[data-theme="monday_workspace"] .timeline {
-  background: #F5F6F8 !important;
-  border: 1px solid #E6E9EF !important;
-}
-body[data-theme="monday_workspace"] .timeline .tick {
-  border-left: 1px dashed #D5DCEA !important;
-}
-
-body[data-theme="monday_workspace"] .seg {
-  border-radius: 8px !important;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-  color: #FFFFFF !important;
-  font-weight: 700 !important;
-  border: none !important;
-}
-
-body[data-theme="monday_workspace"] .cm-col {
-  background: #F5F6F8 !important;
-  border: 1px solid #E6E9EF !important;
-}
-body[data-theme="monday_workspace"] .cm-col.ok {
-  background: #E8FDEE !important; 
-  border-color: #00C875 !important;
-}
-body[data-theme="monday_workspace"] .cm-col.bad {
-  background: #FFEBEE !important; 
-  border-color: #E2445C !important;
-}
-
-body[data-theme="monday_workspace"] .daytab {
-  background: #FFFFFF !important;
-  border: 1px solid #E6E9EF !important;
-  color: #676879 !important;
-}
-body[data-theme="monday_workspace"] .daytab.is-on {
-  background: #0073EA !important;
-  color: #FFFFFF !important;
-  border-color: #0073EA !important;
-  box-shadow: 0 4px 10px rgba(0,115,234,0.2) !important;
-}
-
-body[data-theme="monday_workspace"] .members-page .leave-select {
-  background-color: #FFFFFF !important;
-  color: #323338 !important;
-  border: 1px solid #C3C6D4 !important;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23323338' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important;
-}
-body[data-theme="monday_workspace"] .members-page .leave-select option {
-  background-color: #FFFFFF !important;
-  color: #323338 !important;
-}
-
+/* --- MAILBOX ULTIMATE POLISH (KILL THE DARK HEADERS) --- */
 body[data-theme="monday_workspace"] .mbx-card,
-body[data-theme="monday_workspace"] .mbx-table-wrap {
-  background: #FFFFFF !important;
-  border: 1px solid #E6E9EF !important;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
-}
+body[data-theme="monday_workspace"] .mbx-table-wrap { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; border-radius: 16px !important; box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important; overflow: hidden !important; }
 
-body[data-theme="monday_workspace"] .table.mbx-table thead th {
-  background: #F5F6F8 !important;
-  color: #323338 !important;
-  border-bottom: 2px solid #E6E9EF !important;
-  font-weight: 800 !important;
-}
-body[data-theme="monday_workspace"] .table.mbx-table tbody td {
-  background: #FFFFFF !important;
-  color: #323338 !important;
-  border-bottom: 1px solid #E6E9EF !important;
-}
-body[data-theme="monday_workspace"] .table.mbx-table tbody tr:hover td {
-  background: #F8FBFF !important; 
-}
-
-body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="manager"] {
-  background: #0073EA !important;
-  color: #FFFFFF !important;
-  border: none !important;
-  box-shadow: 0 2px 6px rgba(0,115,234,0.3) !important;
-}
-body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="call"] {
-  background: #00C875 !important;
-  color: #FFFFFF !important;
-  border: none !important;
-  box-shadow: 0 2px 6px rgba(0,200,117,0.3) !important;
-}
-body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="break"] {
-  background: #FDAB3D !important;
-  color: #FFFFFF !important;
-  border: none !important;
-  box-shadow: 0 2px 6px rgba(253,171,61,0.3) !important;
-}
-body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="idle"] {
-  background: #E6E9EF !important;
-  color: #676879 !important;
-  border: none !important;
-}
-
-/* =========================================================================
-   PHASE 5: THE FINAL POLISH (Dashboard Heatmap & Mailbox Tables)
-   ========================================================================= */
-
-/* --- DASHBOARD HEATMAP & PULSE FIXES --- */
-body[data-theme="monday_workspace"] .dashx-heatmap {
-  background: #FFFFFF !important;
-  border-radius: 12px !important;
-  border: 1px solid #E6E9EF !important;
-  padding: 16px !important;
-}
-
-body[data-theme="monday_workspace"] .dashx-heatmap .hday,
-body[data-theme="monday_workspace"] .dashx-heatmap .hhr {
-  color: #323338 !important; /* Make sure text is readable on white */
-  font-weight: 600 !important;
-  font-size: 12px !important;
-}
-
-body[data-theme="monday_workspace"] .dashx-heatmap .cell {
-  border-radius: 4px !important; /* Make the heatmap blocks slightly rounded */
-  border: 1px solid #E6E9EF !important;
-}
-
-body[data-theme="monday_workspace"] .pulse-row {
-  background: #FFFFFF !important;
-  border: 1px solid #E6E9EF !important;
-  border-radius: 8px !important;
-  margin-bottom: 8px !important;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.01) !important;
-}
-
-body[data-theme="monday_workspace"] .pulse-row .sp-name {
-  color: #323338 !important;
-  font-weight: 700 !important;
-}
-
-body[data-theme="monday_workspace"] .pulse-row:hover {
-  background: #F8FBFF !important;
-  border-color: #CCE5FF !important;
-}
-
-/* --- MAILBOX TABLE ULTIMATE POLISH --- */
-body[data-theme="monday_workspace"] .mbx-table-wrap {
-  border-radius: 16px !important;
-  overflow: hidden !important; /* Keep the rounded corners clean */
-  border: 1px solid #E6E9EF !important;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
-  background: #FFFFFF !important;
-}
-
-body[data-theme="monday_workspace"] .table.mbx-table {
-  border-collapse: separate !important; /* Required for border-radius on rows */
-  border-spacing: 0 8px !important; /* Add space between rows like Monday boards */
-  padding: 0 16px !important;
-}
-
-body[data-theme="monday_workspace"] .table.mbx-table thead th {
-  background: #FFFFFF !important;
-  color: #676879 !important;
-  font-weight: 500 !important;
-  text-transform: uppercase !important;
-  font-size: 11px !important;
-  letter-spacing: 0.5px !important;
-  border: none !important;
-  border-bottom: 2px solid #E6E9EF !important;
-  padding: 12px 16px !important;
-}
-
-body[data-theme="monday_workspace"] .table.mbx-table tbody tr {
-  background: #F5F6F8 !important;
-  transition: all 0.2s ease !important;
-}
-
-body[data-theme="monday_workspace"] .table.mbx-table tbody tr:hover {
-  background: #E4F2FF !important; /* Very light blue hover */
-  transform: translateY(-1px) !important;
-  box-shadow: 0 4px 10px rgba(0,115,234,0.05) !important;
-}
-
-body[data-theme="monday_workspace"] .table.mbx-table tbody td {
-  background: transparent !important;
-  border: 1px solid transparent !important; /* Remove harsh borders */
-  border-top: 1px solid #E6E9EF !important;
-  border-bottom: 1px solid #E6E9EF !important;
-  padding: 12px 16px !important;
-  color: #323338 !important;
-  font-weight: 500 !important;
-}
-
-body[data-theme="monday_workspace"] .table.mbx-table tbody td:first-child {
-  border-left: 1px solid #E6E9EF !important;
-  border-radius: 8px 0 0 8px !important; /* Round the left side of the row */
-  border-left: 4px solid #0073EA !important; /* Monday colored left border */
-}
-
-body[data-theme="monday_workspace"] .table.mbx-table tbody td:last-child {
-  border-right: 1px solid #E6E9EF !important;
-  border-radius: 0 8px 8px 0 !important; /* Round the right side of the row */
-}
-
-/* Fix Status texts inside the table */
-body[data-theme="monday_workspace"] .table.mbx-table .muted {
-  color: #676879 !important;
-}
-
-/* Dashboard Bottom Counters Fix */
-body[data-theme="monday_workspace"] .dashx-bottom {
+/* Force White Background on All Inner Mailbox Header DIVs */
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive),
+body[data-theme="monday_workspace"] .mbx-table-wrap [style*="background"] {
     background: #FFFFFF !important;
-    border-top: 1px solid #E6E9EF !important;
-    box-shadow: 0 -4px 14px rgba(0,0,0,0.02) !important;
-}
-body[data-theme="monday_workspace"] .dashx-bottom .shift-col {
-    color: #323338 !important;
-}
-body[data-theme="monday_workspace"] .dashx-bottom .shift-col .val {
-    color: #0073EA !important;
-    font-weight: 800 !important;
+    border-bottom: 2px solid #E6E9EF !important;
 }
 
-
-/* =========================================================================
-   PHASE 5.1: MAILBOX DEEP POLISH (The Final White Board)
-   ========================================================================= */
-
-/* Override the dark header block above the Mailbox table */
-body[data-theme="monday_workspace"] .mbx-table-wrap > div:first-child,
-body[data-theme="monday_workspace"] .mbx-table-wrap .row.pad {
-  background: #FFFFFF !important;
-  border-bottom: 2px solid #E6E9EF !important;
+/* Force Text inside Dark Headers to be dark slate */
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) *,
+body[data-theme="monday_workspace"] .mbx-table-wrap [style*="background"] * {
+    color: #1F2A44 !important;
+    text-shadow: none !important;
 }
 
-/* Force all text inside that header to be readable dark slate */
-body[data-theme="monday_workspace"] .mbx-table-wrap > div:first-child *,
-body[data-theme="monday_workspace"] .mbx-table-wrap .row.pad * {
-  color: #1F2A44 !important;
-  text-shadow: none !important;
+/* Fix Muted text inside those headers */
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) .muted,
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) .small {
+    color: #676879 !important;
+    opacity: 1 !important;
 }
 
-/* Force the sub-text (muted) to be Monday Gray */
-body[data-theme="monday_workspace"] .mbx-table-wrap > div:first-child .muted,
-body[data-theme="monday_workspace"] .mbx-table-wrap .row.pad .muted,
-body[data-theme="monday_workspace"] .mbx-table-wrap .row.pad .small {
-  color: #676879 !important;
-}
+/* Mailbox Main Table Styles */
+body[data-theme="monday_workspace"] .table.mbx-table { background: #FFFFFF !important; }
+body[data-theme="monday_workspace"] .table.mbx-table thead th { background: #FFFFFF !important; color: #676879 !important; font-weight: 600 !important; font-size: 11px !important; text-transform: uppercase !important; border-bottom: 2px solid #E6E9EF !important; }
+body[data-theme="monday_workspace"] .table.mbx-table tbody td { background: #FFFFFF !important; color: #323338 !important; border-bottom: 1px solid #E6E9EF !important; font-weight: 500 !important; }
+body[data-theme="monday_workspace"] .table.mbx-table tbody tr:hover td { background: #F8FBFF !important; }
 
-/* Polish the Duty Pills to be exactly like Monday Status columns */
-body[data-theme="monday_workspace"] .mbx-duty-pill,
-body[data-theme="monday_workspace"] .badge {
-  border-radius: 999px !important; /* Perfect Pill Shape */
-  font-weight: 800 !important;
-  font-size: 11px !important;
-  padding: 6px 14px !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.5px !important;
-  border: 1px solid transparent !important;
-}
-
-/* Specifically target the hollow/outline badges in Mailbox */
-body[data-theme="monday_workspace"] .mbx-duty-pill[style*="border"] {
-  background: #F5F6F8 !important;
-  color: #676879 !important;
-  border-color: #C3C6D4 !important;
-  box-shadow: none !important;
-}
-
-/* Polish the CSV, XLSX, PDF Buttons at the top */
-body[data-theme="monday_workspace"] .mbx-card .btn.ghost {
-  background: #FFFFFF !important;
-  border: 1px solid #C3C6D4 !important;
-  color: #323338 !important;
-  font-weight: 600 !important;
-}
-body[data-theme="monday_workspace"] .mbx-card .btn.ghost:hover {
-  background: #F0F2F5 !important;
-  border-color: #0073EA !important;
-  color: #0073EA !important;
-}
+/* Monday.com Perfect Pills */
+body[data-theme="monday_workspace"] .mbx-duty-pill { border-radius: 999px !important; font-weight: 800 !important; font-size: 11px !important; padding: 4px 12px !important; border: none !important; text-transform: uppercase !important; }
+body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="manager"] { background: #0073EA !important; color: #FFFFFF !important; }
+body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="call"] { background: #00C875 !important; color: #FFFFFF !important; }
+body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="break"] { background: #FDAB3D !important; color: #FFFFFF !important; }
+body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="idle"],
+body[data-theme="monday_workspace"] .mbx-duty-pill[style*="border"] { background: #F5F6F8 !important; color: #676879 !important; border: 1px solid #C3C6D4 !important; }
