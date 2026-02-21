@@ -165,9 +165,6 @@
     }
   }catch(_){ }
 
-  // -------------------------------------------------------------
-  // BOSS THUNTER: MISSING BIND GLOBAL SEARCH RESTORED
-  // -------------------------------------------------------------
   let __globalSearchBound = false;
   function bindGlobalSearch(user){
     try{
@@ -646,7 +643,7 @@
   }
 
   // =========================================================================
-  // BOSS THUNTER: ULTIMATE COMPACT BENTO MANAGER + API SYNC + CODE CLEANSER
+  // BOSS THUNTER: ULTIMATE COMPACT BENTO MANAGER + ONE-CLICK CODE CLEANSER
   // =========================================================================
   function renderThemeGrid(){
     const grid = document.getElementById('themeGrid');
@@ -657,7 +654,6 @@
     const saRole = (window.Config && Config.ROLES && Config.ROLES.SUPER_ADMIN) ? String(Config.ROLES.SUPER_ADMIN).toUpperCase() : 'SUPER_ADMIN';
     const isSA = (rawRole === saRole) || (rawRole === 'SUPER_ADMIN');
 
-    // ENSURE DATA IS LOADED BEFORE RENDERING UI
     if (!__themeMetaLoaded) {
       if (!__themeMetaLoading) {
         grid.innerHTML = '<div class="muted" style="padding:40px; text-align:center; font-size:14px; display:flex; justify-content:center; align-items:center;"><div class="mbx-spinner" style="margin-right:10px;"></div> Syncing Global Theme Policy...</div>';
@@ -666,38 +662,31 @@
       return;
     }
 
-    // INJECT ENTERPRISE COMPACT BENTO CSS
     if(!document.getElementById('mums-bento-theme-css')) {
         const s = document.createElement('style');
         s.id = 'mums-bento-theme-css';
         s.textContent = `
-            #themeGrid { display: block !important; }
+            #themeGrid { display: block !important; } 
             .th-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
             .th-card { position: relative; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px; cursor: pointer; transition: all 0.2s ease; overflow: hidden; display: flex; align-items: center; gap: 14px; box-shadow: inset 0 1px 1px rgba(255,255,255,0.05); }
             .th-card:hover { background: rgba(30, 41, 59, 0.6); border-color: rgba(56, 189, 248, 0.3); transform: translateY(-2px); }
             .th-card.is-active { background: linear-gradient(145deg, rgba(14, 165, 233, 0.1), rgba(2, 132, 199, 0.05)); border-color: #38bdf8; box-shadow: 0 0 20px rgba(56, 189, 248, 0.2), inset 0 0 0 1px #38bdf8; }
-            
             .th-swatch { width: 50px; height: 50px; border-radius: 50%; background: var(--t-bg); border: 2px solid var(--t-panel); box-shadow: 0 4px 10px rgba(0,0,0,0.3); position: relative; flex-shrink: 0; }
             .th-swatch::after { content: ''; position: absolute; bottom: -2px; right: -2px; width: 18px; height: 18px; border-radius: 50%; background: var(--t-acc); border: 2px solid var(--t-panel); box-shadow: 0 0 8px var(--t-acc); }
-            
             .th-info { flex: 1; min-width: 0; }
             .th-title { color: #f8fafc; font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.3px; }
             .th-meta { color: #94a3b8; font-size: 11px; margin-top: 4px; font-family: monospace; }
-            
             .th-badge { font-size: 9px; font-weight: 900; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.5px; margin-top:6px; display:inline-block; }
             .th-badge-active { background: rgba(56,189,248,0.2); color: #7dd3fc; border: 1px solid rgba(56,189,248,0.3); }
             .th-badge-hidden { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
-            
             .th-card.is-hidden { opacity: 0.5; border-style: dashed; }
             .th-card.is-hidden:hover { opacity: 0.9; border-style: dashed; border-color: #ef4444; }
-
             .th-admin-bar { position: absolute; right: 0; top: 0; bottom: 0; background: rgba(15,23,42,0.98); backdrop-filter: blur(8px); display: flex; flex-direction: column; border-left: 1px solid rgba(255,255,255,0.1); transform: translateX(100%); transition: transform 0.2s ease; z-index: 10; }
             .th-card.show-admin .th-admin-bar { transform: translateX(0); }
             .th-admin-btn { flex: 1; background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.05); color: #cbd5e1; font-size: 11px; font-weight: 800; cursor: pointer; padding: 0 16px; transition: all 0.2s; outline:none; display:flex; align-items:center; gap:6px; }
             .th-admin-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
             .th-admin-btn.del:hover { background: rgba(239,68,68,0.2); color: #fca5a5; }
             .th-admin-btn:disabled { opacity:0.5; cursor:not-allowed; }
-            
             .th-jiggle { animation: thJiggle 0.4s ease-in-out infinite alternate; }
             @keyframes thJiggle { 0% { transform: rotate(-1deg) scale(0.98); } 100% { transform: rotate(1deg) scale(1.02); } }
         `;
@@ -707,7 +696,6 @@
     const cur = Store.getTheme();
     const rawThemes = (Config && Array.isArray(Config.THEMES)) ? Config.THEMES : [];
 
-    // BULLETPROOF FILTERING LOGIC
     const visibleThemes = rawThemes.filter(t => {
         const m = __themeMeta[t.id] || {};
         if (m.deleted) return false; 
@@ -718,7 +706,6 @@
         return true;
     });
 
-    // SUPER ADMIN CONTROL BAR
     const adminBarHtml = isSA ? `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); flex-wrap:wrap; gap:12px;">
             <div>
@@ -726,8 +713,8 @@
                <div class="small muted" style="margin-top:4px;">Globally synced via API. Manage visibility or export clean code.</div>
             </div>
             <div style="display:flex; gap:10px;">
-                <button class="btn-glass btn-glass-ghost" id="exportCleanConfigBtn" title="Get code for config.js to wipe deleted themes globally">
-                    📄 Get Clean Code
+                <button class="btn-glass btn-glass-ghost" id="exportCleanConfigBtn" title="Click to copy the clean config array">
+                    📄 Copy Clean Code
                 </button>
                 <button class="btn-glass ${__themeEditMode ? 'btn-glass-danger' : 'btn-glass-primary'}" id="toggleThemeEditBtn">
                     ${__themeEditMode ? '✅ Done Editing' : '⚙️ Manage Themes'}
@@ -736,23 +723,16 @@
         </div>
     ` : '';
 
-    // BUILD COMPACT BENTO CARDS
     const cardsHtml = visibleThemes.map(t => {
       const m = __themeMeta[t.id] || {};
       const active = t.id === cur;
       const isHidden = !!m.hidden;
-
       const adminHtml = `
           <div class="th-admin-bar">
-              <button class="th-admin-btn" data-hide-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">
-                  ${isHidden ? '👁️ Unhide' : '👀 Hide'}
-              </button>
-              <button class="th-admin-btn del" data-del-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">
-                  🗑️ Delete
-              </button>
+              <button class="th-admin-btn" data-hide-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">${isHidden ? '👁️ Unhide' : '👀 Hide'}</button>
+              <button class="th-admin-btn del" data-del-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">🗑️ Delete</button>
           </div>
       `;
-
       return `
         <div class="th-card ${active?'is-active':''} ${isHidden?'is-hidden':''} ${__themeEditMode?'show-admin th-jiggle':''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button">
            <div class="th-swatch" style="--t-bg:${t.bg}; --t-panel:${t.panel}; --t-acc:${t.accent};"></div>
@@ -769,41 +749,33 @@
 
     grid.innerHTML = adminBarHtml + `<div class="th-grid">${cardsHtml}</div>`;
 
-    // EVENT BINDINGS
     const toggleBtn = document.getElementById('toggleThemeEditBtn');
-    if(toggleBtn) {
-        toggleBtn.onclick = () => {
-            __themeEditMode = !__themeEditMode;
-            renderThemeGrid();
-        };
-    }
+    if(toggleBtn) toggleBtn.onclick = () => { __themeEditMode = !__themeEditMode; renderThemeGrid(); };
 
-    // BOSS THUNTER FIX: PROPER MODAL FOR GET CLEAN CODE
+    // BOSS THUNTER FIX: ONE-CLICK COPY TO CLIPBOARD
     const exportBtn = document.getElementById('exportCleanConfigBtn');
     if(exportBtn) {
-        exportBtn.onclick = () => {
+        exportBtn.onclick = async () => {
             const cleanArray = rawThemes.filter(t => !__themeMeta[t.id]?.deleted);
             const str = "Config.THEMES = " + JSON.stringify(cleanArray, null, 4) + ";";
             
-            // Build Quick Modal using standard UI classes
-            const m = document.createElement('div');
-            m.className = 'modal open';
-            m.style.zIndex = '999999';
-            m.innerHTML = `
-                <div class="panel" style="max-width:800px; width:95vw;">
-                    <div class="head">
-                        <div>
-                            <div class="announce-title" style="color:#38bdf8; font-size: 18px; font-weight: 800;">📄 Clean Theme Configuration</div>
-                            <div class="small muted">Copy this block and paste it inside your public/js/config.js</div>
-                        </div>
-                        <button class="btn ghost" onclick="this.closest('.modal').remove()">✕</button>
-                    </div>
-                    <div class="body">
-                        <textarea class="input" style="width:100%; height:400px; font-family:monospace; font-size:12px; background:rgba(0,0,0,0.3); color:#a8b6d6;" readonly>${UI.esc(str)}</textarea>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(m);
+            try {
+                await navigator.clipboard.writeText(str);
+                const ogText = exportBtn.innerHTML;
+                exportBtn.innerHTML = '✅ Copied to Clipboard!';
+                exportBtn.style.borderColor = '#10b981';
+                exportBtn.style.color = '#10b981';
+                
+                setTimeout(() => {
+                    exportBtn.innerHTML = ogText;
+                    exportBtn.style.borderColor = '';
+                    exportBtn.style.color = '';
+                }, 3000);
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+                alert('Could not copy automatically. Check console for the code.');
+                console.log(str);
+            }
         };
     }
 
@@ -824,23 +796,15 @@
             btn.onclick = async (e) => {
                 e.stopPropagation();
                 if(btn.dataset.busy) return;
-
                 const tid = btn.getAttribute('data-hide-theme');
                 const nextMeta = JSON.parse(JSON.stringify(__themeMeta));
                 nextMeta[tid] = nextMeta[tid] || {};
                 nextMeta[tid].hidden = !nextMeta[tid].hidden;
-
                 btn.dataset.busy = '1';
                 const originalText = btn.innerHTML;
                 btn.innerHTML = '<span class="mbx-spinner"></span> Sync...';
-
                 const res = await saveThemeMeta(nextMeta, isSA, user && user.name ? user.name : '');
-                if(!res.ok){
-                    try{ UI.toast('Sync failed: ' + res.error, 'error'); }catch(_){}
-                    btn.innerHTML = originalText;
-                    delete btn.dataset.busy;
-                    return;
-                }
+                if(!res.ok){ try{ UI.toast('Sync failed: ' + res.error, 'error'); }catch(_){} btn.innerHTML = originalText; delete btn.dataset.busy; return; }
                 renderThemeGrid();
             };
         });
@@ -849,15 +813,13 @@
             btn.onclick = async (e) => {
                 e.stopPropagation();
                 if(btn.dataset.busy) return;
-
                 const tid = btn.getAttribute('data-del-theme');
-                const ok = await UI.confirm({ title: 'Delete Theme Globally', message: 'Hide and delete this theme for all users? (Use "Get Clean Code" later to permanently remove it from config.js)', okText: 'Yes, Delete', danger: true });
+                const ok = await UI.confirm({ title: 'Delete Theme Globally', message: 'Hide and delete this theme for all users? (Use "Copy Clean Code" later to permanently remove it from config.js)', okText: 'Yes, Delete', danger: true });
                 if (!ok) return;
                 
                 const nextMeta = JSON.parse(JSON.stringify(__themeMeta));
                 nextMeta[tid] = nextMeta[tid] || {};
                 nextMeta[tid].deleted = true;
-
                 btn.dataset.busy = '1';
                 const originalText = btn.innerHTML;
                 btn.innerHTML = '<span class="mbx-spinner"></span> Purging...';
@@ -866,14 +828,8 @@
                     Store.dispatch ? Store.dispatch('UPDATE_THEME', { id:'ocean' }) : Store.setTheme('ocean');
                     applyTheme('ocean');
                 }
-
                 const res = await saveThemeMeta(nextMeta, isSA, user && user.name ? user.name : '');
-                if(!res.ok){
-                    try{ UI.toast('Delete sync failed: ' + res.error, 'error'); }catch(_){}
-                    btn.innerHTML = originalText;
-                    delete btn.dataset.busy;
-                    return;
-                }
+                if(!res.ok){ try{ UI.toast('Delete sync failed: ' + res.error, 'error'); }catch(_){} btn.innerHTML = originalText; delete btn.dataset.busy; return; }
                 renderThemeGrid();
             };
         });
@@ -4667,78 +4623,4 @@ async function boot(){
 
         const qKey = `mums_guide_questions_${pageId}`;
         let arr=[];
-        try{ arr = JSON.parse(localStorage.getItem(qKey) || '[]') || []; }catch(e){ arr=[]; }
-        arr.push(text);
-        localStorage.setItem(qKey, JSON.stringify(arr.slice(-50)));
-
-        localStorage.setItem('mums_guide_tab','guide');
-        if(ask) ask.value='';
-        renderSummaryGuide(pageId, window._currentPageLabel);
-      }
-      if(askBtn) askBtn.onclick = submitAsk;
-      if(ask){
-        ask.addEventListener('keydown', (e)=>{
-          if(e.key==='Enter'){ e.preventDefault(); submitAsk(); }
-        });
-      }
-
-      const fullBtn = UI.el('#guideOpenFullManual');
-      if(fullBtn){
-        fullBtn.onclick = ()=>{
-          const pageId = resolveRoutePageId();
-          try{
-            openFullManualForPage(pageId, window._currentPageLabel);
-          }catch(err){
-            try{ console.error(err); }catch(_){ }
-            try{ UI.toast('Full manual failed to open. Please reload and try again.', 'error'); }catch(_){ alert('Full manual failed to open.'); }
-          }
-        };
-      }
-
-      if(!window.__mumsFullManualDelegated){
-        window.__mumsFullManualDelegated = true;
-        document.addEventListener('click', (e)=>{
-          const btn = e.target && e.target.closest ? e.target.closest('#guideOpenFullManual') : null;
-          if(!btn) return;
-          try{
-            const pageId = resolveRoutePageId();
-            try{
-              openFullManualForPage(pageId, window._currentPageLabel);
-            }catch(err){
-              try{ console.error(err); }catch(_){ }
-              try{ UI.toast('Full manual failed to open. Please reload and try again.', 'error'); }catch(_){ alert('Full manual failed to open.'); }
-            }
-          }catch(err){ try{ console.error(err); }catch(_){} }
-        });
-      }
-    })();
-
-    try{ if(notifCleanup) notifCleanup(); }catch(e){}
-    try{ notifCleanup = UI.startScheduleNotifListener(user); }catch(e){ console.error(e); }
-
-    UI.els('[data-close="topAnnModal"]').forEach(b=>b.onclick=()=>UI.closeModal('topAnnModal'));
-
-    setInterval(()=>{ try{ renderSideLogs(Auth.getUser()||user); }catch(e){} }, 5000);
-    setInterval(()=>{ try{ renderUserCard(Auth.getUser()||user); }catch(e){} }, 60000);
-
-    window.addEventListener('mums:store', ()=>{
-      try{ renderUserCard(Auth.getUser()||user); }catch(e){}
-    });
-
-  } 
-
-  window.App = { boot };
-  (function(){
-    let started = false;
-    function start(){
-      if(started) return;
-      started = true;
-      try{ window.App && window.App.boot && window.App.boot(); }catch(e){ try{ console.error(e); }catch(_){} }
-    }
-    if(document.readyState === 'loading'){
-      document.addEventListener('DOMContentLoaded', start);
-    }else{
-      setTimeout(start, 0);
-    }
-  })();
-})();
+        try{ arr = JSON.parse(localStorage
