@@ -199,21 +199,18 @@ function _mbxDutyLabelForUser(user, nowParts){
 
     for(let i=0; i<dows.length; i++){
       const di = dows[i];
+      const offset = (i===0) ? -1440 : 0;
       const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, di) || []) : [];
       for(const b of blocks){
-        const s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
-        const e = (UI && UI.parseHM) ? UI.parseHM(b.end) : _mbxParseHM(b.end);
+        let s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
+        let e = (UI && UI.parseHM) ? UI.parseHM(b.end) : _mbxParseHM(b.end);
         if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
-        const wraps = e <= s;
         
-        let hit = false;
-        if (i === 0) {
-           hit = (!wraps && nowMin >= s && nowMin < e) || (wraps && (nowMin >= s || nowMin < e));
-        } else {
-           hit = (wraps && nowMin < e);
-        }
-        
-        if(hit){
+        if(e <= s) e += 1440;
+        s += offset;
+        e += offset;
+
+        if (nowMin >= s && nowMin < e) {
           const sc = Config.scheduleById ? Config.scheduleById(b.role) : null;
           return (sc && sc.label) ? sc.label : String(b.role||'—');
         }
@@ -266,7 +263,7 @@ function _mbxDutyTone(label){
   }
 
   // =========================================================================
-  // BOSS THUNTER: STRICT GHOST ERADICATION SCRIPT
+  // BOSS THUNTER: ABSOLUTE BLOCK SCANNER (ULTIMATE GHOST FIX)
   // =========================================================================
   function _mbxFindScheduledManagerForBucket(table, bucket){
     try{
@@ -274,69 +271,87 @@ function _mbxDutyTone(label){
       const teamId = String(table?.meta?.teamId||'');
       if(!teamId) return '—';
 
-      const all = (window.Store && window.Store.getUsers ? window.Store.getUsers() : []) || [];
-      const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
-
-      const matchedNames = [];
       const UI = window.UI;
+      const Store = window.Store;
+      const Config = window.Config;
+
+      let bStart = Number(bucket.startMin)||0;
+      let bEnd = Number(bucket.endMin)||0;
+      if(bEnd <= bStart) bEnd += 1440; // Convert to absolute 24h+ timeline
+
       const shiftKey = String(table?.meta?.shiftKey||'');
       const datePart = (shiftKey.split('|')[1] || '').split('T')[0];
-      const shiftStartISO = datePart || (UI && UI.mailboxNowParts ? UI.mailboxNowParts().isoDate : (UI && UI.manilaNow ? UI.manilaNow().isoDate : ''));
+      let targetDow = 1;
+      try { 
+         targetDow = new Date(datePart + 'T00:00:00+08:00').getDay(); 
+      } catch(e) { 
+         targetDow = UI && UI.manilaNowDate ? new Date(UI.manilaNowDate()).getDay() : new Date().getDay(); 
+      }
 
-      let bucketStartMin = Number(bucket.startMin)||0;
-      let bucketEndMin = Number(bucket.endMin)||0;
-      let bucketAbsEnd = (bucketEndMin <= bucketStartMin) ? bucketEndMin + 1440 : bucketEndMin;
+      const all = (Store && Store.getUsers ? Store.getUsers() : []) || [];
+      const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
+      const matched = [];
 
       for(const u of candidates){
-        // LAYER 1: STRICT TASK STRING CHECK
-        const taskStr = String(u.task || u.taskRole || u.primaryTask || u.schedule || '').toLowerCase();
-        if (taskStr.includes('call') || taskStr.includes('call_available') || taskStr.includes('mailbox_call')) {
-            continue; // Kick out immediately
-        }
-
-        // LAYER 2: INTERSECTION & PARITY CHECK
-        const points = [
-           bucketStartMin,
-           Math.floor((bucketStartMin + bucketAbsEnd) / 2),
-           bucketAbsEnd - 1
-        ];
-
         let isMgr = false;
-        let isCall = false; // Flag to catch ghost data
+        let hasBlocks = false;
+        // Search yesterday, today, and tomorrow to prevent any overlap issues
+        const dows = [ (targetDow+6)%7, targetDow, (targetDow+1)%7 ];
 
-        for (const p of points) {
-           const minOfDay = p % 1440;
-           let targetISO = shiftStartISO;
-           
-           if (p >= 1440 && UI && UI.addDaysISO) {
-              try{ targetISO = UI.addDaysISO(shiftStartISO, 1); }catch(_){}
-           }
-           
-           const hh = Math.floor(minOfDay / 60);
-           const mm = minOfDay % 60;
-           
-           const label = _mbxDutyLabelForUser(u, { hh, mm, isoDate: targetISO }).toLowerCase();
-           
-           // If the system thinks they are Call Available during this exact time block, flag them!
-           if (label.includes('call')) {
-               isCall = true;
-           }
-           if (label.includes('manager')) {
-               isMgr = true;
-           }
+        // 1. SCAN EXPLICIT DAY BLOCKS FIRST
+        for(let i=0; i<3; i++){
+            const di = dows[i];
+            const offset = (i===0) ? -1440 : (i===2) ? 1440 : 0;
+            const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(u.id, di) || []) : [];
+
+            for(const b of blocks){
+                hasBlocks = true;
+                let s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
+                let e = (UI && UI.parseHM) ? UI.parseHM(b.end) : _mbxParseHM(b.end);
+                if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+
+                if(e <= s) e += 1440;
+                s += offset;
+                e += offset;
+
+                // PERFECT INTERSECTION: If the block touches the bucket window
+                if (s < bEnd && bStart < e) {
+                    const rawRole = String(b.role||'').toLowerCase();
+                    const sc = Config && Config.scheduleById ? Config.scheduleById(b.role) : null;
+                    const label = (sc && sc.label ? sc.label : rawRole).toLowerCase();
+
+                    // If the block is Manager, mark them.
+                    if (label.includes('manager') || rawRole.includes('manager')) {
+                        isMgr = true;
+                    }
+                    // If the block is Call Available, it overrides and KICKS THEM OUT of the Manager slot!
+                    if (label.includes('call') || rawRole.includes('call')) {
+                        isMgr = false; 
+                    }
+                }
+            }
         }
 
-        // BOSS THUNTER FINAL PURGE:
-        // Only accept if they are flagged as Manager AND NOT flagged as Call.
-        if (isMgr && !isCall) {
-           matchedNames.push(String(u.name||u.username||'—'));
+        // 2. ONLY USE FALLBACK IF THEY HAVE NO BLOCKS AT ALL
+        if (!hasBlocks) {
+            const defaultTask = String(u.task || u.taskId || u.taskRole || u.primaryTask || u.schedule || '').toLowerCase();
+            if (defaultTask.includes('manager')) {
+                isMgr = true;
+            }
+            if (defaultTask.includes('call')) {
+                isMgr = false;
+            }
+        }
+
+        // Push if validated
+        if (isMgr) {
+            matched.push(String(u.name || u.username || '—'));
         }
       }
 
-      const unique = [...new Set(matchedNames)];
-      if (unique.length > 0) return unique.join(' & ');
-    }catch(e){ console.error("Schedule Eval Error", e); }
-    return '—';
+      const unique = [...new Set(matched)];
+      return unique.length > 0 ? unique.join(' & ') : '—';
+    }catch(e){ return '—'; }
   }
 
   function isPrivilegedRole(u){
