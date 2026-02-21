@@ -43,14 +43,14 @@ body[data-theme="monday_workspace"] .nav .nav-group-head {
   padding: 10px 16px !important;
   margin-bottom: 4px !important;
   color: #676879 !important;
-  font-weight: 400 !important;
+  font-weight: 500 !important;
   border: none !important;
   background: transparent !important;
   transition: all 0.2s ease !important;
 }
 body[data-theme="monday_workspace"] .nav a.nav-item:hover,
 body[data-theme="monday_workspace"] .nav .nav-group-head:hover { background: #e6e9ef !important; color: #323338 !important; }
-body[data-theme="monday_workspace"] .nav a.nav-item.active { background: #cce5ff !important; color: #0073ea !important; font-weight: 500 !important; }
+body[data-theme="monday_workspace"] .nav a.nav-item.active { background: #cce5ff !important; color: #0073ea !important; font-weight: 600 !important; }
 body[data-theme="monday_workspace"] .nav a.nav-item.active::before { display: none !important; }
 body[data-theme="monday_workspace"] .nav-group.is-record-group .nav-group-kids::before { display: none !important; }
 
@@ -80,7 +80,7 @@ body[data-theme="monday_workspace"] .mbx-card {
     padding: 20px !important;
 }
 body[data-theme="monday_workspace"] .mbx-card .small.muted { color: #676879 !important; font-weight: 500 !important; font-size: 13px !important; text-transform: none !important; }
-body[data-theme="monday_workspace"] .mbx-card .h2, body[data-theme="monday_workspace"] .mbx-card .val { color: #323338 !important; font-weight: 700 !important; text-shadow: none !important; font-size: 24px !important; }
+body[data-theme="monday_workspace"] .mbx-card .h2, body[data-theme="monday_workspace"] .mbx-card .val { color: #323338 !important; font-weight: 800 !important; text-shadow: none !important; font-size: 24px !important; }
 
 /* 2. THE BOARD WRAPPER */
 body[data-theme="monday_workspace"] .mbx-table-wrap {
@@ -92,21 +92,26 @@ body[data-theme="monday_workspace"] .mbx-table-wrap {
     margin-top: 30px !important;
 }
 
-/* CARPET BOMB ALL DARK HEADERS INSIDE MAILBOX */
-body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) {
+/* 3. CARPET BOMB ALL DARK HEADERS INSIDE MAILBOX (KILL THE GRAY HEADERS!) */
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive),
+body[data-theme="monday_workspace"] .mbx-table-wrap [style*="background"] {
     background: #FFFFFF !important;
     border-bottom: 1px solid #d0d4e4 !important;
     padding: 20px 24px 16px 24px !important;
 }
-body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) * {
+
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) *,
+body[data-theme="monday_workspace"] .mbx-table-wrap [style*="background"] * {
     color: #323338 !important;
     text-shadow: none !important;
 }
+
 body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) strong { font-size: 18px !important; font-weight: 600 !important; }
 body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) .muted,
-body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) .small { color: #676879 !important; opacity: 1 !important; font-size: 13px !important; }
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) .small,
+body[data-theme="monday_workspace"] .mbx-table-wrap [style*="background"] .muted { color: #676879 !important; opacity: 1 !important; font-size: 13px !important; }
 
-/* 3. THE SPREADSHEET TABLE */
+/* 4. THE SPREADSHEET TABLE */
 body[data-theme="monday_workspace"] .table.mbx-table {
     background: #FFFFFF !important;
     width: 100% !important;
@@ -115,7 +120,7 @@ body[data-theme="monday_workspace"] .table.mbx-table {
 body[data-theme="monday_workspace"] .table.mbx-table thead th {
     background: #FFFFFF !important;
     color: #676879 !important;
-    font-weight: 400 !important;
+    font-weight: 500 !important;
     font-size: 13px !important;
     text-transform: none !important; 
     border-top: none !important;
@@ -129,16 +134,16 @@ body[data-theme="monday_workspace"] .table.mbx-table tbody tr {
     background: #FFFFFF !important;
     border-bottom: 1px solid #e6e9ef !important;
 }
-body[data-theme="monday_workspace"] .table.mbx-table tbody tr:hover { background: #f5f6f8 !important; } /* Subtle gray hover */
+body[data-theme="monday_workspace"] .table.mbx-table tbody tr:hover { background: #f5f6f8 !important; } 
 body[data-theme="monday_workspace"] .table.mbx-table tbody td {
-    padding: 6px 16px !important; /* COMPACT PADDING */
+    padding: 6px 16px !important; 
     color: #323338 !important;
-    font-weight: 400 !important;
+    font-weight: 500 !important;
     font-size: 13px !important;
     border: none !important;
     border-right: 1px solid #e6e9ef !important; /* MONDAY COLUMN SEPARATORS */
     vertical-align: middle !important;
-    height: 36px !important;
+    height: 38px !important;
 }
 body[data-theme="monday_workspace"] .table.mbx-table tbody td:last-child { border-right: none !important; }
 
@@ -147,7 +152,7 @@ body[data-theme="monday_workspace"] .table.mbx-table tbody td:first-child {
     border-left: 6px solid #579BFC !important; 
 }
 
-/* 4. MONDAY.COM STATUS CELLS (FULL BLEED BLOCKS) */
+/* 5. MONDAY.COM STATUS CELLS (FULL BLEED BLOCKS) */
 body[data-theme="monday_workspace"] .mbx-table-wrap td:has(.mbx-duty-pill),
 body[data-theme="monday_workspace"] .mbx-table-wrap td:has(.badge) {
     padding: 0 !important; /* Remove padding so the pill fills the cell entirely */
@@ -161,10 +166,10 @@ body[data-theme="monday_workspace"] .mbx-table-wrap .mbx-duty-pill {
     border-radius: 0 !important; /* Flat edges like a real spreadsheet cell */
     margin: 0 !important;
     height: 100% !important;
-    min-height: 36px !important;
+    min-height: 38px !important;
     width: 100% !important;
     font-size: 13px !important;
-    font-weight: 400 !important;
+    font-weight: 500 !important;
     text-transform: none !important;
     color: #FFFFFF !important;
     border: none !important;
@@ -185,7 +190,21 @@ body[data-theme="monday_workspace"] .mbx-table-wrap .mbx-duty-pill[style*="borde
     box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05) !important;
 }
 
-/* 5. DASHBOARD WIDGET FIXES (Carryover) */
+/* Case Monitoring Matrix specific font colors fix */
+body[data-theme="monday_workspace"] .mbx-table-wrap:nth-of-type(2) table td[style*="color"] {
+    color: #676879 !important;
+    font-weight: 500 !important;
+}
+
+/* =========================================================================
+   DASHBOARD WIDGET FIXES
+   ========================================================================= */
+body[data-theme="monday_workspace"] .dashx-head .ux-h1 { font-weight: 800 !important; color: #1F2A44 !important; letter-spacing: -0.5px !important; }
 body[data-theme="monday_workspace"] .dashx-heatmap { background: #FFFFFF !important; border-radius: 8px !important; border: 1px solid #d0d4e4 !important; padding: 16px !important; }
 body[data-theme="monday_workspace"] .dashx-heatmap .hday, body[data-theme="monday_workspace"] .dashx-heatmap .hhr { color: #323338 !important; font-weight: 500 !important; font-size: 12px !important; }
 body[data-theme="monday_workspace"] .dashx-heatmap .cell { border-radius: 2px !important; border: 1px solid #e6e9ef !important; background: #f5f6f8 !important; }
+
+/* Dashboard Cards */
+body[data-theme="monday_workspace"] .dashx-cards .dashx-card { background: #FFFFFF !important; border: 1px solid #d0d4e4 !important; border-radius: 8px !important; box-shadow: 0 2px 6px rgba(0,0,0,0.02) !important; }
+body[data-theme="monday_workspace"] .dashx-card .v { color: #0073ea !important; }
+body[data-theme="monday_workspace"] .dashx-card .k { color: #323338 !important; font-weight: 600 !important; }

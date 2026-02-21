@@ -5,9 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <base href="/" />
   <script>
-    // Root access must always load the login page.
-    // Keep the SPA router intact for /dashboard, /members, etc.
-    // This runs before any heavy assets load to avoid UI flashes.
     (function(){
       try {
         const p = String(location.pathname || '/').toLowerCase();
@@ -21,7 +18,7 @@
   <link rel="stylesheet" href="/css/mailbox.css?v=p1-516" />
   <link rel="stylesheet" href="/css/enterprise_ux.css?v=p1-516" />
   
-  <link rel="stylesheet" href="/css/theme_monday.css?v=monday-v2" />
+  <link rel="stylesheet" href="/css/theme_monday.css?v=monday-enterprise-v1" />
 
   <style id="enterprise-glass-globals">
     /* Glass Modals Base */
