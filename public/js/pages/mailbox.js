@@ -193,17 +193,31 @@ function _mbxDutyLabelForUser(user, nowParts){
     if(!Store || !Config || !UI || !user) return '—';
     const p = nowParts || (UI.mailboxNowParts ? UI.mailboxNowParts() : UI.manilaNow());
     const nowMin = UI.minutesOfDay(p);
-    const dow = (new Date(UI.manilaNowDate()).getDay()); 
-    const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, dow) || []) : [];
-    for(const b of blocks){
-      const s = UI.parseHM(b.start);
-      const e = UI.parseHM(b.end);
-      if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
-      const wraps = e <= s;
-      const hit = (!wraps && nowMin >= s && nowMin < e) || (wraps && (nowMin >= s || nowMin < e));
-      if(hit){
-        const sc = Config.scheduleById ? Config.scheduleById(b.role) : null;
-        return (sc && sc.label) ? sc.label : String(b.role||'—');
+    const dow = _mbxIsoDow(p.isoDate); 
+
+    // BOSS THUNTER: Check today and yesterday to fix midnight wrap visibility!
+    const dows = [dow, (dow+6)%7];
+
+    for(let i=0; i<dows.length; i++){
+      const di = dows[i];
+      const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, di) || []) : [];
+      for(const b of blocks){
+        const s = UI.parseHM(b.start);
+        const e = UI.parseHM(b.end);
+        if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+        const wraps = e <= s;
+        
+        let hit = false;
+        if (i === 0) {
+           hit = (!wraps && nowMin >= s && nowMin < e) || (wraps && (nowMin >= s || nowMin < e));
+        } else {
+           hit = (wraps && nowMin < e);
+        }
+        
+        if(hit){
+          const sc = Config.scheduleById ? Config.scheduleById(b.role) : null;
+          return (sc && sc.label) ? sc.label : String(b.role||'—');
+        }
       }
     }
     return '—';
@@ -253,7 +267,7 @@ function _mbxDutyTone(label){
   }
 
   // =========================================================================
-  // STRICT SCHEDULE EVALUATION FOR MAILBOX MANAGERS PER BUCKET
+  // STRICT SCHEDULE EVALUATION (ABSOLUTE TIMELINE FIX FOR NO BLEED)
   // =========================================================================
   function _mbxFindScheduledManagerForBucket(table, bucket){
     try{
@@ -278,34 +292,50 @@ function _mbxDutyTone(label){
       const all = (window.Store && window.Store.getUsers ? window.Store.getUsers() : []) || [];
       const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
       
-      // BOSS THUNTER: STRICTLY 'mailbox_manager' ONLY. Remove 'mailbox_call' to prevent bleed!
       const allowedRoles = ['mailbox_manager', 'mailbox manager'];
       const matchedNames = [];
-      const bucketSegs = _mbxToSegments(bucketStartMin, bucketEndMin);
+      
+      // BOSS THUNTER: Transform bucket into Absolute Continuous Timeline to prevent "Tomorrow Segment Collisions"
+      const bucketAbsStart = bucketStartMin;
+      const bucketAbsEnd = (bucketEndMin <= bucketStartMin) ? bucketEndMin + 1440 : bucketEndMin;
 
       for(const u of candidates){
-        const bl = window.Store && window.Store.getUserDayBlocks ? (window.Store.getUserDayBlocks(u.id, targetDow) || []) : [];
-        let isMatched = false;
-        
-        for(const b of bl){
-          if (isMatched) break;
-          const rRaw = String(b?.role||'').toLowerCase().trim();
-          const r = rRaw.replace(/\s+/g, '_');
-          
-          if(!allowedRoles.includes(r) && !allowedRoles.includes(rRaw)) continue;
-          
-          const s = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.start) : _mbxParseHM(b.start));
-          const e = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.end) : _mbxParseHM(b.end));
-          if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
-          if (s === e) continue; 
+        const userAbsSegs = [];
+        // Scan Yesterday, Today, Tomorrow offsets (-1440, 0, 1440)
+        const days = [
+          { dow: (targetDow + 6) % 7, offset: -1440 },
+          { dow: targetDow, offset: 0 },
+          { dow: (targetDow + 1) % 7, offset: 1440 }
+        ];
 
-          const blockSegs = _mbxToSegments(s, e);
-          const hit = _mbxSegmentsOverlap(bucketSegs, blockSegs);
-          
-          if(hit){
-             matchedNames.push(String(u.name||u.username||'—'));
-             isMatched = true;
+        for (const d of days) {
+          const bl = window.Store && window.Store.getUserDayBlocks ? (window.Store.getUserDayBlocks(u.id, d.dow) || []) : [];
+          for (const b of bl) {
+            const rRaw = String(b?.role||'').toLowerCase().trim();
+            const r = rRaw.replace(/\s+/g, '_');
+            
+            if (!allowedRoles.includes(r) && !allowedRoles.includes(rRaw)) continue;
+            
+            const s = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.start) : _mbxParseHM(b.start));
+            const e = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.end) : _mbxParseHM(b.end));
+            if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
+            if (s === e) continue; 
+
+            // Map standard block to our absolute timeline constraint!
+            if (e <= s) {
+               userAbsSegs.push([s + d.offset, e + 1440 + d.offset]);
+            } else {
+               userAbsSegs.push([s + d.offset, e + d.offset]);
+            }
           }
+        }
+
+        // Math checking for Segment Intersection (A overlaps B if A.start < B.end AND B.start < A.end)
+        for (const seg of userAbsSegs) {
+           if (seg[0] < bucketAbsEnd && bucketAbsStart < seg[1]) {
+              matchedNames.push(String(u.name||u.username||'—'));
+              break; 
+           }
         }
       }
       
