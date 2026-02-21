@@ -266,7 +266,7 @@ function _mbxDutyTone(label){
   }
 
   // =========================================================================
-  // STRICT SCHEDULE EVALUATION (DOUBLE-LAYERED DEFENSE)
+  // BOSS THUNTER: STRICT GHOST ERADICATION SCRIPT
   // =========================================================================
   function _mbxFindScheduledManagerForBucket(table, bucket){
     try{
@@ -288,15 +288,13 @@ function _mbxDutyTone(label){
       let bucketAbsEnd = (bucketEndMin <= bucketStartMin) ? bucketEndMin + 1440 : bucketEndMin;
 
       for(const u of candidates){
-        // BOSS THUNTER LAYER 1: HARD REJECT!
-        // Kapag ang primary task or role niya ay "Call Available", automatic kick! No questions asked.
+        // LAYER 1: STRICT TASK STRING CHECK
         const taskStr = String(u.task || u.taskRole || u.primaryTask || u.schedule || '').toLowerCase();
         if (taskStr.includes('call') || taskStr.includes('call_available') || taskStr.includes('mailbox_call')) {
-            continue;
+            continue; // Kick out immediately
         }
 
-        // BOSS THUNTER LAYER 2: VISUAL PARITY SAMPLING
-        // Ite-test natin kung mag-reresolve to "Manager" ang Live Status niya sa oras ng bucket.
+        // LAYER 2: INTERSECTION & PARITY CHECK
         const points = [
            bucketStartMin,
            Math.floor((bucketStartMin + bucketAbsEnd) / 2),
@@ -304,6 +302,8 @@ function _mbxDutyTone(label){
         ];
 
         let isMgr = false;
+        let isCall = false; // Flag to catch ghost data
+
         for (const p of points) {
            const minOfDay = p % 1440;
            let targetISO = shiftStartISO;
@@ -316,13 +316,19 @@ function _mbxDutyTone(label){
            const mm = minOfDay % 60;
            
            const label = _mbxDutyLabelForUser(u, { hh, mm, isoDate: targetISO }).toLowerCase();
+           
+           // If the system thinks they are Call Available during this exact time block, flag them!
+           if (label.includes('call')) {
+               isCall = true;
+           }
            if (label.includes('manager')) {
                isMgr = true;
-               break;
            }
         }
 
-        if (isMgr) {
+        // BOSS THUNTER FINAL PURGE:
+        // Only accept if they are flagged as Manager AND NOT flagged as Call.
+        if (isMgr && !isCall) {
            matchedNames.push(String(u.name||u.username||'—'));
         }
       }
@@ -439,6 +445,22 @@ function _mbxDutyTone(label){
     }else{
       if(!table.meta) table.meta = {};
       if(!table.meta.bucketManagers) table.meta.bucketManagers = {};
+      
+      // BOSS THUNTER: Force sync buckets from Team Config on reload
+      const Config = window.Config;
+      const teamObj = (Config && Config.teamById) ? Config.teamById(team.id) : team;
+      const cfg = (Store && Store.getTeamConfig ? Store.getTeamConfig(team.id) : {}) || {};
+      const rawBuckets = Array.isArray(cfg.mailboxBuckets) ? cfg.mailboxBuckets : null;
+      if(rawBuckets && rawBuckets.length){
+        table.buckets = rawBuckets.map((x,i)=>({
+          id: x.id || `b${i}`,
+          startMin: _mbxParseHM(x.start),
+          endMin: _mbxParseHM(x.end),
+        }));
+      }else{
+        table.buckets = _mbxBuildDefaultBuckets(teamObj || team);
+      }
+
       const nowParts = (UI && UI.mailboxNowParts ? UI.mailboxNowParts() : (UI && UI.manilaNow ? UI.manilaNow() : null));
       const teamUsers = (Store && Store.getUsers ? Store.getUsers() : [])
         .filter(u=>u && u.teamId===team.id && u.status==='active')
