@@ -124,6 +124,25 @@
         }
       },
 
+      // --- Monday-inspired workspace preset (clean light collaboration UI) ---
+      {
+        id:'monday_workspace',
+        name:'Monday Workspace',
+        mode:'light',
+        bg:'#F4F5F7',
+        panel:'#FFFFFF',
+        panel2:'#F8F9FC',
+        text:'#1F2937',
+        muted:'#667085',
+        border:'#E6E9EF',
+        accent:'#0073EA',
+        bgRad1:'#EAF2FE',
+        bgRad3:'#F4F5F7',
+        font:"'Poppins', 'Roboto', Inter, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif",
+        radius:'10px',
+        shadow:'0 8px 24px rgba(16,24,40,.08)'
+      },
+
       // --- Original MUMS presets (kept for variety) ---
       { id:'ocean',     name:'Ocean Blue',   bg:'#071224', panel:'#0c1b33', panel2:'#0a162b', text:'#eaf2ff', muted:'#a8b6d6', border:'rgba(255,255,255,.08)', accent:'#4aa3ff', bgRad1:'#0c2a52', bgRad3:'#050c18' },
       { id:'emerald',   name:'Emerald',      bg:'#061a14', panel:'#0a2a22', panel2:'#072018', text:'#eafff6', muted:'#a9d6c6', border:'rgba(255,255,255,.08)', accent:'#34d399', bgRad1:'#0a3a2c', bgRad3:'#03110d' },
