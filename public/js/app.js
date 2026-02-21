@@ -7,6 +7,90 @@
 
   // State for Super Admin Theme Manager
   let __themeEditMode = false;
+  let __themeMeta = {};
+  let __themeMetaLoaded = false;
+  let __themeMetaLoading = null;
+
+  function getBearerToken(){
+    try{
+      const t = (window.CloudAuth && CloudAuth.accessToken) ? String(CloudAuth.accessToken()||'').trim() : '';
+      if(t) return t;
+    }catch(_){ }
+    try{
+      const sess = (window.CloudAuth && CloudAuth.loadSession) ? CloudAuth.loadSession() : null;
+      const t2 = sess && sess.access_token ? String(sess.access_token).trim() : '';
+      return t2 || '';
+    }catch(_){ }
+    return '';
+  }
+
+  function normalizeThemeMeta(raw){
+    const out = {};
+    const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+    Object.keys(src).forEach((themeId)=>{
+      const id = String(themeId||'').trim();
+      if(!id) return;
+      const node = src[themeId];
+      if(!node || typeof node !== 'object' || Array.isArray(node)) return;
+      const hidden = !!node.hidden;
+      const deleted = !!node.deleted;
+      if(!hidden && !deleted) return;
+      out[id] = { hidden, deleted };
+    });
+    return out;
+  }
+
+  async function loadThemeMeta(force){
+    if(__themeMetaLoaded && !force) return __themeMeta;
+    if(__themeMetaLoading) return __themeMetaLoading;
+
+    __themeMetaLoading = (async ()=>{
+      try{
+        const token = getBearerToken();
+        const headers = { 'Content-Type': 'application/json' };
+        if(token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch('/api/theme_access/get', { method: 'GET', headers, cache: 'no-store' });
+        const data = await res.json().catch(()=>({}));
+        if(res.ok && data.ok && data.meta){
+          __themeMeta = normalizeThemeMeta(data.meta);
+          __themeMetaLoaded = true;
+        } else {
+          console.warn('Failed to load theme meta:', data.error || res.status);
+        }
+      }catch(e){
+        console.error('loadThemeMeta error:', e);
+      }finally{
+        __themeMetaLoading = null;
+      }
+      return __themeMeta;
+    })();
+
+    return __themeMetaLoading;
+  }
+
+  async function saveThemeMeta(newMeta){
+    try{
+      const token = getBearerToken();
+      const headers = { 'Content-Type': 'application/json' };
+      if(token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/theme_access/set', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ meta: newMeta })
+      });
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok || !data.ok){
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      __themeMeta = normalizeThemeMeta(data.meta || newMeta);
+      return { ok: true };
+    }catch(e){
+      console.error('saveThemeMeta error:', e);
+      return { ok: false, message: e.message };
+    }
+  }
 
   function showFatalError(err){
     try{
@@ -415,7 +499,6 @@
     reset();
   }
 
-
   function _relLum(rgb){
     const srgb = rgb.map(v=>v/255).map(v=> v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4));
     return 0.2126*srgb[0] + 0.7152*srgb[1] + 0.0722*srgb[2];
@@ -494,135 +577,129 @@
   }
 
   // =========================================================================
-  // BOSS THUNTER: ULTIMATE BENTO THEME MANAGER (STRICT SA OVERRIDE)
+  // BOSS THUNTER: ULTIMATE COMPACT BENTO MANAGER + API SYNC + CODE CLEANSER
   // =========================================================================
   function renderThemeGrid(){
     const grid = document.getElementById('themeGrid');
     if(!grid) return;
     
-    // 1. STRICT ROLE VALIDATION (NO BYPASS)
     const user = (window.Auth && window.Auth.getUser) ? window.Auth.getUser() : null;
     const rawRole = String(user?.role || '').trim().toUpperCase().replace(/\s+/g,'_');
     const saRole = (window.Config && Config.ROLES && Config.ROLES.SUPER_ADMIN) ? String(Config.ROLES.SUPER_ADMIN).toUpperCase() : 'SUPER_ADMIN';
     const isSA = (rawRole === saRole) || (rawRole === 'SUPER_ADMIN');
 
-    // 2. INJECT ENTERPRISE BENTO CSS
+    // ENSURE DATA IS LOADED BEFORE RENDERING UI
+    if (!__themeMetaLoaded) {
+      if (!__themeMetaLoading) {
+        grid.innerHTML = '<div class="muted" style="padding:40px; text-align:center; font-size:14px; display:flex; justify-content:center; align-items:center;"><div class="mbx-spinner" style="margin-right:10px;"></div> Syncing Global Theme Policy...</div>';
+        loadThemeMeta().then(() => renderThemeGrid());
+      }
+      return;
+    }
+
+    // INJECT ENTERPRISE COMPACT BENTO CSS
     if(!document.getElementById('mums-bento-theme-css')) {
         const s = document.createElement('style');
         s.id = 'mums-bento-theme-css';
         s.textContent = `
-            .theme-bento { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-            .tb-card { background: rgba(15,23,42,0.5); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; padding: 16px; cursor: pointer; position: relative; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: inset 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
-            .tb-card:hover { transform: translateY(-4px); border-color: var(--t-acc); box-shadow: 0 10px 25px rgba(0,0,0,0.4), inset 0 0 15px rgba(255,255,255,0.05); background: rgba(15,23,42,0.8); }
-            .tb-card.active { border: 2px solid var(--t-acc); background: linear-gradient(145deg, rgba(15,23,42,0.9), rgba(255,255,255,0.03)); box-shadow: 0 0 25px rgba(14,165,233,0.3); }
-            .tb-card.active::before { content: '✓ ACTIVE'; position: absolute; top: -1px; left: 50%; transform: translateX(-50%); background: var(--t-acc); color: #000; font-size: 9px; font-weight: 900; padding: 2px 10px; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; z-index: 5; letter-spacing: 0.5px; }
+            .th-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
+            .th-card { position: relative; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px; cursor: pointer; transition: all 0.2s ease; overflow: hidden; display: flex; align-items: center; gap: 14px; box-shadow: inset 0 1px 1px rgba(255,255,255,0.05); }
+            .th-card:hover { background: rgba(30, 41, 59, 0.6); border-color: rgba(56, 189, 248, 0.3); transform: translateY(-2px); }
+            .th-card.is-active { background: linear-gradient(145deg, rgba(14, 165, 233, 0.1), rgba(2, 132, 199, 0.05)); border-color: #38bdf8; box-shadow: 0 0 20px rgba(56, 189, 248, 0.2), inset 0 0 0 1px #38bdf8; }
             
-            .t-mock { display: flex; height: 80px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 12px; background: var(--t-bg); box-shadow: 0 4px 10px rgba(0,0,0,0.2); pointer-events: none; }
-            .t-mock-side { width: 25%; background: var(--t-panel2); border-right: 1px solid rgba(255,255,255,0.05); }
-            .t-mock-main { flex: 1; display: flex; flex-direction: column; }
-            .t-mock-top { height: 18px; background: var(--t-panel); border-bottom: 1px solid rgba(255,255,255,0.05); }
-            .t-mock-content { flex: 1; display: flex; align-items: center; justify-content: center; }
-            .t-mock-acc { width: 60%; height: 6px; border-radius: 3px; background: var(--t-acc); box-shadow: 0 0 10px var(--t-acc); }
-
-            .tb-info { display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
-            .tb-title { color: #f8fafc; font-size: 15px; font-weight: 900; letter-spacing: -0.3px; }
-            .tb-meta { color: #94a3b8; font-size: 11px; }
-
-            .tb-card.is-hidden { opacity: 0.6; border: 1px dashed rgba(255,255,255,0.3); }
-            .tb-card.is-hidden::after { content: 'HIDDEN'; position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.8); color: #94a3b8; font-size: 9px; font-weight: 900; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); }
-
-            /* Edit Mode Jiggle & Overlays */
-            .tb-card.jiggle { animation: jiggle 0.4s ease-in-out infinite alternate; }
-            @keyframes jiggle { 0% { transform: rotate(-1deg) scale(0.98); } 100% { transform: rotate(1deg) scale(1.02); } }
+            .th-swatch { width: 50px; height: 50px; border-radius: 50%; background: var(--t-bg); border: 2px solid var(--t-panel); box-shadow: 0 4px 10px rgba(0,0,0,0.3); position: relative; flex-shrink: 0; }
+            .th-swatch::after { content: ''; position: absolute; bottom: -2px; right: -2px; width: 18px; height: 18px; border-radius: 50%; background: var(--t-acc); border: 2px solid var(--t-panel); box-shadow: 0 0 8px var(--t-acc); }
             
-            .tb-overlay { position: absolute; inset: 0; background: rgba(2,6,23,0.85); backdrop-filter: blur(4px); z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
-            .tb-card.jiggle .tb-overlay { opacity: 1; pointer-events: auto; }
+            .th-info { flex: 1; min-width: 0; }
+            .th-title { color: #f8fafc; font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.3px; }
+            .th-meta { color: #94a3b8; font-size: 11px; margin-top: 4px; font-family: monospace; }
             
-            .tb-btn { width: 80%; padding: 8px; border-radius: 8px; border: none; font-size: 11px; font-weight: 900; cursor: pointer; transition: all 0.2s; display: flex; justify-content: center; align-items: center; gap: 6px; }
-            .tb-btn-hide { background: rgba(255,255,255,0.1); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.2); }
-            .tb-btn-hide:hover { background: rgba(255,255,255,0.2); color: #fff; }
-            .tb-btn-del { background: rgba(239,68,68,0.2); color: #fca5a5; border: 1px solid rgba(239,68,68,0.4); }
-            .tb-btn-del:hover { background: rgba(239,68,68,0.4); color: #fff; box-shadow: 0 0 15px rgba(239,68,68,0.4); }
+            .th-badge { font-size: 9px; font-weight: 900; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.5px; margin-top:6px; display:inline-block; }
+            .th-badge-active { background: rgba(56,189,248,0.2); color: #7dd3fc; border: 1px solid rgba(56,189,248,0.3); }
+            .th-badge-hidden { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+            
+            .th-card.is-hidden { opacity: 0.5; border-style: dashed; }
+            .th-card.is-hidden:hover { opacity: 0.9; border-style: dashed; border-color: #ef4444; }
+
+            .th-admin-bar { position: absolute; right: 0; top: 0; bottom: 0; background: rgba(15,23,42,0.98); backdrop-filter: blur(8px); display: flex; flex-direction: column; border-left: 1px solid rgba(255,255,255,0.1); transform: translateX(100%); transition: transform 0.2s ease; z-index: 10; }
+            .th-card.show-admin .th-admin-bar { transform: translateX(0); }
+            .th-admin-btn { flex: 1; background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.05); color: #cbd5e1; font-size: 11px; font-weight: 800; cursor: pointer; padding: 0 16px; transition: all 0.2s; outline:none; display:flex; align-items:center; gap:6px; }
+            .th-admin-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
+            .th-admin-btn.del:hover { background: rgba(239,68,68,0.2); color: #fca5a5; }
+            .th-admin-btn:disabled { opacity:0.5; cursor:not-allowed; }
+            
+            .th-jiggle { animation: thJiggle 0.4s ease-in-out infinite alternate; }
+            @keyframes thJiggle { 0% { transform: rotate(-1deg) scale(0.98); } 100% { transform: rotate(1deg) scale(1.02); } }
         `;
         document.head.appendChild(s);
     }
 
-    let themeMeta = {};
-    try { themeMeta = JSON.parse(localStorage.getItem('mums_theme_meta') || '{}'); } catch(e){}
-
-    const saveMeta = () => {
-        localStorage.setItem('mums_theme_meta', JSON.stringify(themeMeta));
-        renderThemeGrid(); // Instant refresh
-    };
-
     const cur = Store.getTheme();
     const rawThemes = (Config && Array.isArray(Config.THEMES)) ? Config.THEMES : [];
 
-    // 3. BULLETPROOF FILTERING LOGIC
+    // BULLETPROOF FILTERING LOGIC
     const visibleThemes = rawThemes.filter(t => {
-        const m = themeMeta[t.id] || {};
+        const m = __themeMeta[t.id] || {};
         if (m.deleted) return false; 
         if (m.hidden) {
-            if (!isSA) return false; // Hard block normal users
-            if (isSA && !__themeEditMode) return false; // Hide from SA if not in edit mode! (CLEAN UI)
+            if (!isSA) return false; 
+            if (isSA && !__themeEditMode) return false; 
         }
         return true;
     });
 
-    // 4. SUPER ADMIN CONTROL BAR (Only visible to SA)
+    // SUPER ADMIN CONTROL BAR
     const adminBarHtml = isSA ? `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); flex-wrap:wrap; gap:12px;">
             <div>
-               <div style="color:#f8fafc; font-weight:900; font-size:14px;">Theme Access Control</div>
-               <div class="small muted">Click Manage to configure which themes users can see.</div>
+               <div style="color:#f8fafc; font-weight:900; font-size:16px;">Enterprise Theme Manager</div>
+               <div class="small muted" style="margin-top:4px;">Globally synced via API. Manage visibility or export clean code.</div>
             </div>
-            <button class="btn-glass ${__themeEditMode ? 'btn-glass-danger' : 'btn-glass-primary'}" id="toggleThemeEditBtn" style="padding:10px 16px;">
-                ${__themeEditMode ? '✅ Done Editing' : '⚙️ Manage Themes'}
-            </button>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-glass btn-glass-ghost" id="exportCleanConfigBtn" title="Get code for config.js to wipe deleted themes globally">
+                    📄 Get Clean Code
+                </button>
+                <button class="btn-glass ${__themeEditMode ? 'btn-glass-danger' : 'btn-glass-primary'}" id="toggleThemeEditBtn">
+                    ${__themeEditMode ? '✅ Done Editing' : '⚙️ Manage Themes'}
+                </button>
+            </div>
         </div>
     ` : '';
 
-    // 5. BUILD BENTO CARDS
+    // BUILD COMPACT BENTO CARDS
     const cardsHtml = visibleThemes.map(t => {
-      const m = themeMeta[t.id] || {};
+      const m = __themeMeta[t.id] || {};
       const active = t.id === cur;
-      const fontName = (t.font ? String(t.font).split(',')[0].replace(/['"]/g,'').trim() : 'System');
       const isHidden = !!m.hidden;
 
-      // The overlay is only active during SA __themeEditMode via the .jiggle class
-      const overlayHtml = `
-          <div class="tb-overlay">
-              <button class="tb-btn tb-btn-hide" data-hide-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">
-                  ${isHidden ? '👁️ UNHIDE THEME' : '👀 HIDE THEME'}
+      const adminHtml = `
+          <div class="th-admin-bar">
+              <button class="th-admin-btn" data-hide-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">
+                  ${isHidden ? '👁️ Unhide' : '👀 Hide'}
               </button>
-              <button class="tb-btn tb-btn-del" data-del-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">
-                  🗑️ DELETE THEME
+              <button class="th-admin-btn del" data-del-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">
+                  🗑️ Delete
               </button>
           </div>
       `;
 
       return `
-        <div class="tb-card ${active?'active':''} ${isHidden?'is-hidden':''} ${__themeEditMode?'jiggle':''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button">
-           <div class="t-mock" style="--t-bg:${t.bg}; --t-panel:${t.panel}; --t-panel2:${t.panel2}; --t-acc:${t.accent};">
-              <div class="t-mock-side"></div>
-              <div class="t-mock-main">
-                  <div class="t-mock-top"></div>
-                  <div class="t-mock-content"><div class="t-mock-acc"></div></div>
-              </div>
+        <div class="th-card ${active?'is-active':''} ${isHidden?'is-hidden':''} ${__themeEditMode?'show-admin th-jiggle':''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button">
+           <div class="th-swatch" style="--t-bg:${t.bg}; --t-panel:${t.panel}; --t-acc:${t.accent};"></div>
+           <div class="th-info">
+              <div class="th-title">${UI.esc(t.name)}</div>
+              <div class="th-meta">ID: ${UI.esc(t.id)}</div>
+              ${active ? '<div class="th-badge th-badge-active">ACTIVE</div>' : ''}
+              ${isHidden ? '<div class="th-badge th-badge-hidden">HIDDEN</div>' : ''}
            </div>
-           <div class="tb-info">
-              <div class="tb-title">${UI.esc(t.name)}</div>
-              <div class="tb-meta">Font: ${UI.esc(fontName)}</div>
-           </div>
-           ${isSA ? overlayHtml : ''}
+           ${isSA ? adminHtml : ''}
         </div>
       `;
     }).join('') || '<div class="muted" style="grid-column:1/-1; text-align:center; padding:40px; font-size:16px;">No themes available.</div>';
 
-    grid.innerHTML = adminBarHtml + `<div class="theme-bento">${cardsHtml}</div>`;
+    grid.innerHTML = adminBarHtml + `<div class="th-grid">${cardsHtml}</div>`;
 
-    // 6. EVENT BINDINGS
-    // Toggle Edit Mode
+    // EVENT BINDINGS
     const toggleBtn = document.getElementById('toggleThemeEditBtn');
     if(toggleBtn) {
         toggleBtn.onclick = () => {
@@ -631,10 +708,33 @@
         };
     }
 
-    // Pick Theme
-    grid.querySelectorAll('.tb-card').forEach(tile => {
+    const exportBtn = document.getElementById('exportCleanConfigBtn');
+    if(exportBtn) {
+        exportBtn.onclick = () => {
+            const cleanArray = rawThemes.filter(t => !__themeMeta[t.id]?.deleted);
+            const str = "Config.THEMES = " + JSON.stringify(cleanArray, null, 4) + ";";
+            
+            const m = document.createElement('div');
+            m.className = 'mbx-custom-backdrop is-open';
+            m.innerHTML = `
+                <div class="mbx-modal-glass" style="width:min(800px, 95vw);">
+                    <div class="mbx-modal-head">
+                        <h3 style="margin:0; color:#38bdf8;">📄 Clean Theme Configuration</h3>
+                        <button class="btn-glass btn-glass-ghost" onclick="this.closest('.mbx-custom-backdrop').remove()">✕ Close</button>
+                    </div>
+                    <div class="mbx-modal-body">
+                        <div class="small muted" style="margin-bottom:12px;">Copy this block and paste it inside your <b>public/js/config.js</b> file to PERMANENTLY remove the deleted themes for all users globally.</div>
+                        <textarea class="input" style="width:100%; height:300px; font-family:monospace; font-size:11px; background:rgba(0,0,0,0.5); color:#a8b6d6;" readonly>${UI.esc(str)}</textarea>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(m);
+        };
+    }
+
+    grid.querySelectorAll('.th-card').forEach(tile => {
       const pick = (e) => {
-        if(__themeEditMode) return; // Disable picking while editing
+        if(__themeEditMode) return; 
         const id = tile.dataset.theme;
         try{ if(Store && Store.dispatch) Store.dispatch('UPDATE_THEME', { id:id }); else Store.setTheme(id); }catch(_){ try{ Store.setTheme(id); }catch(__){} }
         try{ applyTheme(id); }catch(_){ }
@@ -644,32 +744,62 @@
       tile.onkeydown = (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); pick(e); } };
     });
 
-    // SA Hide/Delete Actions
     if (isSA) {
         grid.querySelectorAll('[data-hide-theme]').forEach(btn => {
-            btn.onclick = (e) => {
+            btn.onclick = async (e) => {
                 e.stopPropagation();
+                if(btn.dataset.busy) return;
+
                 const tid = btn.getAttribute('data-hide-theme');
-                themeMeta[tid] = themeMeta[tid] || {};
-                themeMeta[tid].hidden = !themeMeta[tid].hidden;
-                saveMeta();
+                const nextMeta = JSON.parse(JSON.stringify(__themeMeta));
+                nextMeta[tid] = nextMeta[tid] || {};
+                nextMeta[tid].hidden = !nextMeta[tid].hidden;
+
+                btn.dataset.busy = '1';
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<span class="mbx-spinner"></span> Sync...';
+
+                const res = await saveThemeMeta(nextMeta);
+                if(!res.ok){
+                    try{ UI.toast('Sync failed: ' + res.message, 'error'); }catch(_){}
+                    btn.innerHTML = originalText;
+                    delete btn.dataset.busy;
+                    return;
+                }
+                renderThemeGrid();
             };
         });
+        
         grid.querySelectorAll('[data-del-theme]').forEach(btn => {
             btn.onclick = async (e) => {
                 e.stopPropagation();
+                if(btn.dataset.busy) return;
+
                 const tid = btn.getAttribute('data-del-theme');
-                const ok = await UI.confirm({ title: 'Delete Theme', message: 'Are you sure you want to permanently delete this theme from the selection?', okText: 'Yes, Delete', danger: true });
+                const ok = await UI.confirm({ title: 'Delete Theme Globally', message: 'Hide and delete this theme for all users? (Use "Get Clean Code" later to permanently remove it from config.js)', okText: 'Yes, Delete', danger: true });
                 if (!ok) return;
                 
-                themeMeta[tid] = themeMeta[tid] || {};
-                themeMeta[tid].deleted = true;
+                const nextMeta = JSON.parse(JSON.stringify(__themeMeta));
+                nextMeta[tid] = nextMeta[tid] || {};
+                nextMeta[tid].deleted = true;
+
+                btn.dataset.busy = '1';
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<span class="mbx-spinner"></span> Purging...';
                 
                 if(cur === tid) {
                     Store.dispatch ? Store.dispatch('UPDATE_THEME', { id:'ocean' }) : Store.setTheme('ocean');
                     applyTheme('ocean');
                 }
-                saveMeta();
+
+                const res = await saveThemeMeta(nextMeta);
+                if(!res.ok){
+                    try{ UI.toast('Delete sync failed: ' + res.message, 'error'); }catch(_){}
+                    btn.innerHTML = originalText;
+                    delete btn.dataset.busy;
+                    return;
+                }
+                renderThemeGrid();
             };
         });
     }
@@ -722,7 +852,6 @@
     });
   }
 
-  // === World clocks (3 programmable digital clocks on bottom bar) ===
   const CLOCK_STYLES = [
     {id:'classic', name:'Classic'},
     {id:'neon', name:'Neon'},
@@ -916,7 +1045,6 @@
       `;
     }).join('');
   }
-
 
   function startGmtOverviewTicker(){
     try{
