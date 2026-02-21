@@ -281,7 +281,17 @@
         }
     ],
 
+    // Team lookup
     teamById(id){
+      if(id === this.TEAM_DEV.id) return this.TEAM_DEV;
+      return (this.TEAMS||[]).find(t=>t.id===id) || null;
+    },
+
+    // BOSS THUNTER FIX: Restored Schedule Engine for Members & Users Page
+    get SCHEDULES() { 
+      return this.TEAMS; 
+    },
+    scheduleById(id){
       if(id === this.TEAM_DEV.id) return this.TEAM_DEV;
       return (this.TEAMS||[]).find(t=>t.id===id) || null;
     },
