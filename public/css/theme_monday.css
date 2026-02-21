@@ -526,3 +526,62 @@ body[data-theme="monday_workspace"] .dashx-bottom .shift-col .val {
     color: #0073EA !important;
     font-weight: 800 !important;
 }
+
+
+/* =========================================================================
+   PHASE 5.1: MAILBOX DEEP POLISH (The Final White Board)
+   ========================================================================= */
+
+/* Override the dark header block above the Mailbox table */
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:first-child,
+body[data-theme="monday_workspace"] .mbx-table-wrap .row.pad {
+  background: #FFFFFF !important;
+  border-bottom: 2px solid #E6E9EF !important;
+}
+
+/* Force all text inside that header to be readable dark slate */
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:first-child *,
+body[data-theme="monday_workspace"] .mbx-table-wrap .row.pad * {
+  color: #1F2A44 !important;
+  text-shadow: none !important;
+}
+
+/* Force the sub-text (muted) to be Monday Gray */
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:first-child .muted,
+body[data-theme="monday_workspace"] .mbx-table-wrap .row.pad .muted,
+body[data-theme="monday_workspace"] .mbx-table-wrap .row.pad .small {
+  color: #676879 !important;
+}
+
+/* Polish the Duty Pills to be exactly like Monday Status columns */
+body[data-theme="monday_workspace"] .mbx-duty-pill,
+body[data-theme="monday_workspace"] .badge {
+  border-radius: 999px !important; /* Perfect Pill Shape */
+  font-weight: 800 !important;
+  font-size: 11px !important;
+  padding: 6px 14px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  border: 1px solid transparent !important;
+}
+
+/* Specifically target the hollow/outline badges in Mailbox */
+body[data-theme="monday_workspace"] .mbx-duty-pill[style*="border"] {
+  background: #F5F6F8 !important;
+  color: #676879 !important;
+  border-color: #C3C6D4 !important;
+  box-shadow: none !important;
+}
+
+/* Polish the CSV, XLSX, PDF Buttons at the top */
+body[data-theme="monday_workspace"] .mbx-card .btn.ghost {
+  background: #FFFFFF !important;
+  border: 1px solid #C3C6D4 !important;
+  color: #323338 !important;
+  font-weight: 600 !important;
+}
+body[data-theme="monday_workspace"] .mbx-card .btn.ghost:hover {
+  background: #F0F2F5 !important;
+  border-color: #0073EA !important;
+  color: #0073EA !important;
+}

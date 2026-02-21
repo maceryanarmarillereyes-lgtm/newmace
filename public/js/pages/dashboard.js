@@ -49,10 +49,21 @@
   async function mountTeamWorkloadPulse() {
     if (!isLeadView) return;
     let state = { rows: [], filter: '', subscription: null, refreshLock: false };
+    let watchTimer = null; // BOSS THUNTER FIX: The Watcher Reference
 
     const renderWidget = () => {
-      const mount = root.querySelector('#teamWorkloadPulseMount');
-      if (!mount) return;
+      // BOSS THUNTER FIX: Automatically recreate the mount point if the UI refresh destroys it!
+      let mount = root.querySelector('#teamWorkloadPulseMount');
+      if (!mount) {
+          const host = root.querySelector('.dashx');
+          if (host) {
+              mount = document.createElement('div');
+              mount.id = 'teamWorkloadPulseMount';
+              host.appendChild(mount);
+          } else {
+              return; // Can't render if the parent is completely gone
+          }
+      }
 
       const grouped = groupRows(state.rows);
       const titles = Array.from(new Set((state.rows || []).map((r) => String(r.distribution_title || '').trim()).filter(Boolean))).sort();
@@ -64,56 +75,74 @@
       }, {});
 
       mount.innerHTML = `
-        <div class="ux-card dashx-panel" style="margin-top:12px">
-          <div class="row" style="justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
+        <div class="ux-card dashx-panel" style="margin-top:12px; background:#FFFFFF; border:1px solid #E6E9EF; border-radius:16px; box-shadow:0 4px 14px rgba(0,0,0,0.03);">
+          <div class="row" style="justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap; padding:16px;">
             <div>
-              <div class="dashx-title">Team Workload Pulse</div>
-              <div class="small muted">Leadership view across distribution groups.</div>
+              <div class="dashx-title" style="color:#1F2A44; font-weight:800; font-size:16px;">Team Workload Pulse</div>
+              <div class="small muted" style="color:#676879;">Leadership view across distribution groups.</div>
             </div>
             <div>
-              <select id="twpFilter" class="ux-focusable">
+              <select id="twpFilter" class="ux-focusable" style="background:#F5F6F8; border:1px solid #C3C6D4; border-radius:8px; color:#323338; padding:6px 12px; font-weight:600;">
                 <option value="">All Active Tasks</option>
                 ${titles.map((t) => `<option value="${UI.esc(t)}" ${state.filter === t ? 'selected' : ''}>${UI.esc(t)}</option>`).join('')}
               </select>
             </div>
           </div>
 
-          <div style="margin-top:10px">
+          <div style="padding:0 16px 16px 16px;">
             ${Object.keys(byDist).map((dist) => `
-              <div class="card pad" style="margin-bottom:10px;border:1px solid rgba(255,255,255,.08)">
-                <div class="small" style="margin-bottom:8px"><b>${UI.esc(dist)}</b> • ${UI.esc(byDist[dist].length)} members helping</div>
-                <table class="table">
+              <div class="card pad" style="margin-bottom:10px; border:1px solid #E6E9EF; background:#FFFFFF; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,0.01);">
+                <div class="small" style="margin-bottom:12px; color:#323338;"><b>${UI.esc(dist)}</b> <span style="color:#676879;">• ${UI.esc(byDist[dist].length)} members helping</span></div>
+                <table class="table" style="width:100%; border-collapse:collapse;">
                   <thead>
-                    <tr><th>Member</th><th>Workload</th><th>Distribution Source</th><th>Progress Bar</th><th>Status</th></tr>
+                    <tr style="border-bottom:2px solid #E6E9EF;">
+                        <th style="text-align:left; padding:8px; color:#676879; font-size:11px; text-transform:uppercase;">Member</th>
+                        <th style="text-align:left; padding:8px; color:#676879; font-size:11px; text-transform:uppercase;">Workload</th>
+                        <th style="text-align:left; padding:8px; color:#676879; font-size:11px; text-transform:uppercase;">Distribution Source</th>
+                        <th style="text-align:left; padding:8px; color:#676879; font-size:11px; text-transform:uppercase;">Progress Bar</th>
+                        <th style="text-align:left; padding:8px; color:#676879; font-size:11px; text-transform:uppercase;">Status</th>
+                    </tr>
                   </thead>
                   <tbody>
                     ${byDist[dist].map((row) => {
                       const progress = row.total ? Math.round((row.done / row.total) * 100) : 0;
                       const active = isShiftActive(row.member_shift);
                       let label = 'In Progress';
-                      let cls = 'badge';
-                      if (row.pending > 0 && !active) { label = 'Waiting for Shift'; cls = 'badge'; }
-                      else if (row.pending > 0 && active) { label = 'Overdue/Pending'; cls = 'badge warn'; }
-                      else if (progress >= 100) { label = 'Completed'; cls = 'badge ok'; }
+                      let badgeBg = '#E6E9EF';
+                      let badgeCol = '#676879';
+                      
+                      if (row.pending > 0 && !active) { 
+                          label = 'Waiting for Shift'; 
+                          badgeBg = '#F5F6F8'; badgeCol = '#676879';
+                      }
+                      else if (row.pending > 0 && active) { 
+                          label = 'Overdue/Pending'; 
+                          badgeBg = '#FDAB3D'; badgeCol = '#FFFFFF'; 
+                      }
+                      else if (progress >= 100) { 
+                          label = 'Completed'; 
+                          badgeBg = '#00C875'; badgeCol = '#FFFFFF'; 
+                      }
+                      
                       return `
-                        <tr>
-                          <td>${UI.esc(row.member_name)} <span class="badge">${UI.esc(shiftIcon(row.member_shift))} ${UI.esc(row.member_shift || 'N/A')}</span></td>
-                          <td>${UI.esc(row.total)} items</td>
-                          <td>${UI.esc(row.distribution_title)}</td>
-                          <td>
-                            <div style="height:10px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;min-width:140px">
-                              <div style="height:100%;width:${Math.max(0, Math.min(100, progress))}%;background:linear-gradient(90deg,#22c55e,#14b8a6)"></div>
+                        <tr style="border-bottom:1px solid #E6E9EF; transition:background 0.2s;">
+                          <td style="padding:12px 8px; color:#323338; font-weight:600;">${UI.esc(row.member_name)} <span style="font-size:10px; font-weight:normal; color:#676879; border:1px solid #E6E9EF; padding:2px 6px; border-radius:4px; margin-left:6px;">${UI.esc(shiftIcon(row.member_shift))} ${UI.esc(row.member_shift || 'N/A')}</span></td>
+                          <td style="padding:12px 8px; color:#323338; font-weight:500;">${UI.esc(row.total)} items</td>
+                          <td style="padding:12px 8px; color:#676879;">${UI.esc(row.distribution_title)}</td>
+                          <td style="padding:12px 8px;">
+                            <div style="height:10px; background:#E6E9EF; border-radius:999px; overflow:hidden; min-width:140px;">
+                              <div style="height:100%; width:${Math.max(0, Math.min(100, progress))}%; background:#0073EA;"></div>
                             </div>
-                            <div class="small muted" style="margin-top:4px">${UI.esc(progress)}%</div>
+                            <div class="small muted" style="margin-top:4px; color:#676879; font-weight:600;">${UI.esc(progress)}%</div>
                           </td>
-                          <td><span class="${cls}">${UI.esc(label)}</span></td>
+                          <td style="padding:12px 8px;"><span style="background:${badgeBg}; color:${badgeCol}; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:800; letter-spacing:0.5px;">${UI.esc(label)}</span></td>
                         </tr>
                       `;
-                    }).join('') || '<tr><td colspan="5" class="muted">No workload rows for this distribution.</td></tr>'}
+                    }).join('') || '<tr><td colspan="5" class="muted" style="padding:12px 8px;">No workload rows for this distribution.</td></tr>'}
                   </tbody>
                 </table>
               </div>
-            `).join('') || '<div class="small muted">No workload matrix data found.</div>'}
+            `).join('') || '<div class="small muted" style="padding:16px; text-align:center; color:#676879;">No workload matrix data found.</div>'}
           </div>
         </div>
       `;
@@ -145,11 +174,8 @@
         if (state.subscription) return;
 
         const token = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
-        // Don't create a client without a token; it can cause RLS issues for any REST usage.
         if (!token) return;
 
-        // Reuse the shared Supabase client to avoid multiple GoTrueClient instances.
-        // If it doesn't exist yet, create it once and store it globally.
         if (!window.__MUMS_SB_CLIENT) {
           const dummyStorage = { getItem() { return null; }, setItem() { }, removeItem() { } };
           window.__MUMS_SB_CLIENT = window.supabase.createClient(sbUrl, sbAnon, {
@@ -171,17 +197,21 @@
         root._cleanup = () => {
           try { if (prevCleanup) prevCleanup(); } catch (_) { }
           try { if (state.subscription) client.removeChannel(state.subscription); } catch (_) { }
+          try { if (watchTimer) clearInterval(watchTimer); } catch (_) { } // CLEAR THE WATCHER ON EXIT
           state.subscription = null;
         };
       } catch (_) { }
     };
 
-    const host = root.querySelector('.dashx');
-    if (host && !root.querySelector('#teamWorkloadPulseMount')) {
-      const mount = document.createElement('div');
-      mount.id = 'teamWorkloadPulseMount';
-      host.appendChild(mount);
-    }
+    // BOSS THUNTER FIX: THE WATCHER! 
+    // This checks every 1 second if the UI Auto-Refresh killed the component. 
+    // If it did, it instantly re-injects the HTML.
+    watchTimer = setInterval(() => {
+        const host = root.querySelector('.dashx');
+        if (host && !root.querySelector('#teamWorkloadPulseMount')) {
+            renderWidget(); // Bring it back to life!
+        }
+    }, 1000);
 
     await refreshData();
     await ensureRealtime();
