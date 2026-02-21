@@ -1,3 +1,5 @@
+/* File: public/js/config.js */
+
 (function(){
   const Config = {
     // Single source of truth for build label used by login + app.
@@ -23,229 +25,341 @@
       { id: 'night', label: 'Night Shift', teamStart: '22:00', teamEnd: '06:00', dutyStart: '22:00', dutyEnd: '06:00' },
     ],
 
-    // Developer Access (unassigned shift). Stored as NULL in DB; represented as empty string in client.
-    DEV_TEAM: { id:'', label:'Developer Access', teamStart:'00:00', teamEnd:'23:59', dutyStart:'00:00', dutyEnd:'23:59' },
+    // Developer Access
+    TEAM_DEV: { id: '', label: 'Developer Access' },
 
-    SCHEDULES: {
-      mailbox_manager: { id: 'mailbox_manager', label: 'Mailbox Manager', icon: '📥' },
-      back_office: { id: 'back_office', label: 'Back Office', icon: '🗄️' },
-      call_available: { id: 'call_available', label: 'Call Available', icon: '📞' },
-      // Renamed per ops terminology: "Call Available" (keep same id/icon for compatibility)
-      call_onqueue: { id: 'call_onqueue', label: 'Call Available', icon: '📞' },
-      mailbox_call: { id: 'mailbox_call', label: 'Mailbox Manager + Call', icon: '📥📞' },
-      block: { id: 'block', label: 'Block', icon: '⛔' },
-      lunch: { id: 'lunch', label: 'Lunch', icon: '🍽️' },
+    // Role-based capabilities
+    // NOTE: Hardcoded perm mapping. Overrides can be defined in Store.
+    PERMS: {
+      SUPER_ADMIN: ['*'], // Full access
+      SUPER_USER: [
+        'view_dashboard',
+        'view_mailbox',
+        'view_members',
+        'manage_master_schedule',
+        'view_master_schedule',
+        'view_admin',
+        'manage_team_config',
+        'manage_announcements',
+        'manage_release_notes',
+        'view_logs',
+        'assign_tasks',
+        'create_users'
+      ],
+      ADMIN: [
+        'view_dashboard',
+        'view_mailbox',
+        'view_members',
+        'manage_master_schedule',
+        'view_master_schedule',
+        'view_admin',
+        'manage_team_config',
+        'manage_announcements',
+        'manage_release_notes',
+        'view_logs',
+        'assign_tasks',
+        'create_users'
+      ],
+      TEAM_LEAD: [
+        'view_dashboard',
+        'view_mailbox',
+        'view_members',
+        'assign_tasks',
+        'manage_team_config',
+        'view_logs'
+      ],
+      MEMBER: [
+        'view_dashboard',
+        'view_mailbox',
+        'view_my_schedule'
+      ]
     },
 
-    // Theme presets (applied via CSS variables).
-    // - Colors always apply.
-    // - Optional: font, radius, shadow for deeper theme control.
-    // NOTE: "Aurora (Ecommerce Dark)" is a MUMS theme preset inspired by the visual style of
-    // https://aurora.themewagon.com/dashboard/ecommerce (dark mode).
+    can(user, perm){
+      if(!user || !user.role) return false;
+      const r = String(user.role).trim().toUpperCase();
+
+      // Priority 1: Check dynamic delegated overrides (e.g. Team Lead granted create_users)
+      try{
+        if(window.Store && Store.getUserExtraPrivs){
+          const extras = Store.getUserExtraPrivs(user.id);
+          if(Array.isArray(extras) && extras.includes(perm)) return true;
+        }
+      }catch(_){ }
+
+      // Priority 2: Standard role capabilities
+      if(r === this.ROLES.SUPER_ADMIN) return true;
+      const list = this.PERMS[r] || [];
+      return list.includes('*') || list.includes(perm);
+    },
+
+    // Default tasks fallback if team config not set
+    DEFAULT_TASKS: [
+      { id: 'mailbox_manager', label: 'Mailbox Manager', desc: 'Manage incoming emails', color: '#38bdf8' },
+      { id: 'mailbox_call', label: 'Mailbox Call', desc: 'Handle phone calls', color: '#10b981' },
+      { id: 'break', label: 'Break', desc: 'Standard rest break', color: '#64748b' },
+      { id: 'lunch', label: 'Lunch', desc: 'Meal break', color: '#f59e0b' },
+      { id: 'training', label: 'Training', desc: 'Training session', color: '#a855f7' }
+    ],
+
     THEMES: [
-      // --- Aurora-inspired presets (ThemeWagon Aurora / ecommerce-style) ---
-      // NOTE: "Aurora Light" is designed to visually match the referenced Aurora dashboard
-      // (clean typography + light surfaces). Dark variants are included for users who
-      // prefer the existing MUMS dark UI.
       {
-        id:'aurora_light',
-        name:'Aurora (Ecommerce Light)',
-        mode:'light',
-        bg:'#f4f6fb',
-        panel:'#ffffff',
-        panel2:'#f1f4fa',
-        text:'#0f172a',
-        muted:'#64748b',
-        border:'rgba(15,23,42,.12)',
-        accent:'#4f46e5',
-        bgRad1:'#dfe8ff',
-        bgRad3:'#f8fafc',
-        font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
-        radius:'16px',
-        shadow:'0 14px 30px rgba(15,23,42,.10)'
+        id: 'monday_workspace',
+        name: 'Monday OS (Light)',
+        mode: 'light',
+        bg: '#F5F6F8',       /* Soft gray background */
+        panel: '#FFFFFF',    /* Floating white workspaces */
+        panel2: '#F0F2F5',   /* Slightly darker white for secondary panels */
+        border: '#E6E9EF',   /* Very subtle borders */
+        text: '#323338',     /* Slate dark text */
+        muted: '#676879',    /* Slate gray muted text */
+        accent: '#0073EA',   /* Monday Signature Blue */
+        bgRad1: 'rgba(0,115,234,0.05)',
+        bgRad3: 'rgba(0,115,234,0.02)',
+        font: 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
+        radius: '12px',
+        shadow: '0 4px 14px rgba(0,0,0,0.04)'
       },
       {
-        id:'aurora_dark',
-        name:'Aurora (Ecommerce Dark)',
-        mode:'dark',
-        bg:'#0b1220',
-        panel:'#0f1b2e',
-        panel2:'#0c1628',
-        text:'#eef2ff',
-        muted:'#b7c1d9',
-        border:'rgba(255,255,255,.10)',
-        accent:'#4f8bff',
-        bgRad1:'#162a4b',
-        bgRad3:'#050914',
-        // Aurora uses a very modern, clean font.
-        font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
-        // Slightly tighter radius + softer shadow to match the referenced UI.
-        radius:'16px',
-        shadow:'0 12px 28px rgba(0,0,0,.30)'
+        id: 'ocean',
+        name: 'Ocean Blue',
+        bg: '#0f172a',
+        panel: '#1e293b',
+        panel2: '#334155',
+        border: '#334155',
+        text: '#f8fafc',
+        muted: '#94a3b8',
+        accent: '#38bdf8',
+        bgRad1: '#1e293b',
+        bgRad3: '#334155'
       },
-      { id:'aurora_midnight', name:'Aurora Midnight', mode:'dark', bg:'#050914', panel:'#0b1022', panel2:'#090e1c', text:'#eef2ff', muted:'#b9c1da', border:'rgba(255,255,255,.09)', accent:'#7c87ff', bgRad1:'#161f46', bgRad3:'#02040a', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
-      { id:'aurora_dracula',  name:'Aurora Dracula',  mode:'dark', bg:'#110a18', panel:'#1a0f24', panel2:'#150c1e', text:'#f7efff', muted:'#d6c0ea', border:'rgba(255,255,255,.10)', accent:'#c084fc', bgRad1:'#2b1244', bgRad3:'#050308', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
-      { id:'aurora_ember',    name:'Aurora Ember',    mode:'dark', bg:'#14070a', panel:'#1f0c11', panel2:'#16090d', text:'#fff1f2', muted:'#f1bac0', border:'rgba(255,255,255,.10)', accent:'#fb7185', bgRad1:'#3a101a', bgRad3:'#070304', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
-      { id:'aurora_arctic',   name:'Aurora Arctic',   mode:'dark', bg:'#06111a', panel:'#0b1e2d', panel2:'#081827', text:'#e9fbff', muted:'#b2d5e3', border:'rgba(255,255,255,.10)', accent:'#38bdf8', bgRad1:'#0b3144', bgRad3:'#030b10', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
-      { id:'aurora_nature',   name:'Aurora Nature',   mode:'dark', bg:'#05110b', panel:'#0a2216', panel2:'#071a11', text:'#effff5', muted:'#b6d6c2', border:'rgba(255,255,255,.10)', accent:'#22c55e', bgRad1:'#123b22', bgRad3:'#020a05', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
-      { id:'aurora_luxury',   name:'Aurora Luxury',   mode:'dark', bg:'#121008', panel:'#1f1a0a', panel2:'#171407', text:'#fff8e7', muted:'#e4d4a8', border:'rgba(255,255,255,.10)', accent:'#fbbf24', bgRad1:'#2f250a', bgRad3:'#070503', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
-
-
-      // --- Classic enterprise preset (timeless admin dashboard) ---
       {
-        id:'classic_style',
-        name:'Classic Style',
-        // Auto: follow OS preference for dark/light while keeping the same classic layout.
-        mode:'auto',
-        // Light palette
-        bg:'#f6f7f9',
-        panel:'#ffffff',
-        panel2:'#f5f7fb',
-        text:'#111827',
-        muted:'#6b7280',
-        border:'rgba(17,24,39,.12)',
-        accent:'#2563eb',
-        bgRad1:'#e8eefc',
-        bgRad3:'#fbfcfe',
-        font:"'Segoe UI', Inter, system-ui, -apple-system, Roboto, Arial, sans-serif",
-        radius:'10px',
-        shadow:'0 10px 22px rgba(17,24,39,.10)',
-        // Dark palette override (used when mode resolves to dark)
-        dark:{
-          bg:'#0b1220',
-          panel:'#0f1b2e',
-          panel2:'#0c1628',
-          text:'#e5e7eb',
-          muted:'#9ca3af',
-          border:'rgba(255,255,255,.10)',
-          accent:'#3b82f6',
-          bgRad1:'#14284a',
-          bgRad3:'#050914'
+        id: 'dark',
+        name: 'Midnight Dark',
+        bg: '#09090b',
+        panel: '#171717',
+        panel2: '#262626',
+        border: '#262626',
+        text: '#fafafa',
+        muted: '#a1a1aa',
+        accent: '#60a5fa',
+        bgRad1: '#171717',
+        bgRad3: '#262626'
+      },
+      {
+        id: 'dracula',
+        name: 'Dracula',
+        bg: '#282a36',
+        panel: '#44475a',
+        panel2: '#6272a4',
+        border: '#6272a4',
+        text: '#f8f8f2',
+        muted: '#bfbfbf',
+        accent: '#bd93f9',
+        bgRad1: '#44475a',
+        bgRad3: '#6272a4'
+      },
+      {
+        id: 'synthwave',
+        name: 'Neon Synthwave',
+        bg: '#1a1a2e',
+        panel: '#16213e',
+        panel2: '#0f3460',
+        border: '#0f3460',
+        text: '#e94560',
+        muted: '#a5a5b0',
+        accent: '#e94560',
+        bgRad1: '#16213e',
+        bgRad3: '#0f3460'
+      },
+      {
+        id: 'solarized',
+        name: 'Solarized Dark',
+        bg: '#002b36',
+        panel: '#073642',
+        panel2: '#586e75',
+        border: '#586e75',
+        text: '#839496',
+        muted: '#586e75',
+        accent: '#2aa198',
+        bgRad1: '#073642',
+        bgRad3: '#586e75'
+      },
+      {
+        id: 'monokai',
+        name: 'Monokai',
+        bg: '#272822',
+        panel: '#3e3d32',
+        panel2: '#75715e',
+        border: '#75715e',
+        text: '#f8f8f2',
+        muted: '#75715e',
+        accent: '#f92672',
+        bgRad1: '#3e3d32',
+        bgRad3: '#75715e'
+      },
+      {
+        id: 'nord',
+        name: 'Nord',
+        bg: '#2e3440',
+        panel: '#3b4252',
+        panel2: '#434c5e',
+        border: '#434c5e',
+        text: '#d8dee9',
+        muted: '#e5e9f0',
+        accent: '#88c0d0',
+        bgRad1: '#3b4252',
+        bgRad3: '#434c5e'
+      },
+      {
+        id: 'gruvbox',
+        name: 'Gruvbox',
+        bg: '#282828',
+        panel: '#3c3836',
+        panel2: '#504945',
+        border: '#504945',
+        text: '#ebdbb2',
+        muted: '#a89984',
+        accent: '#b8bb26',
+        bgRad1: '#3c3836',
+        bgRad3: '#504945'
+      },
+      {
+        id: 'github',
+        name: 'GitHub Dark',
+        bg: '#0d1117',
+        panel: '#161b22',
+        panel2: '#21262d',
+        border: '#30363d',
+        text: '#c9d1d9',
+        muted: '#8b949e',
+        accent: '#58a6ff',
+        bgRad1: '#161b22',
+        bgRad3: '#21262d'
+      },
+      {
+        id: 'material',
+        name: 'Material Ocean',
+        bg: '#0f111a',
+        panel: '#1a1c29',
+        panel2: '#292d3e',
+        border: '#292d3e',
+        text: '#a6accd',
+        muted: '#717cb4',
+        accent: '#82aaff',
+        bgRad1: '#1a1c29',
+        bgRad3: '#292d3e'
+      },
+      {
+        id: 'classic_style',
+        name: 'Classic Auto (OS Match)',
+        mode: 'auto',
+        bg: '#f1f5f9',
+        panel: '#ffffff',
+        panel2: '#f8fafc',
+        border: '#cbd5e1',
+        text: '#0f172a',
+        muted: '#64748b',
+        accent: '#0ea5e9',
+        bgRad1: '#ffffff',
+        bgRad3: '#e2e8f0',
+        dark: {
+          bg: '#020617',
+          panel: '#0f172a',
+          panel2: '#1e293b',
+          border: '#334155',
+          text: '#f8fafc',
+          muted: '#94a3b8',
+          accent: '#38bdf8',
+          bgRad1: '#0f172a',
+          bgRad3: '#1e293b'
         }
       },
-
-      // --- Original MUMS presets (kept for variety) ---
-      { id:'ocean',     name:'Ocean Blue',   bg:'#071224', panel:'#0c1b33', panel2:'#0a162b', text:'#eaf2ff', muted:'#a8b6d6', border:'rgba(255,255,255,.08)', accent:'#4aa3ff', bgRad1:'#0c2a52', bgRad3:'#050c18' },
-      { id:'emerald',   name:'Emerald',      bg:'#061a14', panel:'#0a2a22', panel2:'#072018', text:'#eafff6', muted:'#a9d6c6', border:'rgba(255,255,255,.08)', accent:'#34d399', bgRad1:'#0a3a2c', bgRad3:'#03110d' },
-      { id:'royal',     name:'Royal Indigo', bg:'#0b0f24', panel:'#121a3a', panel2:'#0e1531', text:'#eef0ff', muted:'#b7bce8', border:'rgba(255,255,255,.08)', accent:'#7c87ff', bgRad1:'#232c66', bgRad3:'#070a16' },
-      { id:'slate',     name:'Slate Gray',   bg:'#0b1220', panel:'#121c2f', panel2:'#0e1727', text:'#eef2ff', muted:'#b5bfd6', border:'rgba(255,255,255,.08)', accent:'#60a5fa', bgRad1:'#1b2a44', bgRad3:'#050914' },
-      { id:'sunset',    name:'Sunset',       bg:'#1a0b12', panel:'#2a121d', panel2:'#200e16', text:'#fff0f5', muted:'#e0b6c6', border:'rgba(255,255,255,.08)', accent:'#fb7185', bgRad1:'#4b1a2a', bgRad3:'#0d0508' },
-      { id:'amber',     name:'Amber Gold',   bg:'#141007', panel:'#241c0b', panel2:'#1c1508', text:'#fff8e7', muted:'#d7c7a8', border:'rgba(255,255,255,.08)', accent:'#fbbf24', bgRad1:'#3a2a0c', bgRad3:'#070503' },
-      { id:'cyan',      name:'Cyan Tech',    bg:'#06161b', panel:'#0b2730', panel2:'#081e25', text:'#e9fbff', muted:'#a7d4de', border:'rgba(255,255,255,.08)', accent:'#22d3ee', bgRad1:'#0a3a46', bgRad3:'#030c0f' },
-      { id:'orchid',    name:'Orchid',       bg:'#130a1b', panel:'#211030', panel2:'#180c25', text:'#f7efff', muted:'#d1b6e6', border:'rgba(255,255,255,.08)', accent:'#c084fc', bgRad1:'#3b1a56', bgRad3:'#07030a' },
-      { id:'forest',    name:'Forest',       bg:'#07130b', panel:'#0d2416', panel2:'#0a1b11', text:'#effff5', muted:'#b6d6c2', border:'rgba(255,255,255,.08)', accent:'#22c55e', bgRad1:'#133b23', bgRad3:'#030a05' },
-      { id:'mono',      name:'Monochrome',   bg:'#0b0c10', panel:'#13151b', panel2:'#0f1116', text:'#f3f4f6', muted:'#b7bcc6', border:'rgba(255,255,255,.10)', accent:'#a3a3a3', bgRad1:'#1a1d26', bgRad3:'#050608' },
+      {
+        id: 'light',
+        name: 'Clean Light',
+        bg: '#f8fafc',
+        panel: '#ffffff',
+        panel2: '#f1f5f9',
+        border: '#e2e8f0',
+        text: '#0f172a',
+        muted: '#64748b',
+        accent: '#0ea5e9',
+        bgRad1: '#ffffff',
+        bgRad3: '#e2e8f0'
+      },
+      {
+        id: 'aurora_dracula',
+        name: 'Aurora Dracula',
+        bg: '#1a1b26',
+        panel: '#282a36',
+        panel2: '#44475a',
+        border: 'rgba(255,255,255,.05)',
+        text: '#f8f8f2',
+        muted: '#bfbfbf',
+        accent: '#bd93f9',
+        bgRad1: 'rgba(189,147,249,.04)',
+        bgRad3: 'rgba(189,147,249,.02)',
+        font: 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
+        radius: '16px',
+        shadow: '0 8px 30px rgba(0,0,0,.3)'
+      },
+      {
+        id: 'aurora_ecommerce_light',
+        name: 'Aurora Ecommerce',
+        mode: 'light',
+        bg: '#fafafa',
+        panel: '#ffffff',
+        panel2: '#f4f4f5',
+        border: 'rgba(0,0,0,.06)',
+        text: '#171717',
+        muted: '#737373',
+        accent: '#f97316',
+        bgRad1: 'rgba(249,115,22,.03)',
+        bgRad3: 'rgba(249,115,22,.01)',
+        font: 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
+        radius: '12px',
+        shadow: '0 4px 14px rgba(0,0,0,.04)'
+      },
+      {
+        id: 'aurora_midnight',
+        name: 'Aurora Midnight',
+        bg: '#0b1220',
+        panel: '#121c2f',
+        panel2: '#1b263b',
+        border: 'rgba(255,255,255,.08)',
+        text: '#eaf2ff',
+        muted: '#a8b6d6',
+        accent: '#4aa3ff',
+        bgRad1: 'rgba(74,163,255,.06)',
+        bgRad3: 'rgba(74,163,255,.02)',
+        font: 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
+        radius: '14px',
+        shadow: '0 10px 40px rgba(0,0,0,.4)'
+      }
     ],
-
-    // Navigation is intentionally user-facing only.
-    // Note: GMT Overview remains available via Settings → World Clocks, but is not shown in the main menu.
-    NAV: [
-      { id: 'dashboard', label: 'Dashboard', icon: '🏠', perm: 'view_dashboard' },
-      { id: 'mailbox', label: 'Mailbox', icon: '📨', perm: 'view_mailbox' },
-      { id: 'overall_stats', label: 'OVER ALL STATS', icon: '📊', perm: 'view_members' },
-
-      {
-        id: 'team',
-        label: 'Team',
-        icon: '👥',
-        perm: 'view_members',
-        children: [
-          { id: 'members', label: 'Members', icon: '👥', perm: 'view_members' },
-          { id: 'master_schedule', label: 'Master Schedule', icon: '📅', perm: 'view_master_schedule' },
-          { id: 'team_config', label: 'Team Task Settings', icon: '🛠️', perm: 'manage_team_config' },
-          { id: 'distribution_monitoring', label: 'Command Center', icon: '🛰️', perm: 'view_distribution_monitoring', route: '/distribution/monitoring' },
-        ]
-      },
-
-      {
-        id: 'admin',
-        label: 'Administration',
-        icon: '🧾',
-        perm: 'create_users',
-        children: [
-          { id: 'users', label: 'User Management', icon: '👤', perm: 'create_users' },
-          { id: 'announcements', label: 'Announcements', icon: '📣', perm: 'manage_announcements' },
-          { id: 'logs', label: 'Activity Logs', icon: '🧾', perm: 'view_logs' },
-          { id: 'privileges', label: 'Privileges', icon: '🔐', perm: 'manage_privileges' },
-        ]
-      },
-
-
-      {
-        id: 'my_record',
-        label: 'My Record',
-        icon: '🗂️',
-        perm: 'view_my_record',
-        children: [
-          { id: 'my_attendance', label: 'My Attendance', icon: '📝', perm: 'view_my_record' },
-          { id: 'my_schedule', label: 'My Schedule', icon: '📅', perm: 'view_my_record' },
-          { id: 'my_case', label: 'My Case', icon: '📨', perm: 'view_my_record' },
-          { id: 'my_task', label: 'My Task', icon: '✅', perm: 'view_my_record' },
-        ]
-      },
-
-      { id: 'my_reminders', label: 'My Reminders', icon: '⏰', perm: 'view_my_reminders' },
-      { id: 'team_reminders', label: 'Team Reminders', icon: '🚨', perm: 'view_team_reminders' },
-    ],
-
-    // Permissions are intentionally flat strings to keep the app usable without a backend.
-    // New: manage_release_notes (grants Add/Import/Export/Delete release notes).
-	    PERMS: {
-	      SUPER_ADMIN: ['*','create_users','view_logs','view_my_record','view_gmt_overview','view_distribution_monitoring'],
-	      SUPER_USER: ['view_dashboard','view_mailbox','view_members','manage_release_notes','view_master_schedule','view_my_record','view_my_reminders','view_team_reminders','manage_team_reminders','create_users','view_logs','view_gmt_overview','view_distribution_monitoring'],
-	      ADMIN: ['view_dashboard','view_mailbox','view_members','manage_users','manage_announcements','manage_release_notes','manage_members_scheduling','view_master_schedule','view_my_record','view_logs','view_gmt_overview','view_distribution_monitoring'],
-	      TEAM_LEAD: ['view_dashboard','view_mailbox','view_members','manage_members_scheduling','manage_announcements','view_master_schedule','view_my_record','view_my_reminders','view_team_reminders','manage_team_reminders','create_users','manage_team_config','view_logs','view_gmt_overview','view_distribution_monitoring'],
-	      MEMBER: ['view_dashboard','view_mailbox','view_my_record','view_my_reminders','view_team_reminders','view_gmt_overview'],
-	    },
-
-    can(roleOrUser, perm){
-      const user = (roleOrUser && typeof roleOrUser === 'object') ? roleOrUser : null;
-      const role = (typeof roleOrUser === 'string') ? roleOrUser : (roleOrUser && roleOrUser.role);
-      const p = this.PERMS[role] || [];
-      let allowed = p.includes('*') || p.includes(perm);
-
-      // Apply role-level overrides (Super Admin configurable).
-      try{
-        if(window.Store && Store.getRolePermOverrides){
-          const ov = Store.getRolePermOverrides();
-          if(ov && ov[role] && Object.prototype.hasOwnProperty.call(ov[role], perm)){
-            allowed = !!ov[role][perm];
-          }
-        }
-      }catch(_){}
-
-      // User delegated privileges override role restrictions.
-      try{
-        if(user && window.Store && Store.userHasExtraPerm && Store.userHasExtraPerm(user.id, perm)){
-          return true;
-        }
-      }catch(_){}
-
-      return allowed;
-    },
 
     teamById(id){
-      // Developer Access is the default when team_id is NULL.
-      if(id===null || id===undefined || String(id).trim()==='') return this.DEV_TEAM;
-      return this.TEAMS.find(t => t.id===id) || this.TEAMS[0];
+      if(id === this.TEAM_DEV.id) return this.TEAM_DEV;
+      return (this.TEAMS||[]).find(t=>t.id===id) || null;
     },
 
-    scheduleById(id){
-      return this.SCHEDULES[id] || null;
-    },
-
-    // Map a shift/team key to its configured window (used by Members Graph Panel).
-    // Accepts keys like: 'morning' | 'mid' | 'night' | 'dev' | 'developer_access'
-    shiftByKey(key){
+    // Convert any legacy/informal team string into a valid team object.
+    // Handles specific mappings like "morning" -> morning shift, or generic names -> dev access.
+    resolveTeam(raw){
       try{
-        const raw = String(key || '').trim();
-        const k = raw.toLowerCase().replace(/\s+/g,'_');
-        const teams = Config.TEAMS || {};
+        if(!raw) return null;
+        let k = String(raw).trim().toLowerCase();
+        
+        // Exact ID match first
+        let t = this.teamById(k);
+        if(t) return t;
 
-        // direct id match (morning/mid/night/dev)
-        let t = teams[k] || null;
+        // Legacy mapping hooks
+        const teams = {};
+        (this.TEAMS||[]).forEach(tt => { teams[tt.id] = tt; });
+        teams.dev = this.TEAM_DEV;
 
-        // common aliases
         if(!t){
           if(k.includes('morning')) t = teams.morning || null;
           else if(k.includes('mid')) t = teams.mid || null;
@@ -277,19 +391,41 @@
         let em = parseHM(endHM);
         let lenMin = em - sm;
         if(lenMin <= 0) lenMin += 24*60;
-
+        
+        // Ensure standard fields exist for downstream UI
         return {
-          key: t.id || k,
-          label: t.label || raw || k,
-          startHM,
-          endHM,
+          id: t.id,
+          label: t.label || t.id,
+          startHM, endHM, lenMin,
           dutyStart: t.dutyStart || startHM,
-          dutyEnd: t.dutyEnd || endHM,
-          lenMin,
+          dutyEnd: t.dutyEnd || endHM
         };
-      }catch(_){ return null; }
+      }catch(_){
+        return { id:'morning', label:'Morning Shift', startHM:'06:00', endHM:'15:00', lenMin:9*60, dutyStart:'06:00', dutyEnd:'15:00' };
+      }
     },
+
+    // Left sidebar configuration
+    NAV: [
+      { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', perm: 'view_dashboard' },
+      { id: 'mailbox', label: 'Mailbox', icon: 'mailbox', perm: 'view_mailbox' },
+      { id: 'members', label: 'Assign Tasks', icon: 'members', perm: 'view_members' },
+      { id: 'overall_stats', label: 'Overall Stats', icon: 'chart', perm: 'view_members' },
+      {
+        id: 'my_record',
+        label: 'My Record',
+        icon: 'schedule',
+        perm: 'view_my_schedule',
+        children: [
+          { id: 'my_schedule', label: 'My Schedule', perm: 'view_my_schedule' },
+          { id: 'my_attendance', label: 'My Attendance', perm: 'view_my_schedule' },
+          { id: 'my_case', label: 'My Case History', perm: 'view_my_schedule' },
+          { id: 'my_task', label: 'My Task History', perm: 'view_my_schedule' }
+        ]
+      }
+    ]
   };
 
+  // Attach to window
   window.Config = Config;
 })();
