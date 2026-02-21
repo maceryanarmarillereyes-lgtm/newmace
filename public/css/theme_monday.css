@@ -16,206 +16,176 @@ body[data-theme="monday_workspace"] .main,
 body[data-theme="monday_workspace"] .side,
 body[data-theme="monday_workspace"] .right {
   background: #FFFFFF !important;
-  border: 1px solid #E6E9EF !important;
-  border-radius: 12px !important;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
+  border: 1px solid #d0d4e4 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.02) !important;
 }
 
 body[data-theme="monday_workspace"] .topbar {
   background: #FFFFFF !important;
-  border: 1px solid #E6E9EF !important;
-  border-radius: 12px !important;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
+  border: 1px solid #d0d4e4 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.02) !important;
   padding: 10px 16px !important;
   margin-bottom: 4px !important;
 }
 
-body[data-theme="monday_workspace"] .topbrand {
-  border: none !important;
-  background: transparent !important;
-  padding: 0 !important;
-}
-body[data-theme="monday_workspace"] .brand-name {
-  color: #323338 !important;
-  text-shadow: none !important;
-  font-weight: 800 !important;
-  font-size: 22px !important;
-}
-body[data-theme="monday_workspace"] .brand-mark {
-  background: #0073EA !important; 
-  box-shadow: 0 4px 10px rgba(0,115,234,0.3) !important;
-  border-radius: 10px !important;
-}
+body[data-theme="monday_workspace"] .topbrand { border: none !important; background: transparent !important; padding: 0 !important; }
+body[data-theme="monday_workspace"] .brand-name { color: #323338 !important; text-shadow: none !important; font-weight: 800 !important; font-size: 22px !important; }
+body[data-theme="monday_workspace"] .brand-mark { background: #579BFC !important; box-shadow: 0 4px 10px rgba(87,155,252,0.3) !important; border-radius: 8px !important; }
 body[data-theme="monday_workspace"] .brand-mark::after { color: #FFFFFF !important; text-shadow: none !important; }
 
 /* SIDEBAR NAVIGATION */
 body[data-theme="monday_workspace"] .side { padding: 16px !important; }
 body[data-theme="monday_workspace"] .nav a.nav-item,
 body[data-theme="monday_workspace"] .nav .nav-group-head {
-  border-radius: 999px !important; 
+  border-radius: 4px !important; 
   padding: 10px 16px !important;
   margin-bottom: 4px !important;
   color: #676879 !important;
-  font-weight: 500 !important;
+  font-weight: 400 !important;
   border: none !important;
   background: transparent !important;
   transition: all 0.2s ease !important;
 }
 body[data-theme="monday_workspace"] .nav a.nav-item:hover,
-body[data-theme="monday_workspace"] .nav .nav-group-head:hover { background: #F0F2F5 !important; color: #323338 !important; }
-body[data-theme="monday_workspace"] .nav a.nav-item.active { background: #CCE5FF !important; color: #0073EA !important; font-weight: 600 !important; }
+body[data-theme="monday_workspace"] .nav .nav-group-head:hover { background: #e6e9ef !important; color: #323338 !important; }
+body[data-theme="monday_workspace"] .nav a.nav-item.active { background: #cce5ff !important; color: #0073ea !important; font-weight: 500 !important; }
 body[data-theme="monday_workspace"] .nav a.nav-item.active::before { display: none !important; }
 body[data-theme="monday_workspace"] .nav-group.is-record-group .nav-group-kids::before { display: none !important; }
 
 /* GLOBAL BUTTONS */
-body[data-theme="monday_workspace"] .btn {
-  border-radius: 8px !important;
-  font-weight: 600 !important;
-  border: 1px solid #C3C6D4 !important;
-  background: #FFFFFF !important;
-  color: #323338 !important;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
-}
-body[data-theme="monday_workspace"] .btn:hover { background: #F0F2F5 !important; }
-body[data-theme="monday_workspace"] .btn.primary { background: #0073EA !important; border-color: #0073EA !important; color: #FFFFFF !important; border-radius: 24px !important; }
-body[data-theme="monday_workspace"] .btn.primary:hover { background: #0060C7 !important; border-color: #0060C7 !important; transform: translateY(-1px) !important; box-shadow: 0 4px 10px rgba(0,115,234,0.3) !important; }
+body[data-theme="monday_workspace"] .btn { border-radius: 4px !important; font-weight: 500 !important; border: 1px solid #c3c6d4 !important; background: #FFFFFF !important; color: #323338 !important; box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important; }
+body[data-theme="monday_workspace"] .btn:hover { background: #f0f2f5 !important; }
+body[data-theme="monday_workspace"] .btn.primary { background: #0073ea !important; border-color: #0073ea !important; color: #FFFFFF !important; }
+body[data-theme="monday_workspace"] .btn.primary:hover { background: #0060c7 !important; border-color: #0060c7 !important; transform: none !important; box-shadow: 0 4px 10px rgba(0,115,234,0.2) !important; }
 
-/* QUICK LINKS & BOTTOM DOCK */
-body[data-theme="monday_workspace"] .quicklinks-bar,
-body[data-theme="monday_workspace"] .online-users-bar { background: rgba(255,255,255,0.85) !important; border-top: 1px solid #E6E9EF !important; }
-body[data-theme="monday_workspace"] .qcircle { background: #FFFFFF !important; border: 1px solid #C3C6D4 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.05) !important; }
-body[data-theme="monday_workspace"] .wclock { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; color: #323338 !important; }
-body[data-theme="monday_workspace"] .wclock .wc-h, body[data-theme="monday_workspace"] .wclock .wc-m { color: #323338 !important; }
+/* INPUTS & SEARCH BAR */
+body[data-theme="monday_workspace"] .input, body[data-theme="monday_workspace"] select, body[data-theme="monday_workspace"] textarea { background: #FFFFFF !important; border: 1px solid #c3c6d4 !important; border-radius: 4px !important; color: #323338 !important; }
+body[data-theme="monday_workspace"] .input:focus, body[data-theme="monday_workspace"] select:focus { border-color: #0073ea !important; box-shadow: 0 0 0 2px rgba(0,115,234,0.2) !important; }
+body[data-theme="monday_workspace"] .top-global-search { border-radius: 999px !important; border: 1px solid #c3c6d4 !important; background: #FFFFFF !important; padding: 6px 16px !important; box-shadow: none !important; }
+body[data-theme="monday_workspace"] .top-global-search:focus-within { border-color: #0073ea !important; box-shadow: 0 0 0 2px rgba(0,115,234,0.2) !important; }
 
 
 /* =========================================================================
-   THE ULTIMATE MAILBOX OVERHAUL (MONDAY.COM BOARD STYLE)
+   THE ULTIMATE MAILBOX OVERHAUL (TRUE MONDAY.COM BOARD STYLE)
    ========================================================================= */
 
 /* 1. TOP COMMAND CARDS */
 body[data-theme="monday_workspace"] .mbx-card {
     background: #FFFFFF !important;
-    border: 1px solid #E6E9EF !important;
-    border-radius: 12px !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.03) !important;
-    padding: 24px !important;
+    border: 1px solid #d0d4e4 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.02) !important;
+    padding: 20px !important;
 }
-body[data-theme="monday_workspace"] .mbx-card .small.muted {
-    color: #676879 !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.5px !important;
-    text-transform: uppercase !important;
-    font-size: 11px !important;
-}
-body[data-theme="monday_workspace"] .mbx-card .h2,
-body[data-theme="monday_workspace"] .mbx-card .val {
-    color: #1F2A44 !important;
-    font-weight: 900 !important;
-    text-shadow: none !important;
-}
+body[data-theme="monday_workspace"] .mbx-card .small.muted { color: #676879 !important; font-weight: 500 !important; font-size: 13px !important; text-transform: none !important; }
+body[data-theme="monday_workspace"] .mbx-card .h2, body[data-theme="monday_workspace"] .mbx-card .val { color: #323338 !important; font-weight: 700 !important; text-shadow: none !important; font-size: 24px !important; }
 
-/* 2. MAILBOX WRAPPER & KILLING THE DARK HEADERS */
+/* 2. THE BOARD WRAPPER */
 body[data-theme="monday_workspace"] .mbx-table-wrap {
     background: #FFFFFF !important;
-    border: 1px solid #E6E9EF !important;
-    border-radius: 12px !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.03) !important;
+    border: 1px solid #d0d4e4 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.02) !important;
     overflow: hidden !important;
-    margin-top: 24px !important;
+    margin-top: 30px !important;
 }
 
-/* Force all dark div backgrounds inside to be clean white */
-body[data-theme="monday_workspace"] .mbx-table-wrap > div[style*="background"],
-body[data-theme="monday_workspace"] .mbx-table-wrap > .row.pad {
+/* CARPET BOMB ALL DARK HEADERS INSIDE MAILBOX */
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) {
     background: #FFFFFF !important;
-    border-bottom: 1px solid #E6E9EF !important;
-    padding: 20px 24px !important;
+    border-bottom: 1px solid #d0d4e4 !important;
+    padding: 20px 24px 16px 24px !important;
 }
-
-/* Force text inside those formerly-dark headers to be readable */
-body[data-theme="monday_workspace"] .mbx-table-wrap > div[style*="background"] *,
-body[data-theme="monday_workspace"] .mbx-table-wrap > .row.pad * {
-    color: #1F2A44 !important;
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) * {
+    color: #323338 !important;
     text-shadow: none !important;
 }
-body[data-theme="monday_workspace"] .mbx-table-wrap > div[style*="background"] .muted,
-body[data-theme="monday_workspace"] .mbx-table-wrap > .row.pad .muted {
-    color: #676879 !important;
-}
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) strong { font-size: 18px !important; font-weight: 600 !important; }
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) .muted,
+body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) .small { color: #676879 !important; opacity: 1 !important; font-size: 13px !important; }
 
-/* 3. THE MAILBOX TABLE */
+/* 3. THE SPREADSHEET TABLE */
 body[data-theme="monday_workspace"] .table.mbx-table {
     background: #FFFFFF !important;
     width: 100% !important;
     border-collapse: collapse !important;
 }
 body[data-theme="monday_workspace"] .table.mbx-table thead th {
-    background: #F5F6F8 !important; /* Monday.com gray header row */
+    background: #FFFFFF !important;
     color: #676879 !important;
-    font-weight: 500 !important;
-    font-size: 11px !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.5px !important;
-    padding: 12px 24px !important;
-    border-top: 1px solid #E6E9EF !important;
-    border-bottom: 1px solid #E6E9EF !important;
+    font-weight: 400 !important;
+    font-size: 13px !important;
+    text-transform: none !important; 
+    border-top: none !important;
+    border-bottom: 1px solid #d0d4e4 !important;
+    border-right: 1px solid #e6e9ef !important; /* MONDAY COLUMN SEPARATORS */
+    padding: 8px 16px !important;
 }
+body[data-theme="monday_workspace"] .table.mbx-table thead th:last-child { border-right: none !important; }
+
 body[data-theme="monday_workspace"] .table.mbx-table tbody tr {
     background: #FFFFFF !important;
-    border-bottom: 1px solid #E6E9EF !important;
-    transition: background 0.2s ease !important;
+    border-bottom: 1px solid #e6e9ef !important;
 }
-body[data-theme="monday_workspace"] .table.mbx-table tbody tr:hover {
-    background: #F8FBFF !important; /* Light blue hover */
-}
+body[data-theme="monday_workspace"] .table.mbx-table tbody tr:hover { background: #f5f6f8 !important; } /* Subtle gray hover */
 body[data-theme="monday_workspace"] .table.mbx-table tbody td {
-    padding: 16px 24px !important;
+    padding: 6px 16px !important; /* COMPACT PADDING */
     color: #323338 !important;
-    font-weight: 500 !important;
+    font-weight: 400 !important;
+    font-size: 13px !important;
     border: none !important;
+    border-right: 1px solid #e6e9ef !important; /* MONDAY COLUMN SEPARATORS */
     vertical-align: middle !important;
+    height: 36px !important;
 }
-/* Left colored indicator line for rows */
+body[data-theme="monday_workspace"] .table.mbx-table tbody td:last-child { border-right: none !important; }
+
+/* Left Blue Board Marker */
 body[data-theme="monday_workspace"] .table.mbx-table tbody td:first-child {
-    border-left: 4px solid #0073EA !important; 
+    border-left: 6px solid #579BFC !important; 
 }
 
-/* 4. MONDAY.COM STATUS PILLS (THE SQUARED COLUMNS) */
+/* 4. MONDAY.COM STATUS CELLS (FULL BLEED BLOCKS) */
+body[data-theme="monday_workspace"] .mbx-table-wrap td:has(.mbx-duty-pill),
+body[data-theme="monday_workspace"] .mbx-table-wrap td:has(.badge) {
+    padding: 0 !important; /* Remove padding so the pill fills the cell entirely */
+}
+
 body[data-theme="monday_workspace"] .mbx-table-wrap .badge,
 body[data-theme="monday_workspace"] .mbx-table-wrap .mbx-duty-pill {
-    display: inline-flex !important;
+    display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    border-radius: 4px !important; /* Monday uses rectangles for Status */
-    padding: 6px 12px !important;
-    font-size: 11px !important;
-    font-weight: 700 !important;
-    text-transform: uppercase !important;
+    border-radius: 0 !important; /* Flat edges like a real spreadsheet cell */
+    margin: 0 !important;
+    height: 100% !important;
+    min-height: 36px !important;
+    width: 100% !important;
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    text-transform: none !important;
     color: #FFFFFF !important;
     border: none !important;
-    width: 140px !important; /* Uniform width for all status tags */
-    text-align: center !important;
-    box-shadow: inset 0 -2px 0 rgba(0,0,0,0.1) !important; /* 3D pop effect */
 }
 
-/* Force Inactive / No Duty to look like Monday Gray Empty State */
+/* True Monday.com Status Colors */
+body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="manager"] { background: #579BFC !important; } /* Monday Blue */
+body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="call"] { background: #00C875 !important; } /* Monday Green */
+body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="break"] { background: #FDAB3D !important; } /* Monday Orange */
+
+/* Empty / No Duty State */
+body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="idle"],
 body[data-theme="monday_workspace"] .mbx-table-wrap .badge[style*="border"],
 body[data-theme="monday_workspace"] .mbx-table-wrap .mbx-duty-pill[style*="border"] {
-    background: #C3C6D4 !important; 
+    background: #C4C4C4 !important; /* Monday Default Gray */
     color: #FFFFFF !important;
-    box-shadow: none !important;
     border: none !important;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05) !important;
 }
 
-/* 5. CASE MONITORING MATRIX FIXES */
-body[data-theme="monday_workspace"] .mbx-table-wrap:nth-of-type(2) {
-    margin-top: 32px !important;
-}
-body[data-theme="monday_workspace"] .mbx-table-wrap:nth-of-type(2) table th {
-    color: #0073EA !important; /* Blue headers for agent names */
-    font-weight: 700 !important;
-}
-body[data-theme="monday_workspace"] .mbx-table-wrap:nth-of-type(2) table td[style*="color"] {
-    color: #676879 !important; /* Fix unreadable light blue "0 cases" text */
-    font-weight: 600 !important;
-}
+/* 5. DASHBOARD WIDGET FIXES (Carryover) */
+body[data-theme="monday_workspace"] .dashx-heatmap { background: #FFFFFF !important; border-radius: 8px !important; border: 1px solid #d0d4e4 !important; padding: 16px !important; }
+body[data-theme="monday_workspace"] .dashx-heatmap .hday, body[data-theme="monday_workspace"] .dashx-heatmap .hhr { color: #323338 !important; font-weight: 500 !important; font-size: 12px !important; }
+body[data-theme="monday_workspace"] .dashx-heatmap .cell { border-radius: 2px !important; border: 1px solid #e6e9ef !important; background: #f5f6f8 !important; }
