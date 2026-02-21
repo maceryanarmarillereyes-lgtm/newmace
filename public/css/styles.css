@@ -3700,3 +3700,231 @@ body.sidebar-collapsed .side-logs-title{display:none}
   border-color: rgba(255,255,255,0.35);
   color: #fff;
 }
+
+/* =====================================================================
+   Monday Workspace Theme (inspired by Monday.com)
+   - Fully isolated under body[data-theme="monday_workspace"]
+   ===================================================================== */
+body[data-theme="monday_workspace"]{
+  background: #f4f5f7;
+  color: #1f2937;
+  font-family: 'Poppins', 'Inter', 'Segoe UI', Roboto, system-ui, -apple-system, Arial, sans-serif;
+}
+
+body[data-theme="monday_workspace"] .app{
+  gap: 14px;
+  padding: 14px;
+  background: linear-gradient(180deg, #f8f9fc 0%, #f4f5f7 100%);
+}
+
+body[data-theme="monday_workspace"] .topbar{
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  padding: 10px 14px;
+  border: 1px solid #e6e9ef;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, .06);
+}
+
+body[data-theme="monday_workspace"] .topbrand,
+body[data-theme="monday_workspace"] .brand-mark{
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+}
+
+body[data-theme="monday_workspace"] .brand-name{
+  color: #1f2937;
+  font-weight: 800;
+  letter-spacing: .01em;
+}
+
+body[data-theme="monday_workspace"] .brand-sub{
+  color: #6b7280;
+}
+
+body[data-theme="monday_workspace"] .top-global-search{
+  border: 1px solid #e6e9ef;
+  border-radius: 10px;
+  background: #f7f8fb;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.8);
+}
+
+body[data-theme="monday_workspace"] #globalSearchInput{
+  color: #1f2937;
+  font-size: 13px;
+}
+
+body[data-theme="monday_workspace"] #globalSearchInput::placeholder{
+  color: #9aa4b2;
+}
+
+body[data-theme="monday_workspace"] aside.side,
+body[data-theme="monday_workspace"] aside.right{
+  border-radius: 12px;
+  border: 1px solid #e6e9ef;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, .05);
+}
+
+body[data-theme="monday_workspace"] aside.side{
+  padding: 14px !important;
+}
+
+body[data-theme="monday_workspace"] .nav{
+  gap: 8px;
+}
+
+body[data-theme="monday_workspace"] .nav .nav-item,
+body[data-theme="monday_workspace"] .nav .nav-group-head{
+  border: 1px solid transparent;
+  border-radius: 10px;
+  min-height: 42px;
+  padding: 9px 11px;
+  transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
+}
+
+body[data-theme="monday_workspace"] .nav .nav-label{
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+body[data-theme="monday_workspace"] .nav .nav-item:hover,
+body[data-theme="monday_workspace"] .nav .nav-group-head:hover{
+  background: #f4f8ff;
+  border-color: #d7e5fb;
+  transform: translateY(-1px);
+}
+
+body[data-theme="monday_workspace"] .nav .nav-item.active{
+  background: #e9f2ff;
+  border-color: #b9d6ff;
+  box-shadow: inset 3px 0 0 #0073ea;
+}
+
+body[data-theme="monday_workspace"] .card{
+  background: #ffffff;
+  border: 1px solid #e6e9ef;
+  border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, .05);
+}
+
+body[data-theme="monday_workspace"] .card.pad{
+  padding: 18px;
+}
+
+body[data-theme="monday_workspace"] .btn,
+body[data-theme="monday_workspace"] button,
+body[data-theme="monday_workspace"] input[type="button"],
+body[data-theme="monday_workspace"] input[type="submit"]{
+  border-radius: 10px;
+  border: 1px solid #d6deea;
+  background: #ffffff;
+  color: #1f2937;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+}
+
+body[data-theme="monday_workspace"] .btn:hover,
+body[data-theme="monday_workspace"] button:hover,
+body[data-theme="monday_workspace"] input[type="button"]:hover,
+body[data-theme="monday_workspace"] input[type="submit"]:hover{
+  background: #f5f9ff;
+  border-color: #bdd7ff;
+}
+
+body[data-theme="monday_workspace"] .btn.btn-primary,
+body[data-theme="monday_workspace"] .btn.primary,
+body[data-theme="monday_workspace"] .btn[data-variant="primary"]{
+  background: #0073ea;
+  border-color: #0073ea;
+  color: #ffffff;
+  box-shadow: 0 8px 16px rgba(0, 115, 234, .24);
+}
+
+body[data-theme="monday_workspace"] .btn.btn-primary:hover,
+body[data-theme="monday_workspace"] .btn.primary:hover,
+body[data-theme="monday_workspace"] .btn[data-variant="primary"]:hover{
+  background: #0066cf;
+  border-color: #0066cf;
+}
+
+body[data-theme="monday_workspace"] table,
+body[data-theme="monday_workspace"] .table{
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #e6e9ef;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+body[data-theme="monday_workspace"] th{
+  background: #f7f8fb;
+  color: #64748b;
+  font-weight: 800;
+  border-bottom: 1px solid #e6e9ef;
+}
+
+body[data-theme="monday_workspace"] td{
+  border-bottom: 1px solid #edf1f6;
+  color: #1f2937;
+}
+
+body[data-theme="monday_workspace"] table tr:nth-child(even) td{
+  background: #fbfcfe;
+}
+
+body[data-theme="monday_workspace"] table tr:last-child td{
+  border-bottom: 0;
+}
+
+body[data-theme="monday_workspace"] input,
+body[data-theme="monday_workspace"] select,
+body[data-theme="monday_workspace"] textarea{
+  border: 1px solid #d7dfea;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1f2937;
+}
+
+body[data-theme="monday_workspace"] input:focus,
+body[data-theme="monday_workspace"] select:focus,
+body[data-theme="monday_workspace"] textarea:focus{
+  border-color: #0073ea;
+  box-shadow: 0 0 0 3px rgba(0, 115, 234, .16);
+  outline: none;
+}
+
+body[data-theme="monday_workspace"] .online-users-bar,
+body[data-theme="monday_workspace"] .quicklinks-bar{
+  border-top: 1px solid #e6e9ef;
+  background: #ffffff;
+}
+
+body[data-theme="monday_workspace"] .rtabs{
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border-bottom: 1px solid #e6e9ef;
+  background: #ffffff;
+}
+
+@media (max-width: 980px){
+  body[data-theme="monday_workspace"] .app{
+    gap: 10px;
+    padding: 10px;
+  }
+
+  body[data-theme="monday_workspace"] .topbar,
+  body[data-theme="monday_workspace"] aside.side,
+  body[data-theme="monday_workspace"] aside.right,
+  body[data-theme="monday_workspace"] .card,
+  body[data-theme="monday_workspace"] table,
+  body[data-theme="monday_workspace"] .table{
+    border-radius: 10px;
+  }
+}
