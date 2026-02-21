@@ -3700,3 +3700,253 @@ body.sidebar-collapsed .side-logs-title{display:none}
   border-color: rgba(255,255,255,0.35);
   color: #fff;
 }
+
+/* =====================================================================
+   Monday Workspace Theme (Inspired by monday.com)
+   - Strictly scoped to body[data-theme="monday_workspace"]
+   ===================================================================== */
+body[data-theme="monday_workspace"]{
+  background: #f4f5f7;
+  color: #1f2a44;
+  font-family: 'Poppins', 'Roboto', 'Segoe UI', Inter, system-ui, -apple-system, Arial, sans-serif;
+}
+
+body[data-theme="monday_workspace"] .app{
+  gap: 14px;
+  padding: 14px;
+  background:
+    radial-gradient(1200px 480px at 18% -12%, rgba(0,115,234,.12), transparent 70%),
+    radial-gradient(900px 360px at 88% -8%, rgba(108,93,211,.10), transparent 70%),
+    #f4f5f7;
+}
+
+body[data-theme="monday_workspace"] .topbar,
+body[data-theme="monday_workspace"] aside.side,
+body[data-theme="monday_workspace"] aside.right,
+body[data-theme="monday_workspace"] .card,
+body[data-theme="monday_workspace"] .modal .panel,
+body[data-theme="monday_workspace"] .dialog,
+body[data-theme="monday_workspace"] .online-users-bar,
+body[data-theme="monday_workspace"] .quicklinks-bar{
+  background: #ffffff;
+  border: 1px solid #e6e9ef;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(16,24,40,.06);
+}
+
+body[data-theme="monday_workspace"] .topbar{
+  padding: 10px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  backdrop-filter: blur(2px);
+}
+
+body[data-theme="monday_workspace"] .topbrand,
+body[data-theme="monday_workspace"] .brand-mark,
+body[data-theme="monday_workspace"] .brand-sub{
+  color: #1f2a44;
+  text-shadow: none;
+}
+
+body[data-theme="monday_workspace"] .brand-name{
+  letter-spacing: .01em;
+  font-weight: 800;
+}
+
+body[data-theme="monday_workspace"] aside.side,
+body[data-theme="monday_workspace"] aside.right{
+  padding: 12px !important;
+}
+
+body[data-theme="monday_workspace"] .nav .nav-item,
+body[data-theme="monday_workspace"] .nav .nav-group-head{
+  border-radius: 10px;
+  border: 1px solid transparent;
+  min-height: 42px;
+  padding: 9px 10px;
+  color: #344054;
+  transition: all .18s ease;
+}
+
+body[data-theme="monday_workspace"] .nav .nav-item:hover,
+body[data-theme="monday_workspace"] .nav .nav-group-head:hover{
+  background: #f2f8ff;
+  border-color: #cfe4ff;
+  color: #0f274b;
+}
+
+body[data-theme="monday_workspace"] .nav .nav-item.active{
+  background: #e8f3ff;
+  border-color: #b7d8ff;
+  color: #0059b8;
+  box-shadow: inset 3px 0 0 #0073ea;
+}
+
+body[data-theme="monday_workspace"] .nav .nav-label{
+  font-size: 13px;
+  font-weight: 700;
+}
+
+body[data-theme="monday_workspace"] .card{
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+body[data-theme="monday_workspace"] .card .head,
+body[data-theme="monday_workspace"] .card-head,
+body[data-theme="monday_workspace"] .panel-head{
+  background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+  border-bottom: 1px solid #e6e9ef;
+}
+
+body[data-theme="monday_workspace"] .card.pad{
+  padding: 16px;
+}
+
+body[data-theme="monday_workspace"] .btn,
+body[data-theme="monday_workspace"] button,
+body[data-theme="monday_workspace"] input[type="button"],
+body[data-theme="monday_workspace"] input[type="submit"]{
+  border-radius: 10px;
+  border: 1px solid #d7deea;
+  background: #ffffff;
+  color: #1f2a44;
+  box-shadow: 0 1px 0 rgba(16,24,40,.04);
+  font-weight: 700;
+  transition: transform .08s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+}
+
+body[data-theme="monday_workspace"] .btn:hover,
+body[data-theme="monday_workspace"] button:hover,
+body[data-theme="monday_workspace"] input[type="button"]:hover,
+body[data-theme="monday_workspace"] input[type="submit"]:hover{
+  border-color: #bfd2f0;
+  background: #f8fbff;
+  box-shadow: 0 6px 16px rgba(0,115,234,.12);
+}
+
+body[data-theme="monday_workspace"] .btn:active,
+body[data-theme="monday_workspace"] button:active,
+body[data-theme="monday_workspace"] input[type="button"]:active,
+body[data-theme="monday_workspace"] input[type="submit"]:active{
+  transform: translateY(1px);
+}
+
+body[data-theme="monday_workspace"] .btn.primary,
+body[data-theme="monday_workspace"] .btn.accent,
+body[data-theme="monday_workspace"] button.primary,
+body[data-theme="monday_workspace"] [data-variant="primary"]{
+  background: #0073ea;
+  border-color: #0073ea;
+  color: #ffffff;
+}
+
+body[data-theme="monday_workspace"] .btn.primary:hover,
+body[data-theme="monday_workspace"] .btn.accent:hover,
+body[data-theme="monday_workspace"] button.primary:hover,
+body[data-theme="monday_workspace"] [data-variant="primary"]:hover{
+  background: #0066d1;
+  border-color: #0066d1;
+}
+
+body[data-theme="monday_workspace"] input,
+body[data-theme="monday_workspace"] select,
+body[data-theme="monday_workspace"] textarea,
+body[data-theme="monday_workspace"] .input,
+body[data-theme="monday_workspace"] .select{
+  background: #ffffff;
+  border: 1px solid #d8e0ec;
+  color: #1f2a44;
+  border-radius: 10px;
+}
+
+body[data-theme="monday_workspace"] input:focus,
+body[data-theme="monday_workspace"] select:focus,
+body[data-theme="monday_workspace"] textarea:focus,
+body[data-theme="monday_workspace"] .input:focus,
+body[data-theme="monday_workspace"] .select:focus{
+  border-color: #76b7ff;
+  box-shadow: 0 0 0 3px rgba(0,115,234,.12);
+  outline: none;
+}
+
+body[data-theme="monday_workspace"] table,
+body[data-theme="monday_workspace"] .table{
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #e6e9ef;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+body[data-theme="monday_workspace"] th{
+  background: #f7f9fc;
+  color: #475467;
+  font-size: 12px;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  border-bottom: 1px solid #e6e9ef;
+}
+
+body[data-theme="monday_workspace"] td{
+  background: #ffffff;
+  color: #1f2a44;
+  border-bottom: 1px solid #edf1f7;
+}
+
+body[data-theme="monday_workspace"] tr:hover td{
+  background: #f9fbff;
+}
+
+body[data-theme="monday_workspace"] table tr:nth-child(even) td{
+  background: #fcfdff;
+}
+
+body[data-theme="monday_workspace"] .muted,
+body[data-theme="monday_workspace"] .sub,
+body[data-theme="monday_workspace"] .hint,
+body[data-theme="monday_workspace"] .small,
+body[data-theme="monday_workspace"] .kicker{
+  color: #667085;
+}
+
+body[data-theme="monday_workspace"] .top-global-search{
+  background: #ffffff;
+  border: 1px solid #d8e0ec;
+  border-radius: 12px;
+}
+
+body[data-theme="monday_workspace"] #globalSearchInput{
+  color: #1f2a44;
+  font-size: 13px;
+}
+
+body[data-theme="monday_workspace"] .rtabs{
+  background: #ffffff;
+  border-bottom: 1px solid #e6e9ef;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+body[data-theme="monday_workspace"] .online-users-bar,
+body[data-theme="monday_workspace"] .quicklinks-bar{
+  border-radius: 12px 12px 0 0;
+  border-bottom: 0;
+}
+
+@media (max-width: 980px){
+  body[data-theme="monday_workspace"] .app{
+    padding: 10px;
+    gap: 10px;
+  }
+
+  body[data-theme="monday_workspace"] .topbar,
+  body[data-theme="monday_workspace"] aside.side,
+  body[data-theme="monday_workspace"] aside.right,
+  body[data-theme="monday_workspace"] .card{
+    border-radius: 10px;
+  }
+}

@@ -134,6 +134,23 @@
       { id:'cyan',      name:'Cyan Tech',    bg:'#06161b', panel:'#0b2730', panel2:'#081e25', text:'#e9fbff', muted:'#a7d4de', border:'rgba(255,255,255,.08)', accent:'#22d3ee', bgRad1:'#0a3a46', bgRad3:'#030c0f' },
       { id:'orchid',    name:'Orchid',       bg:'#130a1b', panel:'#211030', panel2:'#180c25', text:'#f7efff', muted:'#d1b6e6', border:'rgba(255,255,255,.08)', accent:'#c084fc', bgRad1:'#3b1a56', bgRad3:'#07030a' },
       { id:'forest',    name:'Forest',       bg:'#07130b', panel:'#0d2416', panel2:'#0a1b11', text:'#effff5', muted:'#b6d6c2', border:'rgba(255,255,255,.08)', accent:'#22c55e', bgRad1:'#133b23', bgRad3:'#030a05' },
+      {
+        id:'monday_workspace',
+        name:'Monday Workspace',
+        mode:'light',
+        bg:'#f4f5f7',
+        panel:'#ffffff',
+        panel2:'#f8f9fc',
+        text:'#1f2a44',
+        muted:'#667085',
+        border:'#e6e9ef',
+        accent:'#0073ea',
+        bgRad1:'#dceaff',
+        bgRad3:'#f4f7ff',
+        font:"'Poppins', 'Roboto', 'Segoe UI', Inter, system-ui, -apple-system, Arial, sans-serif",
+        radius:'12px',
+        shadow:'0 8px 24px rgba(16,24,40,.08)'
+      },
       { id:'mono',      name:'Monochrome',   bg:'#0b0c10', panel:'#13151b', panel2:'#0f1116', text:'#f3f4f6', muted:'#b7bcc6', border:'rgba(255,255,255,.10)', accent:'#a3a3a3', bgRad1:'#1a1d26', bgRad3:'#050608' },
     ],
 
