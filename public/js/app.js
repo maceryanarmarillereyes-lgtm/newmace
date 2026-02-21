@@ -1,3 +1,5 @@
+/* File: public/js/app.js */
+
 (function(){
   let cleanup = null;
   let annTimer = null;
@@ -512,14 +514,26 @@
     }
 
     inner.innerHTML = `
-      <div class="audit-grid">
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
         ${rows.map(row=>{
           const ratio = (Math.round(row.v*100)/100).toFixed(2);
-          const b = (row.v >= row.min) ? {label:'PASS', cls:'pass'} : (row.v >= Math.max(3.0, row.min)) ? {label:'WARN', cls:'warn'} : {label:'FAIL', cls:'fail'};
-          return `<div class="audit-row"><div style="font-weight:900">${UI.esc(row.k)}</div><div style="display:flex;gap:8px;align-items:center"><div class="small muted">${ratio}:1</div><div class="audit-pill ${b.cls}">${b.label}</div></div></div>`;
+          const b = (row.v >= row.min) ? {label:'PASS', cls:'pass', col:'#10b981', bg:'rgba(16,185,129,0.1)'} 
+                  : (row.v >= Math.max(3.0, row.min)) ? {label:'WARN', cls:'warn', col:'#fbbf24', bg:'rgba(245,158,11,0.1)'} 
+                  : {label:'FAIL', cls:'fail', col:'#ef4444', bg:'rgba(239,68,68,0.1)'};
+          return `
+            <div style="background:rgba(2,6,23,0.5); border:1px solid rgba(255,255,255,0.05); border-radius:10px; padding:12px; display:flex; justify-content:space-between; align-items:center;">
+               <div>
+                  <div style="font-weight:900; color:#f8fafc; font-size:13px;">${UI.esc(row.k)}</div>
+                  <div style="font-family:monospace; color:#cbd5e1; font-size:12px; margin-top:4px;">Ratio: ${ratio}:1</div>
+               </div>
+               <div style="background:${b.bg}; color:${b.col}; border:1px solid ${b.col}; box-shadow:0 0 10px ${b.bg}; padding:4px 10px; border-radius:999px; font-weight:900; font-size:11px; text-transform:uppercase;">
+                  ${b.label}
+               </div>
+            </div>
+          `;
         }).join('')}
       </div>
-      <div class="small muted" style="margin-top:10px">
+      <div class="small muted" style="margin-top:16px; border-left:3px solid #38bdf8; padding-left:12px;">
         Guidance: If any item fails, adjust theme tokens (text/muted/border/panel). For Aurora (Ecommerce Light) the typical fix is increasing muted contrast and strengthening borders.
       </div>
     `;
@@ -527,37 +541,139 @@
     audit.style.display = 'block';
   }
 
+  // =========================================================================
+  // BOSS THUNTER: ENTERPRISE THEME MANAGER (SUPER ADMIN AUTHORITY)
+  // =========================================================================
   function renderThemeGrid(){
     const grid = document.getElementById('themeGrid');
     if(!grid) return;
+    
+    const user = (window.Auth && window.Auth.getUser) ? window.Auth.getUser() : null;
+    const isSA = user && user.role === (window.Config && window.Config.ROLES ? window.Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN');
+
+    // Load persistent metadata for hidden/deleted themes
+    let themeMeta = {};
+    try { themeMeta = JSON.parse(localStorage.getItem('mums_theme_meta') || '{}'); } catch(e){}
+
+    const saveMeta = () => {
+        localStorage.setItem('mums_theme_meta', JSON.stringify(themeMeta));
+        renderThemeGrid(); // Refresh grid instantly
+    };
+
     const cur = Store.getTheme();
-    const themes = (Config && Array.isArray(Config.THEMES)) ? Config.THEMES : [];
-    grid.innerHTML = themes.map(t=>{
-      const active = t.id===cur;
-      const fontName = (t.font ? String(t.font).split(',')[0].replace(/['\"]/g,'').trim() : 'System');
+    const rawThemes = (Config && Array.isArray(Config.THEMES)) ? Config.THEMES : [];
+
+    // Filter themes based on Authority
+    const visibleThemes = rawThemes.filter(t => {
+        const m = themeMeta[t.id] || {};
+        if(m.deleted) return false; // Deleted is gone for everyone
+        if(m.hidden && !isSA) return false; // Hidden is only visible to SA
+        return true;
+    });
+
+    // Inject Enterprise Layout CSS safely
+    if(!document.getElementById('theme-admin-styles')){
+        const s = document.createElement('style');
+        s.id = 'theme-admin-styles';
+        s.textContent = `
+            .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top:10px; }
+            .theme-tile { position: relative; background: rgba(15,23,42,0.4); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 16px; cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2); }
+            .theme-tile:hover { transform: translateY(-3px); border-color: rgba(56,189,248,0.4); box-shadow: 0 10px 20px rgba(0,0,0,0.3); background: rgba(15,23,42,0.6); }
+            .theme-tile.active { background: linear-gradient(145deg, rgba(14,165,233,0.1), rgba(2,132,199,0.2)); border: 1px solid rgba(56,189,248,0.6); box-shadow: 0 0 20px rgba(14,165,233,0.2), inset 0 0 10px rgba(56,189,248,0.1); }
+            
+            .theme-swatch-box { width: 100%; height: 60px; border-radius: 8px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1); display: flex; overflow:hidden; }
+            .theme-swatch-p1 { flex: 1; height: 100%; background: var(--t-bg); }
+            .theme-swatch-p2 { flex: 1; height: 100%; background: var(--t-panel); display:flex; align-items:center; justify-content:center;}
+            .theme-swatch-acc { width: 60%; height: 8px; border-radius: 4px; background: var(--t-acc); box-shadow: 0 0 8px var(--t-acc); }
+            
+            .is-hidden-theme { opacity: 0.4; filter: grayscale(80%); border: 1px dashed rgba(255,255,255,0.2) !important; }
+            .is-hidden-theme:hover { opacity: 0.8; filter: grayscale(0%); border: 1px dashed rgba(56,189,248,0.5) !important; }
+            
+            .theme-admin-controls { display: flex; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.05); }
+            .theme-admin-controls button { flex: 1; padding: 6px; font-size: 11px; z-index: 2; position: relative; font-weight:800; }
+        `;
+        document.head.appendChild(s);
+    }
+
+    grid.className = 'theme-grid';
+    grid.innerHTML = visibleThemes.map(t => {
+      const m = themeMeta[t.id] || {};
+      const active = t.id === cur;
+      const fontName = (t.font ? String(t.font).split(',')[0].replace(/['"]/g,'').trim() : 'System');
+      const isHidden = !!m.hidden;
+
+      const adminHtml = isSA ? `
+        <div class="theme-admin-controls">
+          <button class="btn-glass btn-glass-ghost small" data-hide-theme="${UI.esc(t.id)}" title="${isHidden ? 'Show to all users' : 'Hide from users'}" onclick="event.stopPropagation()">
+            ${isHidden ? '👁️ Hidden' : '👀 Visible'}
+          </button>
+          <button class="btn-glass btn-glass-danger small" data-del-theme="${UI.esc(t.id)}" title="Delete permanently" onclick="event.stopPropagation()" style="background:rgba(239,68,68,0.2); border-color:rgba(239,68,68,0.4); color:#fca5a5;">🗑️ Delete</button>
+        </div>
+      ` : '';
+
+      const activeBadge = active ? `<span style="background:rgba(56,189,248,0.2); color:#7dd3fc; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:900; margin-top:6px; display:inline-block; border:1px solid rgba(56,189,248,0.4); box-shadow:0 0 10px rgba(56,189,248,0.2);">ACTIVE</span>` : '';
+
       return `
-        <div class="theme-tile ${active?'active':''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button" aria-label="Theme ${UI.esc(t.name)}">
-          <div class="theme-swatch" style="--sw1:${t.accent};--sw2:${t.bgRad1}"></div>
-          <div>
-            <div class="tname">${UI.esc(t.name)}</div>
-            <div class="tmeta">Accent ${UI.esc(t.accent)} • Font ${UI.esc(fontName)}${active?' • Selected':''}</div>
+        <div class="theme-tile ${active?'active':''} ${isHidden ? 'is-hidden-theme' : ''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button" aria-label="Theme ${UI.esc(t.name)}">
+          <div class="theme-swatch-box" style="--t-bg:${t.bg}; --t-panel:${t.panel}; --t-acc:${t.accent};">
+             <div class="theme-swatch-p1"></div>
+             <div class="theme-swatch-p2"><div class="theme-swatch-acc"></div></div>
           </div>
+          <div style="flex:1;">
+            <div class="tname" style="font-weight:900; font-size:16px; color:#f8fafc; letter-spacing:-0.5px;">${UI.esc(t.name)}</div>
+            <div class="tmeta" style="font-size:11px; color:#94a3b8; margin-top:4px;">Font: ${UI.esc(fontName)}</div>
+            ${activeBadge}
+          </div>
+          ${adminHtml}
         </div>
       `;
-    }).join('');
+    }).join('') || '<div class="muted" style="grid-column:1/-1; text-align:center; padding:40px; font-size:16px;">No themes available.</div>';
 
-    grid.querySelectorAll('[data-theme]').forEach(tile=>{
-      const pick = ()=>{
+    // Bind Pick Event
+    grid.querySelectorAll('.theme-tile').forEach(tile => {
+      const pick = (e) => {
+        if(e && e.target && e.target.closest('.theme-admin-controls')) return; // Ignore clicks on admin buttons
         const id = tile.dataset.theme;
         try{ if(Store && Store.dispatch) Store.dispatch('UPDATE_THEME', { id:id }); else Store.setTheme(id); }catch(_){ try{ Store.setTheme(id); }catch(__){} }
         try{ applyTheme(id); }catch(_){ }
-        renderThemeGrid();
+        renderThemeGrid(); // Re-render to move ACTIVE badge
       };
       tile.onclick = pick;
-      tile.onkeydown = (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); pick(); } };
+      tile.onkeydown = (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); pick(e); } };
     });
 
-    // Fix16: refresh Theme Lab (contrast checks)
+    // Bind Super Admin Controls
+    if (isSA) {
+        grid.querySelectorAll('[data-hide-theme]').forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                const tid = btn.getAttribute('data-hide-theme');
+                themeMeta[tid] = themeMeta[tid] || {};
+                themeMeta[tid].hidden = !themeMeta[tid].hidden;
+                saveMeta();
+            };
+        });
+        grid.querySelectorAll('[data-del-theme]').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.stopPropagation();
+                const tid = btn.getAttribute('data-del-theme');
+                const ok = await UI.confirm({ title: 'Delete Theme', message: 'Are you sure you want to permanently delete this theme from the selection?', okText: 'Yes, Delete', danger: true });
+                if (!ok) return;
+                
+                themeMeta[tid] = themeMeta[tid] || {};
+                themeMeta[tid].deleted = true;
+                
+                // Fallback to ocean if they deleted the currently active theme
+                if(cur === tid) {
+                    Store.dispatch ? Store.dispatch('UPDATE_THEME', { id:'ocean' }) : Store.setTheme('ocean');
+                    applyTheme('ocean');
+                }
+                saveMeta();
+            };
+        });
+    }
+
+    // Refresh Theme Lab (contrast checks)
     try{ renderThemeAudit(); }catch(_){ }
   }
 
@@ -4678,643 +4794,3 @@ window.addEventListener('mums:store', (e)=>{
     }
   })();
 })();
-  // Sidebar (enterprise)
-  function applySidebarState(opts){
-    const side = document.querySelector('aside.side');
-    if(!side) return;
-    const isMobile = (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) || (window.innerWidth<=768);
-    if(isMobile){
-      // Preserve desktop sidebar prefs, but ensure the drawer shows the full sidebar on mobile.
-      try{
-        document.body.classList.remove('sidebar-collapsed');
-        document.body.classList.remove('sidebar-hoverable');
-        document.body.classList.remove('sidebar-pinned');
-      }catch(_){ }
-      return;
-    }
-    const pinned = (localStorage.getItem('mums_sidebar_pinned')||'0')==='1';
-    const tempOpen = document.body.classList.contains('sidebar-tempopen');
-    let isCollapsed;
-    if(opts && typeof opts.forceCollapsed === 'boolean'){
-      isCollapsed = opts.forceCollapsed;
-    }else{
-      const saved = localStorage.getItem('mums_sidebar_collapsed');
-      const def = localStorage.getItem('mums_sidebar_default') || 'expanded';
-      isCollapsed = saved ? (saved==='1') : (def==='collapsed');
-    }
-    // Pinned rail forces collapsed
-    if(pinned) isCollapsed = true;
-
-    if(!tempOpen){ document.body.classList.toggle('sidebar-collapsed', !!isCollapsed); }
-    document.body.classList.toggle('sidebar-pinned', !!pinned);
-    localStorage.setItem('mums_sidebar_collapsed', isCollapsed ? '1' : '0');
-
-    // Auto-expand on hover only when collapsed AND not pinned
-    const hoverOn = (localStorage.getItem('mums_sidebar_hover') ?? '1')==='1';
-    document.body.classList.toggle('sidebar-hoverable', !!isCollapsed && hoverOn && !pinned && !tempOpen);
-  }
-
-
-  function _isMobileViewport(){
-    try{
-      return (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) || (window.innerWidth<=768);
-    }catch(_){
-      return (window.innerWidth||0) <= 768;
-    }
-  }
-
-  function closeMobileDrawers(){
-    try{ document.body.classList.remove('mobile-nav-open'); }catch(_){}
-    try{ document.body.classList.remove('mobile-panel-open'); }catch(_){}
-    try{ document.body.classList.remove('mobile-online-open'); }catch(_){}
-    try{ document.body.classList.remove('mobile-quicklinks-open'); }catch(_){}
-    try{ document.body.classList.remove('sidebar-tempopen'); }catch(_){}
-    try{
-      const a = document.getElementById('toggleUserOnlineBar'); if(a) a.setAttribute('aria-expanded','false');
-      const b = document.getElementById('toggleQuickLinksBar'); if(b) b.setAttribute('aria-expanded','false');
-    }catch(_){}
-  }
-
-  function ensureMobileDrawerOverlay(){
-    let el = document.getElementById('mobileDrawerOverlay');
-    if(el) return el;
-    el = document.createElement('div');
-    el.id = 'mobileDrawerOverlay';
-    el.className = 'mobile-drawer-overlay';
-    el.setAttribute('aria-hidden','true');
-    document.body.appendChild(el);
-    // Clicking the overlay closes any open mobile drawers.
-    el.addEventListener('click', ()=>{ try{ closeMobileDrawers(); }catch(_){ } });
-    return el;
-  }
-
-  function bindMobilePanelToggle(){
-    const actions = document.querySelector('.topbar-actions');
-    if(!actions) return;
-
-    let btn = document.getElementById('mobilePanelToggle');
-    if(!btn){
-      btn = document.createElement('button');
-      btn.id = 'mobilePanelToggle';
-      btn.type = 'button';
-      btn.className = 'btn ghost iconbtn';
-      btn.title = 'Panel';
-      btn.setAttribute('aria-label','Toggle panel');
-      btn.innerHTML = '<span class="ico" data-ico="notes" aria-hidden="true"></span>';
-      const logout = document.getElementById('logoutBtn');
-      if(logout && logout.parentNode === actions) actions.insertBefore(btn, logout);
-      else actions.appendChild(btn);
-    }
-
-    ensureMobileDrawerOverlay();
-
-    btn.addEventListener('click', (e)=>{
-      if(!_isMobileViewport()) return;
-      try{ e.preventDefault(); e.stopPropagation(); }catch(_){}
-      // Toggle right panel drawer; keep nav closed.
-      document.body.classList.toggle('mobile-panel-open');
-      document.body.classList.remove('mobile-nav-open');
-      document.body.classList.remove('mobile-online-open');
-      document.body.classList.remove('mobile-quicklinks-open');
-    });
-
-    // Escape closes drawers
-    if(!window.__mumsMobileEscBound){
-      window.__mumsMobileEscBound = true;
-      window.addEventListener('keydown', (e)=>{
-        try{ if(e.key === 'Escape') closeMobileDrawers(); }catch(_){}
-      }, true);
-    }
-
-    // Breakpoint changes: close drawers and re-apply sidebar desktop prefs.
-    if(window.matchMedia && !window.__mumsMobileMQBound){
-      window.__mumsMobileMQBound = true;
-      try{
-        const mq = window.matchMedia('(max-width: 768px)');
-        const onChange = ()=>{ try{ closeMobileDrawers(); applySidebarState(); }catch(_){ } };
-        if(mq.addEventListener) mq.addEventListener('change', onChange);
-        else if(mq.addListener) mq.addListener(onChange);
-      }catch(_){}
-    }
-  }
-
-
-  function bindMobileBottomSheets(){
-    const actions = document.querySelector('.topbar-actions');
-    if(!actions) return;
-
-    // Ensure overlay exists and closes drawers/sheets.
-    try{ ensureMobileDrawerOverlay(); }catch(_){}
-
-    // Create/ensure toggle buttons (mobile only; CSS hides on desktop)
-    let qBtn = document.getElementById('toggleQuickLinksBar');
-    if(!qBtn){
-      qBtn = document.createElement('button');
-      qBtn.id = 'toggleQuickLinksBar';
-      qBtn.type = 'button';
-      qBtn.className = 'btn ghost iconbtn';
-      qBtn.title = 'Quick Links';
-      qBtn.setAttribute('aria-label','Toggle Quick Links');
-      qBtn.setAttribute('aria-controls','quickLinksBar');
-      qBtn.setAttribute('aria-expanded','false');
-      qBtn.innerHTML = '<span class="ico" data-ico="link" aria-hidden="true"></span>';
-      const panelBtn = document.getElementById('mobilePanelToggle');
-      const logout = document.getElementById('logoutBtn');
-      if(panelBtn && panelBtn.parentNode === actions) actions.insertBefore(qBtn, panelBtn);
-      else if(logout && logout.parentNode === actions) actions.insertBefore(qBtn, logout);
-      else actions.appendChild(qBtn);
-    }
-
-    let oBtn = document.getElementById('toggleUserOnlineBar');
-    if(!oBtn){
-      oBtn = document.createElement('button');
-      oBtn.id = 'toggleUserOnlineBar';
-      oBtn.type = 'button';
-      oBtn.className = 'btn ghost iconbtn';
-      oBtn.title = 'User Online';
-      oBtn.setAttribute('aria-label','Toggle User Online');
-      oBtn.setAttribute('aria-controls','onlineUsersBar');
-      oBtn.setAttribute('aria-expanded','false');
-      oBtn.innerHTML = '<span class="ico" data-ico="users" aria-hidden="true"></span>';
-      const panelBtn = document.getElementById('mobilePanelToggle');
-      const logout = document.getElementById('logoutBtn');
-      if(panelBtn && panelBtn.parentNode === actions) actions.insertBefore(oBtn, panelBtn);
-      else if(logout && logout.parentNode === actions) actions.insertBefore(oBtn, logout);
-      else actions.appendChild(oBtn);
-    }
-
-    // Ensure Quick Links sheet header exists (desktop-hidden; mobile-visible)
-    const qBar = document.getElementById('quickLinksBar');
-    if(qBar && !qBar.querySelector('.mob-sheet-head')){
-      const head = document.createElement('div');
-      head.className = 'mob-sheet-head';
-      head.innerHTML = '<div class="mob-sheet-title">Quick Links</div><div class="mob-sheet-actions"><button class="mob-sheet-close" type="button" aria-label="Close" data-close-quicklinks="1">✕</button></div>';
-      qBar.insertBefore(head, qBar.firstChild);
-      head.addEventListener('click', (e)=>{
-        const btn = e.target && e.target.closest ? e.target.closest('[data-close-quicklinks]') : null;
-        if(!btn) return;
-        document.body.classList.remove('mobile-quicklinks-open');
-        try{ qBtn.setAttribute('aria-expanded','false'); }catch(_){}
-      });
-    }
-
-    const toggleQuick = (e)=>{
-      if(!_isMobileViewport()) return;
-      try{ e.preventDefault(); e.stopPropagation(); }catch(_){}
-      const open = document.body.classList.contains('mobile-quicklinks-open');
-      closeMobileDrawers();
-      if(!open){
-        document.body.classList.add('mobile-quicklinks-open');
-        try{ qBtn.setAttribute('aria-expanded','true'); }catch(_){}
-      }
-    };
-
-    const toggleOnline = (e)=>{
-      if(!_isMobileViewport()) return;
-      try{ e.preventDefault(); e.stopPropagation(); }catch(_){}
-      const open = document.body.classList.contains('mobile-online-open');
-      closeMobileDrawers();
-      if(!open){
-        document.body.classList.add('mobile-online-open');
-        try{ oBtn.setAttribute('aria-expanded','true'); }catch(_){}
-      }
-    };
-
-    if(!qBtn.__bound){ qBtn.__bound = true; qBtn.addEventListener('click', toggleQuick); }
-    if(!oBtn.__bound){ oBtn.__bound = true; oBtn.addEventListener('click', toggleOnline); }
-
-    // When navigating, close sheets to avoid sidebar/content mismatch.
-    if(!window.__mumsMobileNavCloseSheetsBound){
-      window.__mumsMobileNavCloseSheetsBound = true;
-      document.addEventListener('click', (e)=>{
-        const a = e.target && e.target.closest ? e.target.closest('a.nav-item') : null;
-        if(!a) return;
-        try{ closeMobileDrawers(); }catch(_){}
-      }, true);
-    }
-  }
-
-  function bindMobileFabStack(){
-    // DOM exists on desktop too, but CSS keeps it hidden.
-    if(document.querySelector('.mobile-fab-stack')) return;
-    const wrap = document.createElement('div');
-    wrap.className = 'mobile-fab-stack';
-    wrap.setAttribute('aria-hidden','true');
-    wrap.innerHTML = `
-      <button class="fab" type="button" aria-label="Menu" data-fab="nav"><span class="ico" data-ico="menu" aria-hidden="true"></span></button>
-      <button class="fab" type="button" aria-label="Quick Links" data-fab="quick"><span class="ico" data-ico="link" aria-hidden="true"></span></button>
-      <button class="fab" type="button" aria-label="User Online" data-fab="online"><span class="ico" data-ico="users" aria-hidden="true"></span></button>
-      <button class="fab" type="button" aria-label="Panel" data-fab="panel"><span class="ico" data-ico="notes" aria-hidden="true"></span></button>
-    `;
-    document.body.appendChild(wrap);
-
-    const click = (sel)=>{
-      const el = document.querySelector(sel);
-      if(el && typeof el.click==='function') el.click();
-    };
-
-    wrap.addEventListener('click', (e)=>{
-      if(!_isMobileViewport()) return;
-      const btn = e.target && e.target.closest ? e.target.closest('button.fab') : null;
-      if(!btn) return;
-      const which = btn.getAttribute('data-fab');
-      if(which==='nav') click('#sidebarToggle');
-      if(which==='panel') click('#mobilePanelToggle');
-      if(which==='quick') click('#toggleQuickLinksBar');
-      if(which==='online') click('#toggleUserOnlineBar');
-    });
-  }
-
-  function bindSidebarToggle(){
-    const btn = document.getElementById('sidebarToggle');
-    const side = document.querySelector('aside.side');
-    if(!btn || !side) return;
-
-    // Ensure the mobile overlay exists (used by both nav + right panel drawers).
-    try{ ensureMobileDrawerOverlay(); }catch(_){ }
-
-    const CLICK_DELAY = 240;
-    let clickTimer = null;
-
-    const setCollapsed = (collapsed)=>{
-      document.body.classList.toggle('sidebar-collapsed', !!collapsed);
-      // Hover-expand preference (desktop rail mode)
-      const hoverOn = (localStorage.getItem('mums_sidebar_hover') ?? '1') === '1';
-      document.body.classList.toggle('sidebar-hoverable', !!collapsed && hoverOn);
-      try{ localStorage.setItem('mums_sidebar_collapsed', collapsed ? '1' : '0'); }catch(_){ }
-    };
-
-    const setPinned = (pinned)=>{
-      document.body.classList.toggle('sidebar-pinned', !!pinned);
-      try{ localStorage.setItem('mums_sidebar_pinned', pinned ? '1' : '0'); }catch(_){ }
-    };
-
-    const toggleMobileNav = ()=>{
-      document.body.classList.toggle('mobile-nav-open');
-      document.body.classList.remove('mobile-panel-open');
-      document.body.classList.remove('mobile-online-open');
-      document.body.classList.remove('mobile-quicklinks-open');
-      try{
-        const a = document.getElementById('toggleUserOnlineBar'); if(a) a.setAttribute('aria-expanded','false');
-        const b = document.getElementById('toggleQuickLinksBar'); if(b) b.setAttribute('aria-expanded','false');
-      }catch(_){ }
-    };
-
-    const handleSingle = ()=>{
-      const pinned = (localStorage.getItem('mums_sidebar_pinned')||'0')==='1';
-      const isCollapsed = document.body.classList.contains('sidebar-collapsed');
-
-      if(pinned){
-        setPinned(false);
-        setCollapsed(false);
-        return;
-      }
-
-      if(isCollapsed){
-        // Temporary open with hover behavior (if enabled)
-        const hoverOn = (localStorage.getItem('mums_sidebar_hover') ?? '1') === '1';
-        if(hoverOn){
-          document.body.classList.add('sidebar-tempopen');
-          document.body.classList.remove('sidebar-collapsed');
-          const closeTemp = ()=>{
-            document.body.classList.remove('sidebar-tempopen');
-            document.body.classList.add('sidebar-collapsed');
-            side.removeEventListener('mouseleave', closeTemp);
-          };
-          side.addEventListener('mouseleave', closeTemp);
-        }else{
-          setCollapsed(false);
-        }
-      }else{
-        setCollapsed(true);
-      }
-    };
-
-    const handleDouble = ()=>{
-      const pinned = (localStorage.getItem('mums_sidebar_pinned')||'0')==='1';
-      if(!pinned){
-        setPinned(true);
-      }else{
-        setPinned(false);
-        setCollapsed(false);
-      }
-    };
-
-    btn.addEventListener('click', (e)=>{
-      if(_isMobileViewport()){
-        try{ e.preventDefault(); e.stopPropagation(); }catch(_){ }
-        toggleMobileNav();
-        return;
-      }
-      if(clickTimer) return;
-      clickTimer = setTimeout(()=>{
-        clickTimer = null;
-        handleSingle();
-      }, CLICK_DELAY);
-    });
-
-    btn.addEventListener('dblclick', (e)=>{
-      // Mobile: ignore double-click pin behavior.
-      if(_isMobileViewport()){
-        try{ e.preventDefault(); }catch(_){ }
-        return;
-      }
-      try{ e.preventDefault(); }catch(_){ }
-      if(clickTimer){ clearTimeout(clickTimer); clickTimer=null; }
-      handleDouble();
-    });
-
-    window.addEventListener('keydown', (e)=>{
-      try{
-        if((e.ctrlKey || e.metaKey) && (e.key==='b' || e.key==='B')){
-          e.preventDefault();
-          if(_isMobileViewport()) toggleMobileNav();
-          else handleSingle();
-        }
-      }catch(_){}
-    });
-  }
-
-
-  function bindNavKeyboard(){
-    const nav = document.getElementById('nav');
-    if(!nav) return;
-    nav.addEventListener('keydown', (e)=>{
-      const key = e.key;
-      if(!['ArrowDown','ArrowUp','Home','End'].includes(key)) return;
-      const items = Array.from(nav.querySelectorAll('a.nav-item, button.nav-group-head')).filter(el=>!el.disabled && el.offsetParent!==null);
-      if(!items.length) return;
-      const idx = items.indexOf(document.activeElement);
-      let next = idx;
-      if(key==='ArrowDown') next = (idx<0?0:Math.min(items.length-1, idx+1));
-      if(key==='ArrowUp') next = (idx<0?0:Math.max(0, idx-1));
-      if(key==='Home') next = 0;
-      if(key==='End') next = items.length-1;
-      if(next!==idx){
-        e.preventDefault();
-        items[next].focus();
-      }
-    });
-  }
-
-
-
-
-  
-  // Right sidebar (collapsible, remembers state)
-  function applyRightbarState(){
-    // Right sidebar is fixed/always visible (no collapse).
-    try{ document.body.classList.remove('rightbar-collapsed'); }catch(_){ }
-    try{ localStorage.setItem('mums_rightbar_collapsed','0'); }catch(_){ }
-  }
-
-  function bindRightbarToggle(){ /* right sidebar fixed (no toggle) */ }
-
-  // Density
-  function applyDensity(){
-    const d = (localStorage.getItem('mums_density')||'normal');
-    document.body.classList.toggle('density-compact', d==='compact');
-  }
-
-
-// Global Search (Ctrl+K). Searches across offline datasets and navigates to relevant pages.
-  function bindGlobalSearch(me){
-    const open = ()=>{
-      UI.openModal('globalSearchModal');
-      const inp = document.getElementById('globalSearchModalInput');
-      if(inp){ inp.value = (document.getElementById('globalSearchInput')?.value || '').trim(); setTimeout(()=>inp.focus(), 0); }
-      runSearch();
-    };
-
-    const close = ()=>{ try{ UI.closeModal('globalSearchModal'); }catch(_){} };
-
-    const topInput = document.getElementById('globalSearchInput');
-    const btn = document.getElementById('globalSearchBtn');
-    const modalInp = document.getElementById('globalSearchModalInput');
-    const resHost = document.getElementById('globalSearchResults');
-    if(btn) btn.onclick = open;
-    if(topInput){
-      topInput.addEventListener('keydown', (e)=>{
-        if(e.key==='Enter'){ e.preventDefault(); open(); }
-      });
-    }
-    window.addEventListener('keydown', (e)=>{
-      try{
-        if((e.ctrlKey || e.metaKey) && (e.key==='k' || e.key==='K')){
-          e.preventDefault(); open();
-        }
-        if(e.key==='Escape'){
-          const m = document.getElementById('globalSearchModal');
-          if(m && m.classList.contains('open')) close();
-        }
-      }catch(_){}
-    });
-
-    let activeIndex = 0;
-    let flat = [];
-    let t = null;
-
-    const fmtWhen = (v)=>{
-      try{
-        if(!v) return '—';
-        const d = (typeof v==='number') ? new Date(v) : new Date(String(v));
-        if(isNaN(d.getTime())) return '—';
-        const p = UI.manilaParts ? UI.manilaParts(d) : null;
-        if(p) return `${p.isoDate} ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')}`;
-        return d.toLocaleString();
-      }catch(_){ return '—'; }
-    };
-
-    function score(hay, q){
-      hay = String(hay||'').toLowerCase();
-      q = String(q||'').toLowerCase();
-      if(!q) return 0;
-      if(hay===q) return 100;
-      if(hay.startsWith(q)) return 70;
-      if(hay.includes(q)) return 40;
-      return 0;
-    }
-
-    function build(query){
-      const q = String(query||'').trim().toLowerCase();
-      const out = { Users:[], Reminders:[], TeamReminders:[], Announcements:[], Cases:[] };
-
-      // Users
-      try{
-        const users = Store.getUsers();
-        for(const u of users){
-          const s = Math.max(
-            score(u.username,q),
-            score(u.email,q),
-            score(u.fullName||u.name,q),
-            score(u.role,q),
-            score(u.teamId,q)
-          );
-          if(s>0){
-            out.Users.push({
-              s, label: u.username,
-              meta: `${u.role} • ${Config.teamLabel(u.teamId)}`,
-              sub: u.email || '',
-              go: '#user_management',
-              focus: { type:'user', id:u.id, query:q }
-            });
-          }
-        }
-      }catch(_){}
-
-      // My reminders (mine)
-      try{
-        const list = (Store.getAllMyReminders ? Store.getAllMyReminders() : JSON.parse(localStorage.getItem('mums_my_reminders')||'[]'));
-        for(const r of (list||[])){
-          if(r.userId && r.userId!==me.id) continue;
-          const s = Math.max(score(r.short,q), score(r.details,q));
-          if(s>0){
-            out.Reminders.push({
-              s, label: r.short || 'Reminder',
-              meta: `My Reminder • ${fmtWhen(r.alarmAt)}`,
-              sub: (r.details||'').slice(0,80),
-              go: '#my_reminders',
-              focus: { type:'myReminder', id:r.id }
-            });
-          }
-        }
-      }catch(_){}
-
-      // Team reminders (my team)
-      try{
-        const list = (Store.getAllTeamReminders ? Store.getAllTeamReminders() : JSON.parse(localStorage.getItem('mums_team_reminders')||'[]'));
-        for(const r of (list||[])){
-          if(r.teamId && r.teamId!==me.teamId) continue;
-          const s = Math.max(score(r.short,q), score(r.details,q));
-          if(s>0){
-            out.TeamReminders.push({
-              s, label: r.short || 'Team Reminder',
-              meta: `Team Reminder • ${Config.teamLabel(r.teamId||me.teamId)} • ${fmtWhen(r.alarmAt)}`,
-              sub: (r.details||'').slice(0,80),
-              go: '#team_reminders',
-              focus: { type:'teamReminder', id:r.id }
-            });
-          }
-        }
-      }catch(_){}
-
-      // Announcements
-      try{
-        const list = Store.getAnnouncements();
-        for(const a of (list||[])){
-          const s = Math.max(score(a.title,q), score(a.message,q));
-          if(s>0){
-            out.Announcements.push({
-              s, label: a.title || 'Announcement',
-              meta: `${Config.teamLabel(a.teamId||'all')} • ${fmtWhen(a.startAt||a.createdAt||a.when)}`,
-              sub: (a.message||'').slice(0,100),
-              go: '#announcements',
-              focus: { type:'announcement', id:a.id }
-            });
-          }
-        }
-      }catch(_){}
-
-      // Cases placeholder (if implemented later)
-      try{
-        const list = Store.getCases ? Store.getCases() : [];
-        for(const c of (list||[])){
-          const s = Math.max(score(c.title,q), score(c.description,q), score(c.id,q));
-          if(s>0){
-            out.Cases.push({
-              s, label: c.title || c.id || 'Case',
-              meta: `${c.status||'—'}`,
-              sub: (c.description||'').slice(0,90),
-              go: '#cases',
-              focus: { type:'case', id:c.id }
-            });
-          }
-        }
-      }catch(_){}
-
-      // Sort & cap
-      for(const k of Object.keys(out)){
-        out[k] = out[k].sort((a,b)=>b.s-a.s).slice(0,8);
-      }
-      return out;
-    }
-
-    function render(groups){
-      if(!resHost) return;
-      const q = String(modalInp?.value || '').trim();
-      if(!q){
-        resHost.innerHTML = '<div class="small muted">Start typing to search.</div>';
-        flat = []; activeIndex = 0;
-        return;
-      }
-      const keys = Object.keys(groups).filter(k=>groups[k].length);
-      if(!keys.length){
-        resHost.innerHTML = '<div class="small muted">No results.</div>';
-        flat = []; activeIndex = 0;
-        return;
-      }
-      let html = '';
-      flat = [];
-      for(const k of keys){
-        const items = groups[k];
-        html += `<div class="gsec"><div class="gsec-title"><span>${k}</span><span class="glabel">${items.length}</span></div><div class="glist">`;
-        for(const it of items){
-          const idx = flat.length;
-          flat.push(it);
-          html += `<div class="gitem" data-idx="${idx}" tabindex="0" role="button" aria-label="Open ${k} result">
-            <div style="flex:1">
-              <div style="font-weight:800">${UI.esc(it.label)}</div>
-              <div class="gmeta">${UI.esc(it.meta||'')}</div>
-              ${it.sub ? `<div class="small muted" style="margin-top:2px">${UI.esc(it.sub)}</div>` : ''}
-            </div>
-          </div>`;
-        }
-        html += `</div></div>`;
-      }
-      resHost.innerHTML = html;
-      setActive(0);
-
-      resHost.querySelectorAll('.gitem').forEach(el=>{
-        el.addEventListener('click', ()=>openIdx(Number(el.dataset.idx)));
-        el.addEventListener('keydown', (e)=>{ if(e.key==='Enter') openIdx(Number(el.dataset.idx)); });
-      });
-    }
-
-    function setActive(i){
-      activeIndex = Math.max(0, Math.min(flat.length-1, i));
-      resHost?.querySelectorAll('.gitem').forEach(el=>el.classList.remove('active'));
-      const el = resHost?.querySelector(`.gitem[data-idx="${activeIndex}"]`);
-      if(el){ el.classList.add('active'); el.scrollIntoView({ block:'nearest' }); }
-    }
-
-    function openIdx(i){
-      const it = flat[i];
-      if(!it) return;
-      try{ localStorage.setItem('mums_global_focus', JSON.stringify(it.focus||{})); }catch(_){}
-      close();
-      // Navigate
-      window.location.hash = it.go || '#dashboard';
-      // Nudge the destination page to focus
-      setTimeout(()=>{
-        try{ window.dispatchEvent(new CustomEvent('mums:globalFocus', { detail: it.focus||{} })); }catch(_){}
-      }, 80);
-    }
-
-    function runSearch(){
-      const q = String(modalInp?.value || '').trim();
-      const groups = build(q);
-      render(groups);
-    }
-
-    if(modalInp){
-      modalInp.addEventListener('input', ()=>{
-        clearTimeout(t);
-        t = setTimeout(runSearch, 120);
-      });
-      modalInp.addEventListener('keydown', (e)=>{
-        if(e.key==='ArrowDown'){ e.preventDefault(); setActive(activeIndex+1); }
-        if(e.key==='ArrowUp'){ e.preventDefault(); setActive(activeIndex-1); }
-        if(e.key==='Enter'){ e.preventDefault(); openIdx(activeIndex); }
-      });
-    }
-  }
