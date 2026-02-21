@@ -406,3 +406,123 @@ body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="idle"] {
   color: #676879 !important;
   border: none !important;
 }
+
+/* =========================================================================
+   PHASE 5: THE FINAL POLISH (Dashboard Heatmap & Mailbox Tables)
+   ========================================================================= */
+
+/* --- DASHBOARD HEATMAP & PULSE FIXES --- */
+body[data-theme="monday_workspace"] .dashx-heatmap {
+  background: #FFFFFF !important;
+  border-radius: 12px !important;
+  border: 1px solid #E6E9EF !important;
+  padding: 16px !important;
+}
+
+body[data-theme="monday_workspace"] .dashx-heatmap .hday,
+body[data-theme="monday_workspace"] .dashx-heatmap .hhr {
+  color: #323338 !important; /* Make sure text is readable on white */
+  font-weight: 600 !important;
+  font-size: 12px !important;
+}
+
+body[data-theme="monday_workspace"] .dashx-heatmap .cell {
+  border-radius: 4px !important; /* Make the heatmap blocks slightly rounded */
+  border: 1px solid #E6E9EF !important;
+}
+
+body[data-theme="monday_workspace"] .pulse-row {
+  background: #FFFFFF !important;
+  border: 1px solid #E6E9EF !important;
+  border-radius: 8px !important;
+  margin-bottom: 8px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.01) !important;
+}
+
+body[data-theme="monday_workspace"] .pulse-row .sp-name {
+  color: #323338 !important;
+  font-weight: 700 !important;
+}
+
+body[data-theme="monday_workspace"] .pulse-row:hover {
+  background: #F8FBFF !important;
+  border-color: #CCE5FF !important;
+}
+
+/* --- MAILBOX TABLE ULTIMATE POLISH --- */
+body[data-theme="monday_workspace"] .mbx-table-wrap {
+  border-radius: 16px !important;
+  overflow: hidden !important; /* Keep the rounded corners clean */
+  border: 1px solid #E6E9EF !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
+  background: #FFFFFF !important;
+}
+
+body[data-theme="monday_workspace"] .table.mbx-table {
+  border-collapse: separate !important; /* Required for border-radius on rows */
+  border-spacing: 0 8px !important; /* Add space between rows like Monday boards */
+  padding: 0 16px !important;
+}
+
+body[data-theme="monday_workspace"] .table.mbx-table thead th {
+  background: #FFFFFF !important;
+  color: #676879 !important;
+  font-weight: 500 !important;
+  text-transform: uppercase !important;
+  font-size: 11px !important;
+  letter-spacing: 0.5px !important;
+  border: none !important;
+  border-bottom: 2px solid #E6E9EF !important;
+  padding: 12px 16px !important;
+}
+
+body[data-theme="monday_workspace"] .table.mbx-table tbody tr {
+  background: #F5F6F8 !important;
+  transition: all 0.2s ease !important;
+}
+
+body[data-theme="monday_workspace"] .table.mbx-table tbody tr:hover {
+  background: #E4F2FF !important; /* Very light blue hover */
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 10px rgba(0,115,234,0.05) !important;
+}
+
+body[data-theme="monday_workspace"] .table.mbx-table tbody td {
+  background: transparent !important;
+  border: 1px solid transparent !important; /* Remove harsh borders */
+  border-top: 1px solid #E6E9EF !important;
+  border-bottom: 1px solid #E6E9EF !important;
+  padding: 12px 16px !important;
+  color: #323338 !important;
+  font-weight: 500 !important;
+}
+
+body[data-theme="monday_workspace"] .table.mbx-table tbody td:first-child {
+  border-left: 1px solid #E6E9EF !important;
+  border-radius: 8px 0 0 8px !important; /* Round the left side of the row */
+  border-left: 4px solid #0073EA !important; /* Monday colored left border */
+}
+
+body[data-theme="monday_workspace"] .table.mbx-table tbody td:last-child {
+  border-right: 1px solid #E6E9EF !important;
+  border-radius: 0 8px 8px 0 !important; /* Round the right side of the row */
+}
+
+/* Fix Status texts inside the table */
+body[data-theme="monday_workspace"] .table.mbx-table .muted {
+  color: #676879 !important;
+}
+
+/* Dashboard Bottom Counters Fix */
+body[data-theme="monday_workspace"] .dashx-bottom {
+    background: #FFFFFF !important;
+    border-top: 1px solid #E6E9EF !important;
+    box-shadow: 0 -4px 14px rgba(0,0,0,0.02) !important;
+}
+body[data-theme="monday_workspace"] .dashx-bottom .shift-col {
+    color: #323338 !important;
+}
+body[data-theme="monday_workspace"] .dashx-bottom .shift-col .val {
+    color: #0073EA !important;
+    font-weight: 800 !important;
+}
