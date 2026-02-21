@@ -236,9 +236,6 @@
   // -----------------------------
   // System Check (Super Admin / Super User)
   // -----------------------------
-  // Offline-first diagnostics and smoke tests to catch common regressions and
-  // provide actionable recommendations. Not a replacement for CI, but valuable
-  // for local/offline deployments.
   function bindSystemCheckModal(currentUser){
     // Bind once
     if(window.__mumsSystemCheck && window.__mumsSystemCheck.bound) return;
@@ -304,7 +301,6 @@
 
       const findings = [];
 
-      // Small helper to run a step and update progress
       const steps = [];
       const addStep = (label, fn)=> steps.push({ label, fn });
 
@@ -338,7 +334,6 @@
           if(dup.length){
             findings.push(makeFinding('Critical', 'Duplicate user IDs found', 'May cause permission and routing inconsistencies.', 'Clean local storage users list and ensure user deletion is permanent.', `Duplicate IDs: ${dup.join(', ')}`));
           }
-          // Super Admin should not have team assignment
           const sa = (users||[]).find(u=>String(u.role||'').toUpperCase()==='SUPER_ADMIN');
           if(sa && (sa.teamId || sa.shiftId)){
             findings.push(makeFinding('Minor', 'Super Admin still has team/shift assigned', 'UI may show incorrect shift context for the Super Admin account.', 'Clear teamId/shiftId for SUPER_ADMIN in the users store.', JSON.stringify({teamId:sa.teamId, shiftId:sa.shiftId})));
@@ -355,13 +350,11 @@
             findings.push(makeFinding('Critical', 'World clocks config is not an array', 'Clocks modal and bottom bar may fail to render.', 'Reset world clocks config in local storage and re-save via Settings.', typeof list));
             return;
           }
-          // Verify GMT offsets list exists (required by GMT Overview).
           const offs = (window.WorldClockUtils && Array.isArray(WorldClockUtils.GMT_OFFSETS_MINUTES)) ? WorldClockUtils.GMT_OFFSETS_MINUTES : null;
           if(!offs || !offs.length){
             findings.push(makeFinding('Critical', 'GMT offsets list missing', 'GMT Overview and pinned offset clocks may fail.', 'Ensure WorldClockUtils.GMT_OFFSETS_MINUTES is defined (app.js) and loaded before any GMT pages.', 'WorldClockUtils.GMT_OFFSETS_MINUTES is missing/empty'));
           }
 
-          // Basic formatting smoke test
           if(window.WorldClockUtils && typeof WorldClockUtils.formatTimePartsForClock==='function'){
             const sample = list[0] || { timeZone:'UTC', offsetMinutes:0 };
             try{ WorldClockUtils.formatTimePartsForClock(new Date(), sample); }catch(ex){
@@ -376,7 +369,6 @@
       addStep('Page smoke tests', async ()=>{
         try{
           const pageIds = Object.keys(window.Pages||{});
-          // Only smoke-test known pages that should render without additional user input.
           const allow = new Set(['dashboard','logs','gmt_overview','master_schedule','my_schedule']);
           const root = document.createElement('div');
           root.style.cssText = 'position:fixed;left:-99999px;top:-99999px;width:1200px;height:800px;overflow:hidden;';
@@ -395,7 +387,6 @@
         }
       });
 
-      // Estimate time: ~1s per step + small buffer
       remaining = Math.max(6, Math.ceil(steps.length * 1.2));
       if(els.countdown) els.countdown.textContent = String(remaining);
       if(timer) clearInterval(timer);
@@ -411,7 +402,6 @@
         try{ await Promise.resolve(step.fn()); }
         catch(e){ findings.push(makeFinding('Minor', `System check step failed: ${step.label}`, 'A diagnostics step threw unexpectedly.', 'Review the system check implementation and ensure it is safe for offline use.', String(e && (e.stack||e)))); }
         setProgress(Math.round(((i+1)/steps.length)*100));
-        // Keep the UI responsive
         await new Promise(r=>setTimeout(r, 150));
       }
 
@@ -420,8 +410,6 @@
       setState(critCount===0 ? 'Completed' : 'Completed with issues');
       setHint(critCount===0 ? 'No critical findings. You can clear resolved error logs now.' : 'Resolve critical findings before clearing error logs.');
 
-      // Persist the last stable run timestamp. Activity Logs can use this signal to
-      // clear previously-resolved error noise without hiding currently-reproducible issues.
       try{
         if(critCount===0){
           const okTs = Date.now();
@@ -429,7 +417,6 @@
         }
       }catch(_){ }
 
-      // Auto-clear resolved "Script error" noise after a stable run (no critical findings).
       try{
         if(critCount===0 && window.Store && Store.autoFixLogs){
           const cut = Number(localStorage.getItem('mums_syscheck_last_ok_ts')||0) || Number(window.__mumsBootTs||0) || Date.now();
@@ -440,7 +427,6 @@
       running = false;
     }
 
-    // Bind buttons
     els.runBtn.onclick = run;
     if(els.clearBtn){
       els.clearBtn.onclick = ()=>{
@@ -471,7 +457,6 @@
   }
 
   function chooseAccentText(accent){
-    // Choose the better contrast of white vs deep slate on the accent background.
     const a = String(accent||'');
     const onWhite = _contrast('#ffffff', a);
     const onDark = _contrast('#0b1220', a);
@@ -507,34 +492,28 @@
       { k: 'Border on Panel', v: _contrast(border, panel), min: 1.8 },
     ];
 
-    function badge(r){
-      if(r >= 4.5) return { label: 'PASS', cls: 'pass' };
-      if(r >= 3.0) return { label: 'WARN', cls: 'warn' };
-      return { label: 'FAIL', cls: 'fail' };
-    }
-
     inner.innerHTML = `
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px;">
         ${rows.map(row=>{
           const ratio = (Math.round(row.v*100)/100).toFixed(2);
-          const b = (row.v >= row.min) ? {label:'PASS', cls:'pass', col:'#10b981', bg:'rgba(16,185,129,0.1)'} 
-                  : (row.v >= Math.max(3.0, row.min)) ? {label:'WARN', cls:'warn', col:'#fbbf24', bg:'rgba(245,158,11,0.1)'} 
-                  : {label:'FAIL', cls:'fail', col:'#ef4444', bg:'rgba(239,68,68,0.1)'};
+          const b = (row.v >= row.min) ? {label:'✅ PASS', col:'#10b981', bg:'rgba(16,185,129,0.1)'} 
+                  : (row.v >= Math.max(3.0, row.min)) ? {label:'⚠️ WARN', col:'#fbbf24', bg:'rgba(245,158,11,0.1)'} 
+                  : {label:'❌ FAIL', col:'#ef4444', bg:'rgba(239,68,68,0.1)'};
           return `
-            <div style="background:rgba(2,6,23,0.5); border:1px solid rgba(255,255,255,0.05); border-radius:10px; padding:12px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="background:rgba(2,6,23,0.5); border:1px solid rgba(255,255,255,0.05); border-radius:12px; padding:16px; display:flex; justify-content:space-between; align-items:center; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);">
                <div>
-                  <div style="font-weight:900; color:#f8fafc; font-size:13px;">${UI.esc(row.k)}</div>
-                  <div style="font-family:monospace; color:#cbd5e1; font-size:12px; margin-top:4px;">Ratio: ${ratio}:1</div>
+                  <div style="font-weight:900; color:#f8fafc; font-size:14px; letter-spacing: -0.3px;">${UI.esc(row.k)}</div>
+                  <div style="font-family:monospace; color:#cbd5e1; font-size:13px; margin-top:4px; opacity:0.8;">Ratio: ${ratio}:1</div>
                </div>
-               <div style="background:${b.bg}; color:${b.col}; border:1px solid ${b.col}; box-shadow:0 0 10px ${b.bg}; padding:4px 10px; border-radius:999px; font-weight:900; font-size:11px; text-transform:uppercase;">
+               <div style="background:${b.bg}; color:${b.col}; border:1px solid ${b.col}; box-shadow:0 0 15px ${b.bg}; padding:6px 12px; border-radius:8px; font-weight:900; font-size:11px; letter-spacing:0.5px;">
                   ${b.label}
                </div>
             </div>
           `;
         }).join('')}
       </div>
-      <div class="small muted" style="margin-top:16px; border-left:3px solid #38bdf8; padding-left:12px;">
-        Guidance: If any item fails, adjust theme tokens (text/muted/border/panel). For Aurora (Ecommerce Light) the typical fix is increasing muted contrast and strengthening borders.
+      <div class="small muted" style="margin-top:20px; border-left:4px solid #38bdf8; padding-left:12px; font-size:13px; line-height: 1.5;">
+        <strong>Diagnostic Guidance:</strong> If any parameter fails WCAG 2.1 AA standards, adjust your <code>Config.THEMES</code> definitions. Muted text requires 3.0:1, while standard text requires 4.5:1 against the active panel background.
       </div>
     `;
 
@@ -571,57 +550,35 @@
         return true;
     });
 
-    // Inject Enterprise Layout CSS safely
-    if(!document.getElementById('theme-admin-styles')){
-        const s = document.createElement('style');
-        s.id = 'theme-admin-styles';
-        s.textContent = `
-            .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top:10px; }
-            .theme-tile { position: relative; background: rgba(15,23,42,0.4); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 16px; cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2); }
-            .theme-tile:hover { transform: translateY(-3px); border-color: rgba(56,189,248,0.4); box-shadow: 0 10px 20px rgba(0,0,0,0.3); background: rgba(15,23,42,0.6); }
-            .theme-tile.active { background: linear-gradient(145deg, rgba(14,165,233,0.1), rgba(2,132,199,0.2)); border: 1px solid rgba(56,189,248,0.6); box-shadow: 0 0 20px rgba(14,165,233,0.2), inset 0 0 10px rgba(56,189,248,0.1); }
-            
-            .theme-swatch-box { width: 100%; height: 60px; border-radius: 8px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1); display: flex; overflow:hidden; }
-            .theme-swatch-p1 { flex: 1; height: 100%; background: var(--t-bg); }
-            .theme-swatch-p2 { flex: 1; height: 100%; background: var(--t-panel); display:flex; align-items:center; justify-content:center;}
-            .theme-swatch-acc { width: 60%; height: 8px; border-radius: 4px; background: var(--t-acc); box-shadow: 0 0 8px var(--t-acc); }
-            
-            .is-hidden-theme { opacity: 0.4; filter: grayscale(80%); border: 1px dashed rgba(255,255,255,0.2) !important; }
-            .is-hidden-theme:hover { opacity: 0.8; filter: grayscale(0%); border: 1px dashed rgba(56,189,248,0.5) !important; }
-            
-            .theme-admin-controls { display: flex; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.05); }
-            .theme-admin-controls button { flex: 1; padding: 6px; font-size: 11px; z-index: 2; position: relative; font-weight:800; }
-        `;
-        document.head.appendChild(s);
-    }
-
-    grid.className = 'theme-grid';
     grid.innerHTML = visibleThemes.map(t => {
       const m = themeMeta[t.id] || {};
       const active = t.id === cur;
       const fontName = (t.font ? String(t.font).split(',')[0].replace(/['"]/g,'').trim() : 'System');
       const isHidden = !!m.hidden;
 
+      // Ensure buttons use the btn-glass styles injected in index.html
       const adminHtml = isSA ? `
         <div class="theme-admin-controls">
-          <button class="btn-glass btn-glass-ghost small" data-hide-theme="${UI.esc(t.id)}" title="${isHidden ? 'Show to all users' : 'Hide from users'}" onclick="event.stopPropagation()">
+          <button class="btn-glass btn-glass-ghost" data-hide-theme="${UI.esc(t.id)}" title="${isHidden ? 'Show to all users' : 'Hide from users'}" onclick="event.stopPropagation()">
             ${isHidden ? '👁️ Hidden' : '👀 Visible'}
           </button>
-          <button class="btn-glass btn-glass-danger small" data-del-theme="${UI.esc(t.id)}" title="Delete permanently" onclick="event.stopPropagation()" style="background:rgba(239,68,68,0.2); border-color:rgba(239,68,68,0.4); color:#fca5a5;">🗑️ Delete</button>
+          <button class="btn-glass btn-glass-danger" data-del-theme="${UI.esc(t.id)}" title="Delete permanently" onclick="event.stopPropagation()">
+            🗑️ Delete
+          </button>
         </div>
       ` : '';
 
-      const activeBadge = active ? `<span style="background:rgba(56,189,248,0.2); color:#7dd3fc; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:900; margin-top:6px; display:inline-block; border:1px solid rgba(56,189,248,0.4); box-shadow:0 0 10px rgba(56,189,248,0.2);">ACTIVE</span>` : '';
+      const activeBadge = active ? `<span style="background:rgba(56,189,248,0.2); color:#7dd3fc; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:900; margin-top:8px; display:inline-block; border:1px solid rgba(56,189,248,0.4); box-shadow:0 0 15px rgba(56,189,248,0.2);">ACTIVE THEME</span>` : '';
 
       return `
-        <div class="theme-tile ${active?'active':''} ${isHidden ? 'is-hidden-theme' : ''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button" aria-label="Theme ${UI.esc(t.name)}">
+        <div class="glass-theme-tile ${active?'active':''} ${isHidden ? 'is-hidden-theme' : ''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button" aria-label="Theme ${UI.esc(t.name)}">
           <div class="theme-swatch-box" style="--t-bg:${t.bg}; --t-panel:${t.panel}; --t-acc:${t.accent};">
              <div class="theme-swatch-p1"></div>
              <div class="theme-swatch-p2"><div class="theme-swatch-acc"></div></div>
           </div>
           <div style="flex:1;">
             <div class="tname" style="font-weight:900; font-size:16px; color:#f8fafc; letter-spacing:-0.5px;">${UI.esc(t.name)}</div>
-            <div class="tmeta" style="font-size:11px; color:#94a3b8; margin-top:4px;">Font: ${UI.esc(fontName)}</div>
+            <div class="tmeta" style="font-size:12px; color:#94a3b8; margin-top:4px;">Font: ${UI.esc(fontName)}</div>
             ${activeBadge}
           </div>
           ${adminHtml}
@@ -630,7 +587,7 @@
     }).join('') || '<div class="muted" style="grid-column:1/-1; text-align:center; padding:40px; font-size:16px;">No themes available.</div>';
 
     // Bind Pick Event
-    grid.querySelectorAll('.theme-tile').forEach(tile => {
+    grid.querySelectorAll('.glass-theme-tile').forEach(tile => {
       const pick = (e) => {
         if(e && e.target && e.target.closest('.theme-admin-controls')) return; // Ignore clicks on admin buttons
         const id = tile.dataset.theme;
@@ -677,6 +634,7 @@
     try{ renderThemeAudit(); }catch(_){ }
   }
 
+
   // Bottom quick links
   function normalizeUrl(u){
     const s = String(u||'').trim();
@@ -697,7 +655,6 @@
       const glow = String(l?.glowColor||l?.glow||'').trim();
       const glowCss = has ? (glow || 'var(--accent)') : '';
       const tip = (label || url || `Link ${idx+1}`).trim();
-      // IMPORTANT: Do not change the number inside the circle based on labels.
       const num = String(idx+1);
       const shownLabel = label || '';
       return `
@@ -763,8 +720,6 @@
     }
   }
 
-  // === GMT / UTC offsets (enterprise World Clock enhancement) ===
-  // Full set of commonly used UTC offsets in minutes (covers all current offsets in use).
   const GMT_OFFSETS_MINUTES = [
     -720,-660,-600,-570,-540,-480,-420,-360,-300,-240,-210,-180,-120,-60,
     0,60,120,180,210,240,270,300,330,345,360,390,420,480,525,540,570,600,630,660,690,720,765,780,840
@@ -785,7 +740,6 @@
     const c = clock || {};
     const off = (c.offsetMinutes === 0 || c.offsetMinutes) ? Number(c.offsetMinutes) : null;
     if(off !== null && Number.isFinite(off)){
-      // Epoch time is UTC-based. Shift by offset minutes and read back using UTC getters.
       const ms = now.getTime() + off*60*1000;
       const d = new Date(ms);
       return { hh:_pad2(d.getUTCHours()), mm:_pad2(d.getUTCMinutes()), ss:_pad2(d.getUTCSeconds()) };
@@ -794,8 +748,6 @@
     return formatTimeParts(now, tz);
   }
 
-  // Expose utilities so standalone pages (e.g., GMT Overview) can reuse the same logic.
-  // Keep as a small, stable surface for future development.
   window.WorldClockUtils = window.WorldClockUtils || {};
   window.WorldClockUtils.GMT_OFFSETS_MINUTES = GMT_OFFSETS_MINUTES.slice();
   window.WorldClockUtils.gmtLabelFromMinutes = gmtLabelFromMinutes;
@@ -818,7 +770,6 @@
     return { timeZone: v || 'Asia/Manila', offsetMinutes: null };
   }
 
-  // Render an enterprise GMT overview panel inside the World Clocks modal.
   function ensureGmtOverviewUI(){
     const modal = document.getElementById('clocksModal');
     if(!modal) return null;
@@ -845,7 +796,6 @@
     `;
     body.appendChild(panel);
 
-    // Delegated click: pin GMT offset as a clock
     panel.addEventListener('click', (e)=>{
       const tile = e.target && (e.target.closest ? e.target.closest('[data-gmtoff]') : null);
       if(!tile) return;
@@ -875,7 +825,6 @@
       }catch(err){ console.error(err); }
     });
 
-    // Search filtering
     const search = panel.querySelector('#gmtSearch');
     if(search){
       search.addEventListener('input', ()=>{
@@ -885,6 +834,7 @@
 
     return panel;
   }
+  
   function renderGmtOverview(){
     const panel = ensureGmtOverviewUI();
     if(!panel) return;
@@ -926,7 +876,6 @@
   }
 
 
-  
   function startGmtOverviewTicker(){
     try{
       if(window.__mumsGmtOverviewTimer) return;
@@ -961,12 +910,9 @@ function renderWorldClocksBar(){
     }).join('');
   }
 
-  // === Online Users Bar (4 sections incl. Developer Access) ===
   function _bucketForUser(u){
     try{
       if(!u) return 'mid';
-
-      // Prefer presence-provided teamId; fallback to cached user profile to avoid flicker.
       let teamId = u.teamId || '';
       const rawRole = String(u.role || '').trim();
       let role = (window.Store && Store.normalizeRole) ? Store.normalizeRole(rawRole)
@@ -983,10 +929,8 @@ function renderWorldClocksBar(){
               role = (window.Store && Store.normalizeRole) ? Store.normalizeRole(rr)
                 : rr.toUpperCase().replace(/\s+/g,'_').replace(/-+/g,'_');
             }
-            // Hydrate display fields for stable UI rendering
             if (!u.name && su.name) u.name = su.name;
             if (!u.username && su.username) u.username = su.username;
-            // Hydrate avatar/photo field if present in profile cache
             if (!u.photo && (su.photo || su.avatar || su.photoDataUrl || su.avatar_url || su.avatarUrl)) {
               u.photo = su.photo || su.avatar || su.photoDataUrl || su.avatar_url || su.avatarUrl;
             }
@@ -994,8 +938,6 @@ function renderWorldClocksBar(){
         }
       }catch(_){ }
 
-      // SUPER roles default to Developer Access, but SUPER_ADMIN can override their team
-      // (teamOverride=true) and should then appear under the selected shift bucket.
       if(role === 'SUPER_ADMIN' || role === 'SUPER_USER'){
         let teamOverride = !!(u.teamOverride ?? u.team_override ?? false);
         try{
@@ -1134,7 +1076,6 @@ function renderWorldClocksBar(){
       </div>
     `;
 
-    // Mobile close delegation (safe across re-renders)
     if(isMobile && !host.__mobCloseBound){
       host.__mobCloseBound = true;
       host.addEventListener('click', (e)=>{
@@ -1149,19 +1090,13 @@ function renderWorldClocksBar(){
     }
   }
 
-  // Force-refresh helper: some browsers can defer layout updates while closing modals.
-  // This guarantees the clocks appear instantly after saving settings (no manual refresh).
   function refreshWorldClocksNow(){
-  // Render once (re-rendering multiple times causes long tasks and event leaks in preview strip)
   try{ renderWorldClocksBar(); }catch(e){ console.error(e); }
   try{ renderClocksPreviewStrip(); }catch(_){ }
   try{ updateWorldClocksTimes(); }catch(_){ }
   try{ updateClocksPreviewTimes(); }catch(_){ }
 }
 
-  // Preview strip in World Clocks settings (modal)
-  // - Shows an instant preview of the 3 clocks
-  // - Supports drag re-order (left-to-right)
   function renderClocksPreviewStrip(){
     const strip = document.getElementById('clocksPreviewStrip');
     if(!strip) return;
@@ -1187,7 +1122,6 @@ function renderWorldClocksBar(){
       `;
     }).join('');
 
-    // Bind drag-and-drop reorder (safe; only 3 items)
     strip.querySelectorAll('.wclock-preview').forEach(el=>{
       el.addEventListener('dragstart', (e)=>{
         try{ e.dataTransfer.setData('text/plain', String(el.dataset.idx||'')); }catch(_){}
@@ -1209,7 +1143,6 @@ function renderWorldClocksBar(){
           const item = cur.splice(from,1)[0];
           cur.splice(to,0,item);
           try{ if(Store && Store.dispatch) Store.dispatch('UPDATE_CLOCKS', cur); else Store.saveWorldClocks(cur); }catch(_){ try{ Store.saveWorldClocks(cur); }catch(__){} }
-          // Re-render everything to reflect new order (numbers, bottom bar, preview)
           renderClocksGrid();
           renderWorldClocksBar();
           renderClocksPreviewStrip();
@@ -1218,7 +1151,6 @@ function renderWorldClocksBar(){
     });
   }
 
-// Efficient clock updates (avoid re-render + listener leaks)
 function updateWorldClocksTimes(){
   const wrap = document.getElementById('worldClocks');
   if(!wrap) return;
@@ -1263,9 +1195,6 @@ function updateClocksPreviewTimes(){
   });
 }
 
-
-
-  // Alarm checker (runs per second)
   const _alarmState = { lastKey: null };
   function checkWorldClockAlarms(){
     const list = Store.getWorldClocks();
@@ -1283,7 +1212,6 @@ function updateClocksPreviewTimes(){
         const key = `${i}|${tz}|${c.alarmTime}|${UI.manilaNow().isoDate}`;
         if(_alarmState.lastKey === key) continue;
         _alarmState.lastKey = key;
-        // Use existing notification sound settings
         try{ UI.playNotifSound(userId); }catch(e){}
       }
     }
@@ -1359,7 +1287,6 @@ function updateClocksPreviewTimes(){
       `;
     }).join('');
 
-    // set styles after render
     grid.querySelectorAll('.clock-card').forEach(card=>{
       const i = Number(card.dataset.idx||0);
       const s = (list[i] && list[i].style) ? list[i].style : 'classic';
@@ -1367,12 +1294,8 @@ function updateClocksPreviewTimes(){
       if(sel) sel.value = s;
     });
 
-    // Always refresh the in-modal preview strip so users can instantly see
-    // what will appear on the bottom bar, and can drag-reorder clocks.
-    try{ renderClocksPreviewStrip(); }catch(e){ /* ignore */ }
+    try{ renderClocksPreviewStrip(); }catch(e){ }
 
-    // Live preview + autosave (professional UX): any change immediately updates the bottom bar.
-    // This avoids "clock not visible" complaints when users expect instant feedback.
     if(!grid.__liveBind){
       grid.__liveBind = true;
       let t = null;
@@ -1385,7 +1308,6 @@ function updateClocksPreviewTimes(){
             const q = (sel)=>card.querySelector(sel);
             const alarmOn = !!q('.clk-alarmEnabled')?.checked;
             const alarmInput = q('.clk-alarm');
-            // Keep UI consistent: disable the time input unless Alarm is enabled.
             try{ if(alarmInput) alarmInput.disabled = !alarmOn; }catch(_){ }
             next[i] = {
               enabled: !!q('.clk-enabled')?.checked,
@@ -1400,14 +1322,10 @@ function updateClocksPreviewTimes(){
             };
           });
           try{ if(Store && Store.dispatch) Store.dispatch('UPDATE_CLOCKS', next); else Store.saveWorldClocks(next); }catch(_){ try{ Store.saveWorldClocks(next); }catch(__){} }
-          // Immediate bottom bar update (no refresh needed)
           refreshWorldClocksNow();
           try{ renderClocksPreviewStrip(); }catch(_){ }
-        }catch(e){ /* never break settings */ console.error(e); }
+        }catch(e){ console.error(e); }
       };
-      // Expose a safe flush hook so closing the modal applies changes immediately.
-      // This prevents the "I saved but clocks didn't appear" issue when the last
-      // change is still waiting in a debounce timer.
       grid.__commitClocks = ()=>{ try{ clearTimeout(t); }catch(_){ } try{ commit(); }catch(_){ } };
       grid.addEventListener('input', ()=>{ clearTimeout(t); t = setTimeout(commit, 150); });
       grid.addEventListener('change', ()=>{ clearTimeout(t); t = setTimeout(commit, 0); });
@@ -1458,7 +1376,6 @@ function updateClocksPreviewTimes(){
       });
       const saveBtn = row.querySelector('[data-save]');
       const delBtn = row.querySelector('[data-del]');
-      // Sync the color picker with the hex text field
       const glowPick = row.querySelector('[data-glow]');
       const glowTxt = row.querySelector('[data-glowText]');
       if(glowPick && glowTxt){
@@ -1565,7 +1482,6 @@ function updateClocksPreviewTimes(){
 
     const navItems = Array.isArray(Config.NAV) ? [...Config.NAV] : [];
 
-    // --- dynamic Commands menu (delegated privileges per-user) ---
     try{
       const extras = (window.Store && Store.getUserExtraPrivs) ? Store.getUserExtraPrivs(user.id) : [];
       const kids = [];
@@ -1615,8 +1531,6 @@ function updateClocksPreviewTimes(){
       };
     });
 
-    // Bind direct nav handling on the sidebar itself to avoid delayed page transitions
-    // caused by document-level bubbling handlers and duplicate route invocations.
     if(!nav.__routeBound){
       nav.__routeBound = true;
       nav.__lastNavAt = 0;
@@ -1652,7 +1566,6 @@ function updateClocksPreviewTimes(){
           navigateToPageId(pageId);
         }
 
-        // Mobile: close drawers immediately after explicit navigation.
         try{ if(_isMobileViewport()) closeMobileDrawers(); }catch(_){ }
       });
     }
@@ -1721,7 +1634,6 @@ function updateClocksPreviewTimes(){
     }catch(_){ return false; }
   }
 
-  // Simple square cropper modal (drag + zoom). Returns a PNG data URL.
   function openCropModal(dataUrl, opts){
     opts = opts || {};
     const onDone = typeof opts.onDone === 'function' ? opts.onDone : function(){};
@@ -1763,7 +1675,6 @@ function updateClocksPreviewTimes(){
       const scale = state.baseScale * state.zoom;
       clamp();
       ctx.clearRect(0,0,size,size);
-      // background
       ctx.fillStyle = '#0b0f16';
       ctx.fillRect(0,0,size,size);
 
@@ -1773,7 +1684,6 @@ function updateClocksPreviewTimes(){
       ctx.drawImage(state.img, -state.img.width/2, -state.img.height/2);
       ctx.restore();
 
-      // subtle border
       ctx.save();
       ctx.strokeStyle = 'rgba(255,255,255,0.18)';
       ctx.lineWidth = 2;
@@ -1788,7 +1698,6 @@ function updateClocksPreviewTimes(){
       return { x: (e.clientX - r.left) * sx, y: (e.clientY - r.top) * sy };
     }
 
-    // Wire events (overwrite each open to avoid handler buildup)
     canvas.onpointerdown = (e)=>{
       try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
       const p = pointToCanvas(e);
@@ -1826,7 +1735,6 @@ function updateClocksPreviewTimes(){
         onCancel();
         return;
       }
-      // Render a higher-res export for upload
       const outSize = 512;
       const out = document.createElement('canvas');
       out.width = outSize;
@@ -1838,7 +1746,6 @@ function updateClocksPreviewTimes(){
       const offX = state.offX * k;
       const offY = state.offY * k;
 
-      // Clamp again for export
       const maxX = Math.max(0, (state.img.width * scaleOut - outSize) / 2);
       const maxY = Math.max(0, (state.img.height * scaleOut - outSize) / 2);
       const cx = Math.max(-maxX, Math.min(maxX, offX));
@@ -1859,7 +1766,6 @@ function updateClocksPreviewTimes(){
       else onCancel();
     };
 
-    // Load image
     const img = new Image();
     img.onload = ()=>{
       state.img = img;
@@ -1867,7 +1773,6 @@ function updateClocksPreviewTimes(){
       zoomEl.value = '1';
       state.offX = 0;
       state.offY = 0;
-      // Cover-fit to crop square
       state.baseScale = Math.max(size / img.width, size / img.height);
       draw();
     };
@@ -1893,9 +1798,6 @@ function updateClocksPreviewTimes(){
     const roleEl = UI.el('#profileRole');
     const teamEl = UI.el('#profileTeam');
 
-    // SUPER_ADMIN Team Override Selector
-    // - Default: Developer Access (team_id = NULL, team_override=false)
-    // - Override: assign to a shift team (morning/mid/night)
     let teamSel = UI.el('#profileTeamSelect');
     if(isSuperAdmin0){
       try{
@@ -1904,13 +1806,11 @@ function updateClocksPreviewTimes(){
           teamSel.id = 'profileTeamSelect';
           teamSel.className = 'input';
 
-          // Default option
           const opt0 = document.createElement('option');
           opt0.value = '';
           opt0.textContent = 'Developer Access';
           teamSel.appendChild(opt0);
 
-          // Shift teams
           (Config && Array.isArray(Config.TEAMS) ? Config.TEAMS : []).forEach(t=>{
             if(!t || !t.id) return;
             const o = document.createElement('option');
@@ -1926,28 +1826,21 @@ function updateClocksPreviewTimes(){
       }catch(_){ }
     }
 
-    // Fill fields
     if(nameEl) nameEl.value = user.name||'';
     if(emailEl) {
       let em = user.email||'';
-
-      // Prefer the enriched Store user record when available (cloud roster sync).
       if(!em){
         try{
           const su = (window.Store && typeof Store.getUserById === 'function') ? Store.getUserById(user.id) : null;
           if(su && su.email) em = String(su.email);
         }catch(_){ }
       }
-
-      // Fallback: Supabase auth user.
       if(!em){
         try{
           const cu = (window.CloudAuth && typeof CloudAuth.getUser === 'function') ? CloudAuth.getUser() : null;
           if(cu && cu.email) em = String(cu.email);
         }catch(_){ }
       }
-
-      // Final fallback: derive from username.
       if(!em){
         try{
           const domain = (window.Config && Config.USERNAME_EMAIL_DOMAIN) ? String(Config.USERNAME_EMAIL_DOMAIN) : 'mums.local';
@@ -1955,19 +1848,16 @@ function updateClocksPreviewTimes(){
           if(un) em = `${un}@${domain}`;
         }catch(_){ }
       }
-
       emailEl.value = em;
     }
     if(roleEl) roleEl.value = user.role||'';
     if(teamEl) teamEl.value = (teamForLabel && teamForLabel.label) ? teamForLabel.label : '';
 
-    // Toggle team input/select
     try{
       if(isSuperAdmin0 && teamSel){
         if(teamEl) teamEl.style.display = 'none';
         teamSel.style.display = '';
 
-        // For SUPER roles, only show an override team if teamOverride is enabled.
         let teamId = String(user.teamId || '').trim();
         let teamOverride = !!(user.teamOverride ?? user.team_override ?? false);
         if(isSuperRole0 && (user.teamOverride === undefined && user.team_override === undefined)) teamOverride = !!teamId;
@@ -1980,20 +1870,17 @@ function updateClocksPreviewTimes(){
 
     renderProfileAvatar(prof.photoDataUrl, user);
 
-    // Layout selector
     const layoutSel = UI.el('#profileLayout');
     if(layoutSel){
       layoutSel.value = localStorage.getItem('mums_profile_layout') || 'banner';
     }
 
-    // If cloud is enabled, hydrate from server profile (name + avatar_url) for correctness.
     if(cloudProfileEnabled()){
       try{
         CloudUsers.me().then(out=>{
           try{
             if(!out || !out.ok || !out.profile) return;
             const p = out.profile;
-            // Update name only if user hasn't started editing.
             if(nameEl && (String(nameEl.value||'').trim() === String(user.name||'').trim())){
               if(p.name) nameEl.value = p.name;
             }
@@ -2003,7 +1890,6 @@ function updateClocksPreviewTimes(){
               renderUserCard(user);
             }
 
-            // Keep email/team fields accurate for cloud profiles.
             if(emailEl && p.email) emailEl.value = p.email;
             if(isSuperAdmin0 && teamSel){
               const roleUp = String(p.role || user.role || '').toUpperCase();
@@ -2018,7 +1904,6 @@ function updateClocksPreviewTimes(){
       }catch(_){ }
     }
 
-    // Upload -> crop -> server upload
     const input = UI.el('#profilePhotoInput');
     if(input){
       input.value = '';
@@ -2026,7 +1911,6 @@ function updateClocksPreviewTimes(){
         try{
           const f = input.files && input.files[0];
           if(!f) return;
-          // Read original image; cropper will export 512x512 PNG.
           const dataUrl = await UI.readImageAsDataUrl(f, 1400);
           openCropModal(dataUrl, {
             onDone: async (croppedPng)=>{
@@ -2042,7 +1926,6 @@ function updateClocksPreviewTimes(){
                 renderProfileAvatar(url, user);
                 renderUserCard(user);
               } else {
-                // Offline fallback (local only)
                 Store.setProfile(user.id, { photoDataUrl: croppedPng, updatedAt: Date.now() });
                 renderProfileAvatar(croppedPng, user);
                 renderUserCard(user);
@@ -2056,7 +1939,6 @@ function updateClocksPreviewTimes(){
       };
     }
 
-    // Remove photo
     const rm = UI.el('#profileRemovePhoto');
     if(rm){
       rm.onclick = async ()=>{
@@ -2082,7 +1964,6 @@ function updateClocksPreviewTimes(){
     UI.el('#profileSave').onclick = async ()=>{
       const name = String((nameEl && nameEl.value) || '').trim();
 
-      // SUPER_ADMIN team override payload
       let teamIdSel = '';
       let teamOverrideSel = false;
       try{
@@ -2105,11 +1986,9 @@ function updateClocksPreviewTimes(){
           return;
         }
 
-        // Refresh directory so all UI surfaces see the authoritative change.
         try{ await CloudUsers.refreshIntoLocalStore(); }catch(_){ }
       }
 
-      // Update local store immediately for UI.
       const localPatch = { name: name || user.username };
       if(isSuperAdmin0){
         localPatch.teamOverride = !!teamOverrideSel;
@@ -2117,7 +1996,6 @@ function updateClocksPreviewTimes(){
       }
       Store.updateUser(user.id, localPatch);
 
-      // Persist layout selection
       if(layoutSel){
         localStorage.setItem('mums_profile_layout', String(layoutSel.value||'card'));
       }
@@ -2153,8 +2031,6 @@ function updateClocksPreviewTimes(){
   }
 
   function renderSideLogs(user){
-
-    // Component-module override (preferred)
     try{
       if(window.Components && Components.SidebarLogs){
         Components.SidebarLogs.render(user);
@@ -2205,14 +2081,12 @@ function updateClocksPreviewTimes(){
 
   function setActiveNav(page){
     UI.els('#nav a').forEach(a=>a.classList.toggle('active', a.dataset.page===page));
-    // If active is inside a group, visually mark the group header too.
     UI.els('#nav .nav-group').forEach(g=>g.classList.remove('active'));
     const active = UI.el(`#nav a[data-page="${CSS.escape(page)}"]`);
     if(active){
       const group = active.closest('.nav-group');
       if(group){
         group.classList.add('active');
-        // auto expand so user can see current page in tree
         const kids = group.querySelector('.nav-group-kids');
         const head = group.querySelector('.nav-group-head');
         if(kids && kids.style.display==='none'){
@@ -2226,20 +2100,12 @@ function updateClocksPreviewTimes(){
   }
 
   function renderRightNow(){
-    // Per UX: remove live date/time from the right sidebar.
-    // Keep a lightweight static hint if needed.
     const chip = UI.el('#summaryNowChip');
     if(chip) chip.textContent = 'Asia/Manila';
   }
 
-  // ---------------------------------------------------------------------
-  // Dynamic Guide system (Right sidebar > Summary)
-  // ---------------------------------------------------------------------
   function mkGuideSvg(title, lines){
     const esc = UI.esc;
-    // Accept either an array of lines or a single string.
-    // Some callers pass a single string; previously that caused a crash
-    // because String.prototype.slice returns a string (no .map).
     let arr = [];
     if(Array.isArray(lines)) arr = lines;
     else if(typeof lines === 'string') arr = lines.split('\n');
@@ -2400,9 +2266,6 @@ function updateClocksPreviewTimes(){
     }
   };
 
-  // -------------------------------------------------------------
-  // Offline AI-like Guide (no internet): search over GUIDES
-  // -------------------------------------------------------------
   function buildGuideKB(){
     const kb=[];
     const guides=GUIDES||{};
@@ -2492,15 +2355,11 @@ function updateClocksPreviewTimes(){
     const best = bestObj ? bestObj.it : null;
     const related = scored.slice(1,4).map(x=>x.it);
 
-    // Confidence heuristic (0..100):
-    // - higher when best score is high
-    // - higher when best is well separated from 2nd
     const bestScore = bestObj ? bestObj.score : 0;
     const secondScore = secondObj ? secondObj.score : 0;
     let conf = 0;
     if(bestScore > 0){
       const separation = (bestScore - secondScore) / Math.max(1, bestScore);
-      // Base increases quickly then saturates
       const base = 1 - Math.exp(-bestScore / 18);
       conf = Math.round(100 * Math.min(1, Math.max(0, 0.55*base + 0.45*separation)));
     }
@@ -2531,7 +2390,6 @@ function updateClocksPreviewTimes(){
     titleEl.textContent = `Guide: ${g.title}`;
     metaEl.textContent = `${(menuLabel||g.title)} • Use Search to find answers. Guides update automatically when you switch menus.`;
 
-    // Guide enabled toggle
     const enabledToggle = UI.el('#guideEnabledToggle');
     const enabled = localStorage.getItem('mums_guide_enabled') !== '0';
     if(enabledToggle){
@@ -2559,17 +2417,14 @@ function updateClocksPreviewTimes(){
     }
 
     const activeTab = (localStorage.getItem('mums_guide_tab') || 'guide');
-    // Sync tab UI
     try{ UI.els('.gtab').forEach(b=>{ const on = (b.dataset.gtab||'')===activeTab; b.classList.toggle('active', on); b.setAttribute('aria-selected', on?'true':'false'); }); }catch(e){}
     const searchEl = UI.el('#guideSearch');
     const q = (searchEl && searchEl.value) ? String(searchEl.value).trim().toLowerCase() : '';
 
-    // Remember questions per page
     const qKey = `mums_guide_questions_${pageId}`;
     let savedQs = [];
     try{ savedQs = JSON.parse(localStorage.getItem(qKey) || '[]') || []; }catch(e){ savedQs = []; }
 
-    // Last offline AI answer for this page
     let lastAI = null;
     try{ lastAI = JSON.parse(localStorage.getItem('mums_ai_last_'+pageId) || 'null'); }catch(e){ lastAI=null; }
 
@@ -2588,7 +2443,6 @@ function updateClocksPreviewTimes(){
     function renderGuide(){
       const parts = [];
 
-      // AI answer card (if user asked a question)
       if(lastAI && lastAI.q){
         const qTxt = String(lastAI.q||'');
         const ansObj = lastAI.ans || {};
@@ -2694,7 +2548,6 @@ function updateClocksPreviewTimes(){
       </div>
     `;
 
-    // Wire manual thumbnail clicks (open image modal)
     const thumbs = bodyEl.querySelectorAll('.gthumb');
     thumbs.forEach((b)=>{
       b.onclick = ()=>{
@@ -2710,7 +2563,6 @@ function updateClocksPreviewTimes(){
       };
     });
 
-    // Wire guide "More details" and Offline AI buttons
     bodyEl.querySelectorAll('[data-gmore]').forEach((btn)=>{
       btn.onclick = ()=>{
         const i = Number(btn.getAttribute('data-gmore')||0);
@@ -2733,7 +2585,6 @@ function updateClocksPreviewTimes(){
       };
     });
 
-    // Offline AI: related buttons
     bodyEl.querySelectorAll('[data-grel]').forEach((btn)=>{
       btn.onclick = ()=>{
         const relQ = String(btn.getAttribute('data-grel')||'').trim();
@@ -2742,7 +2593,6 @@ function updateClocksPreviewTimes(){
           const ans = answerGuideQuestion(relQ, pageId);
           localStorage.setItem('mums_ai_last_'+pageId, JSON.stringify({ q:relQ, ans:ans, ts:Date.now() }));
         }catch(e){}
-        // render again and switch to Guide tab
         localStorage.setItem('mums_guide_tab','guide');
         const searchEl = UI.el('#guideSearch');
         if(searchEl) searchEl.value = '';
@@ -2750,7 +2600,6 @@ function updateClocksPreviewTimes(){
       };
     });
 
-    // Offline AI: clear card
     const clearAI = bodyEl.querySelector('[data-gai-clear]');
     if(clearAI){
       clearAI.onclick = ()=>{
@@ -2759,7 +2608,6 @@ function updateClocksPreviewTimes(){
       };
     }
 
-    // Offline AI: more details
     const moreAI = bodyEl.querySelector('[data-gai-more]');
     if(moreAI && lastAI && lastAI.ans){
       moreAI.onclick = ()=>{
@@ -2791,7 +2639,6 @@ function updateClocksPreviewTimes(){
       };
     }
 
-    // Offline AI: show sources (which KB entry produced the answer)
     const srcAI = bodyEl.querySelector('[data-gai-src]');
     if(srcAI && lastAI && lastAI.ans){
       srcAI.onclick = ()=>{
@@ -2920,7 +2767,6 @@ function updateClocksPreviewTimes(){
     const who = a.createdByName || '—';
     if(whoEl) whoEl.textContent = who;
 
-    // Time label: startAt (activation) then createdAt
     const tms = a.startAt || a.createdAt;
     let when = '—';
     if(tms){
@@ -2930,12 +2776,10 @@ function updateClocksPreviewTimes(){
       when = `${p.isoDate} ${pad(p.hh)}:${pad(p.mm)}`;
     }
 
-    // Populate content
     if(titleEl) titleEl.textContent = String(a.title||'Announcement');
     if(msgEl) msgEl.textContent = String(a.short || '').trim() || '—';
     if(metaEl) metaEl.textContent = when ? `Active from ${when}` : '';
 
-    // Team Leader Announcements: profile logo + full name (below logo)
     try{
       const pid = String(a.createdBy||'');
       const prof = pid ? Store.getProfile(pid) : null;
@@ -2958,9 +2802,6 @@ function updateClocksPreviewTimes(){
   }
 
   function startAnnouncementRotation(){
-    // Start once and keep running across page navigation.
-    // Page routing must NOT reset the rotation index or restart the interval,
-    // otherwise announcements appear to "change" when switching menu pages.
     if(annTimer) return;
     updateAnnouncementBar();
     annTimer = setInterval(()=>{
@@ -2976,11 +2817,6 @@ function updateClocksPreviewTimes(){
   }
 
   
-  // ----------------------
-  // Path + hash routing helpers
-  // - Supports clean URLs like /dashboard while preserving legacy hash routing.
-  // - Hash takes precedence when present (supports file:// mode and deep-links).
-  // ----------------------
   function _normalizeRouteSegment(raw){
     try{
       let s = String(raw||'').trim();
@@ -2991,7 +2827,6 @@ function updateClocksPreviewTimes(){
     }catch(_){ return ''; }
   }
 
-  // Normalize full route paths (keeps nested segments like "distribution/monitoring").
   function _normalizeRoutePath(raw){
     try{
       let s = String(raw||'').trim();
@@ -2999,7 +2834,6 @@ function updateClocksPreviewTimes(){
       if(s.startsWith('#')) s = s.slice(1);
       if(s.startsWith('/')) s = s.slice(1);
       s = s.split('?')[0].split('#')[0];
-      // Trim trailing slashes
       s = s.replace(/\/+$/g,'');
       return s;
     }catch(_){ return ''; }
@@ -3009,7 +2843,6 @@ function updateClocksPreviewTimes(){
     try{
       const rp = String(routePath||'').trim().toLowerCase();
       if(rp === 'distribution/monitoring') return 'distribution_monitoring';
-      // Default: only the first segment is the page id (legacy behavior).
       return String(routePath||'').split('/')[0] || '';
     }catch(_){ return ''; }
   }
@@ -3050,13 +2883,9 @@ function updateClocksPreviewTimes(){
         const path = _normalizeRoutePath(window.location.pathname||'/');
         const pathId = _routePageIdFromRoutePath(path);
 
-        // In hosted mode (http/https), clean path is canonical.
-        // This avoids stale hashes from previous pages (e.g. #my_schedule)
-        // overriding explicit sidebar navigation to another page.
         if(pathId && !pathId.includes('.') && pages[pathId]) return pathId;
         if(hashId && pages[hashId]) return hashId;
       }else{
-        // file:// mode still relies on hash routing.
         if(hashId && pages[hashId]) return hashId;
       }
 
@@ -3084,13 +2913,9 @@ function updateClocksPreviewTimes(){
       const url = _routePathForPageId(id);
       if(opts && opts.replace) history.replaceState({},'', url);
       else history.pushState({},'', url);
-      // In hosted mode, keep clean URLs authoritative. Remove any stale hash
-      // left behind by legacy hash-based links/pages to prevent route mismatch.
       try{ if(window.location.hash) history.replaceState({},'', url); }catch(_){ }
-      // pushState/replaceState does not trigger navigation handlers
       try{ route(); }catch(_){ }
     }catch(_){
-      // Fallback to hash routing
       window.location.hash = '#' + id;
     }
   }
@@ -3102,15 +2927,12 @@ function route(){
       renderSideLogs(user);
 
       const pageId = resolveRoutePageId();
-	      // Track active page id globally so background sync/listeners in other modules
-	      // cannot overwrite the current view.
 	      try{ window._currentPageId = pageId; }catch(_){ }
       try{
         const m = (Config && Config.menu) ? Config.menu.find(x=>x.id===pageId) : null;
         window._currentPageLabel = m ? (m.label||pageId) : pageId;
       }catch(e){ window._currentPageLabel = pageId; }
 
-      // Update the right sidebar Summary guide based on the currently selected menu page.
       renderSummaryGuide(pageId, window._currentPageLabel);
       setActiveNav(pageId);
 
@@ -3125,14 +2947,11 @@ function route(){
       }
       if(main._cleanup){ cleanup = main._cleanup; main._cleanup = null; }
 
-      // Do not restart announcements on route changes.
-      // Just refresh the content in case announcements changed.
       updateAnnouncementBar();
     }catch(e){
       showFatalError(e);
     }
   }
-
 
   // -----------------------------
   // Reminders Engine (My / Team)
@@ -3142,16 +2961,15 @@ function route(){
     let timer = null;
     let ticking = false;
 
-    // UI state
     let showAll = false;
-    const expanded = new Set(); // key: "<kind>:<id>"
+    const expanded = new Set();
     let lastSignature = '';
 
     const KEYS = {
       my: 'mums_my_reminders',
       team: 'mums_team_reminders',
       settings: 'mums_reminder_settings',
-      prefsPrefix: 'mums_reminder_prefs_' // per-user
+      prefsPrefix: 'mums_reminder_prefs_'
     };
 
     function getSettings(){
@@ -3177,12 +2995,10 @@ function route(){
         const next = Object.assign({}, cur, patch||{});
         next.muteUntil = Number(next.muteUntil||0);
         localStorage.setItem(KEYS.prefsPrefix + String(userId), JSON.stringify(next));
-        // propagate cross-tab
         try{ window.dispatchEvent(new CustomEvent('mums:store', { detail:{ key: KEYS.prefsPrefix + String(userId) }})); }catch(_){}
       }catch(_){}
     }
 
-    // Audio (beep until closed)
     const Audio = (function(){
       let ctx = null;
       let osc = null;
@@ -3232,7 +3048,6 @@ function route(){
         const interval = (mode && mode.interval) ? Number(mode.interval) : 650;
         const amp = (mode && mode.amp) ? Number(mode.amp) : 0.04;
 
-        // If already running with same mode, do nothing
         if(running && interval === curInterval) return;
 
         running = true;
@@ -3390,7 +3205,6 @@ function route(){
     }
 
     function signatureFor(active, settings){
-      // Only include fields that affect rendering / sound decisions.
       const parts = active.map(a=>{
         const r = a.r||{};
         return [
@@ -3402,7 +3216,6 @@ function route(){
           String(r.category||''),
           String(r.repeat||'none'),
           Array.isArray(r.repeatDays)? r.repeatDays.join('.') : '',
-          // per-user status for team reminders is encoded by whether active exists; no need further
           Math.floor(a.ageMin*10)/10
         ].join('|');
       });
@@ -3417,7 +3230,6 @@ function route(){
       const sig = signatureFor(active, settings);
 
       if(sig === lastSignature){
-        // No UI changes needed.
         return;
       }
       lastSignature = sig;
@@ -3431,7 +3243,6 @@ function route(){
       const visible = showAll ? active : active.slice(0, maxVisible);
       const hiddenCount = showAll ? 0 : Math.max(0, active.length - visible.length);
 
-      // "More" card
       if(hiddenCount > 0){
         const more = document.createElement('div');
         more.className = 'reminder-card more';
@@ -3553,7 +3364,6 @@ function route(){
         }
       }else{
         Store.closeTeamReminderForUser(r.id, user.id);
-        // If repeating, reschedule only when all members have closed
         try{
           const all = Store.getAllTeamReminders ? Store.getAllTeamReminders() : [];
           const cur = all.find(x=>x && String(x.id)===String(r.id));
@@ -3587,7 +3397,6 @@ function route(){
     function computeNextDelay(user, active){
       const now = Date.now();
       if(active.length){
-        // Keep a light heartbeat to update escalation state and catch cross-tab updates.
         return 1000;
       }
       const nextDue = getNextDueForUser(user);
@@ -3609,10 +3418,8 @@ function route(){
 
         const active = getActiveForUser(user);
 
-        // Render (only when state changed)
         renderCards(user, active);
 
-        // Audio logic (respect mute)
         const muted = (prefs.muteUntil && Number(prefs.muteUntil) > now);
 
         if(active.length && !muted){
@@ -3623,7 +3430,6 @@ function route(){
           if(!active.length) showAll = false;
         }
 
-        // schedule next tick
         if(started){
           scheduleNext(computeNextDelay(user, active));
         }
@@ -3652,7 +3458,6 @@ function route(){
       window.addEventListener('pointerdown', ()=>{ Audio.unlock(); }, { passive:true });
       window.addEventListener('hashchange', ()=>{ showAll = false; tickSoon(0); }, { passive:true });
 
-      // React to data changes across tabs
       window.addEventListener('mums:store', (e)=>{
         try{
           const k = e && e.detail ? String(e.detail.key||'') : '';
@@ -3735,7 +3540,6 @@ function route(){
   }
 
 
-  // Classic Style: Manila time in topbar center (theme-specific, injected)
   function setupClassicTopbarClock(){
     let timer = null;
     let fmt = null;
@@ -3793,22 +3597,16 @@ function route(){
   }
 
 async function boot(){
-    // Prevent double-boot (inline boot + auto-boot safety).
     if(window.__mumsBooted) return;
     window.__mumsBooted = true;
     try{ UI.bindDataClose && UI.bindDataClose(); }catch(_){ }
-    // Global safety net: don't allow a blank screen.
     window.addEventListener('error', (e)=>{ showFatalError(e.error || e.message || e); });
     window.addEventListener('unhandledrejection', (e)=>{ showFatalError(e.reason || e); });
 
-    // ensure initial super user exists
     Store.ensureSeed();
 
-    // Apply saved theme ASAP (before heavy rendering)
     applyTheme(Store.getTheme());
     try{ setupClassicTopbarClock(); }catch(_){ }
-    // Enterprise UI preferences
-    // Density (normal vs compact)
     try{
       const d = (localStorage.getItem('mums_density')||'normal');
       localStorage.setItem('mums_density', d);
@@ -3818,7 +3616,6 @@ async function boot(){
     try{
       const cursorMode = 'system';
       localStorage.setItem('mums_cursor_mode', cursorMode);
-      // Custom cursor disabled: use native system cursor for zero-latency and OS-consistent behavior.
     }catch(e){}
     try{ applySidebarState(); }catch(e){}
     try{ bindSidebarToggle(); }catch(e){}
@@ -3830,7 +3627,6 @@ async function boot(){
     try{ applyDensity(); }catch(e){}
     try{ bindNavKeyboard(); }catch(e){}
 
-    // Bind settings modals (cursor/sidebar)
     try{
       const curSel = document.getElementById('cursorModeSelect');
       if(curSel){
@@ -3864,7 +3660,6 @@ async function boot(){
         hoverT.checked = on==='1';
         hoverT.onchange = ()=>{
           localStorage.setItem('mums_sidebar_hover', hoverT.checked ? '1' : '0');
-          // re-apply hover class
           const isCollapsed = document.body.classList.contains('sidebar-collapsed');
           document.body.classList.toggle('sidebar-hoverable', isCollapsed && hoverT.checked);
         };
@@ -3876,7 +3671,6 @@ async function boot(){
         sbSel.onchange = ()=>{
           const v = (sbSel.value==='collapsed') ? 'collapsed' : 'expanded';
           localStorage.setItem('mums_sidebar_default', v);
-          // apply immediately
           applySidebarState(v==='collapsed');
         };
       }
@@ -3886,20 +3680,13 @@ async function boot(){
     const user = await Auth.requireUser();
     if(!user) return;
 
-    // Canonical role flags (reused across Settings + permission-gated features).
-    // NOTE: Keep these in the outer scope. Inner `try{ const isSA = ... }` blocks
-    // caused the System Check card to remain hidden due to isSA being out-of-scope.
     const roleUpper = String(user.role||'').trim().toUpperCase().replace(/\s+/g,'_');
     const isSA = roleUpper === String((Config && Config.ROLES ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN'));
     const isSU = roleUpper === 'SUPER_USER';
 
-    // Boot marker used by Activity Logs auto-fix (clear "already fixed" issues after a stable System Check).
     try{ window.__mumsBootTs = Date.now(); }catch(_){ }
-    // Safe, conservative cleanup: remove duplicate/stale error entries from older builds.
     try{ if(window.Store && Store.autoFixLogs) Store.autoFixLogs(); }catch(e){ console.error(e); }
 
-    // Normalize user fields so routing/nav don't fail if older user records are missing data
-    // OR if role values were stored in a non-canonical format (e.g., "Team Lead", "TEAM LEAD", "team_lead ").
     function normalizeRole(v){
       const raw = String(v||'').trim();
       if(!raw) return (Config?.ROLES?.MEMBER) || 'MEMBER';
@@ -3917,12 +3704,9 @@ async function boot(){
         'MEMBER':'MEMBER'
       };
       const norm = map[up] || up;
-      // If unknown, fall back to MEMBER.
       return (Config && Config.PERMS && Config.PERMS[norm]) ? norm : ((Config?.ROLES?.MEMBER) || 'MEMBER');
     }
 
-    // Defer Store user patches emitted during boot to avoid synchronous re-entrant
-    // render loops (mums:store dispatch is synchronous).
     const __bootPatch = {};
     let __bootPatchTimer = null;
     function deferBootUserPatch(patch){
@@ -3946,9 +3730,6 @@ async function boot(){
       try{ deferBootUserPatch({ role: fixedRole }); }catch(e){}
     }
 
-    // Team normalization:
-    // - Super Admin / Super User default to Developer Access (teamId = '') unless teamOverride is enabled.
-    // - Non-super roles must map to a known team.
     const isSuperRole = fixedRole === 'SUPER_ADMIN' || fixedRole === 'SUPER_USER';
     const teamOverride = !!user.teamOverride;
     const teams = (Config?.TEAMS||[]);
@@ -3966,13 +3747,8 @@ async function boot(){
       }
     }
 
-    // Apply role-based Settings visibility (hidden tiles)
     try{ applySettingsVisibility(user); }catch(e){ console.error(e); }
 
-    // Mandatory Attendance enforcement:
-    // - Blocks app access ONLY during the active shift window for the user's team (teamStart->teamEnd)
-    // - Cannot be dismissed/cancelled; user must submit before proceeding.
-    // NOTE: Super roles in Developer Access (teamId='') have no shift window and must not be blocked.
     try{
       if(isSuperRole && !teamOverride){
         // Skip enforcement.
@@ -3983,7 +3759,6 @@ async function boot(){
       const meta = UI.shiftMeta(team || { id:user.teamId, teamStart:'06:00', teamEnd:'15:00' });
       const inShift = (!meta.wraps) ? (nowMin>=meta.start && nowMin<meta.end) : ((nowMin>=meta.start) || (nowMin<meta.end));
       if(inShift){
-        // shiftKey anchored at the shift-start date (handles cross-midnight)
         let shiftDateISO = nowP.isoDate;
         if(meta.wraps && nowMin < meta.end){
           shiftDateISO = UI.addDaysISO(nowP.isoDate, -1);
@@ -4010,7 +3785,6 @@ async function boot(){
     try{ bindGlobalSearch(user); }catch(e){ console.error(e); }
 
 
-    // Release Notes (new icon before Dictionary)
     const rnBtn = document.getElementById('releaseNotesBtn');
     if(rnBtn){
       rnBtn.onclick = ()=>{
@@ -4019,7 +3793,6 @@ async function boot(){
       };
     }
 
-    // Dictionary (book icon before Settings)
     const dictBtn = document.getElementById('dictionaryBtn');
     if(dictBtn){
       dictBtn.onclick = ()=>{
@@ -4028,7 +3801,6 @@ async function boot(){
       };
     }
 
-    // Settings hub (gear icon before Logout)
     const settingsBtn = document.getElementById('settingsBtn');
     if(settingsBtn){
       settingsBtn.onclick = ()=>{
@@ -4043,7 +3815,7 @@ async function boot(){
         UI.openModal('soundSettingsModal');
       };
     }
-    const openProfileBtn = document.getElementById('openProfileBtn');
+   const openProfileBtn = document.getElementById('openProfileBtn');
     if(openProfileBtn){
       openProfileBtn.onclick = ()=>{
         UI.closeModal('settingsModal');
@@ -4098,13 +3870,7 @@ async function boot(){
       };
     }
 
-
-    // Mailbox time override (Super Admin control; Global override is visible to all roles when active)
-    // ===== CODE UNTOUCHABLES =====
-    // If override scope is GLOBAL and enabled, non-Super Admin roles MUST be able to VIEW (read-only).
-    // Editing controls (adjust/save/reset) MUST remain SUPER_ADMIN-only.
-    // Exception: Only change if required by documented UX/security requirements.
-    // ==============================
+    // Mailbox time override
     try{
       const card = document.getElementById('timeOverrideCard');
       const openMailboxTimeBtn = document.getElementById('openMailboxTimeBtn');
@@ -4161,7 +3927,6 @@ async function boot(){
         const hh = tp[0], mm = tp[1];
         if(!y || !m || !da && da !== 0) return 0;
         if([y,m,da,hh,mm].some(x=>Number.isNaN(x))) return 0;
-        // Manila is UTC+8 year-round
         return Date.UTC(y, m-1, da, hh-8, mm, 0, 0);
       }
 
@@ -4184,7 +3949,6 @@ async function boot(){
 
         const canEdit = !!isSA;
         const readOnly = !canEdit;
-        // Read-only view for non-Super Admin when global override is active.
         try{
           if(readOnly){
             [enabledEl, freezeEl, inputEl, scopeEl].forEach(el=>{ try{ if(el) el.disabled = true; }catch(_){ } });
@@ -4195,8 +3959,6 @@ async function boot(){
           }
         }catch(_){ }
 
-
-        // Draft state while modal is open
         let draft = Store.getMailboxTimeOverride ? Store.getMailboxTimeOverride() : { enabled:false, ms:0, freeze:true, setAt:0, scope:'sa_only' };
         draft = {
           enabled: !!draft.enabled,
@@ -4256,7 +4018,6 @@ async function boot(){
         }
 
         function open(){
-          // Refresh draft from store each open
           let o = Store.getMailboxTimeOverride ? Store.getMailboxTimeOverride() : { enabled:false, ms:0, freeze:true, setAt:0, scope:'sa_only' };
           draft = {
             enabled: !!o.enabled,
@@ -4271,10 +4032,8 @@ async function boot(){
           startClock();
         }
 
-        // Expose to opener
         modal.__open = open;
 
-        // Event bindings
         if(enabledEl){
           enabledEl.onchange = ()=>{
             draft.enabled = !!enabledEl.checked;
@@ -4318,7 +4077,6 @@ async function boot(){
           };
         }
 
-        // Quick shift buttons
         modal.querySelectorAll('[data-mbshift]').forEach(btn=>{
           btn.onclick = ()=>{
             const delta = Number(btn.getAttribute('data-mbshift')||0);
@@ -4359,9 +4117,7 @@ async function boot(){
           };
         }
 
-        // Close handling should stop the interval
         UI.els('[data-close="mailboxTimeModal"]').forEach(b=>b.onclick=()=>{ stopClock(); UI.closeModal('mailboxTimeModal'); });
-
       }
 
       if(openMailboxTimeBtn){
@@ -4393,14 +4149,13 @@ async function boot(){
       };
     }
 
-	    // GMT Overview (standalone page)
-	    const openGmtOverviewPageBtn = document.getElementById('openGmtOverviewPageBtn');
-	    if(openGmtOverviewPageBtn){
-	      openGmtOverviewPageBtn.onclick = ()=>{
-	        UI.closeModal('settingsModal');
-	        window.location.hash = '#gmt_overview';
-	      };
-	    }
+    const openGmtOverviewPageBtn = document.getElementById('openGmtOverviewPageBtn');
+    if(openGmtOverviewPageBtn){
+      openGmtOverviewPageBtn.onclick = ()=>{
+        UI.closeModal('settingsModal');
+        window.location.hash = '#gmt_overview';
+      };
+    }
 
     // System Check (Super Admin / Super User)
     try{
@@ -4416,7 +4171,7 @@ async function boot(){
         };
       }
     }catch(_){ }
-    // Ensure close handlers exist
+    
     UI.els('[data-close="settingsModal"]').forEach(b=>b.onclick=()=>UI.closeModal('settingsModal'));
     UI.els('[data-close="systemCheckModal"]').forEach(b=>b.onclick=()=>UI.closeModal('systemCheckModal'));
     UI.els('[data-close="soundSettingsModal"]').forEach(b=>b.onclick=()=>UI.closeModal('soundSettingsModal'));
@@ -4425,7 +4180,7 @@ async function boot(){
     UI.els('[data-close="themeModal"]').forEach(b=>b.onclick=()=>UI.closeModal('themeModal'));
     UI.els('[data-close="linksModal"]').forEach(b=>b.onclick=()=>UI.closeModal('linksModal'));
     UI.els('[data-close="dataHealthModal"]').forEach(b=>b.onclick=()=>UI.closeModal('dataHealthModal'));
-    // World clocks: close should also flush any pending edits so users don't need to refresh.
+    
     UI.els('[data-close="clocksModal"]').forEach(b=>b.onclick=()=>{
       try{
         const grid = document.getElementById('clocksGrid');
@@ -4436,7 +4191,6 @@ async function boot(){
     });
     UI.els('[data-close="guideImgModal"]').forEach(b=>b.onclick=()=>UI.closeModal('guideImgModal'));
 
-    // Save clocks
     const clocksSave = document.getElementById('clocksSave');
     if(clocksSave){
       clocksSave.onclick = ()=>{
@@ -4467,20 +4221,14 @@ async function boot(){
       };
     }
 
-
-    // Render critical UI FIRST (nav + first page). Optional features are initialized later.
     try{ renderNav(user); }catch(e){ showFatalError(e); return; }
-    try{ renderUserCard(user); }catch(e){ /* don't block app */ console.error(e); }
-    try{ renderSideLogs(user); }catch(e){ /* don't block app */ console.error(e); }
-    try{ renderRightNow(); }catch(e){ /* don't block app */ console.error(e); }
+    try{ renderUserCard(user); }catch(e){ console.error(e); }
+    try{ renderSideLogs(user); }catch(e){ console.error(e); }
+    try{ renderRightNow(); }catch(e){ console.error(e); }
 
-    // Ensure routing runs even if optional widgets fail.
     window.addEventListener('hashchange', route);
     window.addEventListener('popstate', route);
 
-    // Initial route normalization:
-    // - file:// mode: enforce hash routing
-    // - web mode: allow clean URL routes like /dashboard (fallback to dashboard if unknown)
     try{
       const proto = String(window.location.protocol||'');
       const pages = window.Pages || {};
@@ -4503,28 +4251,21 @@ async function boot(){
 
     try{ route(); }catch(e){ showFatalError(e); return; }
 
-    // Start reminders engine (floating notifications + beep)
     try{ if(window.ReminderEngine) ReminderEngine.start(); }catch(e){ console.error(e); }
 
-    // Optional UI (quick links, announcements, notifications, guide) — never block routing.
     try{ renderQuickLinksBar(); renderWorldClocksBar(); renderOnlineUsersBar(); }catch(e){ console.error(e); }
 
-    // Best-effort online presence heartbeat (offline-first).
     try{ if(window.Store && Store.startPresence) Store.startPresence(user); }catch(e){ console.error(e); }
     try{ if(window.Store && Store.startMailboxOverrideSync) Store.startMailboxOverrideSync(); }catch(e){ console.error(e); }
 
-    // Keep the Online Users bar fresh (TTL-driven)
     try{
       if(!window.__mumsOnlineBarTimer){
         window.__mumsOnlineBarTimer = setInterval(()=>{ try{ renderOnlineUsersBar(); }catch(_){ } }, 10000);
       }
     }catch(_){ }
 
-    // Centralized UI refresh triggers (no manual refresh needed)
     window.Renderers = window.Renderers || {};
-    // World clocks
     window.Renderers.renderClocks = ()=>{ try{ renderWorldClocksBar(); }catch(_){ } try{ renderClocksPreviewStrip(); }catch(_){ } };
-    // Sidebar activity logs
     window.Renderers.renderSidebarLogs = ()=>{
       try{
         const u = (window.Auth && Auth.getUser) ? Auth.getUser() : user;
@@ -4532,10 +4273,8 @@ async function boot(){
         else renderSideLogs(u);
       }catch(_){ }
     };
-    // Coverage meter (only re-renders if component exists)
     window.Renderers.renderCoverageMeter = ()=>{ try{ if(window.Components && Components.CoverageMeter) Components.CoverageMeter.refresh(); }catch(_){ } };
 
-    // Subscribe to reducer-style store updates so Settings changes always repaint UI instantly.
     try{
       if(Store && Store.subscribe && !window.__mumsStoreSub){
         window.__mumsStoreSub = Store.subscribe((action)=>{
@@ -4550,31 +4289,26 @@ async function boot(){
     }catch(e){ console.error(e); }
     try{
       if(!window.__mumsClockTimer){
-    window.__mumsClockTick = 0;
-    window.__mumsClockTimer = setInterval(()=>{
-      try{ updateWorldClocksTimes(); }catch(_){}
-      try{ updateClocksPreviewTimes(); }catch(_){}
-      try{
-        window.__mumsClockTick = (window.__mumsClockTick||0) + 1;
-        // alarms don't need 1s precision; check every 5 seconds
-        if(window.__mumsClockTick % 5 === 0){
-          checkWorldClockAlarms();
-        }
-      }catch(_){}
-    }, 1000);
-  }
-}catch(e){ console.error(e); }
-    // (Removed duplicate interval) __mumsClockTimer already refreshes clocks + alarms.
+        window.__mumsClockTick = 0;
+        window.__mumsClockTimer = setInterval(()=>{
+          try{ updateWorldClocksTimes(); }catch(_){}
+          try{ updateClocksPreviewTimes(); }catch(_){}
+          try{
+            window.__mumsClockTick = (window.__mumsClockTick||0) + 1;
+            if(window.__mumsClockTick % 5 === 0){
+              checkWorldClockAlarms();
+            }
+          }catch(_){}
+        }, 1000);
+      }
+    }catch(e){ console.error(e); }
+    
     try{ startAnnouncementRotation(); }catch(e){ console.error(e); }
 
-    // Keep theme and quick links in sync within the same tab
     window.addEventListener('mums:theme', (e)=>{
       try{ applyTheme((e && e.detail && e.detail.id) || Store.getTheme()); }catch(_){}
     });
 
-    // Robust nav click delegation (prevents "menu not clickable" issues caused by
-    // unexpected overlays / replaced DOM nodes).
-    // Supports clean URLs (/dashboard) while preserving hash routing (file:// and legacy links).
     try{
       if(!window.__mumsNavDelegated){
         window.__mumsNavDelegated = true;
@@ -4584,7 +4318,6 @@ async function boot(){
           const href = String(a.getAttribute('href')||'');
           if(!(href.startsWith('/') || href.startsWith('#'))) return;
 
-          // Respect modified clicks (open in new tab, etc.)
           if(e.defaultPrevented) return;
           if(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
           if(typeof e.button === 'number' && e.button !== 0) return;
@@ -4598,12 +4331,11 @@ async function boot(){
           }else{
             navigateToPageId(pageId);
           }
-          // Mobile: close any open drawers after explicit navigation.
           try{ if(_isMobileViewport()) closeMobileDrawers(); }catch(_){ }
         });
       }
     }catch(_){ }
-window.addEventListener('mums:store', (e)=>{
+    window.addEventListener('mums:store', (e)=>{
       const key = e && e.detail && e.detail.key;
       if(key === 'mums_quicklinks' || key === 'mums_worldclocks'){
         try{ renderQuickLinksBar(); }catch(_){ }
@@ -4613,12 +4345,10 @@ window.addEventListener('mums:store', (e)=>{
         try{ refreshWorldClocksNow(); }catch(_){ }
       }
 
-      // Online users bar (presence + avatars + attendance color)
       if(key === 'mums_online_users' || key === 'mums_attendance' || key === 'ums_user_profiles' || key === 'ums_users'){
         try{ renderOnlineUsersBar(); }catch(_){ }
       }
 
-      // Auto-refresh triggers (covers non-dispatch Store writes too)
       if(key === 'ums_activity_logs'){
         try{ window.Renderers && Renderers.renderSidebarLogs && Renderers.renderSidebarLogs(); }catch(_){ }
       }
@@ -4627,7 +4357,6 @@ window.addEventListener('mums:store', (e)=>{
       }
     });
 
-    // Right sidebar tabs
     (function bindRightTabs(){
       const tabs = UI.els('.rtab');
       if(!tabs.length) return;
@@ -4648,11 +4377,9 @@ window.addEventListener('mums:store', (e)=>{
         });
       }
       tabs.forEach(t=>t.onclick = ()=>activate(t.dataset.rtab));
-      // default
       activate(tabs.find(t=>t.classList.contains('active'))?.dataset.rtab || 'summary');
     })();
 
-    // Summary Guide UI (enable/disable + tabs + search + ask)
     (function bindGuideUI(){
       const toggle = UI.el('#guideEnabledToggle');
       if(toggle){
@@ -4660,14 +4387,12 @@ window.addEventListener('mums:store', (e)=>{
         toggle.onchange = ()=>{
           localStorage.setItem('mums_guide_enabled', toggle.checked ? '1' : '0');
           try{ route(); }catch(e){
-            // fallback: rerender current guide
             const pageId = resolveRoutePageId();
             renderSummaryGuide(pageId, window._currentPageLabel);
           }
         };
       }
 
-      // Tabs inside Summary
       UI.els('.gtab').forEach(b=>{
         b.onclick = ()=>{
           const k = b.dataset.gtab || 'guide';
@@ -4677,7 +4402,6 @@ window.addEventListener('mums:store', (e)=>{
         };
       });
 
-      // Search (debounced)
       const search = UI.el('#guideSearch');
       let t=null;
       if(search){
@@ -4690,7 +4414,6 @@ window.addEventListener('mums:store', (e)=>{
         };
       }
 
-      // Ask a question
       const ask = UI.el('#guideAsk');
       const askBtn = UI.el('#guideAskBtn');
       function submitAsk(){
@@ -4698,15 +4421,12 @@ window.addEventListener('mums:store', (e)=>{
         if(!text) return;
         const pageId = resolveRoutePageId();
 
-        // Offline AI-like answer (no internet): search across all guides,
-        // but strongly prioritize the current page.
         let ans = null;
         try{ ans = answerGuideQuestion(text, pageId); }catch(e){ ans = {best:null, related:[], note:'No answer.'}; }
         try{
           localStorage.setItem('mums_ai_last_'+pageId, JSON.stringify({ q:text, ans:ans, ts:Date.now() }));
         }catch(e){}
 
-        // Save question history per page
         const qKey = `mums_guide_questions_${pageId}`;
         let arr=[];
         try{ arr = JSON.parse(localStorage.getItem(qKey) || '[]') || []; }catch(e){ arr=[]; }
@@ -4724,7 +4444,6 @@ window.addEventListener('mums:store', (e)=>{
         });
       }
 
-      // Open full manual modal (Guide + Notes + Legends + Manual)
       const fullBtn = UI.el('#guideOpenFullManual');
       if(fullBtn){
         fullBtn.onclick = ()=>{
@@ -4738,8 +4457,6 @@ window.addEventListener('mums:store', (e)=>{
         };
       }
 
-      // Robust fallback: if the Summary header is ever re-rendered or the button
-      // gets replaced, ensure the click still works (prevents "button not working").
       if(!window.__mumsFullManualDelegated){
         window.__mumsFullManualDelegated = true;
         document.addEventListener('click', (e)=>{
@@ -4758,28 +4475,21 @@ window.addEventListener('mums:store', (e)=>{
       }
     })();
 
-    // Real-time schedule update popups (members + leads)
     try{ if(notifCleanup) notifCleanup(); }catch(e){}
     try{ notifCleanup = UI.startScheduleNotifListener(user); }catch(e){ console.error(e); }
 
     UI.els('[data-close="topAnnModal"]').forEach(b=>b.onclick=()=>UI.closeModal('topAnnModal'));
 
-    // Removed live right-sidebar clock (no date/time requested).
     setInterval(()=>{ try{ renderSideLogs(Auth.getUser()||user); }catch(e){} }, 5000);
-    // Keep "Duty" fresh as schedules/time change (Manila time).
     setInterval(()=>{ try{ renderUserCard(Auth.getUser()||user); }catch(e){} }, 60000);
 
-    // React immediately to in-app Store writes (weekly schedules / leaves / profile changes)
     window.addEventListener('mums:store', ()=>{
       try{ renderUserCard(Auth.getUser()||user); }catch(e){}
     });
 
-    // hashchange handler already bound above.
-  }
+  } 
 
   window.App = { boot };
-  // Auto-boot safety: some hosting setups or cached bundles may skip the inline boot call.
-  // This ensures the app initializes once the DOM is ready.
   (function(){
     let started = false;
     function start(){
