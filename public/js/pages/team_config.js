@@ -1,3 +1,5 @@
+/* File: public/js/pages/team_config.js */
+
 (window.Pages=window.Pages||{}, window.Pages.team_config = function(root){
   const me = Auth.getUser();
   if(!me) return;
@@ -262,6 +264,7 @@
           <div>
             <div class="h3" style="margin:0">Mailbox Counter Time Slots</div>
             <div class="small muted">Defines the column time windows used by the Mailbox Counter table (team-specific). If empty, the system auto-splits the shift window into 3 equal segments.</div>
+            <div class="small" style="color:#fbbf24; font-weight:700; margin-top:6px; padding:6px; background:rgba(245,158,11,0.1); border-left:3px solid #fbbf24; border-radius:4px;">⚠️ PRO-TIP: We are now using Native Time Pickers. Make sure to input PM times correctly (e.g., 3:00 PM is saved as 15:00) to avoid ghost overlaps!</div>
           </div>
           <button class="btn" id="tc_mbx_add" type="button">Add Slot</button>
         </div>
@@ -458,7 +461,7 @@
     });
 
 
-    // Mailbox Buckets editor
+    // BOSS THUNTER: Upgraded standard to TYPE="TIME" to prevent the 3:00 AM format bug!
     const mbxWrap = UI.el('#tc_mbx_slots');
     function renderMbxSlots(){
       ensureDraft();
@@ -466,9 +469,9 @@
       const list = Array.isArray(draft.mailboxBuckets) ? draft.mailboxBuckets : [];
       mbxWrap.innerHTML = list.map((b,i)=>`
         <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
-          <input class="input" data-mbx-start="${i}" value="${UI.esc(b.start||'')}" placeholder="Start (HH:MM)" style="width:160px">
+          <input class="input" type="time" data-mbx-start="${i}" value="${UI.esc(b.start||'')}" style="width:160px; font-weight:bold; color:#38bdf8;">
           <span class="muted">to</span>
-          <input class="input" data-mbx-end="${i}" value="${UI.esc(b.end||'')}" placeholder="End (HH:MM)" style="width:160px">
+          <input class="input" type="time" data-mbx-end="${i}" value="${UI.esc(b.end||'')}" style="width:160px; font-weight:bold; color:#38bdf8;">
           <input class="input" data-mbx-id="${i}" value="${UI.esc(b.id||('b'+i))}" placeholder="ID (optional)" style="width:140px">
           <button class="btn danger" type="button" data-mbx-del="${i}">Remove</button>
         </div>
