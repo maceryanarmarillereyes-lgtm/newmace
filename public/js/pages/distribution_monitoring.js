@@ -7,7 +7,8 @@
   const CloudTasks = window.CloudTasks;
 
   // ENTERPRISE UPGRADE: Capture global user context for Team Isolation
-  const currentUser = (window.Auth && typeof window.Auth.getUser === 'function') ? window.Auth.getUser() : {};
+  const currentUserRaw = (window.Auth && typeof window.Auth.getUser === 'function') ? window.Auth.getUser() : null;
+  const currentUser = (currentUserRaw && typeof currentUserRaw === 'object') ? currentUserRaw : {};
   const currentUserRole = String(currentUser.role || '').toUpperCase();
   const currentUserTeamId = String(currentUser.teamId || currentUser.team_id || '').trim().toLowerCase();
   const currentUserDuty = String(currentUser.duty || '').trim().toLowerCase();

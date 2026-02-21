@@ -165,6 +165,57 @@
     }
   }catch(_){ }
 
+  let __globalSearchBound = false;
+
+  function bindGlobalSearch(user){
+    try{
+      if(__globalSearchBound) return;
+      __globalSearchBound = true;
+
+      const triggerInput = document.getElementById('globalSearchInput');
+      const triggerBtn = document.getElementById('globalSearchBtn');
+      const modal = document.getElementById('globalSearchModal');
+      const modalInput = document.getElementById('globalSearchModalInput');
+      if(!modal || !modalInput) return;
+
+      const openGlobalSearch = ()=>{
+        try{
+          if(window.UI && typeof UI.openModal === "function") UI.openModal('globalSearchModal');
+          else modal.setAttribute('aria-hidden', 'false');
+        }catch(_){ }
+        try{ modalInput.focus(); }catch(_){ }
+        try{
+          const q = String((triggerInput && triggerInput.value) || "").trim();
+          if(q){
+            modalInput.value = q;
+            modalInput.dispatchEvent(new Event('input', { bubbles:true }));
+          }
+        }catch(_){ }
+      };
+
+      if(triggerBtn) triggerBtn.addEventListener('click', openGlobalSearch);
+      if(triggerInput){
+        triggerInput.addEventListener('focus', openGlobalSearch);
+        triggerInput.addEventListener('keydown', (ev)=>{
+          const key = String(ev && ev.key || "").toLowerCase();
+          if(key === "enter" || key === "k"){
+            if(key !== "enter" && !ev.ctrlKey && !ev.metaKey) return;
+            try{ ev.preventDefault(); }catch(_){ }
+            openGlobalSearch();
+          }
+        });
+      }
+
+      document.addEventListener('keydown', (ev)=>{
+        const key = String(ev && ev.key || "").toLowerCase();
+        if((ev.ctrlKey || ev.metaKey) && key === "k"){
+          try{ ev.preventDefault(); }catch(_){ }
+          openGlobalSearch();
+        }
+      });
+    }catch(_){ }
+  }
+
   function fitText(el, minPx, maxPx){
     try{
       if(!el) return;
