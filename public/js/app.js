@@ -4623,4 +4623,78 @@ async function boot(){
 
         const qKey = `mums_guide_questions_${pageId}`;
         let arr=[];
-        try{ arr = JSON.parse(localStorage
+        try{ arr = JSON.parse(localStorage.getItem(qKey) || '[]') || []; }catch(e){ arr=[]; }
+        arr.push(text);
+        localStorage.setItem(qKey, JSON.stringify(arr.slice(-50)));
+
+        localStorage.setItem('mums_guide_tab','guide');
+        if(ask) ask.value='';
+        renderSummaryGuide(pageId, window._currentPageLabel);
+      }
+      if(askBtn) askBtn.onclick = submitAsk;
+      if(ask){
+        ask.addEventListener('keydown', (e)=>{
+          if(e.key==='Enter'){ e.preventDefault(); submitAsk(); }
+        });
+      }
+
+      const fullBtn = UI.el('#guideOpenFullManual');
+      if(fullBtn){
+        fullBtn.onclick = ()=>{
+          const pageId = resolveRoutePageId();
+          try{
+            openFullManualForPage(pageId, window._currentPageLabel);
+          }catch(err){
+            try{ console.error(err); }catch(_){ }
+            try{ UI.toast('Full manual failed to open. Please reload and try again.', 'error'); }catch(_){ alert('Full manual failed to open.'); }
+          }
+        };
+      }
+
+      if(!window.__mumsFullManualDelegated){
+        window.__mumsFullManualDelegated = true;
+        document.addEventListener('click', (e)=>{
+          const btn = e.target && e.target.closest ? e.target.closest('#guideOpenFullManual') : null;
+          if(!btn) return;
+          try{
+            const pageId = resolveRoutePageId();
+            try{
+              openFullManualForPage(pageId, window._currentPageLabel);
+            }catch(err){
+              try{ console.error(err); }catch(_){ }
+              try{ UI.toast('Full manual failed to open. Please reload and try again.', 'error'); }catch(_){ alert('Full manual failed to open.'); }
+            }
+          }catch(err){ try{ console.error(err); }catch(_){} }
+        });
+      }
+    })();
+
+    try{ if(notifCleanup) notifCleanup(); }catch(e){}
+    try{ notifCleanup = UI.startScheduleNotifListener(user); }catch(e){ console.error(e); }
+
+    UI.els('[data-close="topAnnModal"]').forEach(b=>b.onclick=()=>UI.closeModal('topAnnModal'));
+
+    setInterval(()=>{ try{ renderSideLogs(Auth.getUser()||user); }catch(e){} }, 5000);
+    setInterval(()=>{ try{ renderUserCard(Auth.getUser()||user); }catch(e){} }, 60000);
+
+    window.addEventListener('mums:store', ()=>{
+      try{ renderUserCard(Auth.getUser()||user); }catch(e){}
+    });
+
+  } 
+
+  window.App = { boot };
+  (function(){
+    let started = false;
+    function start(){
+      if(started) return;
+      started = true;
+      try{ window.App && window.App.boot && window.App.boot(); }catch(e){ try{ console.error(e); }catch(_){} }
+    }
+    if(document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', start);
+    }else{
+      setTimeout(start, 0);
+    }
+  })();
+})();
