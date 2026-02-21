@@ -1,0 +1,180 @@
+/* =========================================================================
+   MUMS ENTERPRISE: MONDAY.COM WORKSPACE OS (Phase 2 - Global Layout)
+   Strictly scoped to body[data-theme="monday_workspace"]
+   ========================================================================= */
+
+/* 1. GLOBAL CANVAS & TYPOGRAPHY */
+body[data-theme="monday_workspace"] {
+  background: #F5F6F8 !important; /* Soft gray Monday canvas */
+  color: #323338 !important;
+  font-family: 'Poppins', 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+/* 2. FLOATING WHITE BOARDS (Main Content & Panels) */
+body[data-theme="monday_workspace"] .card,
+body[data-theme="monday_workspace"] .main,
+body[data-theme="monday_workspace"] .side,
+body[data-theme="monday_workspace"] .right {
+  background: #FFFFFF !important;
+  border: 1px solid #E6E9EF !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
+}
+
+/* Adjust the Topbar to look like Monday's floating header */
+body[data-theme="monday_workspace"] .topbar {
+  background: #FFFFFF !important;
+  border: 1px solid #E6E9EF !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
+  padding: 10px 16px !important;
+  margin-bottom: 4px !important;
+}
+
+body[data-theme="monday_workspace"] .topbrand {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+body[data-theme="monday_workspace"] .brand-name {
+  color: #323338 !important;
+  text-shadow: none !important;
+  font-weight: 800 !important;
+  font-size: 22px !important;
+}
+
+body[data-theme="monday_workspace"] .brand-mark {
+  background: #0073EA !important; /* Monday Blue */
+  box-shadow: 0 4px 10px rgba(0,115,234,0.3) !important;
+  border-radius: 10px !important;
+}
+body[data-theme="monday_workspace"] .brand-mark::after {
+  color: #FFFFFF !important;
+  text-shadow: none !important;
+}
+
+/* 3. SIDEBAR NAVIGATION (Pill-shaped Active States) */
+body[data-theme="monday_workspace"] .side {
+  padding: 16px !important;
+}
+
+body[data-theme="monday_workspace"] .nav a.nav-item,
+body[data-theme="monday_workspace"] .nav .nav-group-head {
+  border-radius: 999px !important; /* Pill shape */
+  padding: 10px 16px !important;
+  margin-bottom: 4px !important;
+  color: #676879 !important;
+  font-weight: 500 !important;
+  border: none !important;
+  background: transparent !important;
+  transition: all 0.2s ease !important;
+}
+
+body[data-theme="monday_workspace"] .nav a.nav-item:hover,
+body[data-theme="monday_workspace"] .nav .nav-group-head:hover {
+  background: #F0F2F5 !important;
+  color: #323338 !important;
+}
+
+body[data-theme="monday_workspace"] .nav a.nav-item.active {
+  background: #CCE5FF !important; /* Light blue active state */
+  color: #0073EA !important;
+  font-weight: 600 !important;
+}
+
+/* Remove default dark mode border lines */
+body[data-theme="monday_workspace"] .nav a.nav-item.active::before { display: none !important; }
+body[data-theme="monday_workspace"] .nav-group.is-record-group .nav-group-kids::before { display: none !important; }
+
+/* 4. GLOBAL BUTTONS (Rounded & Bubbly) */
+body[data-theme="monday_workspace"] .btn {
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  border: 1px solid #C3C6D4 !important;
+  background: #FFFFFF !important;
+  color: #323338 !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
+}
+
+body[data-theme="monday_workspace"] .btn:hover {
+  background: #F0F2F5 !important;
+}
+
+body[data-theme="monday_workspace"] .btn.primary {
+  background: #0073EA !important;
+  border-color: #0073EA !important;
+  color: #FFFFFF !important;
+  border-radius: 24px !important; /* Monday primary buttons are pill shaped */
+}
+
+body[data-theme="monday_workspace"] .btn.primary:hover {
+  background: #0060C7 !important;
+  border-color: #0060C7 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 10px rgba(0,115,234,0.3) !important;
+}
+
+/* 5. INPUTS & SEARCH BAR */
+body[data-theme="monday_workspace"] .input,
+body[data-theme="monday_workspace"] select,
+body[data-theme="monday_workspace"] textarea {
+  background: #FFFFFF !important;
+  border: 1px solid #C3C6D4 !important;
+  border-radius: 8px !important;
+  color: #323338 !important;
+}
+
+body[data-theme="monday_workspace"] .input:focus,
+body[data-theme="monday_workspace"] select:focus {
+  border-color: #0073EA !important;
+  box-shadow: 0 0 0 3px rgba(0,115,234,0.2) !important;
+}
+
+body[data-theme="monday_workspace"] .top-global-search {
+  border-radius: 999px !important;
+  border: 1px solid #C3C6D4 !important;
+  background: #FFFFFF !important;
+  padding: 6px 16px !important;
+  box-shadow: none !important;
+}
+body[data-theme="monday_workspace"] .top-global-search:focus-within {
+  border-color: #0073EA !important;
+  box-shadow: 0 0 0 3px rgba(0,115,234,0.2) !important;
+}
+
+/* 6. SIDEBAR PROFILE OVERRIDE */
+body[data-theme="monday_workspace"] .sp-photo-sm {
+  background: #CCE5FF !important;
+  border: 1px solid #0073EA !important;
+}
+body[data-theme="monday_workspace"] .sp-photo-sm .initials {
+  color: #0073EA !important;
+}
+body[data-theme="monday_workspace"] .sp-role {
+  background: #E4F2FF !important;
+  color: #0073EA !important;
+  border: none !important;
+  border-radius: 4px !important; /* Monday prefers subtle square badges for roles */
+}
+
+/* 7. QUICK LINKS & BOTTOM DOCK */
+body[data-theme="monday_workspace"] .quicklinks-bar,
+body[data-theme="monday_workspace"] .online-users-bar {
+  background: rgba(255,255,255,0.85) !important;
+  border-top: 1px solid #E6E9EF !important;
+}
+body[data-theme="monday_workspace"] .qcircle {
+  background: #FFFFFF !important;
+  border: 1px solid #C3C6D4 !important;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05) !important;
+}
+body[data-theme="monday_workspace"] .wclock {
+  background: #FFFFFF !important;
+  border: 1px solid #E6E9EF !important;
+  color: #323338 !important;
+}
+body[data-theme="monday_workspace"] .wclock .wc-h, 
+body[data-theme="monday_workspace"] .wclock .wc-m {
+  color: #323338 !important;
+}
