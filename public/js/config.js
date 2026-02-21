@@ -124,6 +124,24 @@
         }
       },
 
+      {
+        id:'monday_workspace',
+        name:'Monday Workspace',
+        mode:'light',
+        bg:'#f4f5f7',
+        panel:'#ffffff',
+        panel2:'#f7f8fb',
+        text:'#1f2937',
+        muted:'#6b7280',
+        border:'#e6e9ef',
+        accent:'#0073ea',
+        bgRad1:'#dfe7f6',
+        bgRad3:'#f9fbff',
+        font:"'Poppins', 'Inter', 'Segoe UI', Roboto, system-ui, -apple-system, Arial, sans-serif",
+        radius:'12px',
+        shadow:'0 8px 24px rgba(15, 23, 42, .08)'
+      },
+
       // --- Original MUMS presets (kept for variety) ---
       { id:'ocean',     name:'Ocean Blue',   bg:'#071224', panel:'#0c1b33', panel2:'#0a162b', text:'#eaf2ff', muted:'#a8b6d6', border:'rgba(255,255,255,.08)', accent:'#4aa3ff', bgRad1:'#0c2a52', bgRad3:'#050c18' },
       { id:'emerald',   name:'Emerald',      bg:'#061a14', panel:'#0a2a22', panel2:'#072018', text:'#eafff6', muted:'#a9d6c6', border:'rgba(255,255,255,.08)', accent:'#34d399', bgRad1:'#0a3a2c', bgRad3:'#03110d' },

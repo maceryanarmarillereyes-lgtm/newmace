@@ -3702,106 +3702,118 @@ body.sidebar-collapsed .side-logs-title{display:none}
 }
 
 /* =====================================================================
-   Monday Workspace Theme (Inspired by monday.com)
-   - Strictly scoped to body[data-theme="monday_workspace"]
+   Monday Workspace Theme (inspired by Monday.com)
+   - Fully isolated under body[data-theme="monday_workspace"]
    ===================================================================== */
 body[data-theme="monday_workspace"]{
   background: #f4f5f7;
-  color: #1f2a44;
-  font-family: 'Poppins', 'Roboto', 'Segoe UI', Inter, system-ui, -apple-system, Arial, sans-serif;
+  color: #1f2937;
+  font-family: 'Poppins', 'Inter', 'Segoe UI', Roboto, system-ui, -apple-system, Arial, sans-serif;
 }
 
 body[data-theme="monday_workspace"] .app{
   gap: 14px;
   padding: 14px;
-  background:
-    radial-gradient(1200px 480px at 18% -12%, rgba(0,115,234,.12), transparent 70%),
-    radial-gradient(900px 360px at 88% -8%, rgba(108,93,211,.10), transparent 70%),
-    #f4f5f7;
-}
-
-body[data-theme="monday_workspace"] .topbar,
-body[data-theme="monday_workspace"] aside.side,
-body[data-theme="monday_workspace"] aside.right,
-body[data-theme="monday_workspace"] .card,
-body[data-theme="monday_workspace"] .modal .panel,
-body[data-theme="monday_workspace"] .dialog,
-body[data-theme="monday_workspace"] .online-users-bar,
-body[data-theme="monday_workspace"] .quicklinks-bar{
-  background: #ffffff;
-  border: 1px solid #e6e9ef;
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(16,24,40,.06);
+  background: linear-gradient(180deg, #f8f9fc 0%, #f4f5f7 100%);
 }
 
 body[data-theme="monday_workspace"] .topbar{
-  padding: 10px 12px;
   position: sticky;
   top: 0;
-  z-index: 40;
-  backdrop-filter: blur(2px);
+  z-index: 60;
+  padding: 10px 14px;
+  border: 1px solid #e6e9ef;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, .06);
 }
 
 body[data-theme="monday_workspace"] .topbrand,
-body[data-theme="monday_workspace"] .brand-mark,
-body[data-theme="monday_workspace"] .brand-sub{
-  color: #1f2a44;
-  text-shadow: none;
+body[data-theme="monday_workspace"] .brand-mark{
+  background: transparent;
+  box-shadow: none;
+  border: 0;
 }
 
 body[data-theme="monday_workspace"] .brand-name{
-  letter-spacing: .01em;
+  color: #1f2937;
   font-weight: 800;
+  letter-spacing: .01em;
+}
+
+body[data-theme="monday_workspace"] .brand-sub{
+  color: #6b7280;
+}
+
+body[data-theme="monday_workspace"] .top-global-search{
+  border: 1px solid #e6e9ef;
+  border-radius: 10px;
+  background: #f7f8fb;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.8);
+}
+
+body[data-theme="monday_workspace"] #globalSearchInput{
+  color: #1f2937;
+  font-size: 13px;
+}
+
+body[data-theme="monday_workspace"] #globalSearchInput::placeholder{
+  color: #9aa4b2;
 }
 
 body[data-theme="monday_workspace"] aside.side,
 body[data-theme="monday_workspace"] aside.right{
-  padding: 12px !important;
+  border-radius: 12px;
+  border: 1px solid #e6e9ef;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, .05);
+}
+
+body[data-theme="monday_workspace"] aside.side{
+  padding: 14px !important;
+}
+
+body[data-theme="monday_workspace"] .nav{
+  gap: 8px;
 }
 
 body[data-theme="monday_workspace"] .nav .nav-item,
 body[data-theme="monday_workspace"] .nav .nav-group-head{
-  border-radius: 10px;
   border: 1px solid transparent;
+  border-radius: 10px;
   min-height: 42px;
-  padding: 9px 10px;
-  color: #344054;
-  transition: all .18s ease;
-}
-
-body[data-theme="monday_workspace"] .nav .nav-item:hover,
-body[data-theme="monday_workspace"] .nav .nav-group-head:hover{
-  background: #f2f8ff;
-  border-color: #cfe4ff;
-  color: #0f274b;
-}
-
-body[data-theme="monday_workspace"] .nav .nav-item.active{
-  background: #e8f3ff;
-  border-color: #b7d8ff;
-  color: #0059b8;
-  box-shadow: inset 3px 0 0 #0073ea;
+  padding: 9px 11px;
+  transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
 }
 
 body[data-theme="monday_workspace"] .nav .nav-label{
+  color: #334155;
   font-size: 13px;
   font-weight: 700;
 }
 
-body[data-theme="monday_workspace"] .card{
-  border-radius: 12px;
-  overflow: hidden;
+body[data-theme="monday_workspace"] .nav .nav-item:hover,
+body[data-theme="monday_workspace"] .nav .nav-group-head:hover{
+  background: #f4f8ff;
+  border-color: #d7e5fb;
+  transform: translateY(-1px);
 }
 
-body[data-theme="monday_workspace"] .card .head,
-body[data-theme="monday_workspace"] .card-head,
-body[data-theme="monday_workspace"] .panel-head{
-  background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
-  border-bottom: 1px solid #e6e9ef;
+body[data-theme="monday_workspace"] .nav .nav-item.active{
+  background: #e9f2ff;
+  border-color: #b9d6ff;
+  box-shadow: inset 3px 0 0 #0073ea;
+}
+
+body[data-theme="monday_workspace"] .card{
+  background: #ffffff;
+  border: 1px solid #e6e9ef;
+  border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, .05);
 }
 
 body[data-theme="monday_workspace"] .card.pad{
-  padding: 16px;
+  padding: 18px;
 }
 
 body[data-theme="monday_workspace"] .btn,
@@ -3809,66 +3821,35 @@ body[data-theme="monday_workspace"] button,
 body[data-theme="monday_workspace"] input[type="button"],
 body[data-theme="monday_workspace"] input[type="submit"]{
   border-radius: 10px;
-  border: 1px solid #d7deea;
+  border: 1px solid #d6deea;
   background: #ffffff;
-  color: #1f2a44;
-  box-shadow: 0 1px 0 rgba(16,24,40,.04);
+  color: #1f2937;
   font-weight: 700;
-  transition: transform .08s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
 }
 
 body[data-theme="monday_workspace"] .btn:hover,
 body[data-theme="monday_workspace"] button:hover,
 body[data-theme="monday_workspace"] input[type="button"]:hover,
 body[data-theme="monday_workspace"] input[type="submit"]:hover{
-  border-color: #bfd2f0;
-  background: #f8fbff;
-  box-shadow: 0 6px 16px rgba(0,115,234,.12);
+  background: #f5f9ff;
+  border-color: #bdd7ff;
 }
 
-body[data-theme="monday_workspace"] .btn:active,
-body[data-theme="monday_workspace"] button:active,
-body[data-theme="monday_workspace"] input[type="button"]:active,
-body[data-theme="monday_workspace"] input[type="submit"]:active{
-  transform: translateY(1px);
-}
-
+body[data-theme="monday_workspace"] .btn.btn-primary,
 body[data-theme="monday_workspace"] .btn.primary,
-body[data-theme="monday_workspace"] .btn.accent,
-body[data-theme="monday_workspace"] button.primary,
-body[data-theme="monday_workspace"] [data-variant="primary"]{
+body[data-theme="monday_workspace"] .btn[data-variant="primary"]{
   background: #0073ea;
   border-color: #0073ea;
   color: #ffffff;
+  box-shadow: 0 8px 16px rgba(0, 115, 234, .24);
 }
 
+body[data-theme="monday_workspace"] .btn.btn-primary:hover,
 body[data-theme="monday_workspace"] .btn.primary:hover,
-body[data-theme="monday_workspace"] .btn.accent:hover,
-body[data-theme="monday_workspace"] button.primary:hover,
-body[data-theme="monday_workspace"] [data-variant="primary"]:hover{
-  background: #0066d1;
-  border-color: #0066d1;
-}
-
-body[data-theme="monday_workspace"] input,
-body[data-theme="monday_workspace"] select,
-body[data-theme="monday_workspace"] textarea,
-body[data-theme="monday_workspace"] .input,
-body[data-theme="monday_workspace"] .select{
-  background: #ffffff;
-  border: 1px solid #d8e0ec;
-  color: #1f2a44;
-  border-radius: 10px;
-}
-
-body[data-theme="monday_workspace"] input:focus,
-body[data-theme="monday_workspace"] select:focus,
-body[data-theme="monday_workspace"] textarea:focus,
-body[data-theme="monday_workspace"] .input:focus,
-body[data-theme="monday_workspace"] .select:focus{
-  border-color: #76b7ff;
-  box-shadow: 0 0 0 3px rgba(0,115,234,.12);
-  outline: none;
+body[data-theme="monday_workspace"] .btn[data-variant="primary"]:hover{
+  background: #0066cf;
+  border-color: #0066cf;
 }
 
 body[data-theme="monday_workspace"] table,
@@ -3882,71 +3863,68 @@ body[data-theme="monday_workspace"] .table{
 }
 
 body[data-theme="monday_workspace"] th{
-  background: #f7f9fc;
-  color: #475467;
-  font-size: 12px;
-  letter-spacing: .02em;
-  text-transform: uppercase;
+  background: #f7f8fb;
+  color: #64748b;
+  font-weight: 800;
   border-bottom: 1px solid #e6e9ef;
 }
 
 body[data-theme="monday_workspace"] td{
-  background: #ffffff;
-  color: #1f2a44;
-  border-bottom: 1px solid #edf1f7;
-}
-
-body[data-theme="monday_workspace"] tr:hover td{
-  background: #f9fbff;
+  border-bottom: 1px solid #edf1f6;
+  color: #1f2937;
 }
 
 body[data-theme="monday_workspace"] table tr:nth-child(even) td{
-  background: #fcfdff;
+  background: #fbfcfe;
 }
 
-body[data-theme="monday_workspace"] .muted,
-body[data-theme="monday_workspace"] .sub,
-body[data-theme="monday_workspace"] .hint,
-body[data-theme="monday_workspace"] .small,
-body[data-theme="monday_workspace"] .kicker{
-  color: #667085;
+body[data-theme="monday_workspace"] table tr:last-child td{
+  border-bottom: 0;
 }
 
-body[data-theme="monday_workspace"] .top-global-search{
+body[data-theme="monday_workspace"] input,
+body[data-theme="monday_workspace"] select,
+body[data-theme="monday_workspace"] textarea{
+  border: 1px solid #d7dfea;
+  border-radius: 10px;
   background: #ffffff;
-  border: 1px solid #d8e0ec;
-  border-radius: 12px;
+  color: #1f2937;
 }
 
-body[data-theme="monday_workspace"] #globalSearchInput{
-  color: #1f2a44;
-  font-size: 13px;
-}
-
-body[data-theme="monday_workspace"] .rtabs{
-  background: #ffffff;
-  border-bottom: 1px solid #e6e9ef;
-  position: sticky;
-  top: 0;
-  z-index: 2;
+body[data-theme="monday_workspace"] input:focus,
+body[data-theme="monday_workspace"] select:focus,
+body[data-theme="monday_workspace"] textarea:focus{
+  border-color: #0073ea;
+  box-shadow: 0 0 0 3px rgba(0, 115, 234, .16);
+  outline: none;
 }
 
 body[data-theme="monday_workspace"] .online-users-bar,
 body[data-theme="monday_workspace"] .quicklinks-bar{
-  border-radius: 12px 12px 0 0;
-  border-bottom: 0;
+  border-top: 1px solid #e6e9ef;
+  background: #ffffff;
+}
+
+body[data-theme="monday_workspace"] .rtabs{
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border-bottom: 1px solid #e6e9ef;
+  background: #ffffff;
 }
 
 @media (max-width: 980px){
   body[data-theme="monday_workspace"] .app{
-    padding: 10px;
     gap: 10px;
+    padding: 10px;
   }
 
   body[data-theme="monday_workspace"] .topbar,
   body[data-theme="monday_workspace"] aside.side,
   body[data-theme="monday_workspace"] aside.right,
-  body[data-theme="monday_workspace"] .card{
+  body[data-theme="monday_workspace"] .card,
+  body[data-theme="monday_workspace"] table,
+  body[data-theme="monday_workspace"] .table{
     border-radius: 10px;
   }
 }
