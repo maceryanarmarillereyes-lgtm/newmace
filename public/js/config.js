@@ -29,7 +29,6 @@
     TEAM_DEV: { id: '', label: 'Developer Access' },
 
     // Role-based capabilities
-    // NOTE: Hardcoded perm mapping. Overrides can be defined in Store.
     PERMS: {
       SUPER_ADMIN: ['*'], // Full access
       SUPER_USER: [
@@ -79,7 +78,6 @@
       if(!user || !user.role) return false;
       const r = String(user.role).trim().toUpperCase();
 
-      // Priority 1: Check dynamic delegated overrides (e.g. Team Lead granted create_users)
       try{
         if(window.Store && Store.getUserExtraPrivs){
           const extras = Store.getUserExtraPrivs(user.id);
@@ -87,13 +85,11 @@
         }
       }catch(_){ }
 
-      // Priority 2: Standard role capabilities
       if(r === this.ROLES.SUPER_ADMIN) return true;
       const list = this.PERMS[r] || [];
       return list.includes('*') || list.includes(perm);
     },
 
-    // Default tasks fallback if team config not set
     DEFAULT_TASKS: [
       { id: 'mailbox_manager', label: 'Mailbox Manager', desc: 'Manage incoming emails', color: '#38bdf8' },
       { id: 'mailbox_call', label: 'Mailbox Call', desc: 'Handle phone calls', color: '#10b981' },
@@ -103,240 +99,186 @@
     ],
 
     THEMES: [
-      {
-        id: 'monday_workspace',
-        name: 'Monday OS (Light)',
-        mode: 'light',
-        bg: '#F5F6F8',       /* Soft gray background */
-        panel: '#FFFFFF',    /* Floating white workspaces */
-        panel2: '#F0F2F5',   /* Slightly darker white for secondary panels */
-        border: '#E6E9EF',   /* Very subtle borders */
-        text: '#323338',     /* Slate dark text */
-        muted: '#676879',    /* Slate gray muted text */
-        accent: '#0073EA',   /* Monday Signature Blue */
-        bgRad1: 'rgba(0,115,234,0.05)',
-        bgRad3: 'rgba(0,115,234,0.02)',
-        font: 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
-        radius: '12px',
-        shadow: '0 4px 14px rgba(0,0,0,0.04)'
-      },
-      {
-        id: 'ocean',
-        name: 'Ocean Blue',
-        bg: '#0f172a',
-        panel: '#1e293b',
-        panel2: '#334155',
-        border: '#334155',
-        text: '#f8fafc',
-        muted: '#94a3b8',
-        accent: '#38bdf8',
-        bgRad1: '#1e293b',
-        bgRad3: '#334155'
-      },
-      {
-        id: 'dark',
-        name: 'Midnight Dark',
-        bg: '#09090b',
-        panel: '#171717',
-        panel2: '#262626',
-        border: '#262626',
-        text: '#fafafa',
-        muted: '#a1a1aa',
-        accent: '#60a5fa',
-        bgRad1: '#171717',
-        bgRad3: '#262626'
-      },
-      {
-        id: 'dracula',
-        name: 'Dracula',
-        bg: '#282a36',
-        panel: '#44475a',
-        panel2: '#6272a4',
-        border: '#6272a4',
-        text: '#f8f8f2',
-        muted: '#bfbfbf',
-        accent: '#bd93f9',
-        bgRad1: '#44475a',
-        bgRad3: '#6272a4'
-      },
-      {
-        id: 'synthwave',
-        name: 'Neon Synthwave',
-        bg: '#1a1a2e',
-        panel: '#16213e',
-        panel2: '#0f3460',
-        border: '#0f3460',
-        text: '#e94560',
-        muted: '#a5a5b0',
-        accent: '#e94560',
-        bgRad1: '#16213e',
-        bgRad3: '#0f3460'
-      },
-      {
-        id: 'solarized',
-        name: 'Solarized Dark',
-        bg: '#002b36',
-        panel: '#073642',
-        panel2: '#586e75',
-        border: '#586e75',
-        text: '#839496',
-        muted: '#586e75',
-        accent: '#2aa198',
-        bgRad1: '#073642',
-        bgRad3: '#586e75'
-      },
-      {
-        id: 'monokai',
-        name: 'Monokai',
-        bg: '#272822',
-        panel: '#3e3d32',
-        panel2: '#75715e',
-        border: '#75715e',
-        text: '#f8f8f2',
-        muted: '#75715e',
-        accent: '#f92672',
-        bgRad1: '#3e3d32',
-        bgRad3: '#75715e'
-      },
-      {
-        id: 'nord',
-        name: 'Nord',
-        bg: '#2e3440',
-        panel: '#3b4252',
-        panel2: '#434c5e',
-        border: '#434c5e',
-        text: '#d8dee9',
-        muted: '#e5e9f0',
-        accent: '#88c0d0',
-        bgRad1: '#3b4252',
-        bgRad3: '#434c5e'
-      },
-      {
-        id: 'gruvbox',
-        name: 'Gruvbox',
-        bg: '#282828',
-        panel: '#3c3836',
-        panel2: '#504945',
-        border: '#504945',
-        text: '#ebdbb2',
-        muted: '#a89984',
-        accent: '#b8bb26',
-        bgRad1: '#3c3836',
-        bgRad3: '#504945'
-      },
-      {
-        id: 'github',
-        name: 'GitHub Dark',
-        bg: '#0d1117',
-        panel: '#161b22',
-        panel2: '#21262d',
-        border: '#30363d',
-        text: '#c9d1d9',
-        muted: '#8b949e',
-        accent: '#58a6ff',
-        bgRad1: '#161b22',
-        bgRad3: '#21262d'
-      },
-      {
-        id: 'material',
-        name: 'Material Ocean',
-        bg: '#0f111a',
-        panel: '#1a1c29',
-        panel2: '#292d3e',
-        border: '#292d3e',
-        text: '#a6accd',
-        muted: '#717cb4',
-        accent: '#82aaff',
-        bgRad1: '#1a1c29',
-        bgRad3: '#292d3e'
-      },
-      {
-        id: 'classic_style',
-        name: 'Classic Auto (OS Match)',
-        mode: 'auto',
-        bg: '#f1f5f9',
-        panel: '#ffffff',
-        panel2: '#f8fafc',
-        border: '#cbd5e1',
-        text: '#0f172a',
-        muted: '#64748b',
-        accent: '#0ea5e9',
-        bgRad1: '#ffffff',
-        bgRad3: '#e2e8f0',
-        dark: {
-          bg: '#020617',
-          panel: '#0f172a',
-          panel2: '#1e293b',
-          border: '#334155',
-          text: '#f8fafc',
-          muted: '#94a3b8',
-          accent: '#38bdf8',
-          bgRad1: '#0f172a',
-          bgRad3: '#1e293b'
+        {
+            "id": "monday_workspace",
+            "name": "Monday OS (Light)",
+            "mode": "light",
+            "bg": "#F5F6F8",
+            "panel": "#FFFFFF",
+            "panel2": "#F0F2F5",
+            "border": "#E6E9EF",
+            "text": "#323338",
+            "muted": "#676879",
+            "accent": "#0073EA",
+            "bgRad1": "rgba(0,115,234,0.05)",
+            "bgRad3": "rgba(0,115,234,0.02)",
+            "font": "system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
+            "radius": "12px",
+            "shadow": "0 4px 14px rgba(0,0,0,0.04)"
+        },
+        {
+            "id": "dark",
+            "name": "Midnight Dark",
+            "bg": "#09090b",
+            "panel": "#171717",
+            "panel2": "#262626",
+            "border": "#262626",
+            "text": "#fafafa",
+            "muted": "#a1a1aa",
+            "accent": "#60a5fa",
+            "bgRad1": "#171717",
+            "bgRad3": "#262626"
+        },
+        {
+            "id": "dracula",
+            "name": "Dracula",
+            "bg": "#282a36",
+            "panel": "#44475a",
+            "panel2": "#6272a4",
+            "border": "#6272a4",
+            "text": "#f8f8f2",
+            "muted": "#bfbfbf",
+            "accent": "#bd93f9",
+            "bgRad1": "#44475a",
+            "bgRad3": "#6272a4"
+        },
+        {
+            "id": "synthwave",
+            "name": "Neon Synthwave",
+            "bg": "#1a1a2e",
+            "panel": "#16213e",
+            "panel2": "#0f3460",
+            "border": "#0f3460",
+            "text": "#e94560",
+            "muted": "#a5a5b0",
+            "accent": "#e94560",
+            "bgRad1": "#16213e",
+            "bgRad3": "#0f3460"
+        },
+        {
+            "id": "solarized",
+            "name": "Solarized Dark",
+            "bg": "#002b36",
+            "panel": "#073642",
+            "panel2": "#586e75",
+            "border": "#586e75",
+            "text": "#839496",
+            "muted": "#586e75",
+            "accent": "#2aa198",
+            "bgRad1": "#073642",
+            "bgRad3": "#586e75"
+        },
+        {
+            "id": "monokai",
+            "name": "Monokai",
+            "bg": "#272822",
+            "panel": "#3e3d32",
+            "panel2": "#75715e",
+            "border": "#75715e",
+            "text": "#f8f8f2",
+            "muted": "#75715e",
+            "accent": "#f92672",
+            "bgRad1": "#3e3d32",
+            "bgRad3": "#75715e"
+        },
+        {
+            "id": "nord",
+            "name": "Nord",
+            "bg": "#2e3440",
+            "panel": "#3b4252",
+            "panel2": "#434c5e",
+            "border": "#434c5e",
+            "text": "#d8dee9",
+            "muted": "#e5e9f0",
+            "accent": "#88c0d0",
+            "bgRad1": "#3b4252",
+            "bgRad3": "#434c5e"
+        },
+        {
+            "id": "gruvbox",
+            "name": "Gruvbox",
+            "bg": "#282828",
+            "panel": "#3c3836",
+            "panel2": "#504945",
+            "border": "#504945",
+            "text": "#ebdbb2",
+            "muted": "#a89984",
+            "accent": "#b8bb26",
+            "bgRad1": "#3c3836",
+            "bgRad3": "#504945"
+        },
+        {
+            "id": "github",
+            "name": "GitHub Dark",
+            "bg": "#0d1117",
+            "panel": "#161b22",
+            "panel2": "#21262d",
+            "border": "#30363d",
+            "text": "#c9d1d9",
+            "muted": "#8b949e",
+            "accent": "#58a6ff",
+            "bgRad1": "#161b22",
+            "bgRad3": "#21262d"
+        },
+        {
+            "id": "material",
+            "name": "Material Ocean",
+            "bg": "#0f111a",
+            "panel": "#1a1c29",
+            "panel2": "#292d3e",
+            "border": "#292d3e",
+            "text": "#a6accd",
+            "muted": "#717cb4",
+            "accent": "#82aaff",
+            "bgRad1": "#1a1c29",
+            "bgRad3": "#292d3e"
+        },
+        {
+            "id": "light",
+            "name": "Clean Light",
+            "bg": "#f8fafc",
+            "panel": "#ffffff",
+            "panel2": "#f1f5f9",
+            "border": "#e2e8f0",
+            "text": "#0f172a",
+            "muted": "#64748b",
+            "accent": "#0ea5e9",
+            "bgRad1": "#ffffff",
+            "bgRad3": "#e2e8f0"
+        },
+        {
+            "id": "aurora_ecommerce_light",
+            "name": "Aurora Ecommerce",
+            "mode": "light",
+            "bg": "#fafafa",
+            "panel": "#ffffff",
+            "panel2": "#f4f4f5",
+            "border": "rgba(0,0,0,.06)",
+            "text": "#171717",
+            "muted": "#737373",
+            "accent": "#f97316",
+            "bgRad1": "rgba(249,115,22,.03)",
+            "bgRad3": "rgba(249,115,22,.01)",
+            "font": "system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
+            "radius": "12px",
+            "shadow": "0 4px 14px rgba(0,0,0,.04)"
+        },
+        {
+            "id": "aurora_midnight",
+            "name": "Aurora Midnight",
+            "bg": "#0b1220",
+            "panel": "#121c2f",
+            "panel2": "#1b263b",
+            "border": "rgba(255,255,255,.08)",
+            "text": "#eaf2ff",
+            "muted": "#a8b6d6",
+            "accent": "#4aa3ff",
+            "bgRad1": "rgba(74,163,255,.06)",
+            "bgRad3": "rgba(74,163,255,.02)",
+            "font": "system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
+            "radius": "14px",
+            "shadow": "0 10px 40px rgba(0,0,0,.4)"
         }
-      },
-      {
-        id: 'light',
-        name: 'Clean Light',
-        bg: '#f8fafc',
-        panel: '#ffffff',
-        panel2: '#f1f5f9',
-        border: '#e2e8f0',
-        text: '#0f172a',
-        muted: '#64748b',
-        accent: '#0ea5e9',
-        bgRad1: '#ffffff',
-        bgRad3: '#e2e8f0'
-      },
-      {
-        id: 'aurora_dracula',
-        name: 'Aurora Dracula',
-        bg: '#1a1b26',
-        panel: '#282a36',
-        panel2: '#44475a',
-        border: 'rgba(255,255,255,.05)',
-        text: '#f8f8f2',
-        muted: '#bfbfbf',
-        accent: '#bd93f9',
-        bgRad1: 'rgba(189,147,249,.04)',
-        bgRad3: 'rgba(189,147,249,.02)',
-        font: 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
-        radius: '16px',
-        shadow: '0 8px 30px rgba(0,0,0,.3)'
-      },
-      {
-        id: 'aurora_ecommerce_light',
-        name: 'Aurora Ecommerce',
-        mode: 'light',
-        bg: '#fafafa',
-        panel: '#ffffff',
-        panel2: '#f4f4f5',
-        border: 'rgba(0,0,0,.06)',
-        text: '#171717',
-        muted: '#737373',
-        accent: '#f97316',
-        bgRad1: 'rgba(249,115,22,.03)',
-        bgRad3: 'rgba(249,115,22,.01)',
-        font: 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
-        radius: '12px',
-        shadow: '0 4px 14px rgba(0,0,0,.04)'
-      },
-      {
-        id: 'aurora_midnight',
-        name: 'Aurora Midnight',
-        bg: '#0b1220',
-        panel: '#121c2f',
-        panel2: '#1b263b',
-        border: 'rgba(255,255,255,.08)',
-        text: '#eaf2ff',
-        muted: '#a8b6d6',
-        accent: '#4aa3ff',
-        bgRad1: 'rgba(74,163,255,.06)',
-        bgRad3: 'rgba(74,163,255,.02)',
-        font: 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
-        radius: '14px',
-        shadow: '0 10px 40px rgba(0,0,0,.4)'
-      }
     ],
 
     teamById(id){
@@ -344,18 +286,14 @@
       return (this.TEAMS||[]).find(t=>t.id===id) || null;
     },
 
-    // Convert any legacy/informal team string into a valid team object.
-    // Handles specific mappings like "morning" -> morning shift, or generic names -> dev access.
     resolveTeam(raw){
       try{
         if(!raw) return null;
         let k = String(raw).trim().toLowerCase();
         
-        // Exact ID match first
         let t = this.teamById(k);
         if(t) return t;
 
-        // Legacy mapping hooks
         const teams = {};
         (this.TEAMS||[]).forEach(tt => { teams[tt.id] = tt; });
         teams.dev = this.TEAM_DEV;
@@ -367,7 +305,6 @@
           else if(k.includes('dev')) t = teams.dev || null;
         }
 
-        // role/team objects sometimes pass full label
         if(!t && raw){
           const rk = raw.toLowerCase();
           if(rk.includes('morning')) t = teams.morning || null;
@@ -392,7 +329,6 @@
         let lenMin = em - sm;
         if(lenMin <= 0) lenMin += 24*60;
         
-        // Ensure standard fields exist for downstream UI
         return {
           id: t.id,
           label: t.label || t.id,
@@ -405,7 +341,6 @@
       }
     },
 
-    // Left sidebar configuration
     NAV: [
       { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', perm: 'view_dashboard' },
       { id: 'mailbox', label: 'Mailbox', icon: 'mailbox', perm: 'view_mailbox' },
@@ -426,6 +361,5 @@
     ]
   };
 
-  // Attach to window
   window.Config = Config;
 })();
