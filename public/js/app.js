@@ -7,6 +7,113 @@
 
   // State for Super Admin Theme Manager
   let __themeEditMode = false;
+  let __themeMeta = {};
+  let __themeMetaLoaded = false;
+  let __themeMetaLoading = null;
+
+  function getBearerToken(){
+    try{
+      const t = (window.CloudAuth && CloudAuth.accessToken) ? String(CloudAuth.accessToken()||'').trim() : '';
+      if(t) return t;
+    }catch(_){ }
+    try{
+      const sess = (window.CloudAuth && CloudAuth.loadSession) ? CloudAuth.loadSession() : null;
+      const t2 = sess && sess.access_token ? String(sess.access_token).trim() : '';
+      return t2 || '';
+    }catch(_){ }
+    return '';
+  }
+
+  function normalizeThemeMeta(raw){
+    const out = {};
+    const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+    Object.keys(src).forEach((themeId)=>{
+      const id = String(themeId||'').trim();
+      if(!id) return;
+      const node = src[themeId];
+      if(!node || typeof node !== 'object' || Array.isArray(node)) return;
+      const hidden = !!node.hidden;
+      const deleted = !!node.deleted;
+      if(!hidden && !deleted) return;
+      out[id] = { hidden, deleted };
+    });
+    return out;
+  }
+
+  async function loadThemeMeta(opts){
+    const o = opts || {};
+    if(__themeMetaLoaded && !o.force) return __themeMeta;
+    if(__themeMetaLoading && !o.force) return __themeMetaLoading;
+
+    __themeMetaLoading = (async ()=>{
+      let localMeta = {};
+      try{ localMeta = normalizeThemeMeta(JSON.parse(localStorage.getItem('mums_theme_meta') || '{}')); }catch(_){ localMeta = {}; }
+
+      const cloud = !!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled());
+      const token = getBearerToken();
+      if(!cloud || !token){
+        __themeMeta = localMeta;
+        __themeMetaLoaded = true;
+        return __themeMeta;
+      }
+
+      try{
+        const r = await fetch('/api/theme_access/get', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+        const data = await r.json().catch(()=>null);
+        if(r.ok && data && data.ok){
+          const meta = normalizeThemeMeta(data.meta);
+          __themeMeta = meta;
+          __themeMetaLoaded = true;
+          try{ localStorage.setItem('mums_theme_meta', JSON.stringify(meta)); }catch(_){ }
+          return __themeMeta;
+        }
+      }catch(_){ }
+
+      __themeMeta = localMeta;
+      __themeMetaLoaded = true;
+      return __themeMeta;
+    })();
+
+    try{ return await __themeMetaLoading; }
+    finally{ __themeMetaLoading = null; }
+  }
+
+  async function saveThemeMeta(meta, isSA, profileName){
+    const clean = normalizeThemeMeta(meta);
+    __themeMeta = clean;
+    __themeMetaLoaded = true;
+    try{ localStorage.setItem('mums_theme_meta', JSON.stringify(clean)); }catch(_){ }
+
+    const cloud = !!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled());
+    const token = getBearerToken();
+    if(!cloud || !token || !isSA){
+      renderThemeGrid();
+      return { ok: true, localOnly: true };
+    }
+
+    try{
+      const r = await fetch('/api/theme_access/set', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ meta: clean, updated_by_name: profileName || '' })
+      });
+      const data = await r.json().catch(()=>null);
+      if(r.ok && data && data.ok){
+        __themeMeta = normalizeThemeMeta(data.meta);
+        try{ localStorage.setItem('mums_theme_meta', JSON.stringify(__themeMeta)); }catch(_){ }
+        renderThemeGrid();
+        return { ok: true };
+      }
+      renderThemeGrid();
+      return { ok: false, error: (data && (data.message || data.error)) || 'save_failed' };
+    }catch(e){
+      renderThemeGrid();
+      return { ok: false, error: String(e && e.message || e || 'save_failed') };
+    }
+  }
 
   function showFatalError(err){
     try{
@@ -547,13 +654,7 @@
         document.head.appendChild(s);
     }
 
-    let themeMeta = {};
-    try { themeMeta = JSON.parse(localStorage.getItem('mums_theme_meta') || '{}'); } catch(e){}
-
-    const saveMeta = () => {
-        localStorage.setItem('mums_theme_meta', JSON.stringify(themeMeta));
-        renderThemeGrid(); // Instant refresh
-    };
+    const themeMeta = normalizeThemeMeta(__themeMeta || {});
 
     const cur = Store.getTheme();
     const rawThemes = (Config && Array.isArray(Config.THEMES)) ? Config.THEMES : [];
@@ -568,6 +669,21 @@
         }
         return true;
     });
+
+    if(!isSA){
+      const stillAllowed = visibleThemes.some(t => t.id === cur);
+      if(!stillAllowed){
+        const fallbackTheme = visibleThemes[0] || rawThemes.find(t => {
+          const m = themeMeta[t.id] || {};
+          return !m.hidden && !m.deleted;
+        }) || rawThemes[0];
+        const fallbackId = fallbackTheme && fallbackTheme.id ? String(fallbackTheme.id) : '';
+        if(fallbackId){
+          try{ if(Store && Store.dispatch) Store.dispatch('UPDATE_THEME', { id: fallbackId }); else Store.setTheme(fallbackId); }catch(_){ }
+          try{ applyTheme(fallbackId); }catch(_){ }
+        }
+      }
+    }
 
     // 4. SUPER ADMIN CONTROL BAR (Only visible to SA)
     const adminBarHtml = isSA ? `
@@ -647,12 +763,12 @@
     // SA Hide/Delete Actions
     if (isSA) {
         grid.querySelectorAll('[data-hide-theme]').forEach(btn => {
-            btn.onclick = (e) => {
+            btn.onclick = async (e) => {
                 e.stopPropagation();
                 const tid = btn.getAttribute('data-hide-theme');
                 themeMeta[tid] = themeMeta[tid] || {};
                 themeMeta[tid].hidden = !themeMeta[tid].hidden;
-                saveMeta();
+                await saveThemeMeta(themeMeta, isSA, user && user.name ? user.name : '');
             };
         });
         grid.querySelectorAll('[data-del-theme]').forEach(btn => {
@@ -669,7 +785,7 @@
                     Store.dispatch ? Store.dispatch('UPDATE_THEME', { id:'ocean' }) : Store.setTheme('ocean');
                     applyTheme('ocean');
                 }
-                saveMeta();
+                await saveThemeMeta(themeMeta, isSA, user && user.name ? user.name : '');
             };
         });
     }
@@ -3861,9 +3977,10 @@ async function boot(){
 
     const openThemeBtn = document.getElementById('openThemeBtn');
     if(openThemeBtn){
-      openThemeBtn.onclick = ()=>{
+      openThemeBtn.onclick = async ()=>{
         UI.closeModal('settingsModal');
         __themeEditMode = false; // Reset to normal view initially
+        await loadThemeMeta();
         renderThemeGrid();
         UI.openModal('themeModal');
       };
