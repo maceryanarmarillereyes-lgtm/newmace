@@ -17,14 +17,14 @@ body[data-theme="monday_workspace"] .side,
 body[data-theme="monday_workspace"] .right {
   background: #FFFFFF !important;
   border: 1px solid #E6E9EF !important;
-  border-radius: 16px !important;
+  border-radius: 12px !important;
   box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
 }
 
 body[data-theme="monday_workspace"] .topbar {
   background: #FFFFFF !important;
   border: 1px solid #E6E9EF !important;
-  border-radius: 16px !important;
+  border-radius: 12px !important;
   box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important;
   padding: 10px 16px !important;
   margin-bottom: 4px !important;
@@ -80,20 +80,6 @@ body[data-theme="monday_workspace"] .btn:hover { background: #F0F2F5 !important;
 body[data-theme="monday_workspace"] .btn.primary { background: #0073EA !important; border-color: #0073EA !important; color: #FFFFFF !important; border-radius: 24px !important; }
 body[data-theme="monday_workspace"] .btn.primary:hover { background: #0060C7 !important; border-color: #0060C7 !important; transform: translateY(-1px) !important; box-shadow: 0 4px 10px rgba(0,115,234,0.3) !important; }
 
-/* INPUTS & SEARCH BAR */
-body[data-theme="monday_workspace"] .input,
-body[data-theme="monday_workspace"] select,
-body[data-theme="monday_workspace"] textarea { background: #FFFFFF !important; border: 1px solid #C3C6D4 !important; border-radius: 8px !important; color: #323338 !important; }
-body[data-theme="monday_workspace"] .input:focus,
-body[data-theme="monday_workspace"] select:focus { border-color: #0073EA !important; box-shadow: 0 0 0 3px rgba(0,115,234,0.2) !important; }
-body[data-theme="monday_workspace"] .top-global-search { border-radius: 999px !important; border: 1px solid #C3C6D4 !important; background: #FFFFFF !important; padding: 6px 16px !important; box-shadow: none !important; }
-body[data-theme="monday_workspace"] .top-global-search:focus-within { border-color: #0073EA !important; box-shadow: 0 0 0 3px rgba(0,115,234,0.2) !important; }
-
-/* SIDEBAR PROFILE */
-body[data-theme="monday_workspace"] .sp-photo-sm { background: #CCE5FF !important; border: 1px solid #0073EA !important; }
-body[data-theme="monday_workspace"] .sp-photo-sm .initials { color: #0073EA !important; }
-body[data-theme="monday_workspace"] .sp-role { background: #E4F2FF !important; color: #0073EA !important; border: none !important; border-radius: 4px !important; }
-
 /* QUICK LINKS & BOTTOM DOCK */
 body[data-theme="monday_workspace"] .quicklinks-bar,
 body[data-theme="monday_workspace"] .online-users-bar { background: rgba(255,255,255,0.85) !important; border-top: 1px solid #E6E9EF !important; }
@@ -101,74 +87,135 @@ body[data-theme="monday_workspace"] .qcircle { background: #FFFFFF !important; b
 body[data-theme="monday_workspace"] .wclock { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; color: #323338 !important; }
 body[data-theme="monday_workspace"] .wclock .wc-h, body[data-theme="monday_workspace"] .wclock .wc-m { color: #323338 !important; }
 
-/* --- DASHBOARD OVERHAUL --- */
-body[data-theme="monday_workspace"] .dashx-head .ux-h1 { font-weight: 800 !important; color: #1F2A44 !important; letter-spacing: -0.5px !important; }
-body[data-theme="monday_workspace"] .dashx-actions .btn { border-radius: 8px !important; font-weight: 600 !important; border-color: #C3C6D4 !important; }
-body[data-theme="monday_workspace"] .dashx-cards .dashx-card { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; border-radius: 12px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.02) !important; transition: all 0.2s ease !important; }
-body[data-theme="monday_workspace"] .dashx-cards .dashx-card:hover { transform: translateY(-3px) !important; box-shadow: 0 8px 20px rgba(0,0,0,0.06) !important; border-color: #0073EA !important; }
-body[data-theme="monday_workspace"] .dashx-card .v { color: #0073EA !important; font-size: 28px !important; }
-body[data-theme="monday_workspace"] .dashx-card .k { color: #323338 !important; font-weight: 700 !important; font-size: 13px !important; }
 
-body[data-theme="monday_workspace"] .dashx-panel { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; border-radius: 16px !important; box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important; }
-body[data-theme="monday_workspace"] .dashx-title { color: #1F2A44 !important; font-weight: 800 !important; font-size: 16px !important; }
+/* =========================================================================
+   THE ULTIMATE MAILBOX OVERHAUL (MONDAY.COM BOARD STYLE)
+   ========================================================================= */
 
-body[data-theme="monday_workspace"] .dashx-filter { border-radius: 999px !important; background: #F5F6F8 !important; color: #676879 !important; font-weight: 600 !important; padding: 6px 14px !important; border: 1px solid transparent !important; }
-body[data-theme="monday_workspace"] .dashx-filter.active { background: #CCE5FF !important; color: #0073EA !important; border: 1px solid rgba(0,115,234,0.3) !important; }
-
-body[data-theme="monday_workspace"] .dashx-notif { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; border-radius: 8px !important; border-left: 4px solid #E6E9EF !important; }
-body[data-theme="monday_workspace"] .dashx-notif.unread { background: #F8FBFF !important; border-color: #CCE5FF !important; border-left: 4px solid #0073EA !important; }
-body[data-theme="monday_workspace"] .dashx-notif .t { color: #323338 !important; }
-body[data-theme="monday_workspace"] .dashx-notif .m { color: #676879 !important; }
-
-/* Dashboard Heatmap Fixes */
-body[data-theme="monday_workspace"] .dashx-heatmap { background: #FFFFFF !important; border-radius: 12px !important; border: 1px solid #E6E9EF !important; padding: 16px !important; }
-body[data-theme="monday_workspace"] .dashx-heatmap .hday, body[data-theme="monday_workspace"] .dashx-heatmap .hhr { color: #323338 !important; font-weight: 600 !important; font-size: 12px !important; }
-body[data-theme="monday_workspace"] .dashx-heatmap .cell { border-radius: 4px !important; border: 1px solid #E6E9EF !important; background: #F5F6F8 !important; }
-
-/* --- ASSIGN TASKS (MEMBERS) --- */
-body[data-theme="monday_workspace"] .members-timeline-toolbar, body[data-theme="monday_workspace"] .coverage-panel { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; border-radius: 16px !important; box-shadow: 0 4px 14px rgba(0,0,0,0.02) !important; }
-body[data-theme="monday_workspace"] .members-row { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; box-shadow: 0 2px 6px rgba(0,0,0,0.02) !important; }
-body[data-theme="monday_workspace"] .timeline { background: #F5F6F8 !important; border: 1px solid #E6E9EF !important; }
-body[data-theme="monday_workspace"] .cm-col { background: #F5F6F8 !important; border: 1px solid #E6E9EF !important; }
-body[data-theme="monday_workspace"] .cm-col.ok { background: #E8FDEE !important; border-color: #00C875 !important; }
-body[data-theme="monday_workspace"] .cm-col.bad { background: #FFEBEE !important; border-color: #E2445C !important; }
-body[data-theme="monday_workspace"] .daytab.is-on { background: #0073EA !important; color: #FFFFFF !important; border-color: #0073EA !important; }
-
-/* --- MAILBOX ULTIMATE POLISH (KILL THE DARK HEADERS) --- */
-body[data-theme="monday_workspace"] .mbx-card,
-body[data-theme="monday_workspace"] .mbx-table-wrap { background: #FFFFFF !important; border: 1px solid #E6E9EF !important; border-radius: 16px !important; box-shadow: 0 4px 14px rgba(0,0,0,0.03) !important; overflow: hidden !important; }
-
-/* Force White Background on All Inner Mailbox Header DIVs */
-body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive),
-body[data-theme="monday_workspace"] .mbx-table-wrap [style*="background"] {
+/* 1. TOP COMMAND CARDS */
+body[data-theme="monday_workspace"] .mbx-card {
     background: #FFFFFF !important;
-    border-bottom: 2px solid #E6E9EF !important;
+    border: 1px solid #E6E9EF !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.03) !important;
+    padding: 24px !important;
 }
-
-/* Force Text inside Dark Headers to be dark slate */
-body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) *,
-body[data-theme="monday_workspace"] .mbx-table-wrap [style*="background"] * {
+body[data-theme="monday_workspace"] .mbx-card .small.muted {
+    color: #676879 !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.5px !important;
+    text-transform: uppercase !important;
+    font-size: 11px !important;
+}
+body[data-theme="monday_workspace"] .mbx-card .h2,
+body[data-theme="monday_workspace"] .mbx-card .val {
     color: #1F2A44 !important;
+    font-weight: 900 !important;
     text-shadow: none !important;
 }
 
-/* Fix Muted text inside those headers */
-body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) .muted,
-body[data-theme="monday_workspace"] .mbx-table-wrap > div:not(table):not(.table-responsive) .small {
-    color: #676879 !important;
-    opacity: 1 !important;
+/* 2. MAILBOX WRAPPER & KILLING THE DARK HEADERS */
+body[data-theme="monday_workspace"] .mbx-table-wrap {
+    background: #FFFFFF !important;
+    border: 1px solid #E6E9EF !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.03) !important;
+    overflow: hidden !important;
+    margin-top: 24px !important;
 }
 
-/* Mailbox Main Table Styles */
-body[data-theme="monday_workspace"] .table.mbx-table { background: #FFFFFF !important; }
-body[data-theme="monday_workspace"] .table.mbx-table thead th { background: #FFFFFF !important; color: #676879 !important; font-weight: 600 !important; font-size: 11px !important; text-transform: uppercase !important; border-bottom: 2px solid #E6E9EF !important; }
-body[data-theme="monday_workspace"] .table.mbx-table tbody td { background: #FFFFFF !important; color: #323338 !important; border-bottom: 1px solid #E6E9EF !important; font-weight: 500 !important; }
-body[data-theme="monday_workspace"] .table.mbx-table tbody tr:hover td { background: #F8FBFF !important; }
+/* Force all dark div backgrounds inside to be clean white */
+body[data-theme="monday_workspace"] .mbx-table-wrap > div[style*="background"],
+body[data-theme="monday_workspace"] .mbx-table-wrap > .row.pad {
+    background: #FFFFFF !important;
+    border-bottom: 1px solid #E6E9EF !important;
+    padding: 20px 24px !important;
+}
 
-/* Monday.com Perfect Pills */
-body[data-theme="monday_workspace"] .mbx-duty-pill { border-radius: 999px !important; font-weight: 800 !important; font-size: 11px !important; padding: 4px 12px !important; border: none !important; text-transform: uppercase !important; }
-body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="manager"] { background: #0073EA !important; color: #FFFFFF !important; }
-body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="call"] { background: #00C875 !important; color: #FFFFFF !important; }
-body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="break"] { background: #FDAB3D !important; color: #FFFFFF !important; }
-body[data-theme="monday_workspace"] .mbx-duty-pill[data-tone="idle"],
-body[data-theme="monday_workspace"] .mbx-duty-pill[style*="border"] { background: #F5F6F8 !important; color: #676879 !important; border: 1px solid #C3C6D4 !important; }
+/* Force text inside those formerly-dark headers to be readable */
+body[data-theme="monday_workspace"] .mbx-table-wrap > div[style*="background"] *,
+body[data-theme="monday_workspace"] .mbx-table-wrap > .row.pad * {
+    color: #1F2A44 !important;
+    text-shadow: none !important;
+}
+body[data-theme="monday_workspace"] .mbx-table-wrap > div[style*="background"] .muted,
+body[data-theme="monday_workspace"] .mbx-table-wrap > .row.pad .muted {
+    color: #676879 !important;
+}
+
+/* 3. THE MAILBOX TABLE */
+body[data-theme="monday_workspace"] .table.mbx-table {
+    background: #FFFFFF !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+}
+body[data-theme="monday_workspace"] .table.mbx-table thead th {
+    background: #F5F6F8 !important; /* Monday.com gray header row */
+    color: #676879 !important;
+    font-weight: 500 !important;
+    font-size: 11px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    padding: 12px 24px !important;
+    border-top: 1px solid #E6E9EF !important;
+    border-bottom: 1px solid #E6E9EF !important;
+}
+body[data-theme="monday_workspace"] .table.mbx-table tbody tr {
+    background: #FFFFFF !important;
+    border-bottom: 1px solid #E6E9EF !important;
+    transition: background 0.2s ease !important;
+}
+body[data-theme="monday_workspace"] .table.mbx-table tbody tr:hover {
+    background: #F8FBFF !important; /* Light blue hover */
+}
+body[data-theme="monday_workspace"] .table.mbx-table tbody td {
+    padding: 16px 24px !important;
+    color: #323338 !important;
+    font-weight: 500 !important;
+    border: none !important;
+    vertical-align: middle !important;
+}
+/* Left colored indicator line for rows */
+body[data-theme="monday_workspace"] .table.mbx-table tbody td:first-child {
+    border-left: 4px solid #0073EA !important; 
+}
+
+/* 4. MONDAY.COM STATUS PILLS (THE SQUARED COLUMNS) */
+body[data-theme="monday_workspace"] .mbx-table-wrap .badge,
+body[data-theme="monday_workspace"] .mbx-table-wrap .mbx-duty-pill {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 4px !important; /* Monday uses rectangles for Status */
+    padding: 6px 12px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    width: 140px !important; /* Uniform width for all status tags */
+    text-align: center !important;
+    box-shadow: inset 0 -2px 0 rgba(0,0,0,0.1) !important; /* 3D pop effect */
+}
+
+/* Force Inactive / No Duty to look like Monday Gray Empty State */
+body[data-theme="monday_workspace"] .mbx-table-wrap .badge[style*="border"],
+body[data-theme="monday_workspace"] .mbx-table-wrap .mbx-duty-pill[style*="border"] {
+    background: #C3C6D4 !important; 
+    color: #FFFFFF !important;
+    box-shadow: none !important;
+    border: none !important;
+}
+
+/* 5. CASE MONITORING MATRIX FIXES */
+body[data-theme="monday_workspace"] .mbx-table-wrap:nth-of-type(2) {
+    margin-top: 32px !important;
+}
+body[data-theme="monday_workspace"] .mbx-table-wrap:nth-of-type(2) table th {
+    color: #0073EA !important; /* Blue headers for agent names */
+    font-weight: 700 !important;
+}
+body[data-theme="monday_workspace"] .mbx-table-wrap:nth-of-type(2) table td[style*="color"] {
+    color: #676879 !important; /* Fix unreadable light blue "0 cases" text */
+    font-weight: 600 !important;
+}
