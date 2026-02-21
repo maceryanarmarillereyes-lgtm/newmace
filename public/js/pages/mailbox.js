@@ -259,10 +259,12 @@ function _mbxDutyTone(label){
          targetDateISO = window.UI && window.UI.addDaysISO ? window.UI.addDaysISO(shiftStartISO, 1) : shiftStartISO;
       }
       const targetDow = _mbxIsoDow(targetDateISO);
+      const bucketEndMin = Number(bucket.endMin)||0;
+      const bucketSegs = _mbxToSegments(bucketStartMin, bucketEndMin);
+      if(!bucketSegs.length) return '—';
 
       const all = (window.Store && window.Store.getUsers ? window.Store.getUsers() : []) || [];
-      const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
-      const roleOrder = ['mailbox_manager','mailbox_call'];
+      const candidates = all.filter(u=>u && String(u.teamId||'')===teamId && String(u.status||'').toLowerCase()==='active');
       const matchedNames = [];
 
       for(const u of candidates){
@@ -272,15 +274,14 @@ function _mbxDutyTone(label){
         for(const b of bl){
           if (isMatched) break;
           const r = String(b?.role||'').toLowerCase().trim().replace(/\s+/g, '_');
-          if(!roleOrder.includes(r)) continue;
-          
+          if(r !== 'mailbox_manager') continue;
+
           const s = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.start) : _mbxParseHM(b.start));
           const e = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.end) : _mbxParseHM(b.end));
           if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
           if (s === e) continue; // Ignore 0-length invalid blocks
 
-          const wraps = e <= s;
-          const hit = (!wraps && bucketStartMin >= s && bucketStartMin < e) || (wraps && (bucketStartMin >= s || bucketStartMin < e));
+          const hit = _mbxSegmentsOverlap(bucketSegs, _mbxToSegments(s, e));
           
           if(hit){
              matchedNames.push(String(u.name||u.username||'—'));
@@ -289,7 +290,7 @@ function _mbxDutyTone(label){
         }
       }
       
-      const unique = [...new Set(matchedNames)];
+      const unique = [...new Set(matchedNames)].sort((a,b)=>String(a).localeCompare(String(b)));
       if (unique.length > 0) return unique.join(' & ');
     }catch(e){ console.error("Schedule Eval Error", e); }
     return '—';
