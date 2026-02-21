@@ -1,13 +1,22 @@
 /* File: public/js/pages/mailbox.js */
 
 function _mbxIsoDow(isoDate){
-  try{ return new Date(String(isoDate||'') + 'T00:00:00+08:00').getDay(); }catch(_){ return (new Date()).getDay(); }
+  try{
+    if(isoDate) return new Date(String(isoDate||'') + 'T00:00:00+08:00').getDay();
+    if(window.UI && window.UI.manilaNowDate) return new Date(window.UI.manilaNowDate()).getDay();
+    // Strict GMT+8 Fallback to guarantee global visibility sync across all agents
+    const d = new Date();
+    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+    return new Date(utc + (3600000 * 8)).getDay();
+  }catch(_){ return 1; }
 }
+
 function _mbxToSegments(startMin, endMin){
   if(!Number.isFinite(startMin) || !Number.isFinite(endMin)) return [];
   if(endMin > startMin) return [[startMin, endMin]];
   return [[startMin, 24*60],[0, endMin]];
 }
+
 function _mbxSegmentsOverlap(aSegs, bSegs){
   for(const a of (aSegs||[])){
     for(const b of (bSegs||[])){
@@ -16,10 +25,12 @@ function _mbxSegmentsOverlap(aSegs, bSegs){
   }
   return false;
 }
+
 function _mbxBlockHit(nowMin, s, e){
   const wraps = e <= s;
   return (!wraps && nowMin >= s && nowMin < e) || (wraps && (nowMin >= s || nowMin < e));
 }
+
 function _mbxInDutyWindow(nowMin, team){
   if(!team) return false;
   const s = _mbxParseHM(team.dutyStart||'00:00');
@@ -96,6 +107,7 @@ function eligibleForMailboxManager(user, opts){
 function _mbxMinutesOfDayFromParts(p){
   return (Number(p.hh)||0) * 60 + (Number(p.mm)||0);
 }
+
 function _mbxParseHM(hm){
   const raw = String(hm||'').trim();
   if(!raw) return 0;
@@ -119,6 +131,7 @@ function _mbxParseHM(hm){
   }
   return (h * 60) + m;
 }
+
 function _mbxFmt12(min){
   min = ((min% (24*60)) + (24*60)) % (24*60);
   let h = Math.floor(min/60);
@@ -127,14 +140,17 @@ function _mbxFmt12(min){
   h = h%12; if(h===0) h=12;
   return `${h}:${String(m).padStart(2,'0')} ${ampm}`;
 }
+
 function _mbxBucketLabel(b){
   return `${_mbxFmt12(b.startMin)} - ${_mbxFmt12(b.endMin)}`;
 }
+
 function _mbxInBucket(nowMin, b){
   const start = b.startMin, end = b.endMin;
   if(end > start) return nowMin >= start && nowMin < end;
   return (nowMin >= start) || (nowMin < end);
 }
+
 function _mbxBuildDefaultBuckets(team){
   const start = _mbxParseHM(team?.dutyStart || '00:00');
   const end = _mbxParseHM(team?.dutyEnd || '00:00');
@@ -216,7 +232,6 @@ function _mbxDutyTone(label){
   const me = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser()||{}) : {};
   let isManager = false;
 
-  // GLOBAL UI STATE: Prevents UI reset on realtime syncs
   window.__mbxUiState = window.__mbxUiState || {
     showArchive: false,
     showAnalytics: false
@@ -239,7 +254,6 @@ function _mbxDutyTone(label){
 
   // =========================================================================
   // STRICT SCHEDULE EVALUATION FOR MAILBOX MANAGERS PER BUCKET
-  // (Removes actorName fallback that causes "Ghost Managers")
   // =========================================================================
   function _mbxFindScheduledManagerForBucket(table, bucket){
     try{
@@ -252,6 +266,7 @@ function _mbxDutyTone(label){
       const shiftStartISO = datePart || (window.UI && window.UI.mailboxNowParts ? window.UI.mailboxNowParts().isoDate : (window.UI && window.UI.manilaNow ? window.UI.manilaNow().isoDate : ''));
 
       const bucketStartMin = Number(bucket.startMin)||0;
+      const bucketEndMin = Number(bucket.endMin)||0;
       const shiftStartMin = _mbxParseHM(table.meta.dutyStart || '00:00');
 
       let targetDateISO = shiftStartISO;
@@ -262,8 +277,11 @@ function _mbxDutyTone(label){
 
       const all = (window.Store && window.Store.getUsers ? window.Store.getUsers() : []) || [];
       const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
-      const roleOrder = ['mailbox_manager','mailbox_call'];
+      
+      // BOSS THUNTER: STRICTLY 'mailbox_manager' ONLY. Remove 'mailbox_call' to prevent bleed!
+      const allowedRoles = ['mailbox_manager', 'mailbox manager'];
       const matchedNames = [];
+      const bucketSegs = _mbxToSegments(bucketStartMin, bucketEndMin);
 
       for(const u of candidates){
         const bl = window.Store && window.Store.getUserDayBlocks ? (window.Store.getUserDayBlocks(u.id, targetDow) || []) : [];
@@ -271,16 +289,18 @@ function _mbxDutyTone(label){
         
         for(const b of bl){
           if (isMatched) break;
-          const r = String(b?.role||'').toLowerCase().trim().replace(/\s+/g, '_');
-          if(!roleOrder.includes(r)) continue;
+          const rRaw = String(b?.role||'').toLowerCase().trim();
+          const r = rRaw.replace(/\s+/g, '_');
+          
+          if(!allowedRoles.includes(r) && !allowedRoles.includes(rRaw)) continue;
           
           const s = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.start) : _mbxParseHM(b.start));
           const e = (window.UI && window.UI.parseHM ? window.UI.parseHM(b.end) : _mbxParseHM(b.end));
           if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
-          if (s === e) continue; // Ignore 0-length invalid blocks
+          if (s === e) continue; 
 
-          const wraps = e <= s;
-          const hit = (!wraps && bucketStartMin >= s && bucketStartMin < e) || (wraps && (bucketStartMin >= s || bucketStartMin < e));
+          const blockSegs = _mbxToSegments(s, e);
+          const hit = _mbxSegmentsOverlap(bucketSegs, blockSegs);
           
           if(hit){
              matchedNames.push(String(u.name||u.username||'—'));
@@ -542,7 +562,7 @@ function _mbxDutyTone(label){
       .mbx-stat-done { color:#10b981; }
       @keyframes mbxPulse { 0% { opacity:1; } 50% { opacity:0.5; } 100% { opacity:1; } }
 
-      /* Modals: Completely isolated custom class to prevent CSS collision */
+      /* Modals */
       .mbx-custom-backdrop { position:fixed; inset:0; background:rgba(2,6,23,0.85); backdrop-filter:blur(10px); z-index:99999; display:none; align-items:center; justify-content:center; padding:20px; opacity:0; pointer-events:none; transition:opacity 0.3s; }
       .mbx-custom-backdrop.is-open { display:flex !important; opacity:1; pointer-events:auto; }
       .mbx-modal-glass { width:min(550px, 95vw); background:linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98)); border:1px solid rgba(56,189,248,0.3); border-radius:16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7); display:flex; flex-direction:column; overflow:hidden; }
@@ -1157,7 +1177,7 @@ function _mbxDutyTone(label){
       if(document.getElementById('mbxCaseActionModal')) return;
       const UI = window.UI;
       const host = document.createElement('div');
-      host.className = 'mbx-custom-backdrop'; // ISOLATED CSS
+      host.className = 'mbx-custom-backdrop';
       host.id = 'mbxCaseActionModal';
       host.innerHTML = `
         <div class="mbx-modal-glass" style="width:min(400px, 90vw);">
@@ -1193,7 +1213,7 @@ function _mbxDutyTone(label){
       if(document.getElementById('mbxReassignModal')) return;
       const UI = window.UI;
       const host = document.createElement('div');
-      host.className = 'mbx-custom-backdrop'; // ISOLATED CSS
+      host.className = 'mbx-custom-backdrop';
       host.id = 'mbxReassignModal';
       host.innerHTML = `
         <div class="mbx-modal-glass" style="width:min(500px, 95vw);">
