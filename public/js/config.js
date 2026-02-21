@@ -341,19 +341,39 @@
       }
     },
 
-    NAV: [
+NAV: [
       { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', perm: 'view_dashboard' },
       { id: 'mailbox', label: 'Mailbox', icon: 'mailbox', perm: 'view_mailbox' },
-      { id: 'members', label: 'Assign Tasks', icon: 'members', perm: 'view_members' },
       { id: 'overall_stats', label: 'Overall Stats', icon: 'chart', perm: 'view_members' },
+      {
+        id: 'team',
+        label: 'Team',
+        icon: 'members',
+        perm: 'view_members',
+        children: [
+          { id: 'members', label: 'Assign Tasks', perm: 'view_members' },
+          { id: 'master_schedule', label: 'Master Schedule', perm: 'view_master_schedule' },
+          { id: 'team_config', label: 'Team Task Settings', perm: 'manage_team_config' }
+        ]
+      },
+      {
+        id: 'admin',
+        label: 'Administration',
+        icon: 'users',
+        perm: 'create_users',
+        children: [
+          { id: 'users', label: 'User Management', perm: 'create_users' },
+          { id: 'announcements', label: 'Announcements', perm: 'manage_announcements' }
+        ]
+      },
       {
         id: 'my_record',
         label: 'My Record',
         icon: 'schedule',
         perm: 'view_my_schedule',
         children: [
-          { id: 'my_schedule', label: 'My Schedule', perm: 'view_my_schedule' },
           { id: 'my_attendance', label: 'My Attendance', perm: 'view_my_schedule' },
+          { id: 'my_schedule', label: 'My Schedule', perm: 'view_my_schedule' },
           { id: 'my_case', label: 'My Case History', perm: 'view_my_schedule' },
           { id: 'my_task', label: 'My Task History', perm: 'view_my_schedule' }
         ]
