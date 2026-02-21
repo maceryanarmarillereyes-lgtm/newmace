@@ -124,23 +124,22 @@
         }
       },
 
-      // --- Monday-inspired workspace preset (clean light collaboration UI) ---
       {
         id:'monday_workspace',
         name:'Monday Workspace',
         mode:'light',
-        bg:'#F4F5F7',
-        panel:'#FFFFFF',
-        panel2:'#F8F9FC',
-        text:'#1F2937',
-        muted:'#667085',
-        border:'#E6E9EF',
-        accent:'#0073EA',
-        bgRad1:'#EAF2FE',
-        bgRad3:'#F4F5F7',
-        font:"'Poppins', 'Roboto', Inter, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif",
-        radius:'10px',
-        shadow:'0 8px 24px rgba(16,24,40,.08)'
+        bg:'#f4f5f7',
+        panel:'#ffffff',
+        panel2:'#f7f8fb',
+        text:'#1f2937',
+        muted:'#6b7280',
+        border:'#e6e9ef',
+        accent:'#0073ea',
+        bgRad1:'#dfe7f6',
+        bgRad3:'#f9fbff',
+        font:"'Poppins', 'Inter', 'Segoe UI', Roboto, system-ui, -apple-system, Arial, sans-serif",
+        radius:'12px',
+        shadow:'0 8px 24px rgba(15, 23, 42, .08)'
       },
 
       // --- Original MUMS presets (kept for variety) ---
