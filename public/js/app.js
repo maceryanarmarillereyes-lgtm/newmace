@@ -549,26 +549,26 @@
     ];
 
     inner.innerHTML = `
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px;">
+      <div class="theme-lab-grid">
         ${rows.map(row=>{
           const ratio = (Math.round(row.v*100)/100).toFixed(2);
           const b = (row.v >= row.min) ? {label:'✅ PASS', col:'#10b981', bg:'rgba(16,185,129,0.1)'} 
                   : (row.v >= Math.max(3.0, row.min)) ? {label:'⚠️ WARN', col:'#fbbf24', bg:'rgba(245,158,11,0.1)'} 
                   : {label:'❌ FAIL', col:'#ef4444', bg:'rgba(239,68,68,0.1)'};
           return `
-            <div style="background:rgba(2,6,23,0.5); border:1px solid rgba(255,255,255,0.05); border-radius:12px; padding:16px; display:flex; justify-content:space-between; align-items:center; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);">
-               <div>
-                  <div style="font-weight:900; color:#f8fafc; font-size:14px; letter-spacing: -0.3px;">${UI.esc(row.k)}</div>
-                  <div style="font-family:monospace; color:#cbd5e1; font-size:13px; margin-top:4px; opacity:0.8;">Ratio: ${ratio}:1</div>
+            <div class="theme-lab-card">
+               <div class="theme-lab-copy">
+                  <div class="theme-lab-k">${UI.esc(row.k)}</div>
+                  <div class="theme-lab-v">Ratio: ${ratio}:1</div>
                </div>
-               <div style="background:${b.bg}; color:${b.col}; border:1px solid ${b.col}; box-shadow:0 0 15px ${b.bg}; padding:6px 12px; border-radius:8px; font-weight:900; font-size:11px; letter-spacing:0.5px;">
+               <div class="theme-lab-status" style="background:${b.bg}; color:${b.col}; border-color:${b.col}; box-shadow:0 0 15px ${b.bg};">
                   ${b.label}
                </div>
             </div>
           `;
         }).join('')}
       </div>
-      <div class="small muted" style="margin-top:20px; border-left:4px solid #38bdf8; padding-left:12px; font-size:13px; line-height: 1.5;">
+      <div class="theme-lab-guide small muted">
         <strong>Diagnostic Guidance:</strong> If any parameter fails WCAG 2.1 AA standards, adjust your <code>Config.THEMES</code> definitions. Muted text requires 3.0:1, while standard text requires 4.5:1 against the active panel background.
       </div>
     `;
@@ -597,43 +597,6 @@
       return;
     }
 
-    // INJECT ENTERPRISE COMPACT BENTO CSS
-    if(!document.getElementById('mums-bento-theme-css')) {
-        const s = document.createElement('style');
-        s.id = 'mums-bento-theme-css';
-        s.textContent = `
-            .th-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
-            .th-card { position: relative; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px; cursor: pointer; transition: all 0.2s ease; overflow: hidden; display: flex; align-items: center; gap: 14px; box-shadow: inset 0 1px 1px rgba(255,255,255,0.05); }
-            .th-card:hover { background: rgba(30, 41, 59, 0.6); border-color: rgba(56, 189, 248, 0.3); transform: translateY(-2px); }
-            .th-card.is-active { background: linear-gradient(145deg, rgba(14, 165, 233, 0.1), rgba(2, 132, 199, 0.05)); border-color: #38bdf8; box-shadow: 0 0 20px rgba(56, 189, 248, 0.2), inset 0 0 0 1px #38bdf8; }
-            
-            .th-swatch { width: 50px; height: 50px; border-radius: 50%; background: var(--t-bg); border: 2px solid var(--t-panel); box-shadow: 0 4px 10px rgba(0,0,0,0.3); position: relative; flex-shrink: 0; }
-            .th-swatch::after { content: ''; position: absolute; bottom: -2px; right: -2px; width: 18px; height: 18px; border-radius: 50%; background: var(--t-acc); border: 2px solid var(--t-panel); box-shadow: 0 0 8px var(--t-acc); }
-            
-            .th-info { flex: 1; min-width: 0; }
-            .th-title { color: #f8fafc; font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.3px; }
-            .th-meta { color: #94a3b8; font-size: 11px; margin-top: 4px; font-family: monospace; }
-            
-            .th-badge { font-size: 9px; font-weight: 900; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.5px; margin-top:6px; display:inline-block; }
-            .th-badge-active { background: rgba(56,189,248,0.2); color: #7dd3fc; border: 1px solid rgba(56,189,248,0.3); }
-            .th-badge-hidden { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
-            
-            .th-card.is-hidden { opacity: 0.5; border-style: dashed; }
-            .th-card.is-hidden:hover { opacity: 0.9; border-style: dashed; border-color: #ef4444; }
-
-            .th-admin-bar { position: absolute; right: 0; top: 0; bottom: 0; background: rgba(15,23,42,0.98); backdrop-filter: blur(8px); display: flex; flex-direction: column; border-left: 1px solid rgba(255,255,255,0.1); transform: translateX(100%); transition: transform 0.2s ease; z-index: 10; }
-            .th-card.show-admin .th-admin-bar { transform: translateX(0); }
-            .th-admin-btn { flex: 1; background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.05); color: #cbd5e1; font-size: 11px; font-weight: 800; cursor: pointer; padding: 0 16px; transition: all 0.2s; outline:none; display:flex; align-items:center; gap:6px; }
-            .th-admin-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
-            .th-admin-btn.del:hover { background: rgba(239,68,68,0.2); color: #fca5a5; }
-            .th-admin-btn:disabled { opacity:0.5; cursor:not-allowed; }
-            
-            .th-jiggle { animation: thJiggle 0.4s ease-in-out infinite alternate; }
-            @keyframes thJiggle { 0% { transform: rotate(-1deg) scale(0.98); } 100% { transform: rotate(1deg) scale(1.02); } }
-        `;
-        document.head.appendChild(s);
-    }
-
     const cur = Store.getTheme();
     const rawThemes = (Config && Array.isArray(Config.THEMES)) ? Config.THEMES : [];
 
@@ -650,12 +613,12 @@
 
     // SUPER ADMIN CONTROL BAR
     const adminBarHtml = isSA ? `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); flex-wrap:wrap; gap:12px;">
-            <div>
-               <div style="color:#f8fafc; font-weight:900; font-size:16px;">Enterprise Theme Manager</div>
-               <div class="small muted" style="margin-top:4px;">Globally synced via API. Manage visibility or export clean code.</div>
+        <div class="th-toolbar">
+            <div class="th-toolbar-copy">
+               <div class="th-toolbar-title">Enterprise Theme Manager</div>
+               <div class="small muted th-toolbar-subtitle">Globally synced via API. Manage visibility or export clean code.</div>
             </div>
-            <div style="display:flex; gap:10px;">
+            <div class="th-toolbar-actions">
                 <button class="btn-glass btn-glass-ghost" id="exportCleanConfigBtn" title="Get code for config.js to wipe deleted themes globally">
                     📄 Get Clean Code
                 </button>
@@ -672,6 +635,7 @@
       const active = t.id === cur;
       const isHidden = !!m.hidden;
 
+      const mode = String(t.mode || '').trim() || 'N/A';
       const adminHtml = `
           <div class="th-admin-bar">
               <button class="th-admin-btn" data-hide-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">
@@ -685,17 +649,18 @@
 
       return `
         <div class="th-card ${active?'is-active':''} ${isHidden?'is-hidden':''} ${__themeEditMode?'show-admin th-jiggle':''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button">
-           <div class="th-swatch" style="--t-bg:${t.bg}; --t-panel:${t.panel}; --t-acc:${t.accent};"></div>
+           <div class="th-swatch" style="--t-bg:${t.bg || '#0b1220'}; --t-panel:${t.panel || '#121c2f'}; --t-acc:${t.accent || '#4aa3ff'};"></div>
            <div class="th-info">
-              <div class="th-title">${UI.esc(t.name)}</div>
-              <div class="th-meta">ID: ${UI.esc(t.id)}</div>
+              <div class="th-title">${UI.esc(t.name || 'Untitled Theme')}</div>
+              <div class="th-meta">ID: ${UI.esc(t.id || 'n/a')}</div>
+              <div class="th-mode">Mode: ${UI.esc(mode.toUpperCase())}</div>
               ${active ? '<div class="th-badge th-badge-active">ACTIVE</div>' : ''}
               ${isHidden ? '<div class="th-badge th-badge-hidden">HIDDEN</div>' : ''}
            </div>
            ${isSA ? adminHtml : ''}
         </div>
       `;
-    }).join('') || '<div class="muted" style="grid-column:1/-1; text-align:center; padding:40px; font-size:16px;">No themes available.</div>';
+    }).join('') || '<div class="muted th-empty">No themes available.</div>';
 
     grid.innerHTML = adminBarHtml + `<div class="th-grid">${cardsHtml}</div>`;
 
