@@ -731,14 +731,25 @@ function _mbxDutyTone(label){
         </thead>`;
 
       const rows = members.map(m => {
-        const dutyColor = String(m.dutyLabel || '').includes('Manager') ? '#0073EA' : '#00C875';
+        const dutyLabel = resolveMemberDutyLabel(m, (UI && UI.mailboxNowParts ? UI.mailboxNowParts() : (UI && UI.manilaNow ? UI.manilaNow() : null)));
+        const safeDutyLabel = (dutyLabel && dutyLabel !== '—') ? dutyLabel : 'No active duty';
+        const tone = _mbxDutyTone(safeDutyLabel);
+        const dutyColor = tone === 'manager'
+          ? '#0073EA'
+          : tone === 'call'
+            ? '#F59E0B'
+            : tone === 'break'
+              ? '#EF4444'
+              : tone === 'active'
+                ? '#00C875'
+                : '#94A3B8';
         return `
         <tr style="height:44px; border-bottom: 1px solid #E6E9EF; background:#fff;" class="${interactive ? 'mbx-assignable' : ''}" data-assign-member="${m.id}">
           <td style="padding:0 16px; font-weight:800; color:#323338; font-size:14px; border-left:6px solid ${dutyColor}; border-right: 1px solid #E6E9EF;">${UI.esc(m.name)}</td>
           <td style="padding:0 12px; border-right: 1px solid #E6E9EF; text-align:center;">
-            <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:4px; background:color-mix(in srgb, ${dutyColor} 12%, transparent); color:${dutyColor}; font-size:11px; font-weight:900; letter-spacing:0.3px; border:1px solid color-mix(in srgb, ${dutyColor} 30%, transparent);">
+            <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:4px; background:color-mix(in srgb, ${dutyColor} 12%, transparent); color:${dutyColor}; font-size:11px; font-weight:900; letter-spacing:0.3px; border:1px solid color-mix(in srgb, ${dutyColor} 30%, transparent);" data-mbx-duty-user="${UI.esc(m.id)}" data-tone="${tone}" title="Current duty: ${UI.esc(safeDutyLabel)}">
               <span style="width:6px; height:6px; border-radius:50%; background:${dutyColor};"></span>
-              ${UI.esc(String(m.dutyLabel || 'N/A').toUpperCase())}
+              ${UI.esc(String(safeDutyLabel).toUpperCase())}
             </div>
           </td>
           ${buckets.map(b => {
@@ -2046,6 +2057,15 @@ function _mbxDutyTone(label){
     _timer = setInterval(()=>{ try{ tick(); }catch(e){ console.error('Mailbox tick', e); } }, 1000);
   }
 
+
+  const onMailboxThemeEvent = ()=>{
+    scheduleRender('theme-change');
+  };
+
+  try{ window.addEventListener('mums:store', onMailboxStoreEvent); }catch(_){ }
+  try{ window.addEventListener('storage', onMailboxStorageEvent); }catch(_){ }
+  try{ window.addEventListener('mums:themeApplied', onMailboxThemeEvent); }catch(_){ }
+
   // BOOT THE PAGE
   render();
 
@@ -2053,5 +2073,6 @@ function _mbxDutyTone(label){
 	  try{ if(_timer) clearInterval(_timer); }catch(_){ }
 	  try{ window.removeEventListener('mums:store', onMailboxStoreEvent); }catch(_){ }
 	  try{ window.removeEventListener('storage', onMailboxStorageEvent); }catch(_){ }
+	  try{ window.removeEventListener('mums:themeApplied', onMailboxThemeEvent); }catch(_){ }
   };
 });

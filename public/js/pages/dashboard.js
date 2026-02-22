@@ -50,6 +50,9 @@
     if (!isLeadView) return;
     let state = { rows: [], filter: '', subscription: null, refreshLock: false };
     let watchTimer = null; // THE IMMORTAL WATCHER
+    const onThemeApplied = () => {
+      try { renderWidget(); } catch (_) { }
+    };
 
     const renderWidget = () => {
       // Re-attach mount if UI.renderDashboard wipes it out!
@@ -74,6 +77,10 @@
         return acc;
       }, {});
       const isMonday = document.body.dataset.theme === 'monday_workspace';
+
+      // Theme isolation guard: always clear stale markup before painting
+      // the current theme variant to prevent layout bleed when switching.
+      mount.innerHTML = '';
 
       if (isMonday) {
         mount.innerHTML = `
@@ -258,7 +265,6 @@
         root._cleanup = () => {
           try { if (prevCleanup) prevCleanup(); } catch (_) { }
           try { if (state.subscription) client.removeChannel(state.subscription); } catch (_) { }
-          try { if (watchTimer) clearInterval(watchTimer); } catch (_) { }
           state.subscription = null;
         };
       } catch (_) { }
@@ -278,6 +284,15 @@
       mount.id = 'teamWorkloadPulseMount';
       host.appendChild(mount);
     }
+
+    try { window.addEventListener('mums:themeApplied', onThemeApplied); } catch (_) { }
+
+    const prevCleanup = root._cleanup;
+    root._cleanup = () => {
+      try { if (prevCleanup) prevCleanup(); } catch (_) { }
+      try { window.removeEventListener('mums:themeApplied', onThemeApplied); } catch (_) { }
+      try { if (watchTimer) clearInterval(watchTimer); } catch (_) { }
+    };
 
     await refreshData();
     await ensureRealtime();
