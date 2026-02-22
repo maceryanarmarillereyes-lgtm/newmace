@@ -710,10 +710,42 @@ function _mbxDutyTone(label){
 
   function renderTable(table, activeBucketId, totals, interactive){
     const UI = window.UI;
+    const isMonday = document.body.dataset.theme === 'monday_workspace';
     const buckets = table.buckets || [];
     const members = table.members || [];
     const bucketManagers = buckets.map(b=>({ bucket:b, name:_mbxFindScheduledManagerForBucket(table, b) }));
-    
+
+    if (isMonday) {
+      const head = `
+          <thead>
+            <tr style="background:var(--monday-bg);">
+              <th style="min-width:240px; border-bottom: 2px solid var(--monday-border); font-weight:800;">Agent Profile</th>
+              <th style="min-width:160px; border-bottom: 2px solid var(--monday-border);">Duty</th>
+              ${buckets.map(b => `<th style="border-bottom: 2px solid var(--monday-border);" class="text-center ${(b.id === activeBucketId) ? 'active-head-col' : ''}">${UI.esc(_mbxBucketLabel(b))}</th>`).join('')}
+              <th style="width:100px; color:var(--monday-accent); border-bottom: 2px solid var(--monday-accent);">Sum</th>
+            </tr>
+          </thead>`;
+
+      const rows = members.map(m => {
+        const dutyLabel = resolveMemberDutyLabel(m, (UI && UI.mailboxNowParts ? UI.mailboxNowParts() : (UI && UI.manilaNow ? UI.manilaNow() : null)));
+        const safeDutyLabel = (dutyLabel && dutyLabel !== '—') ? dutyLabel : 'No active duty';
+        return `
+          <tr class="${interactive ? 'mbx-assignable' : ''}" ${interactive ? `data-assign-member="${m.id}"` : ''}>
+            <td style="font-weight:900; color:var(--monday-text-main); border-right: 1px solid var(--monday-border-subtle);">${UI.esc(m.name || 'N/A')}</td>
+            <td style="padding:0; border-right: 1px solid var(--monday-border-subtle);">
+              <div class="badge ${safeDutyLabel.includes('Manager') ? 'info' : 'ok'}" style="height:40px; font-weight:800;">${UI.esc(safeDutyLabel)}</div>
+            </td>
+            ${buckets.map(b => {
+              const v = safeGetCount(table, m.id, b.id);
+              return `<td class="text-center ${(b.id === activeBucketId) ? 'active-col' : ''}" style="font-weight:950; font-size:16px; border-right: 1px solid var(--monday-border-subtle); color:${v > 0 ? 'var(--monday-text-main)' : '#C4C4C4'};">${v}</td>`;
+            }).join('')}
+            <td class="text-center" style="background:var(--monday-bg); font-weight:950; color:var(--monday-accent);">${totals.rowTotals[m.id] || 0}</td>
+          </tr>`;
+      }).join('');
+
+      return `<table class="table" style="border: 1px solid var(--monday-border);">${head}<tbody>${rows}</tbody></table>`;
+    }
+
     const rows = members.map(m=>{
       const cells = buckets.map(b=>{
         const v = safeGetCount(table, m.id, b.id);
