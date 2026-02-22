@@ -186,7 +186,9 @@ window.Pages.members = function(root){
   const _todayWD = UI.weekdayFromISO(_todayISO);
   const _deltaToMon = (_todayWD===0) ? -6 : (1 - _todayWD); // Sun->Mon = -6
   const defaultWeekStartISO = UI.addDaysISO(_todayISO, _deltaToMon);
-  let weekStartISO = localStorage.getItem('ums_week_start_iso') || defaultWeekStartISO;
+  // Default Members view to the current Manila calendar week on every open.
+  // This prevents stale persisted weeks from showing old dates by default.
+  let weekStartISO = defaultWeekStartISO;
 
   // Paint state (also drives Graph Panel task comparison)
   let paint = {
