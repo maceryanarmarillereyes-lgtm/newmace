@@ -77,47 +77,51 @@
 
       if (isMonday) {
         mount.innerHTML = `
-        <div class="ux-card dashx-panel" style="margin-top:20px; background:#FFFFFF; border:1px solid var(--monday-border); border-radius:8px; box-shadow:var(--monday-shadow); border-top: 6px solid var(--monday-accent) !important;">
-          <div class="row between" style="padding:16px 24px; border-bottom:1px solid var(--monday-border-subtle);">
+        <div class="mums-card dashx-panel" style="margin-top:20px; border-top: 6px solid #0073EA !important; padding:0 !important; overflow:hidden;">
+          <div class="row between" style="padding:24px; background:#fff; border-bottom:1px solid #E6E9EF;">
             <div>
-              <div class="dashx-title" style="color:var(--monday-text-main); font-weight:900; font-size:20px; letter-spacing:-0.5px;">Team Workload Pulse</div>
-              <div class="small muted" style="color:var(--monday-text-sub);">Enterprise Leadership View • Performance Matrix</div>
+              <div class="dashx-title" style="font-size:20px; font-weight:900; color:#323338; letter-spacing:-0.5px;">Team Workload Pulse</div>
+              <div class="small" style="color:#676879; margin-top:4px; font-weight:500;">Real-time execution monitoring across active batches</div>
             </div>
-            <select id="twpFilter" class="input" style="width:260px; font-weight:700; border: 1px solid var(--monday-border);">
-              <option value="">All Active Distributions</option>
+            <select id="twpFilter" class="input" style="width:280px; height:40px; font-weight:700; border:1px solid #D0D4E4;">
+              <option value="">All Active Boards</option>
               ${titles.map((t) => `<option value="${UI.esc(t)}" ${state.filter === t ? 'selected' : ''}>${UI.esc(t)}</option>`).join('')}
             </select>
           </div>
-          <div style="padding:24px;">
+          <div style="padding:24px; background:#F5F6F8;">
             ${Object.keys(byDist).map((dist) => `
-              <div style="margin-bottom:20px; border:1px solid var(--monday-border); border-radius:8px; overflow:hidden;">
-                <div style="background:var(--monday-bg); padding:12px 16px; font-weight:900; color:var(--monday-text-main); border-bottom:1px solid var(--monday-border); font-size:14px;">📁 ${UI.esc(dist)}</div>
-                <table class="table" style="width:100%; border-collapse:collapse;">
+              <div class="monday-board-section" style="margin-bottom:32px; background:#fff; border:1px solid #D0D4E4; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.05); overflow:hidden;">
+                <div style="background:#fff; padding:16px 20px; font-weight:900; font-size:15px; color:#323338; border-bottom:1px solid #E6E9EF; display:flex; align-items:center; gap:10px;">
+                  <span style="color:#0073EA">📁</span> ${UI.esc(dist)}
+                </div>
+                <table class="table" style="margin:0; width:100%; border-collapse:collapse;">
                   <thead>
-                    <tr style="background:#fff;">
-                      <th style="text-align:left; padding:12px 16px; color:var(--monday-text-sub); border-bottom:1px solid var(--monday-border);">Member</th>
-                      <th style="text-align:left; padding:12px 16px; color:var(--monday-text-sub); border-bottom:1px solid var(--monday-border);">Progress</th>
-                      <th style="text-align:center; padding:12px 16px; color:var(--monday-text-sub); border-bottom:1px solid var(--monday-border);">Status</th>
+                    <tr style="background:#F6F7FB;">
+                      <th style="padding:12px 20px; text-align:left; color:#676879; font-weight:600; font-size:13px; border-bottom:1px solid #D0D4E4; width:35%;">Agent Name</th>
+                      <th style="padding:12px 20px; text-align:left; color:#676879; font-weight:600; font-size:13px; border-bottom:1px solid #D0D4E4; width:45%;">Completion Progress</th>
+                      <th style="padding:12px 20px; text-align:center; color:#676879; font-weight:600; font-size:13px; border-bottom:1px solid #D0D4E4; width:20%;">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     ${byDist[dist].map((row) => {
                       const progress = row.total ? Math.round((row.done / row.total) * 100) : 0;
                       return `
-                        <tr style="border-bottom:1px solid var(--monday-border-subtle);">
-                          <td style="padding:12px 16px; font-weight:700; color:var(--monday-text-main);">${UI.esc(row.member_name || 'N/A')}</td>
-                          <td style="padding:12px 16px;">
-                            <div style="display:flex; align-items:center; gap:10px;">
-                              <div style="flex:1; height:8px; background:var(--monday-border-subtle); border-radius:4px; overflow:hidden;">
-                                <div style="height:100%; width:${Math.max(0, Math.min(100, progress))}%; background:var(--monday-accent);"></div>
-                              </div>
-                              <span style="font-weight:900; font-size:12px; color:var(--monday-text-main); width:35px;">${progress}%</span>
+                      <tr style="height:52px; border-bottom:1px solid #E6E9EF;">
+                        <td style="padding:12px 20px; font-weight:700; color:#323338; font-size:14px;">${UI.esc(row.member_name)}</td>
+                        <td style="padding:12px 20px;">
+                          <div style="display:flex; align-items:center; gap:14px;">
+                            <div style="flex:1; height:10px; background:#E6E9EF; border-radius:10px; overflow:hidden;">
+                              <div style="height:100%; width:${progress}%; background:#0073EA; border-radius:10px;"></div>
                             </div>
-                          </td>
-                          <td style="padding:0; width:120px;">
-                            <div class="status-pill ${progress >= 100 ? 'status-done' : 'status-working'}" style="height:44px; font-weight:800;">${progress >= 100 ? 'DONE' : 'WORKING'}</div>
-                          </td>
-                        </tr>`;
+                            <span style="font-weight:900; font-size:13px; color:#323338; width:40px;">${progress}%</span>
+                          </div>
+                        </td>
+                        <td style="padding:0;">
+                          <div class="status-pill ${progress >= 100 ? 'status-done' : 'status-working'}" style="height:52px; font-weight:800; font-size:12px; letter-spacing:0.5px;">
+                            ${progress >= 100 ? 'DONE' : 'WORKING'}
+                          </div>
+                        </td>
+                      </tr>`;
                     }).join('')}
                   </tbody>
                 </table>
