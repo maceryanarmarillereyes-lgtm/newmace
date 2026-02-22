@@ -9,6 +9,12 @@
       return new Date(Number(ms||0)).toLocaleString('en-CA', { year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' });
     }catch(_){ return ''; }
   };
+  const fmtDur = (mins)=>{
+    const n = Math.max(0, Number(mins||0));
+    const h = Math.floor(n/60);
+    const m = n%60;
+    return `${h}h ${m}m`;
+  };
 
   root.innerHTML = `
     <h2 style="margin:0 0 10px">My Attendance</h2>
@@ -30,7 +36,9 @@
             <th>Date/Time</th>
             <th>Team</th>
             <th>Status</th>
+            <th>Type</th>
             <th>Reason</th>
+            <th>Overtime</th>
             <th class="small muted">Shift Key</th>
           </tr>
         </thead>
@@ -40,20 +48,22 @@
               <td>${UI.esc(fmt(r.ts))}</td>
               <td>${UI.esc(r.teamLabel||r.teamId||'')}</td>
               <td><span class="badge ${r.mode==='WFH'?'warn':'ok'}">${UI.esc(r.mode)}</span></td>
+              <td>${UI.esc(r.eventType||'ATTENDANCE')}</td>
               <td>${UI.esc(r.reason||'—')}</td>
+              <td>${String(r.eventType||'')==='OVERTIME_CONFIRMATION' ? UI.esc(fmtDur(r.overtimeMinutes)) : '—'}</td>
               <td class="small muted">${UI.esc(r.shiftKey||'')}</td>
             </tr>
-          `).join('') || `<tr><td colspan="5" class="muted">No attendance records found.</td></tr>`}
+          `).join('') || `<tr><td colspan="7" class="muted">No attendance records found.</td></tr>`}
         </tbody>
       </table>
     </div>
   `;
 
   const toRows = ()=>{
-    const header = ['timestamp','team','mode','reason','shiftKey'];
+    const header = ['timestamp','team','mode','eventType','reason','overtimeMinutes','shiftKey'];
     const rows = [header];
     for(const r of list){
-      rows.push([String(r.ts||''), r.teamLabel||r.teamId||'', r.mode||'', r.reason||'', r.shiftKey||'']);
+      rows.push([String(r.ts||''), r.teamLabel||r.teamId||'', r.mode||'', r.eventType||'ATTENDANCE', r.reason||'', String(r.overtimeMinutes||0), r.shiftKey||'']);
     }
     return rows;
   };
