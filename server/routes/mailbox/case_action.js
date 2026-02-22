@@ -317,9 +317,9 @@ module.exports = async (req, res) => {
         try{ nextProfile = await getProfileForUserId(newAssigneeId); }catch(_){ nextProfile = null; }
         const nextRole = safeString(nextProfile && nextProfile.role ? nextProfile.role : '', 40);
         const nextTeamId = safeString(nextProfile && (nextProfile.team_id || nextProfile.teamId) ? (nextProfile.team_id || nextProfile.teamId) : '', 40);
-        if(nextRole !== 'MEMBER'){
+        if(nextRole !== 'MEMBER' && nextRole !== 'TEAM_LEAD'){
           res.statusCode = 400;
-          return res.end(JSON.stringify({ ok:false, error:'Reassign target must be a MEMBER account' }));
+          return res.end(JSON.stringify({ ok:false, error:'Reassign target must be a MEMBER or TEAM_LEAD account' }));
         }
         if(shiftTeamId && nextTeamId && shiftTeamId !== nextTeamId){
           res.statusCode = 400;
@@ -335,7 +335,7 @@ module.exports = async (req, res) => {
         current.previousAssigneeName = prevAssigneeName;
         current.assigneeId = newAssigneeId;
         current.assigneeName = newAssigneeName;
-        current.assigneeRole = 'MEMBER';
+        current.assigneeRole = (nextRole === 'TEAM_LEAD') ? 'TEAM_LEAD' : 'MEMBER';
         current.reassignedAt = Date.now();
         current.reassignedById = actor.id;
         current.reassignedByName = safeString((profile && profile.name) ? profile.name : (actor.email || ''), 120);
