@@ -94,6 +94,29 @@
     return `<span class="ovr-delta ${cls}">${sign}${fDelta}${suffix} vs prev</span>`;
   }
 
+  function renderSummaryCards(stats) {
+    const isMonday = document.body.dataset.theme === 'monday_workspace';
+    const cards = [
+      { label: 'Total Deployments', val: stats.total, color: 'var(--monday-accent)' },
+      { label: 'Completion Rate', val: stats.completionPct + '%', color: 'var(--status-done)' },
+      { label: 'Pending Capacity', val: stats.pending, color: 'var(--status-working)' },
+      { label: 'Blocking Issues', val: stats.problems, color: 'var(--status-stuck)' }
+    ];
+
+    if (isMonday) {
+      return `
+      <div class="dashx-cards" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:20px; margin-bottom:24px;">
+        ${cards.map(c => `
+          <div class="mums-card" style="padding:24px; background:#FFFFFF; border-radius:8px; border-left: 6px solid ${c.color} !important; box-shadow: var(--monday-shadow);">
+            <div style="font-size:12px; font-weight:900; color:var(--monday-text-sub); text-transform:uppercase; letter-spacing:1px;">${c.label}</div>
+            <div style="font-size:32px; font-weight:1000; color:var(--monday-text-main); margin-top:8px;">${c.val}</div>
+          </div>`).join('')}
+      </div>`;
+    }
+
+    return '';
+  }
+
   function buildSparkline(values){
     const data = Array.isArray(values) ? values : [];
     if(!data.length) return '<span class="muted" style="font-size:11px;">No trend data</span>';
@@ -411,6 +434,12 @@
 
         <div class="ovr-kpi-grid">
           ${loading ? skeletonKPIs : (kpis ? `
+            ${renderSummaryCards({
+              total: Number(kpis.total_hours || 0),
+              completionPct: Number(kpis.cases || 0) > 0 ? Math.round((Number(kpis.call_hours || 0) + Number(kpis.mailbox_hours || 0) + Number(kpis.back_office_hours || 0)) / Math.max(1, Number(kpis.total_hours || 0)) * 100) : 0,
+              pending: Math.max(0, Number(kpis.cases || 0) - Math.round(Number(kpis.call_hours || 0) + Number(kpis.mailbox_hours || 0))),
+              problems: Math.max(0, Number(kpis.prev_cases || 0) - Number(kpis.cases || 0))
+            })}
             <div class="ovr-kpi-card">
               <div class="ovr-kpi-label">Total Assigned Cases</div>
               <div class="ovr-kpi-val">${UI.esc(String(kpis.cases || 0))}</div>
