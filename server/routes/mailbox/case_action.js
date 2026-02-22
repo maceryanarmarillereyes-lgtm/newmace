@@ -323,8 +323,8 @@ module.exports = async (req, res) => {
 
         let nextProfile = null;
         try{ nextProfile = await getProfileForUserId(newAssigneeId); }catch(_){ nextProfile = null; }
-        const nextRole = normRole(nextProfile && nextProfile.role ? nextProfile.role : '');
-        const nextTeamId = profileTeamId(nextProfile);
+        const nextRole = safeString(nextProfile && nextProfile.role ? nextProfile.role : '', 40);
+        const nextTeamId = safeString(nextProfile && (nextProfile.team_id || nextProfile.teamId) ? (nextProfile.team_id || nextProfile.teamId) : '', 40);
         if(nextRole !== 'MEMBER' && nextRole !== 'TEAM_LEAD'){
           res.statusCode = 400;
           return res.end(JSON.stringify({ ok:false, error:'Reassign target must be a MEMBER or TEAM_LEAD account' }));

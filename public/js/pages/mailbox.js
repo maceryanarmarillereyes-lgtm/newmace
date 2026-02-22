@@ -307,16 +307,14 @@ function _mbxDutyTone(label){
 
         for(const b of blocks){
           hasBlocks = true;
-          const bStartRaw = b.start ?? b.startTime ?? b.from ?? b.begin;
-          const bEndRaw = b.end ?? b.endTime ?? b.to ?? b.finish;
-          let s = (UI && UI.parseHM) ? UI.parseHM(bStartRaw) : _mbxParseHM(bStartRaw);
-          let e = (UI && UI.parseHM) ? UI.parseHM(bEndRaw) : _mbxParseHM(bEndRaw);
+          let s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
+          let e = (UI && UI.parseHM) ? UI.parseHM(b.end) : _mbxParseHM(b.end);
           if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
           const segs = _mbxToSegments(s, e);
           const overlaps = _mbxSegmentsOverlap(segs, _mbxToSegments(bStart % 1440, bEnd % 1440));
           if(!overlaps) continue;
-          const rawRole = String(b.role || b.taskId || b.task || '').toLowerCase();
-          const sc = Config && Config.scheduleById ? Config.scheduleById(b.role || b.taskId || b.task) : null;
+          const rawRole = String(b.role||'').toLowerCase();
+          const sc = Config && Config.scheduleById ? Config.scheduleById(b.role) : null;
           const label = (sc && sc.label ? sc.label : rawRole).toLowerCase();
           if(label.includes('manager') || rawRole.includes('manager')) isMgr = true;
         }
@@ -1054,7 +1052,6 @@ function _mbxDutyTone(label){
   let _assignUserId = null;
   let _assignSending = false;
   let _assignAbort = null;
-  let _assignTimeoutId = 0;
   let _caseActionCtx = null;
   let _caseActionBusy = false;
   let _reassignBusy = false;
@@ -1078,7 +1075,6 @@ function _mbxDutyTone(label){
     if(id === 'mbxAssignModal' && _assignAbort){
       try{ _assignAbort.abort(); }catch(_){ }
       _assignAbort = null;
-      if(_assignTimeoutId){ try{ clearTimeout(_assignTimeoutId); }catch(_){ } _assignTimeoutId = 0; }
       setAssignSubmitting(false);
     }
   }
@@ -1176,7 +1172,7 @@ function _mbxDutyTone(label){
   }
 
   function isValidAssignmentTarget(user){
-    const role = _mbxNormRole(user?.role);
+    const role = String(user?.role || '').trim();
     return role === 'MEMBER' || role === 'TEAM_LEAD';
   }
   
@@ -1255,7 +1251,7 @@ function _mbxDutyTone(label){
     setAssignSubmitting(true);
     try{
       _assignAbort = new AbortController();
-      _assignTimeoutId = setTimeout(()=>{ try{ _assignAbort.abort(); }catch(_){ } }, 15000);
+      const timeoutId = setTimeout(()=>{ try{ _assignAbort.abort(); }catch(_){ } }, 15000);
       const { res, data } = await mbxPost('/api/mailbox/assign', {
         shiftKey,
         assigneeId: uid,
@@ -1263,7 +1259,7 @@ function _mbxDutyTone(label){
         desc,
         clientId: _mbxClientId() || undefined
       }, { signal: _assignAbort.signal });
-      if(_assignTimeoutId){ clearTimeout(_assignTimeoutId); _assignTimeoutId = 0; }
+      clearTimeout(timeoutId);
       _assignAbort = null;
 
       if(res.status === 401){
@@ -1288,7 +1284,6 @@ function _mbxDutyTone(label){
       scheduleRender('assign-success');
     }catch(e){
       _assignAbort = null;
-      if(_assignTimeoutId){ try{ clearTimeout(_assignTimeoutId); }catch(_){ } _assignTimeoutId = 0; }
       setAssignSubmitting(false);
       if(String(e?.name||'') === 'AbortError') return err('Request timed out. Please retry.');
       return err(String(e?.message||e));
@@ -1302,7 +1297,7 @@ function _mbxDutyTone(label){
       const teamId = String(table?.meta?.teamId || '');
       const users = (Store.getUsers ? Store.getUsers() : []) || [];
       return users
-        .filter(u=>u && u.status==='active' && _mbxUserTeamId(u)===teamId && isValidAssignmentTarget(u) && String(u.id||'')!==String(previousOwnerId||''))
+        .filter(u=>u && u.status==='active' && String(u.teamId||'')===teamId && isValidAssignmentTarget(u) && String(u.id||'')!==String(previousOwnerId||''))
         .map(u=>({ id:String(u.id||''), name:String(u.name||u.username||u.id||'N/A') }))
         .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
     }catch(_){
