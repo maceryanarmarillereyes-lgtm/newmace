@@ -48,29 +48,58 @@
 
   async function mountTeamWorkloadPulse() {
     if (!isLeadView) return;
-    let state = { rows: [], filter: '', subscription: null, refreshLock: false };
+    let state = { rows: [], filter: '', subscription: null, refreshLock: false, observer: null };
+
+    const formatTs = (iso) => {
+      if (!iso) return 'N/A';
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return 'N/A';
+      return d.toLocaleString('en-PH', { hour12: true, year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    };
+
+    const ensureHostMount = () => {
+      const host = root.querySelector('.dashx');
+      if (!host) return null;
+      let mount = root.querySelector('#teamWorkloadPulseMount');
+      if (!mount) {
+        mount = document.createElement('div');
+        mount.id = 'teamWorkloadPulseMount';
+        mount.className = 'dashx-panel twp-enterprise';
+        host.appendChild(mount);
+      }
+      return mount;
+    };
 
     const renderWidget = () => {
-      const mount = root.querySelector('#teamWorkloadPulseMount');
+      const mount = ensureHostMount();
       if (!mount) return;
 
       const grouped = groupRows(state.rows);
-      const titles = Array.from(new Set((state.rows || []).map((r) => String(r.distribution_title || '').trim()).filter(Boolean))).sort();
-      const byDist = grouped.reduce((acc, row) => {
+      const shown = state.filter ? grouped.filter((g) => String(g.distribution_title || '') === state.filter) : grouped;
+      const titles = Array.from(new Set(grouped.map((r) => String(r.distribution_title || '').trim()).filter(Boolean))).sort();
+      const byDist = shown.reduce((acc, row) => {
         const key = row.distribution_title;
         if (!acc[key]) acc[key] = [];
         acc[key].push(row);
         return acc;
       }, {});
 
+      const totalTasks = shown.reduce((n, r) => n + Number(r.total || 0), 0);
+      const completedTasks = shown.reduce((n, r) => n + Number(r.done || 0), 0);
+      const completion = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+      const scopeText = role === 'SUPER_ADMIN' || role === 'SUPER_USER' ? 'All teams view' : 'My team only';
+
       mount.innerHTML = `
-        <div class="ux-card dashx-panel" style="margin-top:12px">
-          <div class="row" style="justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
+        <div class="ux-card" style="margin-top:12px;border:1px solid rgba(56,189,248,.28);box-shadow:0 10px 35px rgba(2,6,23,.38)">
+          <div class="row" style="justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
             <div>
               <div class="dashx-title">Team Workload Pulse</div>
-              <div class="small muted">Leadership view across distribution groups.</div>
+              <div class="small muted">Enterprise operations view • ${UI.esc(scopeText)} • ${UI.esc(shown.length)} active members</div>
             </div>
-            <div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <span class="badge">Tasks: ${UI.esc(totalTasks)}</span>
+              <span class="badge ok">Done: ${UI.esc(completedTasks)}</span>
+              <span class="badge ${completion >= 80 ? 'ok' : completion >= 40 ? 'warn' : ''}">Completion: ${UI.esc(completion)}%</span>
               <select id="twpFilter" class="ux-focusable">
                 <option value="">All Active Tasks</option>
                 ${titles.map((t) => `<option value="${UI.esc(t)}" ${state.filter === t ? 'selected' : ''}>${UI.esc(t)}</option>`).join('')}
@@ -78,13 +107,16 @@
             </div>
           </div>
 
-          <div style="margin-top:10px">
+          <div style="margin-top:12px">
             ${Object.keys(byDist).map((dist) => `
-              <div class="card pad" style="margin-bottom:10px;border:1px solid rgba(255,255,255,.08)">
-                <div class="small" style="margin-bottom:8px"><b>${UI.esc(dist)}</b> • ${UI.esc(byDist[dist].length)} members helping</div>
+              <div class="card pad" style="margin-bottom:10px;border:1px solid rgba(255,255,255,.10);background:linear-gradient(180deg,rgba(30,41,59,.42),rgba(15,23,42,.28))">
+                <div class="small" style="margin-bottom:8px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                  <b>${UI.esc(dist)}</b>
+                  <span class="muted">${UI.esc(byDist[dist].length)} members contributing</span>
+                </div>
                 <table class="table">
                   <thead>
-                    <tr><th>Member</th><th>Workload</th><th>Distribution Source</th><th>Progress Bar</th><th>Status</th></tr>
+                    <tr><th>Member</th><th>Workload</th><th>Progress</th><th>Status</th><th>Last Update</th></tr>
                   </thead>
                   <tbody>
                     ${byDist[dist].map((row) => {
@@ -99,14 +131,14 @@
                         <tr>
                           <td>${UI.esc(row.member_name)} <span class="badge">${UI.esc(shiftIcon(row.member_shift))} ${UI.esc(row.member_shift || 'N/A')}</span></td>
                           <td>${UI.esc(row.total)} items</td>
-                          <td>${UI.esc(row.distribution_title)}</td>
                           <td>
-                            <div style="height:10px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;min-width:140px">
-                              <div style="height:100%;width:${Math.max(0, Math.min(100, progress))}%;background:linear-gradient(90deg,#22c55e,#14b8a6)"></div>
+                            <div style="height:10px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;min-width:160px">
+                              <div style="height:100%;width:${Math.max(0, Math.min(100, progress))}%;background:linear-gradient(90deg,#22c55e,#0ea5e9)"></div>
                             </div>
                             <div class="small muted" style="margin-top:4px">${UI.esc(progress)}%</div>
                           </td>
                           <td><span class="${cls}">${UI.esc(label)}</span></td>
+                          <td class="small muted">${UI.esc(formatTs(row.last_update))}</td>
                         </tr>
                       `;
                     }).join('') || '<tr><td colspan="5" class="muted">No workload rows for this distribution.</td></tr>'}
@@ -145,11 +177,8 @@
         if (state.subscription) return;
 
         const token = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
-        // Don't create a client without a token; it can cause RLS issues for any REST usage.
         if (!token) return;
 
-        // Reuse the shared Supabase client to avoid multiple GoTrueClient instances.
-        // If it doesn't exist yet, create it once and store it globally.
         if (!window.__MUMS_SB_CLIENT) {
           const dummyStorage = { getItem() { return null; }, setItem() { }, removeItem() { } };
           window.__MUMS_SB_CLIENT = window.supabase.createClient(sbUrl, sbAnon, {
@@ -166,22 +195,29 @@
           .channel('team-workload-pulse')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'task_items' }, () => refreshData())
           .subscribe();
-
-        const prevCleanup = root._cleanup;
-        root._cleanup = () => {
-          try { if (prevCleanup) prevCleanup(); } catch (_) { }
-          try { if (state.subscription) client.removeChannel(state.subscription); } catch (_) { }
-          state.subscription = null;
-        };
       } catch (_) { }
     };
 
-    const host = root.querySelector('.dashx');
-    if (host && !root.querySelector('#teamWorkloadPulseMount')) {
-      const mount = document.createElement('div');
-      mount.id = 'teamWorkloadPulseMount';
-      host.appendChild(mount);
-    }
+    const prevCleanup = root._cleanup;
+    root._cleanup = () => {
+      try { if (prevCleanup) prevCleanup(); } catch (_) { }
+      try { if (state.observer) state.observer.disconnect(); } catch (_) { }
+      try {
+        const client = window.__MUMS_SB_CLIENT;
+        if (state.subscription && client) client.removeChannel(state.subscription);
+      } catch (_) { }
+      state.subscription = null;
+      state.observer = null;
+    };
+
+    try {
+      state.observer = new MutationObserver(() => {
+        try {
+          if (!root.querySelector('#teamWorkloadPulseMount') && root.querySelector('.dashx')) renderWidget();
+        } catch (_) { }
+      });
+      state.observer.observe(root, { childList: true, subtree: true });
+    } catch (_) { }
 
     await refreshData();
     await ensureRealtime();
