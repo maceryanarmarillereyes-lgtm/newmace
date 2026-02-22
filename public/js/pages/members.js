@@ -178,14 +178,22 @@ window.Pages.members = function(root){
     return (wd==null) ? 0 : wd;
   }
 
+  function defaultWeekStartISOForVisibleDay(todayISO){
+    // Members grid shows Sun..Sat while the stored anchor is Monday.
+    // For Sundays, anchor to the *next* Monday so the default selected tab
+    // resolves to today's Manila calendar date (not the previous Sunday).
+    const wd = UI.weekdayFromISO(String(todayISO||''));
+    if(wd == null) return String(todayISO||'');
+    const deltaToMon = (wd === 0) ? +1 : (1 - wd);
+    return UI.addDaysISO(String(todayISO||''), deltaToMon);
+  }
+
   let selectedDay = getManilaDayIndex();
 
   // Week scope selector (Manila week starting Monday)
   // Manila week starting Monday, derived from Manila *calendar* date
   const _todayISO = UI.manilaTodayISO();
-  const _todayWD = UI.weekdayFromISO(_todayISO);
-  const _deltaToMon = (_todayWD===0) ? -6 : (1 - _todayWD); // Sun->Mon = -6
-  const defaultWeekStartISO = UI.addDaysISO(_todayISO, _deltaToMon);
+  const defaultWeekStartISO = defaultWeekStartISOForVisibleDay(_todayISO);
   // Default Members view to the current Manila calendar week on every open.
   // This prevents stale persisted weeks from showing old dates by default.
   let weekStartISO = defaultWeekStartISO;
@@ -1389,7 +1397,7 @@ container.innerHTML = `
 
   function currentWeekStartISO(){
     const todayISO = UI.manilaTodayISO();
-    return normalizeToMonday(todayISO);
+    return defaultWeekStartISOForVisibleDay(todayISO);
   }
 
   function renderWeekWarning(){
@@ -2752,9 +2760,9 @@ function buildSegTimeLabels(team, start, end){
   return `<span class="seg-time-stack">${labels.join('')}</span>`;
 }
 function currentWeekStartISOManila(){
-  // Use Manila-local date boundary and snap to the visible week start (Sun–Sat)
+  // Use Manila-local date boundary and align to the Members visible week anchor.
   const todayISO = (UI && UI.manilaTodayISO) ? UI.manilaTodayISO() : new Date().toISOString().slice(0,10);
-  return normalizeToMonday(todayISO);
+  return defaultWeekStartISOForVisibleDay(todayISO);
 }
 
 function isWeekInPast(weekISO){
