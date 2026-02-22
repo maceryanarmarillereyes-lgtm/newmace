@@ -159,14 +159,6 @@ function safeString(x, max=240){
   return s.length>max ? s.slice(0,max) : s;
 }
 
-function normRole(role){
-  return safeString(role, 60).replace(/\s+/g, '_').toUpperCase();
-}
-
-function profileTeamId(profile){
-  return safeString(profile && (profile.team_id || profile.teamId || (profile.team && profile.team.id)) ? (profile.team_id || profile.teamId || (profile.team && profile.team.id)) : '', 40);
-}
-
 function makeAssignmentId(){
   return 'mbx_srv_' + Math.random().toString(16).slice(2) + '_' + Date.now().toString(36);
 }
@@ -225,7 +217,7 @@ module.exports = async (req, res) => {
       return res.end(JSON.stringify({ ok:false, error:'Unauthorized' }));
     }
     const profile = await getProfileForUserId(actor.id);
-    const role = normRole(profile && profile.role ? profile.role : 'MEMBER');
+    const role = safeString(profile && profile.role ? profile.role : 'MEMBER', 40);
 
     const isAdminAnytime = ADMIN_ANYTIME.has(role);
     const isTeamLead = (role === TEAM_LEAD_ROLE);
@@ -269,7 +261,7 @@ module.exports = async (req, res) => {
         res.statusCode = 403;
         return res.end(JSON.stringify({ ok:false, error:'Forbidden (not on active shift)' }));
       }
-      const teamIdGate = profileTeamId(profile);
+      const teamIdGate = safeString(profile && (profile.team_id || profile.teamId) ? (profile.team_id || profile.teamId) : '', 40);
       if(teamIdGate && shiftTeamId && teamIdGate !== shiftTeamId){
         res.statusCode = 403;
         return res.end(JSON.stringify({ ok:false, error:'Forbidden (not in duty team)' }));
@@ -279,7 +271,7 @@ module.exports = async (req, res) => {
     // Member gating
     if(!isAdminAnytime && !isTeamLead){
       // Must be a member mailbox manager on duty and assigned to current duty team.
-      const teamId = profileTeamId(profile);
+      const teamId = safeString(profile && (profile.team_id || profile.teamId) ? (profile.team_id || profile.teamId) : '', 40);
       if(!teamId || (shiftTeamId && teamId !== shiftTeamId)){
         res.statusCode = 403;
         return res.end(JSON.stringify({ ok:false, error:'Forbidden (not in duty team)' }));
@@ -336,14 +328,13 @@ module.exports = async (req, res) => {
       (assigneeProfile && (assigneeProfile.name || assigneeProfile.username)) ? (assigneeProfile.name || assigneeProfile.username) : assigneeId,
       120
     );
-    const assigneeRole = normRole((assigneeProfile && assigneeProfile.role) ? assigneeProfile.role : 'MEMBER');
+    const assigneeRole = safeString((assigneeProfile && assigneeProfile.role) ? assigneeProfile.role : 'MEMBER', 40);
 
-    // Mailbox Manager (MEMBER) can assign to MEMBER / TEAM_LEAD accounts within duty team.
+    // Mailbox Manager (MEMBER) can only assign to MEMBER accounts.
     if(!isAdminAnytime && !isTeamLead){
-      const allowedTargets = new Set(['MEMBER','TEAM_LEAD']);
-      if(!allowedTargets.has(assigneeRole)){
+      if(assigneeRole !== 'MEMBER'){
         res.statusCode = 403;
-        return res.end(JSON.stringify({ ok:false, error:'Forbidden (Mailbox Manager can assign to members or team leads only)' }));
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (Mailbox Manager can assign to members only)' }));
       }
     }
 

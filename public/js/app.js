@@ -40,78 +40,55 @@
     return out;
   }
 
-  async function loadThemeMeta(opts){
-    const o = opts || {};
-    if(__themeMetaLoaded && !o.force) return __themeMeta;
-    if(__themeMetaLoading && !o.force) return __themeMetaLoading;
+  async function loadThemeMeta(force){
+    if(__themeMetaLoaded && !force) return __themeMeta;
+    if(__themeMetaLoading) return __themeMetaLoading;
 
     __themeMetaLoading = (async ()=>{
-      let localMeta = {};
-      try{ localMeta = normalizeThemeMeta(JSON.parse(localStorage.getItem('mums_theme_meta') || '{}')); }catch(_){ localMeta = {}; }
-
-      const cloud = !!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled());
-      const token = getBearerToken();
-      if(!cloud || !token){
-        __themeMeta = localMeta;
-        __themeMetaLoaded = true;
-        return __themeMeta;
-      }
-
       try{
-        const r = await fetch('/api/theme_access/get', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
-        const data = await r.json().catch(()=>null);
-        if(r.ok && data && data.ok){
-          const meta = normalizeThemeMeta(data.meta);
-          __themeMeta = meta;
-          __themeMetaLoaded = true;
-          try{ localStorage.setItem('mums_theme_meta', JSON.stringify(meta)); }catch(_){ }
-          return __themeMeta;
-        }
-      }catch(_){ }
+        const token = getBearerToken();
+        const headers = { 'Content-Type': 'application/json' };
+        if(token) headers['Authorization'] = `Bearer ${token}`;
 
-      __themeMeta = localMeta;
-      __themeMetaLoaded = true;
+        const res = await fetch('/api/theme_access/get', { method: 'GET', headers, cache: 'no-store' });
+        const data = await res.json().catch(()=>({}));
+        if(res.ok && data.ok && data.meta){
+          __themeMeta = normalizeThemeMeta(data.meta);
+          __themeMetaLoaded = true;
+        } else {
+          console.warn('Failed to load theme meta:', data.error || res.status);
+        }
+      }catch(e){
+        console.error('loadThemeMeta error:', e);
+      }finally{
+        __themeMetaLoading = null;
+      }
       return __themeMeta;
     })();
 
-    try{ return await __themeMetaLoading; }
-    finally{ __themeMetaLoading = null; }
+    return __themeMetaLoading;
   }
 
-  async function saveThemeMeta(meta, isSA, profileName){
-    const clean = normalizeThemeMeta(meta);
-    __themeMeta = clean;
-    __themeMetaLoaded = true;
-    try{ localStorage.setItem('mums_theme_meta', JSON.stringify(clean)); }catch(_){ }
-
-    const cloud = !!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled());
-    const token = getBearerToken();
-    if(!cloud || !token || !isSA){
-      renderThemeGrid();
-      return { ok: true, localOnly: true };
-    }
-
+  async function saveThemeMeta(newMeta){
     try{
-      const r = await fetch('/api/theme_access/set', {
+      const token = getBearerToken();
+      const headers = { 'Content-Type': 'application/json' };
+      if(token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/theme_access/set', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ meta: clean, updated_by_name: profileName || '' })
+        headers,
+        body: JSON.stringify({ meta: newMeta })
       });
-      const data = await r.json().catch(()=>null);
-      if(r.ok && data && data.ok){
-        __themeMeta = normalizeThemeMeta(data.meta);
-        try{ localStorage.setItem('mums_theme_meta', JSON.stringify(__themeMeta)); }catch(_){ }
-        renderThemeGrid();
-        return { ok: true };
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok || !data.ok){
+        throw new Error(data.error || `HTTP ${res.status}`);
       }
-      renderThemeGrid();
-      return { ok: false, error: (data && (data.message || data.error)) || 'save_failed' };
+      __themeMeta = normalizeThemeMeta(data.meta || newMeta);
+      return { ok: true };
     }catch(e){
-      renderThemeGrid();
-      return { ok: false, error: String(e && e.message || e || 'save_failed') };
+      console.error('saveThemeMeta error:', e);
+      return { ok: false, message: e.message };
     }
   }
 
@@ -164,48 +141,6 @@
       });
     }
   }catch(_){ }
-
-  let __globalSearchBound = false;
-  function bindGlobalSearch(user){
-    try{
-      if(__globalSearchBound) return;
-      __globalSearchBound = true;
-
-      const triggerInput = document.getElementById('globalSearchInput');
-      const triggerBtn = document.getElementById('globalSearchBtn');
-      const modal = document.getElementById('globalSearchModal');
-      const modalInput = document.getElementById('globalSearchModalInput');
-      
-      const openGlobalSearch = ()=>{
-        try{
-          if(window.UI && typeof UI.openModal === "function") UI.openModal('globalSearchModal');
-          else if (modal) modal.setAttribute('aria-hidden', 'false');
-        }catch(_){ }
-        try{ if(modalInput) modalInput.focus(); }catch(_){ }
-      };
-
-      if(triggerBtn) triggerBtn.addEventListener('click', openGlobalSearch);
-      if(triggerInput){
-        triggerInput.addEventListener('focus', openGlobalSearch);
-        triggerInput.addEventListener('keydown', (ev)=>{
-          const key = String(ev && ev.key || "").toLowerCase();
-          if(key === "enter" || key === "k"){
-            if(key !== "enter" && !ev.ctrlKey && !ev.metaKey) return;
-            try{ ev.preventDefault(); }catch(_){ }
-            openGlobalSearch();
-          }
-        });
-      }
-
-      document.addEventListener('keydown', (ev)=>{
-        const key = String(ev && ev.key || "").toLowerCase();
-        if((ev.ctrlKey || ev.metaKey) && key === "k"){
-          try{ ev.preventDefault(); }catch(_){ }
-          openGlobalSearch();
-        }
-      });
-    }catch(_){ }
-  }
 
   function fitText(el, minPx, maxPx){
     try{
@@ -564,7 +499,6 @@
     reset();
   }
 
-
   function _relLum(rgb){
     const srgb = rgb.map(v=>v/255).map(v=> v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4));
     return 0.2126*srgb[0] + 0.7152*srgb[1] + 0.0722*srgb[2];
@@ -615,26 +549,26 @@
     ];
 
     inner.innerHTML = `
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px;">
+      <div class="theme-lab-grid">
         ${rows.map(row=>{
           const ratio = (Math.round(row.v*100)/100).toFixed(2);
           const b = (row.v >= row.min) ? {label:'✅ PASS', col:'#10b981', bg:'rgba(16,185,129,0.1)'} 
                   : (row.v >= Math.max(3.0, row.min)) ? {label:'⚠️ WARN', col:'#fbbf24', bg:'rgba(245,158,11,0.1)'} 
                   : {label:'❌ FAIL', col:'#ef4444', bg:'rgba(239,68,68,0.1)'};
           return `
-            <div style="background:rgba(2,6,23,0.5); border:1px solid rgba(255,255,255,0.05); border-radius:12px; padding:16px; display:flex; justify-content:space-between; align-items:center; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);">
-               <div>
-                  <div style="font-weight:900; color:#f8fafc; font-size:14px; letter-spacing: -0.3px;">${UI.esc(row.k)}</div>
-                  <div style="font-family:monospace; color:#cbd5e1; font-size:13px; margin-top:4px; opacity:0.8;">Ratio: ${ratio}:1</div>
+            <div class="theme-lab-card">
+               <div class="theme-lab-copy">
+                  <div class="theme-lab-k">${UI.esc(row.k)}</div>
+                  <div class="theme-lab-v">Ratio: ${ratio}:1</div>
                </div>
-               <div style="background:${b.bg}; color:${b.col}; border:1px solid ${b.col}; box-shadow:0 0 15px ${b.bg}; padding:6px 12px; border-radius:8px; font-weight:900; font-size:11px; letter-spacing:0.5px;">
+               <div class="theme-lab-status" style="background:${b.bg}; color:${b.col}; border-color:${b.col}; box-shadow:0 0 15px ${b.bg};">
                   ${b.label}
                </div>
             </div>
           `;
         }).join('')}
       </div>
-      <div class="small muted" style="margin-top:20px; border-left:4px solid #38bdf8; padding-left:12px; font-size:13px; line-height: 1.5;">
+      <div class="theme-lab-guide small muted">
         <strong>Diagnostic Guidance:</strong> If any parameter fails WCAG 2.1 AA standards, adjust your <code>Config.THEMES</code> definitions. Muted text requires 3.0:1, while standard text requires 4.5:1 against the active panel background.
       </div>
     `;
@@ -643,7 +577,7 @@
   }
 
   // =========================================================================
-  // BOSS THUNTER: ULTIMATE COMPACT BENTO MANAGER + ONE-CLICK CODE CLEANSER
+  // BOSS THUNTER: ULTIMATE COMPACT BENTO MANAGER + API SYNC + CODE CLEANSER
   // =========================================================================
   function renderThemeGrid(){
     const grid = document.getElementById('themeGrid');
@@ -654,6 +588,7 @@
     const saRole = (window.Config && Config.ROLES && Config.ROLES.SUPER_ADMIN) ? String(Config.ROLES.SUPER_ADMIN).toUpperCase() : 'SUPER_ADMIN';
     const isSA = (rawRole === saRole) || (rawRole === 'SUPER_ADMIN');
 
+    // ENSURE DATA IS LOADED BEFORE RENDERING UI
     if (!__themeMetaLoaded) {
       if (!__themeMetaLoading) {
         grid.innerHTML = '<div class="muted" style="padding:40px; text-align:center; font-size:14px; display:flex; justify-content:center; align-items:center;"><div class="mbx-spinner" style="margin-right:10px;"></div> Syncing Global Theme Policy...</div>';
@@ -662,40 +597,10 @@
       return;
     }
 
-    if(!document.getElementById('mums-bento-theme-css')) {
-        const s = document.createElement('style');
-        s.id = 'mums-bento-theme-css';
-        s.textContent = `
-            #themeGrid { display: block !important; } 
-            .th-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
-            .th-card { position: relative; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px; cursor: pointer; transition: all 0.2s ease; overflow: hidden; display: flex; align-items: center; gap: 14px; box-shadow: inset 0 1px 1px rgba(255,255,255,0.05); }
-            .th-card:hover { background: rgba(30, 41, 59, 0.6); border-color: rgba(56, 189, 248, 0.3); transform: translateY(-2px); }
-            .th-card.is-active { background: linear-gradient(145deg, rgba(14, 165, 233, 0.1), rgba(2, 132, 199, 0.05)); border-color: #38bdf8; box-shadow: 0 0 20px rgba(56, 189, 248, 0.2), inset 0 0 0 1px #38bdf8; }
-            .th-swatch { width: 50px; height: 50px; border-radius: 50%; background: var(--t-bg); border: 2px solid var(--t-panel); box-shadow: 0 4px 10px rgba(0,0,0,0.3); position: relative; flex-shrink: 0; }
-            .th-swatch::after { content: ''; position: absolute; bottom: -2px; right: -2px; width: 18px; height: 18px; border-radius: 50%; background: var(--t-acc); border: 2px solid var(--t-panel); box-shadow: 0 0 8px var(--t-acc); }
-            .th-info { flex: 1; min-width: 0; }
-            .th-title { color: #f8fafc; font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.3px; }
-            .th-meta { color: #94a3b8; font-size: 11px; margin-top: 4px; font-family: monospace; }
-            .th-badge { font-size: 9px; font-weight: 900; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.5px; margin-top:6px; display:inline-block; }
-            .th-badge-active { background: rgba(56,189,248,0.2); color: #7dd3fc; border: 1px solid rgba(56,189,248,0.3); }
-            .th-badge-hidden { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
-            .th-card.is-hidden { opacity: 0.5; border-style: dashed; }
-            .th-card.is-hidden:hover { opacity: 0.9; border-style: dashed; border-color: #ef4444; }
-            .th-admin-bar { position: absolute; right: 0; top: 0; bottom: 0; background: rgba(15,23,42,0.98); backdrop-filter: blur(8px); display: flex; flex-direction: column; border-left: 1px solid rgba(255,255,255,0.1); transform: translateX(100%); transition: transform 0.2s ease; z-index: 10; }
-            .th-card.show-admin .th-admin-bar { transform: translateX(0); }
-            .th-admin-btn { flex: 1; background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.05); color: #cbd5e1; font-size: 11px; font-weight: 800; cursor: pointer; padding: 0 16px; transition: all 0.2s; outline:none; display:flex; align-items:center; gap:6px; }
-            .th-admin-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
-            .th-admin-btn.del:hover { background: rgba(239,68,68,0.2); color: #fca5a5; }
-            .th-admin-btn:disabled { opacity:0.5; cursor:not-allowed; }
-            .th-jiggle { animation: thJiggle 0.4s ease-in-out infinite alternate; }
-            @keyframes thJiggle { 0% { transform: rotate(-1deg) scale(0.98); } 100% { transform: rotate(1deg) scale(1.02); } }
-        `;
-        document.head.appendChild(s);
-    }
-
     const cur = Store.getTheme();
     const rawThemes = (Config && Array.isArray(Config.THEMES)) ? Config.THEMES : [];
 
+    // BULLETPROOF FILTERING LOGIC
     const visibleThemes = rawThemes.filter(t => {
         const m = __themeMeta[t.id] || {};
         if (m.deleted) return false; 
@@ -706,15 +611,16 @@
         return true;
     });
 
+    // SUPER ADMIN CONTROL BAR
     const adminBarHtml = isSA ? `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); flex-wrap:wrap; gap:12px;">
-            <div>
-               <div style="color:#f8fafc; font-weight:900; font-size:16px;">Enterprise Theme Manager</div>
-               <div class="small muted" style="margin-top:4px;">Globally synced via API. Manage visibility or export clean code.</div>
+        <div class="th-toolbar">
+            <div class="th-toolbar-copy">
+               <div class="th-toolbar-title">Enterprise Theme Manager</div>
+               <div class="small muted th-toolbar-subtitle">Globally synced via API. Manage visibility or export clean code.</div>
             </div>
-            <div style="display:flex; gap:10px;">
-                <button class="btn-glass btn-glass-ghost" id="exportCleanConfigBtn" title="Click to copy the clean config array">
-                    📄 Copy Clean Code
+            <div class="th-toolbar-actions">
+                <button class="btn-glass btn-glass-ghost" id="exportCleanConfigBtn" title="Get code for config.js to wipe deleted themes globally">
+                    📄 Get Clean Code
                 </button>
                 <button class="btn-glass ${__themeEditMode ? 'btn-glass-danger' : 'btn-glass-primary'}" id="toggleThemeEditBtn">
                     ${__themeEditMode ? '✅ Done Editing' : '⚙️ Manage Themes'}
@@ -723,59 +629,71 @@
         </div>
     ` : '';
 
+    // BUILD COMPACT BENTO CARDS
     const cardsHtml = visibleThemes.map(t => {
       const m = __themeMeta[t.id] || {};
       const active = t.id === cur;
       const isHidden = !!m.hidden;
+
+      const mode = String(t.mode || '').trim() || 'N/A';
       const adminHtml = `
           <div class="th-admin-bar">
-              <button class="th-admin-btn" data-hide-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">${isHidden ? '👁️ Unhide' : '👀 Hide'}</button>
-              <button class="th-admin-btn del" data-del-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">🗑️ Delete</button>
+              <button class="th-admin-btn" data-hide-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">
+                  ${isHidden ? '👁️ Unhide' : '👀 Hide'}
+              </button>
+              <button class="th-admin-btn del" data-del-theme="${UI.esc(t.id)}" onclick="event.stopPropagation()">
+                  🗑️ Delete
+              </button>
           </div>
       `;
+
       return `
         <div class="th-card ${active?'is-active':''} ${isHidden?'is-hidden':''} ${__themeEditMode?'show-admin th-jiggle':''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button">
-           <div class="th-swatch" style="--t-bg:${t.bg}; --t-panel:${t.panel}; --t-acc:${t.accent};"></div>
+           <div class="th-swatch" style="--t-bg:${t.bg || '#0b1220'}; --t-panel:${t.panel || '#121c2f'}; --t-acc:${t.accent || '#4aa3ff'};"></div>
            <div class="th-info">
-              <div class="th-title">${UI.esc(t.name)}</div>
-              <div class="th-meta">ID: ${UI.esc(t.id)}</div>
+              <div class="th-title">${UI.esc(t.name || 'Untitled Theme')}</div>
+              <div class="th-meta">ID: ${UI.esc(t.id || 'n/a')}</div>
+              <div class="th-mode">Mode: ${UI.esc(mode.toUpperCase())}</div>
               ${active ? '<div class="th-badge th-badge-active">ACTIVE</div>' : ''}
               ${isHidden ? '<div class="th-badge th-badge-hidden">HIDDEN</div>' : ''}
            </div>
            ${isSA ? adminHtml : ''}
         </div>
       `;
-    }).join('') || '<div class="muted" style="grid-column:1/-1; text-align:center; padding:40px; font-size:16px;">No themes available.</div>';
+    }).join('') || '<div class="muted th-empty">No themes available.</div>';
 
     grid.innerHTML = adminBarHtml + `<div class="th-grid">${cardsHtml}</div>`;
 
+    // EVENT BINDINGS
     const toggleBtn = document.getElementById('toggleThemeEditBtn');
-    if(toggleBtn) toggleBtn.onclick = () => { __themeEditMode = !__themeEditMode; renderThemeGrid(); };
+    if(toggleBtn) {
+        toggleBtn.onclick = () => {
+            __themeEditMode = !__themeEditMode;
+            renderThemeGrid();
+        };
+    }
 
-    // BOSS THUNTER FIX: ONE-CLICK COPY TO CLIPBOARD
     const exportBtn = document.getElementById('exportCleanConfigBtn');
     if(exportBtn) {
-        exportBtn.onclick = async () => {
+        exportBtn.onclick = () => {
             const cleanArray = rawThemes.filter(t => !__themeMeta[t.id]?.deleted);
             const str = "Config.THEMES = " + JSON.stringify(cleanArray, null, 4) + ";";
             
-            try {
-                await navigator.clipboard.writeText(str);
-                const ogText = exportBtn.innerHTML;
-                exportBtn.innerHTML = '✅ Copied to Clipboard!';
-                exportBtn.style.borderColor = '#10b981';
-                exportBtn.style.color = '#10b981';
-                
-                setTimeout(() => {
-                    exportBtn.innerHTML = ogText;
-                    exportBtn.style.borderColor = '';
-                    exportBtn.style.color = '';
-                }, 3000);
-            } catch (err) {
-                console.error('Failed to copy text: ', err);
-                alert('Could not copy automatically. Check console for the code.');
-                console.log(str);
-            }
+            const m = document.createElement('div');
+            m.className = 'mbx-custom-backdrop is-open';
+            m.innerHTML = `
+                <div class="mbx-modal-glass" style="width:min(800px, 95vw);">
+                    <div class="mbx-modal-head">
+                        <h3 style="margin:0; color:#38bdf8;">📄 Clean Theme Configuration</h3>
+                        <button class="btn-glass btn-glass-ghost" onclick="this.closest('.mbx-custom-backdrop').remove()">✕ Close</button>
+                    </div>
+                    <div class="mbx-modal-body">
+                        <div class="small muted" style="margin-bottom:12px;">Copy this block and paste it inside your <b>public/js/config.js</b> file to PERMANENTLY remove the deleted themes for all users globally.</div>
+                        <textarea class="input" style="width:100%; height:300px; font-family:monospace; font-size:11px; background:rgba(0,0,0,0.5); color:#a8b6d6;" readonly>${UI.esc(str)}</textarea>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(m);
         };
     }
 
@@ -796,15 +714,23 @@
             btn.onclick = async (e) => {
                 e.stopPropagation();
                 if(btn.dataset.busy) return;
+
                 const tid = btn.getAttribute('data-hide-theme');
                 const nextMeta = JSON.parse(JSON.stringify(__themeMeta));
                 nextMeta[tid] = nextMeta[tid] || {};
                 nextMeta[tid].hidden = !nextMeta[tid].hidden;
+
                 btn.dataset.busy = '1';
                 const originalText = btn.innerHTML;
                 btn.innerHTML = '<span class="mbx-spinner"></span> Sync...';
-                const res = await saveThemeMeta(nextMeta, isSA, user && user.name ? user.name : '');
-                if(!res.ok){ try{ UI.toast('Sync failed: ' + res.error, 'error'); }catch(_){} btn.innerHTML = originalText; delete btn.dataset.busy; return; }
+
+                const res = await saveThemeMeta(nextMeta);
+                if(!res.ok){
+                    try{ UI.toast('Sync failed: ' + res.message, 'error'); }catch(_){}
+                    btn.innerHTML = originalText;
+                    delete btn.dataset.busy;
+                    return;
+                }
                 renderThemeGrid();
             };
         });
@@ -813,13 +739,15 @@
             btn.onclick = async (e) => {
                 e.stopPropagation();
                 if(btn.dataset.busy) return;
+
                 const tid = btn.getAttribute('data-del-theme');
-                const ok = await UI.confirm({ title: 'Delete Theme Globally', message: 'Hide and delete this theme for all users? (Use "Copy Clean Code" later to permanently remove it from config.js)', okText: 'Yes, Delete', danger: true });
+                const ok = await UI.confirm({ title: 'Delete Theme Globally', message: 'Hide and delete this theme for all users? (Use "Get Clean Code" later to permanently remove it from config.js)', okText: 'Yes, Delete', danger: true });
                 if (!ok) return;
                 
                 const nextMeta = JSON.parse(JSON.stringify(__themeMeta));
                 nextMeta[tid] = nextMeta[tid] || {};
                 nextMeta[tid].deleted = true;
+
                 btn.dataset.busy = '1';
                 const originalText = btn.innerHTML;
                 btn.innerHTML = '<span class="mbx-spinner"></span> Purging...';
@@ -828,8 +756,14 @@
                     Store.dispatch ? Store.dispatch('UPDATE_THEME', { id:'ocean' }) : Store.setTheme('ocean');
                     applyTheme('ocean');
                 }
-                const res = await saveThemeMeta(nextMeta, isSA, user && user.name ? user.name : '');
-                if(!res.ok){ try{ UI.toast('Delete sync failed: ' + res.error, 'error'); }catch(_){} btn.innerHTML = originalText; delete btn.dataset.busy; return; }
+
+                const res = await saveThemeMeta(nextMeta);
+                if(!res.ok){
+                    try{ UI.toast('Delete sync failed: ' + res.message, 'error'); }catch(_){}
+                    btn.innerHTML = originalText;
+                    delete btn.dataset.busy;
+                    return;
+                }
                 renderThemeGrid();
             };
         });
@@ -883,7 +817,6 @@
     });
   }
 
-  // === World clocks (3 programmable digital clocks on bottom bar) ===
   const CLOCK_STYLES = [
     {id:'classic', name:'Classic'},
     {id:'neon', name:'Neon'},
@@ -1077,7 +1010,6 @@
       `;
     }).join('');
   }
-
 
   function startGmtOverviewTicker(){
     try{
@@ -4022,10 +3954,9 @@ async function boot(){
 
     const openThemeBtn = document.getElementById('openThemeBtn');
     if(openThemeBtn){
-      openThemeBtn.onclick = async ()=>{
+      openThemeBtn.onclick = ()=>{
         UI.closeModal('settingsModal');
         __themeEditMode = false; // Reset to normal view initially
-        await loadThemeMeta();
         renderThemeGrid();
         UI.openModal('themeModal');
       };
