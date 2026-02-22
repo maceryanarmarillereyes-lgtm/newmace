@@ -104,15 +104,15 @@
     ];
 
     if (isMonday) {
-      return `
-      <div class="dashx-cards" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:20px; margin-bottom:24px;">
-        ${cards.map(c => `
-          <div class="mums-card" style="padding:24px; background:#FFFFFF; border-radius:8px; border-left: 6px solid ${c.color} !important; box-shadow: var(--monday-shadow);">
-            <div style="font-size:12px; font-weight:900; color:var(--monday-text-sub); text-transform:uppercase; letter-spacing:1px;">${c.label}</div>
-            <div style="font-size:32px; font-weight:1000; color:var(--monday-text-main); margin-top:8px;">${c.val}</div>
-          </div>`).join('')}
-      </div>`;
-    }
+    return `
+    <div class="dashx-cards" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:24px; margin-bottom:32px;">
+      ${cards.map(c => `
+        <div class="mums-card" style="padding:32px 24px; background:#FFFFFF; border-radius:8px; border:1px solid #D0D4E4; border-top: 6px solid ${c.color} !important; box-shadow: 0 4px 12px rgba(0,0,0,0.06); display:flex; flex-direction:column; align-items:center; text-align:center;">
+          <div style="font-size:13px; font-weight:800; color:#676879; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:12px;">${c.label}</div>
+          <div style="font-size:38px; font-weight:1000; color:#323338; line-height:1; letter-spacing:-1px;">${c.val}</div>
+        </div>`).join('')}
+    </div>`;
+}
 
     return '';
   }
