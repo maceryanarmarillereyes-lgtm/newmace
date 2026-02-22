@@ -351,7 +351,7 @@
       }
     },
 
-NAV: [
+    NAV: [
       { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', perm: 'view_dashboard' },
       { id: 'mailbox', label: 'Mailbox', icon: 'mailbox', perm: 'view_mailbox' },
       { id: 'overall_stats', label: 'Overall Stats', icon: 'chart', perm: 'view_members' },
