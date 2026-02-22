@@ -14,6 +14,8 @@ window.Pages.members = function(root){
   const isSuper = me.role === Config.ROLES.SUPER_ADMIN;
   const isAdmin = isSuper || me.role === Config.ROLES.ADMIN;
   const isLead = me.role === Config.ROLES.TEAM_LEAD;
+  const canSwitchTeamView = !!isSuper;
+  const actorTeamId = String(me.teamId || '').trim();
 
   // Scheduling grid: STRICT 1-hour blocks (no minutes on the grid)
   // Every assignable unit is 60 minutes.
@@ -143,8 +145,31 @@ window.Pages.members = function(root){
 
 
 
+  function addTeamViewGuardLog(targetTeamId, reason){
+    try{
+      if(!Store || typeof Store.addLog !== 'function') return;
+      Store.addLog({
+        ts: Date.now(),
+        teamId: actorTeamId || String(targetTeamId || '').trim() || '',
+        actorId: me.id,
+        actorName: me.name || me.username || 'Unknown',
+        action: 'TEAM_VIEW_SWITCH_BLOCKED',
+        msg: `${me.name || me.username || 'User'} attempted to switch Members team view`,
+        detail: `role=${String(me.role || '')} from=${actorTeamId || '-'} to=${String(targetTeamId || '').trim() || '-'} reason=${String(reason || 'scope_guard')}`
+      });
+    }catch(_e){}
+  }
+
+  function enforceTeamViewScope(teamId, reason){
+    const requested = String(teamId || '').trim();
+    if(canSwitchTeamView) return requested || (Config.TEAMS[0] && Config.TEAMS[0].id) || '';
+    if(!actorTeamId) return requested || (Config.TEAMS[0] && Config.TEAMS[0].id) || '';
+    if(requested && requested !== actorTeamId) addTeamViewGuardLog(requested, reason || 'scope_guard');
+    return actorTeamId;
+  }
+
   // Team filter
-  let selectedTeamId = isLead ? me.teamId : (Config.TEAMS[0] && Config.TEAMS[0].id);
+  let selectedTeamId = enforceTeamViewScope((Config.TEAMS[0] && Config.TEAMS[0].id) || '', 'init');
 
   // Day tabs (Sun..Sat)
   function getManilaDayIndex(){
@@ -581,7 +606,9 @@ function syncTaskSelection(taskId, opts){
         <label class="members-field members-teamfield">
           <span class="label text-zinc-400">Team</span>
           <select class="input" id="teamSelect" aria-label="Select team">
-            ${Config.TEAMS.map(t=>`<option value="${t.id}">${UI.esc(t.label)}</option>`).join('')}
+            ${Config.TEAMS
+              .filter(t=> canSwitchTeamView || !actorTeamId || String(t.id) === actorTeamId)
+              .map(t=>`<option value="${t.id}">${UI.esc(t.label)}</option>`).join('')}
           </select>
         </label>
 
@@ -1416,8 +1443,18 @@ container.innerHTML = `
   // Header controls
   const teamSel = wrap.querySelector('#teamSelect');
   if(teamSel){
-    teamSel.value = selectedTeamId;
-    teamSel.onchange = ()=>{ selectedTeamId = teamSel.value; renderDayTabs(); renderAll(); };
+    if(!canSwitchTeamView){
+      teamSel.disabled = true;
+      teamSel.title = 'Only Super Admin can switch team view.';
+    }
+    teamSel.value = enforceTeamViewScope(selectedTeamId, 'bind');
+    teamSel.onchange = ()=>{
+      const nextTeamId = enforceTeamViewScope(teamSel.value, 'dropdown_change');
+      selectedTeamId = nextTeamId;
+      teamSel.value = nextTeamId;
+      renderDayTabs();
+      renderAll();
+    };
   }
   const weekSel = wrap.querySelector('#weekSelect');
   if(weekSel){
