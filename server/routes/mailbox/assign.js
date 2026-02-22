@@ -330,11 +330,12 @@ module.exports = async (req, res) => {
     );
     const assigneeRole = safeString((assigneeProfile && assigneeProfile.role) ? assigneeProfile.role : 'MEMBER', 40);
 
-    // Mailbox Manager (MEMBER) can only assign to MEMBER accounts.
+    // Mailbox Manager (MEMBER) can assign to MEMBER / TEAM_LEAD accounts within duty team.
     if(!isAdminAnytime && !isTeamLead){
-      if(assigneeRole !== 'MEMBER'){
+      const allowedTargets = new Set(['MEMBER','TEAM_LEAD']);
+      if(!allowedTargets.has(assigneeRole)){
         res.statusCode = 403;
-        return res.end(JSON.stringify({ ok:false, error:'Forbidden (Mailbox Manager can assign to members only)' }));
+        return res.end(JSON.stringify({ ok:false, error:'Forbidden (Mailbox Manager can assign to members or team leads only)' }));
       }
     }
 
