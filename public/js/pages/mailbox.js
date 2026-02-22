@@ -38,17 +38,25 @@ function _mbxInDutyWindow(nowMin, team){
   return _mbxBlockHit(nowMin, s, e);
 }
 
+function _mbxUserTeamId(user){
+  return String(user?.teamId || user?.team_id || user?.team?.id || '').trim();
+}
+
+function _mbxNormRole(role){
+  return String(role||'').trim().replace(/\s+/g,'_').toUpperCase();
+}
+
 function eligibleForMailboxManager(user, opts){
   if(!user) return false;
   opts = opts || {};
-  const r = String(user.role||'');
+  const r = _mbxNormRole(user.role);
   const admin = (window.Config && window.Config.ROLES) ? window.Config.ROLES.ADMIN : 'ADMIN';
   const superAdmin = (window.Config && window.Config.ROLES) ? window.Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
   const superUser = (window.Config && window.Config.ROLES) ? window.Config.ROLES.SUPER_USER : 'SUPER_USER';
   const teamLead = (window.Config && window.Config.ROLES) ? window.Config.ROLES.TEAM_LEAD : 'TEAM_LEAD';
 
   if(r===superAdmin || r===superUser || r===admin || r===teamLead) return true;
-  if(opts.teamId && String(user.teamId||'') !== String(opts.teamId||'')) return false;
+  if(opts.teamId && _mbxUserTeamId(user) !== String(opts.teamId||'')) return false;
 
   const UI = window.UI;
   const Store = window.Store;
@@ -76,9 +84,9 @@ function eligibleForMailboxManager(user, opts){
   }catch(_){}
 
   for(const di of dows){
-    const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, di) || []) : [];
-    for(const b of blocks){
-      const rr = String(b?.role||'');
+      const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, di) || []) : [];
+      for(const b of blocks){
+      const rr = String(b?.role || b?.taskId || b?.task || '').toLowerCase();
       if(!roleSet.has(rr)) continue;
       const s = (UI.parseHM ? UI.parseHM(b.start) : _mbxParseHM(b.start));
       const e = (UI.parseHM ? UI.parseHM(b.end) : _mbxParseHM(b.end));
@@ -289,52 +297,33 @@ function _mbxDutyTone(label){
       }
 
       const all = (Store && Store.getUsers ? Store.getUsers() : []) || [];
-      const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
+      const candidates = all.filter(u=>u && _mbxUserTeamId(u)===teamId && u.status==='active');
       const matched = [];
 
       for(const u of candidates){
         let isMgr = false;
         let hasBlocks = false;
-        // Search yesterday, today, and tomorrow to prevent any overlap issues
-        const dows = [ (targetDow+6)%7, targetDow, (targetDow+1)%7 ];
+        const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(u.id, targetDow) || []) : [];
 
-        // 1. SCAN EXPLICIT DAY BLOCKS FIRST
-        for(let i=0; i<3; i++){
-            const di = dows[i];
-            const offset = (i===0) ? -1440 : (i===2) ? 1440 : 0;
-            const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(u.id, di) || []) : [];
-
-            for(const b of blocks){
-                hasBlocks = true;
-                let s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
-                let e = (UI && UI.parseHM) ? UI.parseHM(b.end) : _mbxParseHM(b.end);
-                if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
-
-                if(e <= s) e += 1440;
-                s += offset;
-                e += offset;
-
-                // PERFECT INTERSECTION: If the block touches the bucket window
-                if (s < bEnd && bStart < e) {
-                    const rawRole = String(b.role||'').toLowerCase();
-                    const sc = Config && Config.scheduleById ? Config.scheduleById(b.role) : null;
-                    const label = (sc && sc.label ? sc.label : rawRole).toLowerCase();
-
-                    // If the block is Manager, mark them.
-                    if (label.includes('manager') || rawRole.includes('manager')) {
-                        isMgr = true;
-                    }
-                    // If the block is Call Available, it overrides and KICKS THEM OUT of the Manager slot!
-                    if (label.includes('call') || rawRole.includes('call')) {
-                        isMgr = false; 
-                    }
-                }
-            }
+        for(const b of blocks){
+          hasBlocks = true;
+          const bStartRaw = b.start ?? b.startTime ?? b.from ?? b.begin;
+          const bEndRaw = b.end ?? b.endTime ?? b.to ?? b.finish;
+          let s = (UI && UI.parseHM) ? UI.parseHM(bStartRaw) : _mbxParseHM(bStartRaw);
+          let e = (UI && UI.parseHM) ? UI.parseHM(bEndRaw) : _mbxParseHM(bEndRaw);
+          if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+          const segs = _mbxToSegments(s, e);
+          const overlaps = _mbxSegmentsOverlap(segs, _mbxToSegments(bStart % 1440, bEnd % 1440));
+          if(!overlaps) continue;
+          const rawRole = String(b.role || b.taskId || b.task || '').toLowerCase();
+          const sc = Config && Config.scheduleById ? Config.scheduleById(b.role || b.taskId || b.task) : null;
+          const label = (sc && sc.label ? sc.label : rawRole).toLowerCase();
+          if(label.includes('manager') || rawRole.includes('manager')) isMgr = true;
         }
 
         // 2. ONLY USE FALLBACK IF THEY HAVE NO BLOCKS AT ALL
         if (!hasBlocks) {
-            const defaultTask = String(u.task || u.taskId || u.taskRole || u.primaryTask || u.schedule || '').toLowerCase();
+          const defaultTask = String(u.task || u.taskId || u.taskRole || u.primaryTask || u.schedule || '').toLowerCase();
             if (defaultTask.includes('manager')) {
                 isMgr = true;
             }
@@ -350,13 +339,15 @@ function _mbxDutyTone(label){
       }
 
       const unique = [...new Set(matched)];
-      return unique.length > 0 ? unique.join(' & ') : '—';
+      if(unique.length > 0) return unique.join(' & ');
+      const liveMgr = table?.meta?.bucketManagers?.[bucket?.id]?.name;
+      return String(liveMgr||'').trim() || '—';
     }catch(e){ return '—'; }
   }
 
   function isPrivilegedRole(u){
     try{
-      const r = String(u?.role||'');
+      const r = _mbxNormRole(u?.role);
       const R = (window.Config && window.Config.ROLES) ? window.Config.ROLES : {};
       return r === (R.SUPER_ADMIN||'SUPER_ADMIN') ||
              r === (R.SUPER_USER||'SUPER_USER') ||
@@ -1062,6 +1053,8 @@ function _mbxDutyTone(label){
 
   let _assignUserId = null;
   let _assignSending = false;
+  let _assignAbort = null;
+  let _assignTimeoutId = 0;
   let _caseActionCtx = null;
   let _caseActionBusy = false;
   let _reassignBusy = false;
@@ -1082,6 +1075,12 @@ function _mbxDutyTone(label){
   function _closeCustomModal(id){
     const m = document.getElementById(id);
     if(m) m.classList.remove('is-open');
+    if(id === 'mbxAssignModal' && _assignAbort){
+      try{ _assignAbort.abort(); }catch(_){ }
+      _assignAbort = null;
+      if(_assignTimeoutId){ try{ clearTimeout(_assignTimeoutId); }catch(_){ } _assignTimeoutId = 0; }
+      setAssignSubmitting(false);
+    }
   }
 
   function ensureAssignModalMounted(){
@@ -1130,11 +1129,25 @@ function _mbxDutyTone(label){
       document.body.appendChild(host);
 
       host.querySelectorAll('[data-close="mbxAssignModal"]').forEach(b=>{
-        b.onclick = ()=>{ if(!_assignSending) _closeCustomModal('mbxAssignModal'); };
+        b.onclick = ()=>_closeCustomModal('mbxAssignModal');
       });
       host.addEventListener('click', (e)=>{
-        try{ if(e && e.target === host && !_assignSending) _closeCustomModal('mbxAssignModal'); }catch(_){ }
+        try{ if(e && e.target === host) _closeCustomModal('mbxAssignModal'); }catch(_){ }
       });
+      host.addEventListener('keydown', (e)=>{
+        try{ if(e && e.key === 'Escape') _closeCustomModal('mbxAssignModal'); }catch(_){ }
+      });
+      if(!window.__mbxAssignEscBound){
+        window.__mbxAssignEscBound = true;
+        window.addEventListener('keydown', (e)=>{
+          try{
+            if(e && e.key === 'Escape'){
+              const modal = document.getElementById('mbxAssignModal');
+              if(modal && modal.classList.contains('is-open')) _closeCustomModal('mbxAssignModal');
+            }
+          }catch(_){ }
+        });
+      }
     }catch(e){ console.error('Failed to mount Assign modal', e); }
   }
 
@@ -1149,15 +1162,22 @@ function _mbxDutyTone(label){
     }catch(_){ }
   }
 
-  async function mbxPost(path, body){
+  async function mbxPost(path, body, opts){
+    const options = opts || {};
     const res = await fetch(path, {
       method:'POST',
       headers: { 'Content-Type':'application/json', ..._mbxAuthHeader() },
       body: JSON.stringify(body || {}),
-      cache:'no-store'
+      cache:'no-store',
+      signal: options.signal
     });
     const data = await res.json().catch(()=>({}));
     return { res, data };
+  }
+
+  function isValidAssignmentTarget(user){
+    const role = _mbxNormRole(user?.role);
+    return role === 'MEMBER' || role === 'TEAM_LEAD';
   }
   
   function openAssignModal(userId){
@@ -1167,6 +1187,10 @@ function _mbxDutyTone(label){
     const { table } = ensureShiftTables();
     const u = (table.members||[]).find(x=>x.id===userId) || (Store.getUsers?Store.getUsers().find(x=>x.id===userId):null);
     if(!u) return;
+    if(!isValidAssignmentTarget(u)){
+      UI.toast('Selected profile is not an eligible receiving agent.', 'warn');
+      return;
+    }
 
     const activeId = computeActiveBucketId(table);
     const bucket = (table.buckets||[]).find(b=>b.id===activeId) || table.buckets?.[0];
@@ -1230,13 +1254,17 @@ function _mbxDutyTone(label){
 
     setAssignSubmitting(true);
     try{
+      _assignAbort = new AbortController();
+      _assignTimeoutId = setTimeout(()=>{ try{ _assignAbort.abort(); }catch(_){ } }, 15000);
       const { res, data } = await mbxPost('/api/mailbox/assign', {
         shiftKey,
         assigneeId: uid,
         caseNo,
         desc,
         clientId: _mbxClientId() || undefined
-      });
+      }, { signal: _assignAbort.signal });
+      if(_assignTimeoutId){ clearTimeout(_assignTimeoutId); _assignTimeoutId = 0; }
+      _assignAbort = null;
 
       if(res.status === 401){
         setAssignSubmitting(false);
@@ -1259,7 +1287,10 @@ function _mbxDutyTone(label){
       UI.toast('Case successfully routed.', 'success');
       scheduleRender('assign-success');
     }catch(e){
+      _assignAbort = null;
+      if(_assignTimeoutId){ try{ clearTimeout(_assignTimeoutId); }catch(_){ } _assignTimeoutId = 0; }
       setAssignSubmitting(false);
+      if(String(e?.name||'') === 'AbortError') return err('Request timed out. Please retry.');
       return err(String(e?.message||e));
     }
   }
@@ -1271,7 +1302,7 @@ function _mbxDutyTone(label){
       const teamId = String(table?.meta?.teamId || '');
       const users = (Store.getUsers ? Store.getUsers() : []) || [];
       return users
-        .filter(u=>u && u.status==='active' && String(u.teamId||'')===teamId && String(u.role||'')==='MEMBER' && String(u.id||'')!==String(previousOwnerId||''))
+        .filter(u=>u && u.status==='active' && _mbxUserTeamId(u)===teamId && isValidAssignmentTarget(u) && String(u.id||'')!==String(previousOwnerId||''))
         .map(u=>({ id:String(u.id||''), name:String(u.name||u.username||u.id||'N/A') }))
         .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
     }catch(_){
@@ -1878,6 +1909,11 @@ function _mbxDutyTone(label){
         if(!uid) return;
         if(!canAssignNow()){
           if(UI && UI.toast) UI.toast('You do not have permission to assign cases right now.', 'warn');
+          return;
+        }
+        const member = (table.members||[]).find(x=>String(x.id||'') === String(uid||''));
+        if(!isValidAssignmentTarget(member)){
+          if(UI && UI.toast) UI.toast('This row is read-only. Assignments can only target Members or Team Leads.', 'warn');
           return;
         }
         openAssignModal(uid);
