@@ -716,33 +716,44 @@ function _mbxDutyTone(label){
     const bucketManagers = buckets.map(b=>({ bucket:b, name:_mbxFindScheduledManagerForBucket(table, b) }));
 
     if (isMonday) {
-    const head = `
+      const head = `
         <thead>
-          <tr style="background:#F6F7FB; height:50px;">
-            <th style="padding:0 24px; text-align:left; color:#676879; font-weight:600; border-bottom: 2px solid #D0D4E4; min-width:280px;">Agent Identification</th>
-            <th style="padding:0 20px; text-align:center; color:#676879; font-weight:600; border-bottom: 2px solid #D0D4E4; width:180px;">Current Duty</th>
-            ${buckets.map(b => `<th style="padding:0 15px; text-align:center; color:#676879; font-weight:600; border-bottom: 2px solid #D0D4E4;" class="${b.id === activeBucketId ? 'active-head-col' : ''}">${UI.esc(_mbxBucketLabel(b))}</th>`).join('')}
-            <th style="padding:0 24px; text-align:center; color:#0073EA; font-weight:800; border-bottom: 2px solid #0073EA; width:100px;">Sum</th>
+          <tr style="background:#F6F7FB; height:48px;">
+            <th style="padding:0 16px; text-align:left; color:#676879; font-weight:700; border-bottom: 2px solid #D0D4E4; border-right: 1px solid #E6E9EF; width:250px;">Agent Profile</th>
+            <th style="padding:0 16px; text-align:center; color:#676879; font-weight:700; border-bottom: 2px solid #D0D4E4; border-right: 1px solid #E6E9EF; width:150px;">Duty Status</th>
+            ${buckets.map(b => `
+              <th style="padding:0 12px; text-align:center; color:#676879; font-weight:700; border-bottom: 2px solid #D0D4E4; border-right: 1px solid #E6E9EF;" class="${b.id === activeBucketId ? 'active-head-col' : ''}">
+                <div style="font-size:11px; opacity:0.8;">${UI.esc(b.start)} - ${UI.esc(b.end)}</div>
+                <div>${UI.esc(b.label || 'Task')}</div>
+              </th>`).join('')}
+            <th style="padding:0 16px; text-align:center; color:#0073EA; font-weight:900; border-bottom: 2px solid #0073EA; width:80px; background:rgba(0,115,234,0.05);">SUM</th>
           </tr>
         </thead>`;
 
-    const rows = members.map(m => `
-        <tr style="height:56px; border-bottom: 1px solid #E6E9EF; background:#fff;" class="${interactive ? 'mbx-assignable' : ''}" data-assign-member="${m.id}">
-          <td style="padding:0 24px; font-weight:800; color:#323338; font-size:15px; border-left:6px solid #0073EA;">${UI.esc(m.name)}</td>
-          <td style="padding:0;">
-            <div class="badge ${m.dutyLabel.includes('Manager') ? 'info' : 'ok'}" style="height:56px; font-weight:800; font-size:12px; text-transform:uppercase;">
-              ${UI.esc(m.dutyLabel)}
+      const rows = members.map(m => {
+        const dutyColor = String(m.dutyLabel || '').includes('Manager') ? '#0073EA' : '#00C875';
+        return `
+        <tr style="height:44px; border-bottom: 1px solid #E6E9EF; background:#fff;" class="${interactive ? 'mbx-assignable' : ''}" data-assign-member="${m.id}">
+          <td style="padding:0 16px; font-weight:800; color:#323338; font-size:14px; border-left:6px solid ${dutyColor}; border-right: 1px solid #E6E9EF;">${UI.esc(m.name)}</td>
+          <td style="padding:0 12px; border-right: 1px solid #E6E9EF; text-align:center;">
+            <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:4px; background:color-mix(in srgb, ${dutyColor} 12%, transparent); color:${dutyColor}; font-size:11px; font-weight:900; letter-spacing:0.3px; border:1px solid color-mix(in srgb, ${dutyColor} 30%, transparent);">
+              <span style="width:6px; height:6px; border-radius:50%; background:${dutyColor};"></span>
+              ${UI.esc(String(m.dutyLabel || 'N/A').toUpperCase())}
             </div>
           </td>
           ${buckets.map(b => {
             const v = safeGetCount(table, m.id, b.id);
-            return `<td style="text-align:center; font-weight:900; font-size:17px; color:${v > 0 ? '#323338' : '#C4C4C4'};" class="${b.id === activeBucketId ? 'active-col' : ''}">${v}</td>`;
+            return `
+              <td style="text-align:center; font-weight:900; font-size:16px; border-right: 1px solid #E6E9EF; color:${v > 0 ? '#323338' : '#C4C4C4'};" class="${b.id === activeBucketId ? 'active-col' : ''}">
+                ${v > 0 ? v : '–'}
+              </td>`;
           }).join('')}
-          <td style="text-align:center; background:#F6F7FB; font-weight:1000; font-size:16px; color:#0073EA; border-left:1px solid #D0D4E4;">${totals.rowTotals[m.id] || 0}</td>
-        </tr>`).join('');
+          <td style="text-align:center; background:#F6F7FB; font-weight:950; font-size:15px; color:#0073EA;">${totals.rowTotals[m.id] || 0}</td>
+        </tr>`;
+      }).join('');
 
-    return `<table class="table" style="width:100%; border-collapse:collapse; border:1px solid #D0D4E4;">${head}<tbody>${rows}</tbody></table>`;
-}
+      return `<table class="table" style="width:100%; border-collapse:collapse; border:1px solid #D0D4E4; table-layout:fixed;">${head}<tbody>${rows}</tbody></table>`;
+    }
 
     const rows = members.map(m=>{
       const cells = buckets.map(b=>{
