@@ -94,6 +94,29 @@
     return `<span class="ovr-delta ${cls}">${sign}${fDelta}${suffix} vs prev</span>`;
   }
 
+  function renderSummaryCards(stats) {
+    const isMonday = document.body.dataset.theme === 'monday_workspace';
+    const cards = [
+      { label: 'Total Deployments', val: stats.total, color: 'var(--monday-accent)' },
+      { label: 'Completion Rate', val: stats.completionPct + '%', color: 'var(--status-done)' },
+      { label: 'Pending Capacity', val: stats.pending, color: 'var(--status-working)' },
+      { label: 'Blocking Issues', val: stats.problems, color: 'var(--status-stuck)' }
+    ];
+
+    if (isMonday) {
+    return `
+    <div class="dashx-cards" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:24px; margin-bottom:32px;">
+      ${cards.map(c => `
+        <div class="mums-card" style="padding:32px 24px; background:#FFFFFF; border-radius:8px; border:1px solid #D0D4E4; border-top: 6px solid ${c.color} !important; box-shadow: 0 4px 12px rgba(0,0,0,0.06); display:flex; flex-direction:column; align-items:center; text-align:center;">
+          <div style="font-size:13px; font-weight:800; color:#676879; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:12px;">${c.label}</div>
+          <div style="font-size:38px; font-weight:1000; color:#323338; line-height:1; letter-spacing:-1px;">${c.val}</div>
+        </div>`).join('')}
+    </div>`;
+}
+
+    return '';
+  }
+
   function buildSparkline(values){
     const data = Array.isArray(values) ? values : [];
     if(!data.length) return '<span class="muted" style="font-size:11px;">No trend data</span>';
@@ -411,6 +434,12 @@
 
         <div class="ovr-kpi-grid">
           ${loading ? skeletonKPIs : (kpis ? `
+            ${renderSummaryCards({
+              total: Number(kpis.total_hours || 0),
+              completionPct: Number(kpis.cases || 0) > 0 ? Math.round((Number(kpis.call_hours || 0) + Number(kpis.mailbox_hours || 0) + Number(kpis.back_office_hours || 0)) / Math.max(1, Number(kpis.total_hours || 0)) * 100) : 0,
+              pending: Math.max(0, Number(kpis.cases || 0) - Math.round(Number(kpis.call_hours || 0) + Number(kpis.mailbox_hours || 0))),
+              problems: Math.max(0, Number(kpis.prev_cases || 0) - Number(kpis.cases || 0))
+            })}
             <div class="ovr-kpi-card">
               <div class="ovr-kpi-label">Total Assigned Cases</div>
               <div class="ovr-kpi-val">${UI.esc(String(kpis.cases || 0))}</div>
@@ -471,22 +500,77 @@
           </div>
           
           <div class="ovr-table-wrap" style="margin:0; border:none; border-radius:0;">
-            <table class="ovr-table">
-              <thead>
-                <tr>
-                  <th style="min-width:240px;">Agent Profile</th>
-                  <th>Assigned Cases</th>
-                  <th>Call Hrs</th>
-                  <th>Mailbox Hrs</th>
-                  <th>Back Office</th>
-                  <th style="color:#38bdf8;">Overall Workload</th>
-                  <th>7-Day Trend</th>
-                  <th style="text-align:right;">Action</th>
-                </tr>
-              </thead>
+            <table class="ovr-table" style="${document.body.dataset.theme === 'monday_workspace' ? 'width:100%; border-collapse:collapse; table-layout:fixed; border:1px solid #D0D4E4;' : ''}">
+              ${(() => {
+                const isMonday = document.body.dataset.theme === 'monday_workspace';
+                if (isMonday) {
+                  return `<thead style="position:sticky; top:0; z-index:10;">
+                    <tr style="background:#F6F7FB; height:48px;">
+                      <th style="padding:0 20px; text-align:left; color:#676879; font-weight:700; border-bottom: 2px solid #D0D4E4; width:280px;">Roster Identity</th>
+                      <th style="padding:0 16px; text-align:left; color:#676879; font-weight:700; border-bottom: 2px solid #D0D4E4; width:160px;">Shift window</th>
+                      <th style="padding:0 16px; text-align:center; color:#676879; font-weight:700; border-bottom: 2px solid #D0D4E4;">Completed</th>
+                      <th style="padding:0 16px; text-align:center; color:#676879; font-weight:700; border-bottom: 2px solid #D0D4E4;">Problems</th>
+                      <th style="padding:0 16px; text-align:center; color:#676879; font-weight:700; border-bottom: 2px solid #D0D4E4;">Progress</th>
+                    </tr>
+                  </thead>`;
+                }
+                return `<thead>
+                  <tr>
+                    <th style="min-width:240px;">Agent Profile</th>
+                    <th>Assigned Cases</th>
+                    <th>Call Hrs</th>
+                    <th>Mailbox Hrs</th>
+                    <th>Back Office</th>
+                    <th style="color:#38bdf8;">Overall Workload</th>
+                    <th>7-Day Trend</th>
+                    <th style="text-align:right;">Action</th>
+                  </tr>
+                </thead>`;
+              })()}
               <tbody>
-                ${loading ? skeletonTable : (members.length === 0 ? `<tr><td colspan="8" style="text-align:center; padding:40px; color:#94a3b8;">No data found for the selected parameters.</td></tr>` : 
-                  members.map((r, idx)=>{
+                ${loading ? skeletonTable : (members.length === 0 ? `<tr><td colspan="8" style="text-align:center; padding:40px; color:#94a3b8;">No data found for the selected parameters.</td></tr>` : (() => {
+                  const isMonday = document.body.dataset.theme === 'monday_workspace';
+                  if (isMonday) {
+                    const items = members.map(r => ({
+                      name: r.name || r.username || '',
+                      userId: r.id || 'N/A',
+                      shift: r.teamLabel || ((Config.teamById(r.teamId) || {}).label || r.teamId || 'N/A'),
+                      completed: Number(r.caseCount || 0),
+                      problems: Math.max(0, Number(r.prev_caseCount || 0) - Number(r.caseCount || 0)),
+                      total: Math.max(1, Number(r.caseCount || 0) + Math.max(0, Number(r.prev_caseCount || 0) - Number(r.caseCount || 0)))
+                    }));
+
+                    return items.map(it => {
+                      const pct = it.total ? Math.round((it.completed / it.total) * 100) : 0;
+                      const shiftColor = String(it.shift || '').toLowerCase().includes('night') ? '#7C3AED' : '#F59E0B';
+                      return `
+                    <tr style="height:52px; border-bottom: 1px solid #E6E9EF; background:#fff;">
+                      <td style="padding:0 20px;">
+                        <div style="font-weight:800; color:#323338; font-size:14px;">${UI.esc(it.name)}</div>
+                        <div style="font-size:11px; color:#676879; opacity:0.8;">ID: ${UI.esc(it.userId)}</div>
+                      </td>
+                      <td style="padding:0 16px;">
+                        <div style="display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:12px; background:color-mix(in srgb, ${shiftColor} 10%, white); color:${shiftColor}; font-size:11px; font-weight:900; border:1px solid color-mix(in srgb, ${shiftColor} 25%, white);">
+                          ${UI.esc(it.shift || 'N/A')}
+                        </div>
+                      </td>
+                      <td style="text-align:center; font-weight:800; color:#323338;">${it.completed}</td>
+                      <td style="text-align:center;">
+                        <span style="color:${it.problems > 0 ? '#E2445C' : '#C4C4C4'}; font-weight:800;">${it.problems}</span>
+                      </td>
+                      <td style="padding:0 20px;">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                          <div style="flex:1; height:8px; background:#E6E9EF; border-radius:10px; overflow:hidden;">
+                            <div style="height:100%; width:${pct}%; background:#00C875; border-radius:10px;"></div>
+                          </div>
+                          <span style="font-weight:900; font-size:12px; color:#323338; width:40px;">${pct}%</span>
+                        </div>
+                      </td>
+                    </tr>`;
+                    }).join('');
+                  }
+
+                  return members.map((r, idx)=>{
                     const teamLabel = (Config.teamById(r.teamId) || {}).label || r.teamLabel || r.teamId || '';
                     const isTop = topPerformerId && r.id === topPerformerId;
                     
@@ -542,8 +626,8 @@
                       </td>
                     </tr>
                   `;
-                  }).join('')
-                )}
+                  }).join('');
+                })())}
               </tbody>
             </table>
           </div>

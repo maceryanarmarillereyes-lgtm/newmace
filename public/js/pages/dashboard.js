@@ -50,6 +50,9 @@
     if (!isLeadView) return;
     let state = { rows: [], filter: '', subscription: null, refreshLock: false };
     let watchTimer = null; // THE IMMORTAL WATCHER
+    const onThemeApplied = () => {
+      try { renderWidget(); } catch (_) { }
+    };
 
     const renderWidget = () => {
       // Re-attach mount if UI.renderDashboard wipes it out!
@@ -73,83 +76,144 @@
         acc[key].push(row);
         return acc;
       }, {});
+      const isMonday = document.body.dataset.theme === 'monday_workspace';
 
-      mount.innerHTML = `
-        <div class="ux-card dashx-panel" style="margin-top:20px; background:#FFFFFF; border:1px solid #d0d4e4; border-radius:8px; box-shadow:0 4px 8px rgba(0,0,0,0.02);">
-          <div class="row" style="justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap; padding:16px 24px; border-bottom:1px solid #e6e9ef;">
+      // Theme isolation guard: always clear stale markup before painting
+      // the current theme variant to prevent layout bleed when switching.
+      mount.innerHTML = '';
+
+      if (isMonday) {
+        mount.innerHTML = `
+        <div class="mums-card dashx-panel" style="margin-top:20px; border-top: 6px solid #0073EA !important; padding:0 !important; overflow:hidden;">
+          <div class="row between" style="padding:24px; background:#fff; border-bottom:1px solid #E6E9EF;">
             <div>
-              <div class="dashx-title" style="color:#323338; font-weight:700; font-size:18px;">Team Workload Pulse</div>
-              <div class="small muted" style="color:#676879;">Leadership view across distribution groups.</div>
+              <div class="dashx-title" style="font-size:20px; font-weight:900; color:#323338; letter-spacing:-0.5px;">Team Workload Pulse</div>
+              <div class="small" style="color:#676879; margin-top:4px; font-weight:500;">Real-time execution monitoring across active batches</div>
             </div>
-            <div>
-              <select id="twpFilter" class="ux-focusable" style="background:#FFFFFF; border:1px solid #c3c6d4; border-radius:4px; color:#323338; padding:6px 12px; font-size:13px;">
-                <option value="">All Active Tasks</option>
-                ${titles.map((t) => `<option value="${UI.esc(t)}" ${state.filter === t ? 'selected' : ''}>${UI.esc(t)}</option>`).join('')}
-              </select>
-            </div>
+            <select id="twpFilter" class="input" style="width:280px; height:40px; font-weight:700; border:1px solid #D0D4E4;">
+              <option value="">All Active Boards</option>
+              ${titles.map((t) => `<option value="${UI.esc(t)}" ${state.filter === t ? 'selected' : ''}>${UI.esc(t)}</option>`).join('')}
+            </select>
           </div>
-
-          <div style="padding:24px;">
+          <div style="padding:24px; background:#F5F6F8;">
             ${Object.keys(byDist).map((dist) => `
-              <div class="card pad" style="margin-bottom:16px; border:1px solid #d0d4e4; background:#FFFFFF; border-radius:8px; overflow:hidden;">
-                <div class="small" style="margin-bottom:12px; color:#323338; padding:16px 16px 0 16px;"><b>${UI.esc(dist)}</b> <span style="color:#676879; margin-left:6px;">• ${UI.esc(byDist[dist].length)} members helping</span></div>
-                <table class="table" style="width:100%; border-collapse:collapse; margin-top:10px;">
+              <div class="monday-board-section" style="margin-bottom:32px; background:#fff; border:1px solid #D0D4E4; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.05); overflow:hidden;">
+                <div style="background:#fff; padding:16px 20px; font-weight:900; font-size:15px; color:#323338; border-bottom:1px solid #E6E9EF; display:flex; align-items:center; gap:10px;">
+                  <span style="color:#0073EA">📁</span> ${UI.esc(dist)}
+                </div>
+                <table class="table" style="margin:0; width:100%; border-collapse:collapse;">
                   <thead>
-                    <tr>
-                        <th style="text-align:left; padding:8px 16px; color:#676879; font-weight:400; font-size:13px; border-bottom:1px solid #d0d4e4; border-right:1px solid #e6e9ef;">Member</th>
-                        <th style="text-align:left; padding:8px 16px; color:#676879; font-weight:400; font-size:13px; border-bottom:1px solid #d0d4e4; border-right:1px solid #e6e9ef;">Workload</th>
-                        <th style="text-align:left; padding:8px 16px; color:#676879; font-weight:400; font-size:13px; border-bottom:1px solid #d0d4e4; border-right:1px solid #e6e9ef;">Distribution Source</th>
-                        <th style="text-align:left; padding:8px 16px; color:#676879; font-weight:400; font-size:13px; border-bottom:1px solid #d0d4e4; border-right:1px solid #e6e9ef;">Progress Bar</th>
-                        <th style="text-align:left; padding:8px 16px; color:#676879; font-weight:400; font-size:13px; border-bottom:1px solid #d0d4e4;">Status</th>
+                    <tr style="background:#F6F7FB;">
+                      <th style="padding:12px 20px; text-align:left; color:#676879; font-weight:600; font-size:13px; border-bottom:1px solid #D0D4E4; width:35%;">Agent Name</th>
+                      <th style="padding:12px 20px; text-align:left; color:#676879; font-weight:600; font-size:13px; border-bottom:1px solid #D0D4E4; width:45%;">Completion Progress</th>
+                      <th style="padding:12px 20px; text-align:center; color:#676879; font-weight:600; font-size:13px; border-bottom:1px solid #D0D4E4; width:20%;">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     ${byDist[dist].map((row) => {
                       const progress = row.total ? Math.round((row.done / row.total) * 100) : 0;
-                      const active = isShiftActive(row.member_shift);
-                      let label = 'In Progress';
-                      let badgeBg = '#f5f6f8';
-                      let badgeCol = '#676879';
-                      
-                      if (row.pending > 0 && !active) { 
-                          label = 'Waiting for Shift'; 
-                          badgeBg = '#e6e9ef'; badgeCol = '#323338';
-                      }
-                      else if (row.pending > 0 && active) { 
-                          label = 'Overdue/Pending'; 
-                          badgeBg = '#FDAB3D'; badgeCol = '#FFFFFF'; 
-                      }
-                      else if (progress >= 100) { 
-                          label = 'Completed'; 
-                          badgeBg = '#00C875'; badgeCol = '#FFFFFF'; 
-                      }
-                      
                       return `
-                        <tr style="border-bottom:1px solid #e6e9ef; transition:background 0.2s;">
-                          <td style="padding:10px 16px; color:#323338; font-size:13px; border-right:1px solid #e6e9ef;">${UI.esc(row.member_name)} <span style="font-size:11px; color:#676879; margin-left:6px;">${UI.esc(shiftIcon(row.member_shift))} ${UI.esc(row.member_shift || 'N/A')}</span></td>
-                          <td style="padding:10px 16px; color:#323338; font-size:13px; border-right:1px solid #e6e9ef;">${UI.esc(row.total)} items</td>
-                          <td style="padding:10px 16px; color:#323338; font-size:13px; border-right:1px solid #e6e9ef;">${UI.esc(row.distribution_title)}</td>
-                          <td style="padding:10px 16px; border-right:1px solid #e6e9ef;">
-                            <div style="display:flex; align-items:center; gap:10px;">
-                                <div style="flex:1; height:8px; background:#e6e9ef; border-radius:4px; overflow:hidden;">
-                                  <div style="height:100%; width:${Math.max(0, Math.min(100, progress))}%; background:#0073EA;"></div>
-                                </div>
-                                <div style="font-size:12px; color:#676879; width:35px; text-align:right;">${UI.esc(progress)}%</div>
+                      <tr style="height:52px; border-bottom:1px solid #E6E9EF;">
+                        <td style="padding:12px 20px; font-weight:700; color:#323338; font-size:14px;">${UI.esc(row.member_name)}</td>
+                        <td style="padding:12px 20px;">
+                          <div style="display:flex; align-items:center; gap:14px;">
+                            <div style="flex:1; height:10px; background:#E6E9EF; border-radius:10px; overflow:hidden;">
+                              <div style="height:100%; width:${progress}%; background:#0073EA; border-radius:10px;"></div>
                             </div>
-                          </td>
-                          <td style="padding:0;">
-                            <div style="background:${badgeBg}; color:${badgeCol}; height:100%; min-height:40px; display:flex; align-items:center; justify-content:center; font-size:13px; text-transform:none;">${UI.esc(label)}</div>
-                          </td>
-                        </tr>
-                      `;
-                    }).join('') || '<tr><td colspan="5" class="muted" style="padding:16px;">No workload rows for this distribution.</td></tr>'}
+                            <span style="font-weight:900; font-size:13px; color:#323338; width:40px;">${progress}%</span>
+                          </div>
+                        </td>
+                        <td style="padding:0;">
+                          <div class="status-pill ${progress >= 100 ? 'status-done' : 'status-working'}" style="height:52px; font-weight:800; font-size:12px; letter-spacing:0.5px;">
+                            ${progress >= 100 ? 'DONE' : 'WORKING'}
+                          </div>
+                        </td>
+                      </tr>`;
+                    }).join('')}
                   </tbody>
                 </table>
               </div>
-            `).join('') || '<div class="small muted" style="padding:16px; text-align:center; color:#676879;">No workload matrix data found.</div>'}
+            `).join('')}
           </div>
-        </div>
-      `;
+        </div>`;
+      } else {
+        mount.innerHTML = `
+          <div class="ux-card dashx-panel" style="margin-top:20px; background:#FFFFFF; border:1px solid #d0d4e4; border-radius:8px; box-shadow:0 4px 8px rgba(0,0,0,0.02);">
+            <div class="row" style="justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap; padding:16px 24px; border-bottom:1px solid #e6e9ef;">
+              <div>
+                <div class="dashx-title" style="color:#323338; font-weight:700; font-size:18px;">Team Workload Pulse</div>
+                <div class="small muted" style="color:#676879;">Leadership view across distribution groups.</div>
+              </div>
+              <div>
+                <select id="twpFilter" class="ux-focusable" style="background:#FFFFFF; border:1px solid #c3c6d4; border-radius:4px; color:#323338; padding:6px 12px; font-size:13px;">
+                  <option value="">All Active Tasks</option>
+                  ${titles.map((t) => `<option value="${UI.esc(t)}" ${state.filter === t ? 'selected' : ''}>${UI.esc(t)}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <div style="padding:24px;">
+              ${Object.keys(byDist).map((dist) => `
+                <div class="card pad" style="margin-bottom:16px; border:1px solid #d0d4e4; background:#FFFFFF; border-radius:8px; overflow:hidden;">
+                  <div class="small" style="margin-bottom:12px; color:#323338; padding:16px 16px 0 16px;"><b>${UI.esc(dist)}</b> <span style="color:#676879; margin-left:6px;">• ${UI.esc(byDist[dist].length)} members helping</span></div>
+                  <table class="table" style="width:100%; border-collapse:collapse; margin-top:10px;">
+                    <thead>
+                      <tr>
+                          <th style="text-align:left; padding:8px 16px; color:#676879; font-weight:400; font-size:13px; border-bottom:1px solid #d0d4e4; border-right:1px solid #e6e9ef;">Member</th>
+                          <th style="text-align:left; padding:8px 16px; color:#676879; font-weight:400; font-size:13px; border-bottom:1px solid #d0d4e4; border-right:1px solid #e6e9ef;">Workload</th>
+                          <th style="text-align:left; padding:8px 16px; color:#676879; font-weight:400; font-size:13px; border-bottom:1px solid #d0d4e4; border-right:1px solid #e6e9ef;">Distribution Source</th>
+                          <th style="text-align:left; padding:8px 16px; color:#676879; font-weight:400; font-size:13px; border-bottom:1px solid #d0d4e4; border-right:1px solid #e6e9ef;">Progress Bar</th>
+                          <th style="text-align:left; padding:8px 16px; color:#676879; font-weight:400; font-size:13px; border-bottom:1px solid #d0d4e4;">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${byDist[dist].map((row) => {
+                        const progress = row.total ? Math.round((row.done / row.total) * 100) : 0;
+                        const active = isShiftActive(row.member_shift);
+                        let label = 'In Progress';
+                        let badgeBg = '#f5f6f8';
+                        let badgeCol = '#676879';
+
+                        if (row.pending > 0 && !active) {
+                            label = 'Waiting for Shift';
+                            badgeBg = '#e6e9ef'; badgeCol = '#323338';
+                        }
+                        else if (row.pending > 0 && active) {
+                            label = 'Overdue/Pending';
+                            badgeBg = '#FDAB3D'; badgeCol = '#FFFFFF';
+                        }
+                        else if (progress >= 100) {
+                            label = 'Completed';
+                            badgeBg = '#00C875'; badgeCol = '#FFFFFF';
+                        }
+
+                        return `
+                          <tr style="border-bottom:1px solid #e6e9ef; transition:background 0.2s;">
+                            <td style="padding:10px 16px; color:#323338; font-size:13px; border-right:1px solid #e6e9ef;">${UI.esc(row.member_name)} <span style="font-size:11px; color:#676879; margin-left:6px;">${UI.esc(shiftIcon(row.member_shift))} ${UI.esc(row.member_shift || 'N/A')}</span></td>
+                            <td style="padding:10px 16px; color:#323338; font-size:13px; border-right:1px solid #e6e9ef;">${UI.esc(row.total)} items</td>
+                            <td style="padding:10px 16px; color:#323338; font-size:13px; border-right:1px solid #e6e9ef;">${UI.esc(row.distribution_title)}</td>
+                            <td style="padding:10px 16px; border-right:1px solid #e6e9ef;">
+                              <div style="display:flex; align-items:center; gap:10px;">
+                                  <div style="flex:1; height:8px; background:#e6e9ef; border-radius:4px; overflow:hidden;">
+                                    <div style="height:100%; width:${Math.max(0, Math.min(100, progress))}%; background:#0073EA;"></div>
+                                  </div>
+                                  <div style="font-size:12px; color:#676879; width:35px; text-align:right;">${UI.esc(progress)}%</div>
+                              </div>
+                            </td>
+                            <td style="padding:0;">
+                              <div style="background:${badgeBg}; color:${badgeCol}; height:100%; min-height:40px; display:flex; align-items:center; justify-content:center; font-size:13px; text-transform:none;">${UI.esc(label)}</div>
+                            </td>
+                          </tr>
+                        `;
+                      }).join('') || '<tr><td colspan="5" class="muted" style="padding:16px;">No workload rows for this distribution.</td></tr>'}
+                    </tbody>
+                  </table>
+                </div>
+              `).join('') || '<div class="small muted" style="padding:16px; text-align:center; color:#676879;">No workload matrix data found.</div>'}
+            </div>
+          </div>
+        `;
+      }
 
       const filterEl = root.querySelector('#twpFilter');
       if (filterEl) {
@@ -201,7 +265,6 @@
         root._cleanup = () => {
           try { if (prevCleanup) prevCleanup(); } catch (_) { }
           try { if (state.subscription) client.removeChannel(state.subscription); } catch (_) { }
-          try { if (watchTimer) clearInterval(watchTimer); } catch (_) { }
           state.subscription = null;
         };
       } catch (_) { }
@@ -221,6 +284,15 @@
       mount.id = 'teamWorkloadPulseMount';
       host.appendChild(mount);
     }
+
+    try { window.addEventListener('mums:themeApplied', onThemeApplied); } catch (_) { }
+
+    const prevCleanup = root._cleanup;
+    root._cleanup = () => {
+      try { if (prevCleanup) prevCleanup(); } catch (_) { }
+      try { window.removeEventListener('mums:themeApplied', onThemeApplied); } catch (_) { }
+      try { if (watchTimer) clearInterval(watchTimer); } catch (_) { }
+    };
 
     await refreshData();
     await ensureRealtime();
