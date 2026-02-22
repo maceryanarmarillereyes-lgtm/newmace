@@ -3887,6 +3887,7 @@ async function boot(){
       const nowMin = UI.minutesOfDay(nowP);
       const meta = UI.shiftMeta(team || { id:user.teamId, teamStart:'06:00', teamEnd:'15:00' });
       const inShift = (!meta.wraps) ? (nowMin>=meta.start && nowMin<meta.end) : ((nowMin>=meta.start) || (nowMin<meta.end));
+      const afterShift = (!meta.wraps) ? (nowMin>=meta.end) : (nowMin>=meta.end && nowMin<meta.start);
       if(inShift){
         let shiftDateISO = nowP.isoDate;
         if(meta.wraps && nowMin < meta.end){
@@ -3899,6 +3900,63 @@ async function boot(){
             rec.shiftKey = shiftKey;
             try{ Store.addAttendance(rec); }catch(e){ console.error(e); }
             UI.toast('Attendance saved.');
+          }
+        }
+      }
+
+      if(afterShift){
+        const shiftDateISO = nowP.isoDate;
+        const schedEndMin = Number(meta.end || 0);
+        const endHH = String(Math.floor(schedEndMin / 60)).padStart(2, '0');
+        const endMM = String(schedEndMin % 60).padStart(2, '0');
+        const shiftKey = `${user.teamId}|${shiftDateISO}T${String(Store.getTeamConfig(user.teamId)?.schedule?.start || team?.teamStart || '00:00')}`;
+        if(Store.hasAttendance(user.id, shiftKey) && !Store.hasOvertimeConfirmation(user.id, shiftKey)){
+          const scheduledEndTs = Date.parse(`${shiftDateISO}T${endHH}:${endMM}:00+08:00`) || Date.now();
+          const overtimeMinutes = Math.max(0, Math.floor((Date.now() - scheduledEndTs) / 60000));
+          const out = await UI.overtimePrompt(user, team, { scheduledEndTs, overtimeMinutes });
+          if(out && out.action === 'YES'){
+            const rec = {
+              id: 'att_ot_' + Math.random().toString(16).slice(2) + '_' + Date.now(),
+              ts: Date.now(),
+              shiftKey,
+              eventType: 'OVERTIME_CONFIRMATION',
+              userId: user.id,
+              username: user.username || '',
+              name: user.name || user.username || '',
+              teamId: String(user.teamId || ''),
+              teamLabel: String((team && team.label) || ''),
+              mode: 'OVERTIME',
+              reason: String(out.reason || ''),
+              scheduledEndTs,
+              overtimeMinutes
+            };
+            try{ Store.addAttendance(rec); }catch(e){ console.error(e); }
+
+            try{
+              const users = (Store && Store.getUsers) ? (Store.getUsers()||[]) : [];
+              const leads = users.filter(u=>u && u.id !== user.id && String(u.teamId||'')===String(user.teamId||'') && String(u.role||'')==='TEAM_LEAD' && String(u.status||'active')==='active');
+              if(leads.length){
+                const weekOtMins = Store.getWeeklyOvertimeMinutes(user.id, Date.now());
+                const leadMsg = `${String(user.name || user.username || 'Team Member')} has confirmed working beyond scheduled hours. This has been recorded in the Attendance system under Overtime.`;
+                const details = `Employee: ${String(user.name || user.username || 'N/A')}\nReason: ${String(out.reason || 'N/A')}\nCurrent Overtime (7 days): ${Math.floor(weekOtMins/60)}h ${weekOtMins%60}m`;
+                Store.addNotif({
+                  id: 'ot_notif_' + Math.random().toString(16).slice(2) + '_' + Date.now(),
+                  ts: Date.now(),
+                  type: 'OVERTIME_ALERT',
+                  title: 'Overtime Alert – Team Member',
+                  body: leadMsg,
+                  detailText: details,
+                  teamId: String(user.teamId || ''),
+                  fromName: String(user.name || user.username || 'Member'),
+                  recipients: leads.map(l=>l.id),
+                  acks: {}
+                });
+              }
+            }catch(e){ console.error(e); }
+
+            UI.toast('Overtime recorded and Team Lead notified.', 'ok');
+          }else if(out && out.action === 'NO'){
+            UI.toast('Shift marked as completed.', 'ok');
           }
         }
       }
