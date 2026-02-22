@@ -8,6 +8,14 @@ function safeString(x, max=240){
   return s.length>max ? s.slice(0,max) : s;
 }
 
+function normRole(role){
+  return safeString(role, 60).replace(/\s+/g, '_').toUpperCase();
+}
+
+function profileTeamId(profile){
+  return safeString(profile && (profile.team_id || profile.teamId || (profile.team && profile.team.id)) ? (profile.team_id || profile.teamId || (profile.team && profile.team.id)) : '', 40);
+}
+
 function parseHM(hm){
   const s = String(hm||'0:0').split(':');
   const h = Math.max(0, Math.min(23, parseInt(s[0]||'0',10)||0));
@@ -172,7 +180,7 @@ function pruneCases(list){
 async function canManageCases(actor, profile, role, shiftTeamId, table){
   if(ADMIN_ANYTIME.has(role) || role === TEAM_LEAD_ROLE) return { ok:true };
 
-  const teamId = safeString(profile && (profile.team_id || profile.teamId) ? (profile.team_id || profile.teamId) : '', 40);
+  const teamId = profileTeamId(profile);
   if(!teamId || (shiftTeamId && teamId !== shiftTeamId)){
     return { ok:false, status:403, error:'Forbidden (not in duty team)' };
   }
@@ -245,7 +253,7 @@ module.exports = async (req, res) => {
       return res.end(JSON.stringify({ ok:false, error:'Unauthorized' }));
     }
     const profile = await getProfileForUserId(actor.id);
-    const role = safeString(profile && profile.role ? profile.role : 'MEMBER', 40);
+    const role = normRole(profile && profile.role ? profile.role : 'MEMBER');
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const action = safeString(body.action, 20).toLowerCase();

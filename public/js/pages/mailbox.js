@@ -38,17 +38,25 @@ function _mbxInDutyWindow(nowMin, team){
   return _mbxBlockHit(nowMin, s, e);
 }
 
+function _mbxUserTeamId(user){
+  return String(user?.teamId || user?.team_id || user?.team?.id || '').trim();
+}
+
+function _mbxNormRole(role){
+  return String(role||'').trim().replace(/\s+/g,'_').toUpperCase();
+}
+
 function eligibleForMailboxManager(user, opts){
   if(!user) return false;
   opts = opts || {};
-  const r = String(user.role||'');
+  const r = _mbxNormRole(user.role);
   const admin = (window.Config && window.Config.ROLES) ? window.Config.ROLES.ADMIN : 'ADMIN';
   const superAdmin = (window.Config && window.Config.ROLES) ? window.Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN';
   const superUser = (window.Config && window.Config.ROLES) ? window.Config.ROLES.SUPER_USER : 'SUPER_USER';
   const teamLead = (window.Config && window.Config.ROLES) ? window.Config.ROLES.TEAM_LEAD : 'TEAM_LEAD';
 
   if(r===superAdmin || r===superUser || r===admin || r===teamLead) return true;
-  if(opts.teamId && String(user.teamId||'') !== String(opts.teamId||'')) return false;
+  if(opts.teamId && _mbxUserTeamId(user) !== String(opts.teamId||'')) return false;
 
   const UI = window.UI;
   const Store = window.Store;
@@ -76,9 +84,9 @@ function eligibleForMailboxManager(user, opts){
   }catch(_){}
 
   for(const di of dows){
-    const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, di) || []) : [];
-    for(const b of blocks){
-      const rr = String(b?.role||'');
+      const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, di) || []) : [];
+      for(const b of blocks){
+      const rr = String(b?.role || b?.taskId || b?.task || '').toLowerCase();
       if(!roleSet.has(rr)) continue;
       const s = (UI.parseHM ? UI.parseHM(b.start) : _mbxParseHM(b.start));
       const e = (UI.parseHM ? UI.parseHM(b.end) : _mbxParseHM(b.end));
@@ -289,7 +297,7 @@ function _mbxDutyTone(label){
       }
 
       const all = (Store && Store.getUsers ? Store.getUsers() : []) || [];
-      const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
+      const candidates = all.filter(u=>u && _mbxUserTeamId(u)===teamId && u.status==='active');
       const matched = [];
 
       for(const u of candidates){
@@ -329,13 +337,15 @@ function _mbxDutyTone(label){
       }
 
       const unique = [...new Set(matched)];
-      return unique.length > 0 ? unique.join(' & ') : '—';
+      if(unique.length > 0) return unique.join(' & ');
+      const liveMgr = table?.meta?.bucketManagers?.[bucket?.id]?.name;
+      return String(liveMgr||'').trim() || '—';
     }catch(e){ return '—'; }
   }
 
   function isPrivilegedRole(u){
     try{
-      const r = String(u?.role||'');
+      const r = _mbxNormRole(u?.role);
       const R = (window.Config && window.Config.ROLES) ? window.Config.ROLES : {};
       return r === (R.SUPER_ADMIN||'SUPER_ADMIN') ||
              r === (R.SUPER_USER||'SUPER_USER') ||
@@ -1123,6 +1133,17 @@ function _mbxDutyTone(label){
       host.addEventListener('keydown', (e)=>{
         try{ if(e && e.key === 'Escape') _closeCustomModal('mbxAssignModal'); }catch(_){ }
       });
+      if(!window.__mbxAssignEscBound){
+        window.__mbxAssignEscBound = true;
+        window.addEventListener('keydown', (e)=>{
+          try{
+            if(e && e.key === 'Escape'){
+              const modal = document.getElementById('mbxAssignModal');
+              if(modal && modal.classList.contains('is-open')) _closeCustomModal('mbxAssignModal');
+            }
+          }catch(_){ }
+        });
+      }
     }catch(e){ console.error('Failed to mount Assign modal', e); }
   }
 
