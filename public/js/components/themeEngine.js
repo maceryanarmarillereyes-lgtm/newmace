@@ -2,6 +2,7 @@
 // Enterprise-grade theme management with Super Admin global controls
 // Author: MUMS Architecture Team
 // Date: 2026-02-23
+// Updated: 2026-02-23 18:19 - Fixed Super Admin panel visibility
 
 (function(){
   'use strict';
@@ -13,12 +14,18 @@
 
     async init(){
       try {
-        // Get user role from Store
-        const user = window.Store?.getProfile?.() || {};
-        this.userRole = user.role || 'MEMBER';
+        // ✅ FIXED: Use Auth.getUser() instead of Store.getProfile()
+        const user = (window.Auth && Auth.getUser) ? Auth.getUser() : {};
+        const rawRole = String(user?.role || '').trim().toUpperCase();
+        
+        // Normalize role (handle "Super Admin" vs "SUPER_ADMIN")
+        this.userRole = rawRole.replace(/\s+/g, '_');
+        
+        console.log('[ThemeEngine] User role:', this.userRole);
 
         // Load global default theme (if Super Admin)
         if (this.userRole === 'SUPER_ADMIN') {
+          console.log('[ThemeEngine] Super Admin detected - loading global default...');
           await this.loadGlobalDefault();
         }
 
@@ -41,7 +48,10 @@
     async loadGlobalDefault(){
       try {
         const token = window.CloudAuth?.getAccessToken?.();
-        if (!token) return;
+        if (!token) {
+          console.warn('[ThemeEngine] No auth token available');
+          return;
+        }
 
         const res = await fetch('/api/settings/global-theme', {
           headers: {
@@ -54,6 +64,8 @@
           const data = await res.json();
           this.globalDefault = data.defaultTheme || 'aurora_midnight';
           console.log('[ThemeEngine] Global default loaded:', this.globalDefault);
+        } else {
+          console.warn('[ThemeEngine] Failed to load global default:', res.status);
         }
       } catch(err){
         console.warn('[ThemeEngine] Failed to load global default:', err);
@@ -150,6 +162,7 @@
 
       // Show Super Admin panel if eligible
       if (this.userRole === 'SUPER_ADMIN') {
+        console.log('[ThemeEngine] Showing Super Admin panel...');
         const adminPanel = document.getElementById('themeAdminPanel');
         if (adminPanel) {
           adminPanel.style.display = 'block';
@@ -158,8 +171,13 @@
           const select = document.getElementById('globalThemeSelect');
           if (select && this.globalDefault) {
             select.value = this.globalDefault;
+            console.log('[ThemeEngine] Set dropdown to:', this.globalDefault);
           }
+        } else {
+          console.warn('[ThemeEngine] themeAdminPanel element not found in DOM');
         }
+      } else {
+        console.log('[ThemeEngine] User is not SUPER_ADMIN, panel hidden');
       }
     },
 
@@ -185,7 +203,10 @@
       const statusEl = document.getElementById('globalThemeStatus');
       const btn = document.getElementById('saveGlobalThemeBtn');
       
-      if (!select || !statusEl || !btn) return;
+      if (!select || !statusEl || !btn) {
+        console.error('[ThemeEngine] Missing UI elements for saveGlobalDefault');
+        return;
+      }
 
       const themeId = select.value;
       btn.disabled = true;
@@ -214,7 +235,8 @@
         this.globalDefault = themeId;
 
         // Show success message
-        statusEl.textContent = `✓ Global default set to ${themeId === 'aurora_midnight' ? 'Aurora Midnight' : 'Monochrome'}`;
+        const themeName = themeId === 'aurora_midnight' ? 'Aurora Midnight' : 'Monochrome';
+        statusEl.textContent = `✓ Global default set to ${themeName}`;
         statusEl.style.display = 'block';
         statusEl.style.color = '#34d399';
 
