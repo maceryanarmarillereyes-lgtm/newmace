@@ -193,29 +193,31 @@ function _mbxDutyLabelForUser(user, nowParts){
     if(!Store || !Config || !UI || !user) return '—';
     const p = nowParts || (UI.mailboxNowParts ? UI.mailboxNowParts() : UI.manilaNow());
     const nowMin = (UI && UI.minutesOfDay) ? UI.minutesOfDay(p) : ((Number(p.hh)||0)*60 + (Number(p.mm)||0));
-    const dow = _mbxIsoDow(p.isoDate); 
+    const dow = _mbxIsoDow(p.isoDate);
+    const prevDow = (dow + 6) % 7;
+    const todayBlocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, dow) || []) : [];
+    const prevBlocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, prevDow) || []) : [];
 
-    const dows = [dow, (dow+6)%7];
+    const getRoleLabel = (role)=>{
+      const sc = Config.scheduleById ? Config.scheduleById(role) : null;
+      return (sc && sc.label) ? sc.label : String(role||'—');
+    };
 
-    for(let i=0; i<dows.length; i++){
-      const di = dows[i];
-      const offset = (i===0) ? -1440 : 0;
-      const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, di) || []) : [];
-      for(const b of blocks){
-        let s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
-        let e = (UI && UI.parseHM) ? UI.parseHM(b.end) : _mbxParseHM(b.end);
-        if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
-        
-        if(e <= s) e += 1440;
-        s += offset;
-        e += offset;
-
-        if (nowMin >= s && nowMin < e) {
-          const sc = Config.scheduleById ? Config.scheduleById(b.role) : null;
-          return (sc && sc.label) ? sc.label : String(b.role||'—');
-        }
-      }
+    for(const b of todayBlocks){
+      const s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
+      const e = (UI && UI.parseHM) ? UI.parseHM(b.end) : _mbxParseHM(b.end);
+      if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+      if(_mbxBlockHit(nowMin, s, e)) return getRoleLabel(b.role);
     }
+
+    // Overnight spill from the previous day (e.g. 22:00-02:00)
+    for(const b of prevBlocks){
+      const s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
+      const e = (UI && UI.parseHM) ? UI.parseHM(b.end) : _mbxParseHM(b.end);
+      if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+      if(e <= s && nowMin < e) return getRoleLabel(b.role);
+    }
+
     return '—';
   }catch(_){
     return '—';
@@ -879,6 +881,25 @@ function _mbxDutyTone(label){
     function normalizedCaseKey(assigneeId, caseNo){
       return `${String(assigneeId||'').trim()}|${String(caseNo||'').trim().toLowerCase()}`;
     }
+    function deriveConfirmedAt(raw){
+      const explicitConfirmedAt = Number(raw && raw.confirmedAt || 0) || 0;
+      if(explicitConfirmedAt > 0) return explicitConfirmedAt;
+
+      const status = String(raw && raw.status || '').trim().toLowerCase();
+      const acceptedStatuses = new Set(['accepted', 'acknowledged', 'confirmed', 'done']);
+      if(!acceptedStatuses.has(status)) return 0;
+
+      const acceptedAt = Number(
+        raw && (
+          raw.acceptedAt ||
+          raw.updatedAt ||
+          raw.modifiedAt ||
+          raw.ts ||
+          raw.createdAt
+        ) || 0
+      ) || 0;
+      return acceptedAt > 0 ? acceptedAt : Date.now();
+    }
     function upsertMerged(raw){
       if(!raw) return;
       const assigneeId = String(raw.assigneeId||'').trim();
@@ -886,7 +907,7 @@ function _mbxDutyTone(label){
       if(!assigneeId || !caseNo || !by[assigneeId]) return;
       const key = normalizedCaseKey(assigneeId, caseNo);
       const assignedAt = Number(raw.assignedAt||raw.createdAt||raw.ts||Date.now()) || Date.now();
-      const confirmedAt = Number(raw.confirmedAt||0) || 0;
+      const confirmedAt = deriveConfirmedAt(raw);
       const existing = mergedByCase.get(key);
       if(!existing){
         mergedByCase.set(key, {
