@@ -4720,18 +4720,29 @@ async function boot(){
 
   } 
 
-  window.App = { boot };
-  (function(){
-    let started = false;
-    function start(){
-      if(started) return;
-      started = true;
-      try{ window.App && window.App.boot && window.App.boot(); }catch(e){ try{ console.error(e); }catch(_){} }
-    }
-    if(document.readyState === 'loading'){
-      document.addEventListener('DOMContentLoaded', start);
-    }else{
-      setTimeout(start, 0);
-    }
-  })();
+  window.App = window.App || {};
+  window.App.boot = boot;
+  window.applyTheme = applyTheme;
+  window.renderThemeGrid = renderThemeGrid;
+
 })();
+
+// Auto-boot when DOM ready
+(function(){
+  let started = false;
+  function start(){
+    if(started) return;
+    started = true;
+    try{ 
+      if(window.App && window.App.boot) window.App.boot(); 
+    }catch(e){ 
+      console.error('App boot error:', e); 
+    }
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', start);
+  }else{
+    setTimeout(start, 0);
+  }
+})();
+
