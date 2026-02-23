@@ -155,60 +155,7 @@
 
     <main class="main card pad" id="main"></main>
 
-    <aside class="right card pad" id="rightbar">
-      <div class="rtabs" role="tablist" aria-label="Right sidebar tabs">
-        <button class="rtab active" type="button" data-rtab="summary" role="tab" aria-selected="true">Summary</button>
-        <button class="rtab" type="button" data-rtab="cases" role="tab" aria-selected="false">Cases</button>
-        <button class="rtab" type="button" data-rtab="mylink" role="tab" aria-selected="false">My Link</button>
-              <div class="rtabs-spacer"></div>
-</div>
-
-      <div class="rtab-panels">
-        <section class="rtab-panel active" id="rtab-summary" role="tabpanel">
-          <div class="rsummary-head">
-            <div class="rsummary-title">
-              <div class="section-title" id="summaryMenuTitle">Guide</div>
-              <div class="small muted" id="summaryMenuMeta" style="margin-top:6px">—</div>
-            </div>
-            <div class="rsummary-right"></div>
-          </div>
-
-          <div class="gtools">
-            <label class="gswitch" title="Enable/disable the Guide panel">
-              <input type="checkbox" id="guideEnabledToggle" />
-              <span>Guide</span>
-            </label>
-            <button class="btn ghost small" id="guideOpenFullManual" type="button" title="Open full manual for this page (Guide + Notes + Legends + Manual)">📘 Full manual</button>
-            <div class="gsearch">
-              <span class="gsearch-ico">🔎</span>
-              <input id="guideSearch" type="text" placeholder="Search this guide…" autocomplete="off" />
-            </div>
-          </div>
-
-          <div class="gtabs" role="tablist" aria-label="Guide sections">
-            <button class="gtab active" type="button" data-gtab="guide" role="tab" aria-selected="true">Guide</button>
-            <button class="gtab" type="button" data-gtab="notes" role="tab" aria-selected="false">Notes</button>
-            <button class="gtab" type="button" data-gtab="legends" role="tab" aria-selected="false">Legends</button>
-            <button class="gtab" type="button" data-gtab="manual" role="tab" aria-selected="false">Manual</button>
-          </div>
-
-          <div class="gask">
-            <input id="guideAsk" type="text" placeholder="Ask a question about this page…" autocomplete="off" />
-            <button class="btn" id="guideAskBtn" type="button">Ask</button>
-          </div>
-
-          <div class="rsummary-body" id="summaryGuide"></div>
-        </section>
-
-        <section class="rtab-panel" id="rtab-cases" role="tabpanel">
-          <div class="small muted">(Coming soon)</div>
-        </section>
-
-        <section class="rtab-panel" id="rtab-mylink" role="tabpanel">
-          <div class="small muted">(Coming soon)</div>
-        </section>
-      </div>
-    </aside>
+    <aside class="right card pad" id="rightbar"></aside>
   </div>
 
   <div class="online-users-bar" id="onlineUsersBar" aria-label="Online users" role="region"></div>
@@ -216,19 +163,6 @@
   <div class="quicklinks-bar" id="quickLinksBar" aria-label="Quick links" role="navigation">
     <div class="clocks-wrap" id="worldClocks" aria-label="World clocks"></div>
     <div class="quicklinks-inner" id="quickLinksInner"></div>
-  </div>
-
-  <div class="modal" id="guideImgModal">
-    <div class="panel" style="max-width:860px">
-      <div class="head">
-        <div>
-          <div class="announce-title" id="guideImgTitle">Guide Image</div>
-          <div class="small" id="guideImgCaption">—</div>
-        </div>
-        <button class="btn ghost" type="button" data-close="guideImgModal">✕</button>
-      </div>
-      <div class="body" id="guideImgBody"></div>
-    </div>
   </div>
 
   <div class="modal" id="topAnnModal">
