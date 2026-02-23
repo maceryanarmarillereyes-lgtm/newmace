@@ -521,6 +521,16 @@ function applyRemoteKey(key, value){
             if (ts > lastCloudTs) lastCloudTs = ts;
           } catch (_) {}
         })
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mums_sync_log' }, (payload) => {
+          try {
+            const row = payload && payload.new ? payload.new : null;
+            if (!row) return;
+            if (row.client_id === clientId) return; // Prevent self-echo
+            if(window.dispatchEvent){
+              window.dispatchEvent(new CustomEvent('mums:realtime_alert', { detail: row }));
+            }
+          } catch (_) {}
+        })
         .subscribe((status) => {
           // Ignore status events from older channels after a reconnect.
           if (seq !== activeSeq) return;
