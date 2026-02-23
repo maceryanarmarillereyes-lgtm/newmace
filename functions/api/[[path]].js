@@ -60,6 +60,9 @@ async function getRoutes(env) {
     'theme_access/get': unwrapCjs(await import('../../server/routes/theme_access/get.js')),
     'theme_access/set': unwrapCjs(await import('../../server/routes/theme_access/set.js')),
 
+    'settings/global_theme': unwrapCjs(await import('../../server/routes/settings/global_theme.js')),
+    'settings/global-theme': unwrapCjs(await import('../../server/routes/settings/global_theme.js')),
+
     overall_stats: unwrapCjs(await import('../../server/routes/overall_stats.js')),
 
     'users/list': unwrapCjs(await import('../../server/routes/users/list.js')),
