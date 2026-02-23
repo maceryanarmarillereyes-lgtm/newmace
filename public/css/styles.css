@@ -368,6 +368,7 @@ body{
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 12px 30px rgba(0,0,0,0.3);
   backdrop-filter: blur(20px);
 }
+<<<<<<< HEAD
 .th-toolbar-copy { min-width: 0; }
 .th-toolbar-title {
   font-weight: 950;
@@ -387,11 +388,56 @@ body{
   padding: 14px 16px;
   background: rgba(8, 47, 73, 0.35);
   box-shadow: inset 0 0 20px rgba(56, 189, 248, 0.05);
+=======
+#themeModal .body{display:grid;gap:14px}
+
+.th-summary{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:12px;margin-bottom:14px}
+.th-summary-item{border:1px solid rgba(148,163,184,.24);border-radius:12px;padding:10px 12px;background:rgba(15,23,42,.52)}
+.th-summary-label{display:block;font-size:11px;color:#94a3b8;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+.th-summary-value{display:block;margin-top:4px;font-size:14px;font-weight:900;color:#e2e8f0}
+.th-toolbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  margin-bottom:14px;
+  padding:14px 16px;
+  border:1px solid rgba(148,163,184,.2);
+  border-radius:14px;
+  background:linear-gradient(135deg, rgba(15,23,42,.74), rgba(2,132,199,.12));
+}
+.th-toolbar-copy{min-width:0}
+.th-toolbar-title{font-weight:900;font-size:16px;color:#f8fafc;letter-spacing:.01em}
+.th-toolbar-subtitle{margin-top:4px}
+.th-toolbar-controls{display:flex;flex-direction:column;gap:10px;min-width:min(420px,100%)}
+.th-toolbar-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+
+
+.th-global-default-panel{border:1px solid rgba(56,189,248,.32);border-radius:12px;padding:10px 12px;background:rgba(8,47,73,.28)}
+.th-global-default-row{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:6px;align-items:center}
+.th-global-default-row .input{min-width:180px}
+#globalDefaultThemeStatus{margin-top:8px;font-weight:700}
+
+.th-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.th-card{
+  position:relative;
+  border-radius:14px;
+  border:1px solid rgba(148,163,184,.22);
+  background:linear-gradient(160deg, rgba(15,23,42,.72), rgba(15,23,42,.45));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08), 0 12px 24px rgba(2,6,23,.22);
+  padding:14px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  cursor:pointer;
+  transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+>>>>>>> ca36546d78527c20ae003480d7182b7b20fe2705
 }
 .th-global-default-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; margin-top: 8px; align-items: center; }
 .th-global-default-row .input { min-width: 200px; background: rgba(2, 6, 23, 0.6); border-color: rgba(56, 189, 248, 0.3); color: #e0f2fe; font-weight: 700; }
 #globalDefaultThemeStatus { margin-top: 8px; font-weight: 800; font-size: 12px; }
 
+<<<<<<< HEAD
 /* --- Theme Grid & Cards (The Masterpiece) --- */
 .th-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
 .th-card {
@@ -408,6 +454,42 @@ body{
   transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
   overflow: hidden;
   transform: translateZ(0); /* Hardware Acceleration */
+=======
+.th-swatch{width:50px;height:50px;border-radius:50%;border:2px solid var(--t-panel);background:var(--t-bg);position:relative;flex-shrink:0;box-shadow:0 6px 12px rgba(2,6,23,.35)}
+.th-swatch::after{content:"";position:absolute;width:18px;height:18px;border-radius:999px;right:-2px;bottom:-2px;background:var(--t-acc);border:2px solid var(--t-panel);box-shadow:0 0 14px var(--t-acc)}
+.th-info{min-width:0;flex:1}
+.th-title{font-weight:900;color:#f8fafc;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.th-meta,.th-mode{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#a7b3ca;margin-top:4px}
+.th-desc{margin-top:8px;font-size:12px;line-height:1.35;color:#cbd5e1;max-height:32px;overflow:hidden}
+.th-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.th-badge{display:inline-flex;padding:3px 8px;margin-top:7px;border-radius:999px;font-size:10px;font-weight:900;letter-spacing:.04em;border:1px solid transparent}
+.th-badge-active{color:#7dd3fc;border-color:rgba(125,211,252,.45);background:rgba(14,116,144,.24)}
+.th-badge-hidden{color:#fecaca;border-color:rgba(248,113,113,.45);background:rgba(127,29,29,.3)}
+.th-badge-default{color:#fde68a;border-color:rgba(250,204,21,.45);background:rgba(113,63,18,.35)}
+
+.th-admin-bar{position:absolute;top:0;right:0;bottom:0;display:flex;flex-direction:column;min-width:132px;background:rgba(2,6,23,.92);border-left:1px solid rgba(148,163,184,.22);transform:translateX(100%);transition:transform .2s ease}
+.th-card.show-admin .th-admin-bar{transform:translateX(0)}
+.th-admin-btn{flex:1;border:none;background:transparent;color:#dbe6ff;border-bottom:1px solid rgba(148,163,184,.16);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
+.th-admin-btn:hover{background:rgba(255,255,255,.06)}
+.th-admin-btn.del:hover{background:rgba(239,68,68,.22);color:#fecaca}
+
+.th-empty{grid-column:1/-1;text-align:center;padding:30px 14px;border:1px dashed rgba(148,163,184,.4);border-radius:14px}
+
+.theme-lab-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.theme-lab-card{border:1px solid rgba(148,163,184,.2);border-radius:12px;padding:12px 14px;background:rgba(2,6,23,.45);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.theme-lab-k{font-weight:900;color:#f8fafc;font-size:14px}
+.theme-lab-v{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#cbd5e1;margin-top:4px}
+.theme-lab-status{padding:6px 12px;border-radius:10px;font-size:11px;font-weight:900;letter-spacing:.05em;border:1px solid}
+.theme-lab-guide{margin-top:14px;border-left:3px solid #38bdf8;padding-left:10px;line-height:1.45}
+
+@media(max-width:900px){
+  .th-summary{grid-template-columns:1fr}
+  .th-toolbar{padding:12px;flex-direction:column;align-items:stretch}
+  .th-toolbar-controls{min-width:0}
+  .th-toolbar-actions{justify-content:flex-start}
+  .th-global-default-row{grid-template-columns:1fr}
+  .th-grid{grid-template-columns:1fr}
+>>>>>>> ca36546d78527c20ae003480d7182b7b20fe2705
 }
 /* Glass Rim Reflection */
 .th-card::before {
