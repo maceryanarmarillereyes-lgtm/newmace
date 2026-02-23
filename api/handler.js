@@ -50,6 +50,10 @@ const ROUTES = {
   'theme_access/get': require('../server/routes/theme_access/get'),
   'theme_access/set': require('../server/routes/theme_access/set'),
 
+  // 🆕 NEW: System Settings for Global Theme Management (Super Admin)
+  'system_settings/get': require('../server/routes/system_settings/get'),
+  'system_settings/set': require('../server/routes/system_settings/set'),
+
   'overall_stats': require('../server/routes/overall_stats'),
 
   'users/create': require('../server/routes/users/create'),
