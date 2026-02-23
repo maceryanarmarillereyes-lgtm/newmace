@@ -3948,76 +3948,115 @@ body[data-theme="monday_workspace"] .rtabs{
 }
 
 
-/* Programmable Status Widgets (Right Sidebar Upper Section) */
-#right-sidebar-container{
-  display:flex;
-  flex-direction:column;
-  gap:12px;
+/* Programmable Status Widgets (Enterprise Refinement) */
+#right-sidebar-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.status-widget-grid {
+order: -1;
+width: 100%;
+display: grid;
+grid-template-columns: repeat(3, minmax(0, 1fr));
+gap: 8px;
+margin: 0 0 12px;
 }
 
-.status-widget-grid{
-  order:-1;
-  width:100%;
-  display:grid;
-  grid-template-columns:repeat(3, minmax(0, 1fr));
-  gap:8px;
-  margin:0 0 12px;
+/* Idle (Stealth/Grayscale) State */
+.status-widget-tile {
+aspect-ratio: 1/1;
+min-height: 72px;
+border-radius: 18px;
+/* Base Frosted Glass */
+background: rgba(15, 23, 42, 0.4);
+backdrop-filter: blur(12px);
+-webkit-backdrop-filter: blur(12px);
+/* Rim Lighting */
+border: 1px solid transparent;
+border-top: 1px solid rgba(255, 255, 255, 0.08);
+border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+gap: 4px;
+cursor: pointer;
+
+/* Smooth Transitions for interactions */
+transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+transform: translateZ(0); /* Force GPU */
+
+/* Default text state */
+color: rgba(255, 255, 255, 0.5);
+filter: grayscale(1) opacity(0.7);
 }
 
-.status-widget-tile{
-  aspect-ratio:1/1;
-  min-height:72px;
-  border-radius:18px;
-  border:1px solid rgba(255,255,255,0.05);
-  background:rgba(255,255,255,0.06);
-  backdrop-filter:blur(10px);
-  -webkit-backdrop-filter:blur(10px);
-  color:rgba(235,241,255,0.9);
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  gap:4px;
-  cursor:pointer;
-  transition:transform .2s ease, box-shadow .2s ease, filter .2s ease, border-color .2s ease;
-  filter:grayscale(1);
+.status-widget-title {
+font-size: 11px;
+font-weight: 800;
+line-height: 1.1;
+letter-spacing: 0.05em;
+text-transform: uppercase;
+text-align: center;
 }
 
-.status-widget-tile:hover{
-  transform:translateY(-1px);
-  border-color:rgba(255,255,255,0.16);
+.status-widget-sub {
+font-size: 10px;
+font-weight: 700;
+line-height: 1;
+opacity: 0.7;
+text-transform: uppercase;
 }
 
-.status-widget-title{
-  font-size:11px;
-  font-weight:700;
-  line-height:1.1;
+/* Tactile Hover */
+.status-widget-tile:hover {
+transform: translateY(-2px) translateZ(0);
+border-color: rgba(255, 255, 255, 0.15);
+background: rgba(255, 255, 255, 0.05);
+filter: grayscale(0.8) opacity(0.9);
 }
 
-.status-widget-sub{
-  font-size:10px;
-  opacity:.82;
-  line-height:1;
+/* Active (Alert/Bloom) State */
+.status-widget-tile.is-active {
+filter: grayscale(0) opacity(1);
+color: #fff;
+border-color: transparent;
+animation: cinematic-pulse 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
-.status-widget-tile.is-active{
-  filter:grayscale(0);
-  animation:status-widget-pulse 1.7s ease-in-out infinite;
+/* Specific Color Blooms (Multi-layered box-shadow) */
+.status-widget-tile.is-blue.is-active {
+background: rgba(59, 130, 246, 0.1);
+border: 1px solid rgba(59, 130, 246, 0.3);
+box-shadow:
+0 0 10px rgba(59, 130, 246, 0.4),
+0 0 20px rgba(59, 130, 246, 0.2),
+inset 0 0 15px rgba(59, 130, 246, 0.1);
 }
 
-.status-widget-tile.is-blue.is-active{
-  box-shadow:0 0 15px rgba(77, 148, 255, 0.9);
+.status-widget-tile.is-yellow.is-active {
+background: rgba(234, 179, 8, 0.1);
+border: 1px solid rgba(234, 179, 8, 0.3);
+box-shadow:
+0 0 10px rgba(234, 179, 8, 0.4),
+0 0 20px rgba(234, 179, 8, 0.2),
+inset 0 0 15px rgba(234, 179, 8, 0.1);
 }
 
-.status-widget-tile.is-yellow.is-active{
-  box-shadow:0 0 15px rgba(255, 221, 94, 0.95);
+.status-widget-tile.is-red.is-active {
+background: rgba(239, 68, 68, 0.1);
+border: 1px solid rgba(239, 68, 68, 0.3);
+box-shadow:
+0 0 10px rgba(239, 68, 68, 0.4),
+0 0 20px rgba(239, 68, 68, 0.2),
+inset 0 0 15px rgba(239, 68, 68, 0.1);
 }
 
-.status-widget-tile.is-red.is-active{
-  box-shadow:0 0 15px rgba(255, 104, 104, 0.95);
-}
-
-@keyframes status-widget-pulse{
-  0%,100%{ transform:scale(1); }
-  50%{ transform:scale(1.03); }
+/* Hardware Accelerated Pulse */
+@keyframes cinematic-pulse {
+0% { transform: scale(1) translateZ(0); filter: brightness(1); }
+50% { transform: scale(1.02) translateZ(0); filter: brightness(1.2); }
+100% { transform: scale(1) translateZ(0); filter: brightness(1); }
 }
