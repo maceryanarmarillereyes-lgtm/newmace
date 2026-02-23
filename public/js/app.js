@@ -1847,10 +1847,14 @@ function updateClocksPreviewTimes(){
         e.stopPropagation();
 
         const now = Date.now();
-        const isDuplicate = (nav.__lastNavPage === pageId) && (now - Number(nav.__lastNavAt || 0) < 200);
+        const sinceLastTap = now - Number(nav.__lastNavAt || 0);
+        const isSameTarget = nav.__lastNavPage === pageId;
         nav.__lastNavAt = now;
         nav.__lastNavPage = pageId;
-        if(isDuplicate) return;
+
+        // Keep accidental double-click protection, but do not block intentional
+        // fast page switching. Only suppress near-identical taps.
+        if(isSameTarget && sinceLastTap < 80) return;
 
         try{ setActiveNav(pageId); }catch(_){ }
 
