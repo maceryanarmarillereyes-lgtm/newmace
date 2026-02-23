@@ -3946,3 +3946,78 @@ body[data-theme="monday_workspace"] .rtabs{
     border-radius: 10px;
   }
 }
+
+
+/* Programmable Status Widgets (Right Sidebar Upper Section) */
+#right-sidebar-container{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.status-widget-grid{
+  order:-1;
+  width:100%;
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:8px;
+  margin:0 0 12px;
+}
+
+.status-widget-tile{
+  aspect-ratio:1/1;
+  min-height:72px;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,0.05);
+  background:rgba(255,255,255,0.06);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  color:rgba(235,241,255,0.9);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  cursor:pointer;
+  transition:transform .2s ease, box-shadow .2s ease, filter .2s ease, border-color .2s ease;
+  filter:grayscale(1);
+}
+
+.status-widget-tile:hover{
+  transform:translateY(-1px);
+  border-color:rgba(255,255,255,0.16);
+}
+
+.status-widget-title{
+  font-size:11px;
+  font-weight:700;
+  line-height:1.1;
+}
+
+.status-widget-sub{
+  font-size:10px;
+  opacity:.82;
+  line-height:1;
+}
+
+.status-widget-tile.is-active{
+  filter:grayscale(0);
+  animation:status-widget-pulse 1.7s ease-in-out infinite;
+}
+
+.status-widget-tile.is-blue.is-active{
+  box-shadow:0 0 15px rgba(77, 148, 255, 0.9);
+}
+
+.status-widget-tile.is-yellow.is-active{
+  box-shadow:0 0 15px rgba(255, 221, 94, 0.95);
+}
+
+.status-widget-tile.is-red.is-active{
+  box-shadow:0 0 15px rgba(255, 104, 104, 0.95);
+}
+
+@keyframes status-widget-pulse{
+  0%,100%{ transform:scale(1); }
+  50%{ transform:scale(1.03); }
+}
