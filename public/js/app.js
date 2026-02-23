@@ -1,4 +1,4 @@
-/*File: public/js/app.js */
+/* File: public/js/app.js */
 
 (function(){
   let cleanup = null;
@@ -3032,25 +3032,6 @@ function updateClocksPreviewTimes(){
     }
   }
 
-  const NAV_RENDER = {
-    seq: 0,
-    queued: false,
-    queuedReason: '',
-    inFlight: false,
-    lastPageId: '',
-    lastHref: ''
-  };
-
-  function requestRouteRender(reason){
-    NAV_RENDER.queuedReason = String(reason||'route');
-    if(NAV_RENDER.queued) return;
-    NAV_RENDER.queued = true;
-    Promise.resolve().then(()=>{
-      NAV_RENDER.queued = false;
-      route(NAV_RENDER.queuedReason || 'route');
-    });
-  }
-
 
   function navigateToPageId(pageId, opts){
     const pages = window.Pages || {};
@@ -3065,24 +3046,15 @@ function updateClocksPreviewTimes(){
 
     try{
       const url = _routePathForPageId(id);
-      const currentPath = _normalizeRoutePath(window.location.pathname||'/');
-      const targetPath = _normalizeRoutePath(url);
-      if(currentPath === targetPath && NAV_RENDER.lastPageId === id){
-        requestRouteRender('navigate:same-page-refresh');
-        return;
-      }
       if(opts && opts.replace) history.replaceState({},'', url);
       else history.pushState({},'', url);
       try{ if(window.location.hash) history.replaceState({},'', url); }catch(_){ }
-      requestRouteRender('navigate:' + id);
+      try{ route(); }catch(_){ }
     }catch(_){
       window.location.hash = '#' + id;
     }
   }
-
-  function route(reason){
-    const runSeq = ++NAV_RENDER.seq;
-    NAV_RENDER.inFlight = true;
+function route(){
     try{
       const user = Auth.getUser();
       if(!user) return;
@@ -3090,49 +3062,29 @@ function updateClocksPreviewTimes(){
       renderSideLogs(user);
 
       const pageId = resolveRoutePageId();
-      NAV_RENDER.lastPageId = pageId;
-      NAV_RENDER.lastHref = String(window.location.pathname || window.location.hash || '');
-
-      if(runSeq !== NAV_RENDER.seq) return;
-
 	      try{ window._currentPageId = pageId; }catch(_){ }
-	      try{ window.__mumsRouteSeq = runSeq; }catch(_){ }
       try{
-        const menu = (Config && Array.isArray(Config.NAV)) ? Config.NAV : [];
-        const flat = [];
-        menu.forEach((item)=>{
-          if(!item) return;
-          flat.push(item);
-          if(Array.isArray(item.children)) item.children.forEach(child=> flat.push(child));
-        });
-        const m = flat.find(x=>x && x.id===pageId) || null;
+        const m = (Config && Config.menu) ? Config.menu.find(x=>x.id===pageId) : null;
         window._currentPageLabel = m ? (m.label||pageId) : pageId;
       }catch(e){ window._currentPageLabel = pageId; }
-
-      if(runSeq !== NAV_RENDER.seq) return;
 
       renderSummaryGuide(pageId, window._currentPageLabel);
       setActiveNav(pageId);
 
       const main = UI.el('#main');
-      if(!main) return;
       if(cleanup){ try{ cleanup(); }catch(e){} cleanup=null; }
       main.innerHTML = '';
-      main.dataset.routeSeq = String(runSeq);
 
       try{
         window.Pages[pageId](main);
       }catch(pageErr){
         showFatalError(pageErr);
       }
-      if(runSeq !== NAV_RENDER.seq) return;
       if(main._cleanup){ cleanup = main._cleanup; main._cleanup = null; }
 
       updateAnnouncementBar();
     }catch(e){
       showFatalError(e);
-    }finally{
-      if(runSeq === NAV_RENDER.seq) NAV_RENDER.inFlight = false;
     }
   }
 
@@ -4720,29 +4672,18 @@ async function boot(){
 
   } 
 
-  window.App = window.App || {};
-  window.App.boot = boot;
-  window.applyTheme = applyTheme;
-  window.renderThemeGrid = renderThemeGrid;
-
-})();
-
-// Auto-boot when DOM ready
-(function(){
-  let started = false;
-  function start(){
-    if(started) return;
-    started = true;
-    try{ 
-      if(window.App && window.App.boot) window.App.boot(); 
-    }catch(e){ 
-      console.error('App boot error:', e); 
+  window.App = { boot };
+  (function(){
+    let started = false;
+    function start(){
+      if(started) return;
+      started = true;
+      try{ window.App && window.App.boot && window.App.boot(); }catch(e){ try{ console.error(e); }catch(_){} }
     }
-  }
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', start);
-  }else{
-    setTimeout(start, 0);
-  }
+    if(document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', start);
+    }else{
+      setTimeout(start, 0);
+    }
+  })();
 })();
-
