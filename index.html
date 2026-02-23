@@ -364,24 +364,97 @@
   </div>
 
   <div class="modal" id="themeModal">
-    <div class="panel" style="max-width:1100px; width:95vw;">
+    <div class="panel" style="max-width:1200px; width:95vw;">
       <div class="head">
         <div>
-          <div class="announce-title" style="font-size:24px; font-weight:900; color:#38bdf8; display:flex; align-items:center; gap:10px;"><span aria-hidden="true">🎨</span> Theme Engine</div>
-          <div class="small muted" style="margin-top:6px; font-size:13px;">Customize global UI aesthetics. Selections apply instantly and are saved locally.</div>
+          <div class="announce-title" style="font-size:24px; font-weight:900; color:#38bdf8; display:flex; align-items:center; gap:10px;">
+            <span aria-hidden="true">🎨</span> Theme Engine
+          </div>
+          <div class="small muted" style="margin-top:6px; font-size:13px;">
+            Enterprise-grade UI theming system. Changes apply instantly across all panels.
+          </div>
         </div>
         <button class="btn ghost" type="button" data-close="themeModal">✕</button>
       </div>
-      <div class="body" style="padding:24px;">
-        <div id="themeGrid"></div>
-        <div id="themeAudit" style="display:none; margin-top:40px; padding-top:24px; border-top:1px solid rgba(255,255,255,0.08);">
-          <div class="h3" style="margin:0 0 6px; color:#f8fafc; font-weight:900; font-size:18px;">🧪 Theme Lab Diagnostics</div>
-          <div class="small muted" style="margin-bottom:16px;">Automated WCAG readability and contrast validation against active background panels.</div>
-          <div id="themeAuditInner"></div>
+      <div class="body" style="padding:32px;">
+        
+        <!-- Super Admin Global Control -->
+        <div id="themeAdminPanel" style="display:none; margin-bottom:32px;">
+          <div class="card" style="background:linear-gradient(145deg, rgba(124,135,255,0.08), rgba(56,189,248,0.12)); border:1px solid rgba(124,135,255,0.3); padding:24px; border-radius:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:20px; flex-wrap:wrap;">
+              <div>
+                <div style="font-size:18px; font-weight:900; color:#7c87ff; display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                  <span>⚡</span> Global Theme Control
+                </div>
+                <div class="small muted" style="line-height:1.6;">
+                  As Super Admin, set the default theme for all users system-wide. Users can still override with personal preference.
+                </div>
+              </div>
+              <div style="display:flex; gap:12px; align-items:center;">
+                <div>
+                  <div class="small muted" style="margin-bottom:6px;">Current Default</div>
+                  <select class="input" id="globalThemeSelect" style="min-width:200px; font-weight:800;">
+                    <option value="aurora_midnight">Aurora Midnight</option>
+                    <option value="mono">Monochrome</option>
+                  </select>
+                </div>
+                <button class="btn primary" id="saveGlobalThemeBtn" type="button" style="height:fit-content; background:linear-gradient(135deg, #7c87ff, #4f46e5); border:none; box-shadow:0 4px 12px rgba(124,135,255,0.4);">
+                  Save Default
+                </button>
+              </div>
+            </div>
+            <div id="globalThemeStatus" class="small" style="margin-top:12px; color:#34d399; display:none;">
+              ✓ Global default updated successfully
+            </div>
+          </div>
         </div>
+
+        <!-- Theme Selection Grid -->
+        <div style="margin-bottom:20px;">
+          <div style="font-size:16px; font-weight:900; color:#f8fafc; margin-bottom:8px;">
+            Select Your Theme
+          </div>
+          <div class="small muted">
+            Choose between Aurora Midnight (vibrant purple) or Monochrome (minimalist grayscale). Your preference overrides the global default.
+          </div>
+        </div>
+
+        <div id="themeGrid"></div>
+
+        <!-- Theme Info Panel -->
+        <div style="margin-top:32px; padding-top:24px; border-top:1px solid rgba(255,255,255,0.08);">
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:20px;">
+            <div class="card" style="background:rgba(30,41,59,0.4); border:1px solid rgba(255,255,255,0.06); padding:20px; border-radius:12px;">
+              <div style="font-size:14px; font-weight:800; color:#38bdf8; margin-bottom:8px;">
+                🎯 Theme Philosophy
+              </div>
+              <div class="small muted" style="line-height:1.6;">
+                Reduced to 2 enterprise-grade themes for consistency. Aurora Midnight offers vibrant focus, while Monochrome provides distraction-free clarity.
+              </div>
+            </div>
+            <div class="card" style="background:rgba(30,41,59,0.4); border:1px solid rgba(255,255,255,0.06); padding:20px; border-radius:12px;">
+              <div style="font-size:14px; font-weight:800; color:#22c55e; margin-bottom:8px;">
+                ⚙️ How It Works
+              </div>
+              <div class="small muted" style="line-height:1.6;">
+                Super Admin sets global default → All users see that theme by default → Individual users can override with personal preference.
+              </div>
+            </div>
+            <div class="card" style="background:rgba(30,41,59,0.4); border:1px solid rgba(255,255,255,0.06); padding:20px; border-radius:12px;">
+              <div style="font-size:14px; font-weight:800; color:#fbbf24; margin-bottom:8px;">
+                💡 Pro Tip
+              </div>
+              <div class="small muted" style="line-height:1.6;">
+                Themes use CSS variables for instant switching. No page reload required. Perfect for shift-based teams with different lighting preferences.
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
+
 
   <div class="modal" id="systemCheckModal">
     <div class="panel" style="max-width:980px">
