@@ -849,7 +849,7 @@ ${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" t
       if(Number.isFinite(rightW) && rightW>=260 && rightW<=520) grid.style.setProperty('--members-right', `${rightW}px`);
     }
 
-    // Fullscreen overlay toggle (Option A) + focus restore.
+    // Fullscreen overlay toggle (viewport-only) + focus restore.
     const fsBtn = wrap.querySelector('#membersFullscreenBtn');
     let fsOrigin = null;
 
@@ -865,11 +865,6 @@ ${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" t
       wrap.classList.add('members-fullscreen-overlay');
       setFsBtn(true);
 
-      // Try Fullscreen API, but keep overlay behavior even if denied.
-      if(document.fullscreenElement !== wrap && wrap.requestFullscreen){
-        try{ wrap.requestFullscreen(); }catch{}
-      }
-
       // Focus first meaningful control.
       const first = wrap.querySelector('#paintToggle') || wrap.querySelector('#membersRosterSearch') || fsBtn;
       if(first) first.focus({ preventScroll:true });
@@ -880,10 +875,6 @@ ${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" t
       wrap.classList.remove('members-fullscreen-overlay');
       setFsBtn(false);
 
-      if(document.fullscreenElement && document.exitFullscreen){
-        try{ document.exitFullscreen(); }catch{}
-      }
-
       if(fsOrigin && fsOrigin.focus){
         try{ fsOrigin.focus({ preventScroll:true }); }catch{ try{ fsOrigin.focus(); }catch{} }
       }
@@ -891,7 +882,7 @@ ${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" t
     }
 
     function isOverlayActive(){
-      return document.body.classList.contains('members-fullscreen-active') || wrap.classList.contains('members-fullscreen-overlay') || document.fullscreenElement===wrap;
+      return document.body.classList.contains('members-fullscreen-active') || wrap.classList.contains('members-fullscreen-overlay');
     }
 
     if(fsBtn && !fsBtn.dataset.bound){
@@ -903,14 +894,15 @@ ${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" t
       setFsBtn(isOverlayActive());
     }
 
-    document.addEventListener('fullscreenchange', ()=>{
-      // Keep UI state consistent when ESC exits native fullscreen.
-      if(document.fullscreenElement !== wrap && wrap.classList.contains('members-fullscreen-overlay')){
-        // Overlay can remain, but we treat it as active until user exits.
-        // No-op; explicit exitOverlay will clear both.
-      }
-      setFsBtn(isOverlayActive());
-    });
+    // Bind once so repeated page mounts do not stack listeners.
+    if(!wrap.dataset.membersFsEscBound){
+      wrap.dataset.membersFsEscBound = '1';
+      document.addEventListener('keydown', (ev)=>{
+        if(ev.key === 'Escape' && isOverlayActive()){
+          exitOverlay();
+        }
+      });
+    }
 
     // Splitter drag + keyboard resize.
     function wireSplitter(splitEl, which){
