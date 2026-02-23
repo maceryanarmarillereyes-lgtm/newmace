@@ -124,38 +124,35 @@
       const grid = document.getElementById('themeGrid');
       if (!grid) return;
 
+      // New enterprise layout contract for Theme Settings modal
+      grid.classList.remove('theme-grid');
+      grid.classList.add('th-grid');
+
       const themes = window.Config?.THEMES || [];
       
       grid.innerHTML = themes.map(theme => {
+        const themeId = String(theme?.id || '').trim();
+        const themeName = String(theme?.name || 'N/A').trim() || 'N/A';
+        const themeDescription = String(theme?.description || 'Enterprise UI System').trim() || 'Enterprise UI System';
+        const bgColor = String(theme?.bg || theme?.bgColor || '#0f172a').trim() || '#0f172a';
+        const accentColor = String(theme?.accent || theme?.accentColor || '#38bdf8').trim() || '#38bdf8';
         const isActive = this.currentTheme === theme.id;
+        const isHidden = Boolean(theme?.hidden || theme?.isHidden);
         
         return `
-          <div class="glass-theme-tile ${isActive ? 'active' : ''}" 
-               data-theme="${theme.id}"
-               style="--t-bg:${theme.bg}; --t-panel:${theme.panel}; --t-acc:${theme.accent};">
-            
-            <div class="theme-swatch-box">
-              <div class="theme-swatch-p1"></div>
-              <div class="theme-swatch-p2">
-                <div class="theme-swatch-acc"></div>
+          <div class="th-card ${isActive ? 'is-active' : ''} ${isHidden ? 'is-hidden' : ''}" data-id="${themeId}">
+            <div class="th-swatch" style="--t-bg: ${bgColor}; --t-acc: ${accentColor};"></div>
+
+            <div class="th-info">
+              <div class="th-title">${themeName}</div>
+              <div class="th-desc">${themeDescription}</div>
+              <div class="th-badges">
+                ${isActive ? '<span class="th-badge th-badge-active">Active</span>' : '<span class="th-badge th-badge-default">Inactive</span>'}
               </div>
             </div>
 
-            <div style="flex:1;">
-              <div style="font-size:16px; font-weight:900; color:#f8fafc; margin-bottom:4px; display:flex; align-items:center; gap:8px;">
-                ${theme.name}
-                ${isActive ? '<span style="font-size:12px; background:rgba(34,197,94,0.2); color:#22c55e; padding:2px 8px; border-radius:6px; font-weight:800;">ACTIVE</span>' : ''}
-              </div>
-              <div class="small muted" style="line-height:1.5;">
-                ${theme.description || 'Premium enterprise theme.'}
-              </div>
-            </div>
-
-            <button class="btn-glass-ghost apply-theme-btn" 
-                    data-theme="${theme.id}"
-                    style="width:100%; margin-top:12px; ${isActive ? 'opacity:0.5; pointer-events:none;' : ''}">
-              ${isActive ? '✓ Applied' : 'Apply Theme'}
-            </button>
+            <button class="th-admin-btn edit-btn">Edit</button>
+            <button class="th-admin-btn del del-btn">Del</button>
           </div>
         `;
       }).join('');
@@ -182,11 +179,13 @@
     },
 
     setupEventListeners(){
-      // Apply theme button clicks
+      // Apply theme by clicking card (excluding admin action buttons)
       document.getElementById('themeGrid')?.addEventListener('click', (e) => {
-        const btn = e.target.closest('.apply-theme-btn');
-        if (btn) {
-          const themeId = btn.dataset.theme;
+        if (e.target.closest('.th-admin-btn')) return;
+
+        const card = e.target.closest('.th-card');
+        if (card) {
+          const themeId = card.dataset.id;
           this.applyTheme(themeId);
           this.renderThemeGrid(); // Re-render to update active state
         }
