@@ -37,140 +37,46 @@
       lunch: { id: 'lunch', label: 'Lunch', icon: '🍽️' },
     },
 
-    // Theme presets (applied via CSS variables).
-    // - Colors always apply.
-    // - Optional: font, radius, shadow for deeper theme control.
-    // NOTE: "Aurora (Ecommerce Dark)" is a MUMS theme preset inspired by the visual style of
-    // https://aurora.themewagon.com/dashboard/ecommerce (dark mode).
-    THEMES: [
-      // --- Aurora-inspired presets (ThemeWagon Aurora / ecommerce-style) ---
-      // NOTE: "Aurora Light" is designed to visually match the referenced Aurora dashboard
-      // (clean typography + light surfaces). Dark variants are included for users who
-      // prefer the existing MUMS dark UI.
-      {
-        id:'aurora_light',
-        name:'Aurora (Ecommerce Light)',
-        mode:'light',
-        bg:'#f4f6fb',
-        panel:'#ffffff',
-        panel2:'#f1f4fa',
-        text:'#0f172a',
-        muted:'#64748b',
-        border:'rgba(15,23,42,.12)',
-        accent:'#4f46e5',
-        bgRad1:'#dfe8ff',
-        bgRad3:'#f8fafc',
-        font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
-        radius:'16px',
-        shadow:'0 14px 30px rgba(15,23,42,.10)'
-      },
-      {
-        id:'aurora_dark',
-        name:'Aurora (Ecommerce Dark)',
-        mode:'dark',
-        bg:'#0b1220',
-        panel:'#0f1b2e',
-        panel2:'#0c1628',
-        text:'#eef2ff',
-        muted:'#b7c1d9',
-        border:'rgba(255,255,255,.10)',
-        accent:'#4f8bff',
-        bgRad1:'#162a4b',
-        bgRad3:'#050914',
-        // Aurora uses a very modern, clean font.
-        font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
-        // Slightly tighter radius + softer shadow to match the referenced UI.
-        radius:'16px',
-        shadow:'0 12px 28px rgba(0,0,0,.30)'
-      },
-      { id:'aurora_midnight', name:'Aurora Midnight', mode:'dark', bg:'#050914', panel:'#0b1022', panel2:'#090e1c', text:'#eef2ff', muted:'#b9c1da', border:'rgba(255,255,255,.09)', accent:'#7c87ff', bgRad1:'#161f46', bgRad3:'#02040a', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
-      { id:'aurora_dracula',  name:'Aurora Dracula',  mode:'dark', bg:'#110a18', panel:'#1a0f24', panel2:'#150c1e', text:'#f7efff', muted:'#d6c0ea', border:'rgba(255,255,255,.10)', accent:'#c084fc', bgRad1:'#2b1244', bgRad3:'#050308', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
-      { id:'aurora_ember',    name:'Aurora Ember',    mode:'dark', bg:'#14070a', panel:'#1f0c11', panel2:'#16090d', text:'#fff1f2', muted:'#f1bac0', border:'rgba(255,255,255,.10)', accent:'#fb7185', bgRad1:'#3a101a', bgRad3:'#070304', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
-      { id:'aurora_arctic',   name:'Aurora Arctic',   mode:'dark', bg:'#06111a', panel:'#0b1e2d', panel2:'#081827', text:'#e9fbff', muted:'#b2d5e3', border:'rgba(255,255,255,.10)', accent:'#38bdf8', bgRad1:'#0b3144', bgRad3:'#030b10', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
-      { id:'aurora_nature',   name:'Aurora Nature',   mode:'dark', bg:'#05110b', panel:'#0a2216', panel2:'#071a11', text:'#effff5', muted:'#b6d6c2', border:'rgba(255,255,255,.10)', accent:'#22c55e', bgRad1:'#123b22', bgRad3:'#020a05', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
-      { id:'aurora_luxury',   name:'Aurora Luxury',   mode:'dark', bg:'#121008', panel:'#1f1a0a', panel2:'#171407', text:'#fff8e7', muted:'#e4d4a8', border:'rgba(255,255,255,.10)', accent:'#fbbf24', bgRad1:'#2f250a', bgRad3:'#070503', font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radius:'16px' },
+    // Theme presets (Enterprise Standard - Aurora Midnight + Monochrome only)
+THEMES: [
+  {
+    id:'aurora_midnight',
+    name:'Aurora Midnight',
+    mode:'dark',
+    bg:'#050914',
+    panel:'#0b1022',
+    panel2:'#090e1c',
+    text:'#eef2ff',
+    muted:'#b9c1da',
+    border:'rgba(255,255,255,.09)',
+    accent:'#7c87ff',
+    bgRad1:'#161f46',
+    bgRad3:'#02040a',
+    font:"'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
+    radius:'16px',
+    shadow:'0 12px 28px rgba(0,0,0,.30)',
+    description:'Deep space aesthetic with vibrant purple accents. Optimized for extended screen time.'
+  },
+  {
+    id:'mono',
+    name:'Monochrome',
+    mode:'dark',
+    bg:'#0b0c10',
+    panel:'#13151b',
+    panel2:'#0f1116',
+    text:'#f3f4f6',
+    muted:'#b7bcc6',
+    border:'rgba(255,255,255,.10)',
+    accent:'#a3a3a3',
+    bgRad1:'#1a1d26',
+    bgRad3:'#050608',
+    font:"'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
+    radius:'12px',
+    shadow:'0 10px 24px rgba(0,0,0,.40)',
+    description:'Minimalist grayscale palette for distraction-free focus.'
+  }
+],
 
-
-      // --- Classic enterprise preset (timeless admin dashboard) ---
-      {
-        id:'classic_style',
-        name:'Classic Style',
-        // Auto: follow OS preference for dark/light while keeping the same classic layout.
-        mode:'auto',
-        // Light palette
-        bg:'#f6f7f9',
-        panel:'#ffffff',
-        panel2:'#f5f7fb',
-        text:'#111827',
-        muted:'#6b7280',
-        border:'rgba(17,24,39,.12)',
-        accent:'#2563eb',
-        bgRad1:'#e8eefc',
-        bgRad3:'#fbfcfe',
-        font:"'Segoe UI', Inter, system-ui, -apple-system, Roboto, Arial, sans-serif",
-        radius:'10px',
-        shadow:'0 10px 22px rgba(17,24,39,.10)',
-        // Dark palette override (used when mode resolves to dark)
-        dark:{
-          bg:'#0b1220',
-          panel:'#0f1b2e',
-          panel2:'#0c1628',
-          text:'#e5e7eb',
-          muted:'#9ca3af',
-          border:'rgba(255,255,255,.10)',
-          accent:'#3b82f6',
-          bgRad1:'#14284a',
-          bgRad3:'#050914'
-        }
-      },
-
-      {
-        id:'monday_workspace',
-        name:'Monday Workspace',
-        mode:'light',
-        bg:'#f4f5f7',
-        panel:'#ffffff',
-        panel2:'#f7f8fb',
-        text:'#1f2937',
-        muted:'#6b7280',
-        border:'#e6e9ef',
-        accent:'#0073ea',
-        bgRad1:'#dfe7f6',
-        bgRad3:'#f9fbff',
-        font:"'Poppins', 'Inter', 'Segoe UI', Roboto, system-ui, -apple-system, Arial, sans-serif",
-        radius:'12px',
-        shadow:'0 8px 24px rgba(15, 23, 42, .08)'
-      },
-
-      // --- Original MUMS presets (kept for variety) ---
-      { id:'ocean',     name:'Ocean Blue',   bg:'#071224', panel:'#0c1b33', panel2:'#0a162b', text:'#eaf2ff', muted:'#a8b6d6', border:'rgba(255,255,255,.08)', accent:'#4aa3ff', bgRad1:'#0c2a52', bgRad3:'#050c18' },
-      { id:'emerald',   name:'Emerald',      bg:'#061a14', panel:'#0a2a22', panel2:'#072018', text:'#eafff6', muted:'#a9d6c6', border:'rgba(255,255,255,.08)', accent:'#34d399', bgRad1:'#0a3a2c', bgRad3:'#03110d' },
-      { id:'royal',     name:'Royal Indigo', bg:'#0b0f24', panel:'#121a3a', panel2:'#0e1531', text:'#eef0ff', muted:'#b7bce8', border:'rgba(255,255,255,.08)', accent:'#7c87ff', bgRad1:'#232c66', bgRad3:'#070a16' },
-      { id:'slate',     name:'Slate Gray',   bg:'#0b1220', panel:'#121c2f', panel2:'#0e1727', text:'#eef2ff', muted:'#b5bfd6', border:'rgba(255,255,255,.08)', accent:'#60a5fa', bgRad1:'#1b2a44', bgRad3:'#050914' },
-      { id:'sunset',    name:'Sunset',       bg:'#1a0b12', panel:'#2a121d', panel2:'#200e16', text:'#fff0f5', muted:'#e0b6c6', border:'rgba(255,255,255,.08)', accent:'#fb7185', bgRad1:'#4b1a2a', bgRad3:'#0d0508' },
-      { id:'amber',     name:'Amber Gold',   bg:'#141007', panel:'#241c0b', panel2:'#1c1508', text:'#fff8e7', muted:'#d7c7a8', border:'rgba(255,255,255,.08)', accent:'#fbbf24', bgRad1:'#3a2a0c', bgRad3:'#070503' },
-      { id:'cyan',      name:'Cyan Tech',    bg:'#06161b', panel:'#0b2730', panel2:'#081e25', text:'#e9fbff', muted:'#a7d4de', border:'rgba(255,255,255,.08)', accent:'#22d3ee', bgRad1:'#0a3a46', bgRad3:'#030c0f' },
-      { id:'orchid',    name:'Orchid',       bg:'#130a1b', panel:'#211030', panel2:'#180c25', text:'#f7efff', muted:'#d1b6e6', border:'rgba(255,255,255,.08)', accent:'#c084fc', bgRad1:'#3b1a56', bgRad3:'#07030a' },
-      { id:'forest',    name:'Forest',       bg:'#07130b', panel:'#0d2416', panel2:'#0a1b11', text:'#effff5', muted:'#b6d6c2', border:'rgba(255,255,255,.08)', accent:'#22c55e', bgRad1:'#133b23', bgRad3:'#030a05' },
-      {
-        id:'monday_workspace',
-        name:'Monday Workspace',
-        mode:'light',
-        bg:'#f4f5f7',
-        panel:'#ffffff',
-        panel2:'#f8f9fc',
-        text:'#1f2a44',
-        muted:'#667085',
-        border:'#e6e9ef',
-        accent:'#0073ea',
-        bgRad1:'#dceaff',
-        bgRad3:'#f4f7ff',
-        font:"'Poppins', 'Roboto', 'Segoe UI', Inter, system-ui, -apple-system, Arial, sans-serif",
-        radius:'12px',
-        shadow:'0 8px 24px rgba(16,24,40,.08)'
-      },
-      { id:'mono',      name:'Monochrome',   bg:'#0b0c10', panel:'#13151b', panel2:'#0f1116', text:'#f3f4f6', muted:'#b7bcc6', border:'rgba(255,255,255,.10)', accent:'#a3a3a3', bgRad1:'#1a1d26', bgRad3:'#050608' },
-    ],
 
     // Navigation is intentionally user-facing only.
     // Note: GMT Overview remains available via Settings → World Clocks, but is not shown in the main menu.
