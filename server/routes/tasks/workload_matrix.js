@@ -74,12 +74,17 @@ module.exports = async (req, res) => {
         if (!assigneeTeam || assigneeTeam !== leadTeamId) continue;
       }
 
+      const dutyRaw = String((profileRow && profileRow.duty) || '').trim();
+      const teamRaw = String((profileRow && profileRow.team_id) || '').trim();
+      const shiftCandidate = dutyRaw || teamRaw;
+
       rows.push({
         task_item_id: item.id,
         task_status: item.status,
         distribution_title: distMap.get(String(item.distribution_id || '')) || 'Untitled Distribution',
         member_name: (profileRow && (profileRow.name || profileRow.username || profileRow.user_id)) || String(item.assigned_to || 'Unknown Member'),
-        member_shift: (profileRow && profileRow.duty) || 'N/A',
+        member_shift: shiftCandidate || 'N/A',
+        member_team_id: teamRaw || null,
         last_update: item.updated_at || item.created_at || null
       });
     }
