@@ -3,7 +3,8 @@
   "include": [
     "/api/*",
     "/functions/*",
-    "/health"
+    "/health",
+    "/functions/settings/global-theme"
   ],
   "exclude": [
     "/css/*",
