@@ -48,7 +48,8 @@
 
   async function mountTeamWorkloadPulse() {
     if (!isLeadView) return;
-    let state = { rows: [], filter: '', subscription: null, refreshLock: false, observer: null };
+    let state = { rows: [], filter: '', shiftFilter: '', subscription: null, refreshLock: false, observer: null };
+    const isSuperAdminView = role === 'SUPER_ADMIN';
 
     const formatTs = (iso) => {
       if (!iso) return 'N/A';
@@ -75,7 +76,19 @@
       if (!mount) return;
 
       const grouped = groupRows(state.rows);
-      const shown = state.filter ? grouped.filter((g) => String(g.distribution_title || '') === state.filter) : grouped;
+      const shiftOptions = Array.from(new Set([
+        'Morning Shift',
+        'Mid Shift',
+        'Night Shift',
+        ...grouped.map((r) => String(r.member_shift || '').trim()).filter(Boolean)
+      ])).sort((a, b) => String(a).localeCompare(String(b)));
+
+      if (state.shiftFilter && !shiftOptions.includes(state.shiftFilter)) state.shiftFilter = '';
+
+      const shownByShift = state.shiftFilter
+        ? grouped.filter((g) => String(g.member_shift || '').trim() === state.shiftFilter)
+        : grouped;
+      const shown = state.filter ? shownByShift.filter((g) => String(g.distribution_title || '') === state.filter) : shownByShift;
       const titles = Array.from(new Set(grouped.map((r) => String(r.distribution_title || '').trim()).filter(Boolean))).sort();
       const byDist = shown.reduce((acc, row) => {
         const key = row.distribution_title;
@@ -100,6 +113,12 @@
               <span class="badge">Tasks: ${UI.esc(totalTasks)}</span>
               <span class="badge ok">Done: ${UI.esc(completedTasks)}</span>
               <span class="badge ${completion >= 80 ? 'ok' : completion >= 40 ? 'warn' : ''}">Completion: ${UI.esc(completion)}%</span>
+              ${isSuperAdminView ? `
+                <select id="twpShiftFilter" class="ux-focusable" title="Filter workload by team shift">
+                  <option value="">All details</option>
+                  ${shiftOptions.map((s) => `<option value="${UI.esc(s)}" ${state.shiftFilter === s ? 'selected' : ''}>${UI.esc(s)}</option>`).join('')}
+                </select>
+              ` : ''}
               <select id="twpFilter" class="ux-focusable">
                 <option value="">All Active Tasks</option>
                 ${titles.map((t) => `<option value="${UI.esc(t)}" ${state.filter === t ? 'selected' : ''}>${UI.esc(t)}</option>`).join('')}
@@ -155,6 +174,14 @@
         filterEl.onchange = () => {
           state.filter = String(filterEl.value || '').trim();
           refreshData();
+        };
+      }
+
+      const shiftFilterEl = root.querySelector('#twpShiftFilter');
+      if (shiftFilterEl) {
+        shiftFilterEl.onchange = () => {
+          state.shiftFilter = String(shiftFilterEl.value || '').trim();
+          renderWidget();
         };
       }
     };
