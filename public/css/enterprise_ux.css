@@ -229,6 +229,62 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .dashx-panel{ padding:14px; }
 .dashx-title{ font-weight:950; letter-spacing:.2px; }
 
+/* Team Workload Pulse enterprise treatment */
+.twp-shell{
+  margin-top:12px;
+  border:1px solid rgba(56,189,248,.28);
+  box-shadow:0 10px 35px rgba(2,6,23,.38);
+  padding:16px;
+}
+.twp-header{
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.twp-title-wrap{ min-width:220px; }
+.twp-toolbar{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:flex-end;
+}
+.twp-select{
+  min-width:180px;
+  border-radius:10px;
+  border:1px solid rgba(148,163,184,.35);
+  background:rgba(15,23,42,.85);
+}
+.twp-list{ margin-top:14px; display:flex; flex-direction:column; gap:10px; }
+.twp-dist-card{
+  border:1px solid rgba(255,255,255,.10);
+  background:linear-gradient(180deg,rgba(30,41,59,.42),rgba(15,23,42,.28));
+}
+.twp-dist-head{
+  margin-bottom:8px;
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.twp-table-wrap{ overflow:auto; }
+.twp-table{ min-width:760px; }
+.twp-table thead th{ white-space:nowrap; }
+.twp-table tbody td{ vertical-align:middle; }
+.twp-progress-track{
+  height:10px;
+  background:rgba(255,255,255,.08);
+  border-radius:999px;
+  overflow:hidden;
+  min-width:160px;
+}
+@media (max-width: 860px){
+  .twp-shell{ padding:12px; }
+  .twp-toolbar{ justify-content:flex-start; }
+  .twp-select{ min-width:150px; }
+}
+
 /* Heatmap */
 .dashx-heatmap{
   display:grid;

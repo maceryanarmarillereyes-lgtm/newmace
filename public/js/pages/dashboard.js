@@ -11,6 +11,37 @@
     return '🕘';
   }
 
+  function normalizeTeamLabel(raw) {
+    const src = String(raw || '').trim();
+    if (!src) return '';
+    const key = src.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!key || key === 'n/a' || key === 'na' || key === 'none' || key === 'null' || key === 'undefined') return '';
+    if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(src)) return '';
+    if (key === 'mid' || key === 'mid shift') return 'Mid Shift';
+    if (key === 'morning' || key === 'morning shift') return 'Morning Shift';
+    if (key === 'night' || key === 'night shift') return 'Night Shift';
+    return src
+      .split(/\s+/)
+      .map((p) => p ? (p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()) : '')
+      .join(' ')
+      .trim();
+  }
+
+  function resolveTeamLabel(row) {
+    const direct = normalizeTeamLabel(row && row.member_shift);
+    if (direct) return direct;
+    const teamId = String((row && row.member_team_id) || '').trim();
+    if (!teamId) return '';
+    try {
+      if (window.Config && typeof Config.teamById === 'function') {
+        const team = Config.teamById(teamId);
+        const fromConfig = normalizeTeamLabel(team && (team.label || team.id));
+        if (fromConfig) return fromConfig;
+      }
+    } catch (_) { }
+    return normalizeTeamLabel(teamId);
+  }
+
   function isShiftActive(shift) {
     const now = new Date();
     const hour = Number(now.getHours());
@@ -30,7 +61,7 @@
       if (!by[key]) by[key] = {
         distribution_title: dist,
         member_name: member,
-        member_shift: row.member_shift || 'N/A',
+        member_shift: resolveTeamLabel(row),
         total: 0,
         done: 0,
         pending: 0,
@@ -76,12 +107,10 @@
       if (!mount) return;
 
       const grouped = groupRows(state.rows);
-      const shiftOptions = Array.from(new Set([
-        'Morning Shift',
-        'Mid Shift',
-        'Night Shift',
-        ...grouped.map((r) => String(r.member_shift || '').trim()).filter(Boolean)
-      ])).sort((a, b) => String(a).localeCompare(String(b)));
+      const shiftOptions = Array.from(new Set(grouped
+        .map((r) => String(r.member_shift || '').trim())
+        .filter(Boolean)))
+        .sort((a, b) => String(a).localeCompare(String(b)));
 
       if (state.shiftFilter && !shiftOptions.includes(state.shiftFilter)) state.shiftFilter = '';
 
@@ -103,37 +132,38 @@
       const scopeText = role === 'SUPER_ADMIN' || role === 'SUPER_USER' ? 'All teams view' : 'My team only';
 
       mount.innerHTML = `
-        <div class="ux-card" style="margin-top:12px;border:1px solid rgba(56,189,248,.28);box-shadow:0 10px 35px rgba(2,6,23,.38)">
-          <div class="row" style="justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
-            <div>
+        <div class="ux-card twp-shell">
+          <div class="row twp-header">
+            <div class="twp-title-wrap">
               <div class="dashx-title">Team Workload Pulse</div>
               <div class="small muted">Enterprise operations view • ${UI.esc(scopeText)} • ${UI.esc(shown.length)} active members</div>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <div class="twp-toolbar">
               <span class="badge">Tasks: ${UI.esc(totalTasks)}</span>
               <span class="badge ok">Done: ${UI.esc(completedTasks)}</span>
               <span class="badge ${completion >= 80 ? 'ok' : completion >= 40 ? 'warn' : ''}">Completion: ${UI.esc(completion)}%</span>
               ${isSuperAdminView ? `
-                <select id="twpShiftFilter" class="ux-focusable" title="Filter workload by team shift">
+                <select id="twpShiftFilter" class="ux-focusable twp-select" title="Filter workload by team shift">
                   <option value="">All details</option>
                   ${shiftOptions.map((s) => `<option value="${UI.esc(s)}" ${state.shiftFilter === s ? 'selected' : ''}>${UI.esc(s)}</option>`).join('')}
                 </select>
               ` : ''}
-              <select id="twpFilter" class="ux-focusable">
+              <select id="twpFilter" class="ux-focusable twp-select">
                 <option value="">All Active Tasks</option>
                 ${titles.map((t) => `<option value="${UI.esc(t)}" ${state.filter === t ? 'selected' : ''}>${UI.esc(t)}</option>`).join('')}
               </select>
             </div>
           </div>
 
-          <div style="margin-top:12px">
+          <div class="twp-list">
             ${Object.keys(byDist).map((dist) => `
-              <div class="card pad" style="margin-bottom:10px;border:1px solid rgba(255,255,255,.10);background:linear-gradient(180deg,rgba(30,41,59,.42),rgba(15,23,42,.28))">
-                <div class="small" style="margin-bottom:8px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <div class="card pad twp-dist-card">
+                <div class="small twp-dist-head">
                   <b>${UI.esc(dist)}</b>
                   <span class="muted">${UI.esc(byDist[dist].length)} members contributing</span>
                 </div>
-                <table class="table">
+                <div class="twp-table-wrap">
+                <table class="table twp-table">
                   <thead>
                     <tr><th>Member</th><th>Workload</th><th>Progress</th><th>Status</th><th>Last Update</th></tr>
                   </thead>
@@ -148,10 +178,10 @@
                       else if (progress >= 100) { label = 'Completed'; cls = 'badge ok'; }
                       return `
                         <tr>
-                          <td>${UI.esc(row.member_name)} <span class="badge">${UI.esc(shiftIcon(row.member_shift))} ${UI.esc(row.member_shift || 'N/A')}</span></td>
+                          <td>${UI.esc(row.member_name)} <span class="badge">${UI.esc(shiftIcon(row.member_shift || ''))} ${UI.esc(row.member_shift || '—')}</span></td>
                           <td>${UI.esc(row.total)} items</td>
                           <td>
-                            <div style="height:10px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;min-width:160px">
+                            <div class="twp-progress-track">
                               <div style="height:100%;width:${Math.max(0, Math.min(100, progress))}%;background:linear-gradient(90deg,#22c55e,#0ea5e9)"></div>
                             </div>
                             <div class="small muted" style="margin-top:4px">${UI.esc(progress)}%</div>
@@ -163,6 +193,7 @@
                     }).join('') || '<tr><td colspan="5" class="muted">No workload rows for this distribution.</td></tr>'}
                   </tbody>
                 </table>
+                </div>
               </div>
             `).join('') || '<div class="small muted">No workload matrix data found.</div>'}
           </div>
