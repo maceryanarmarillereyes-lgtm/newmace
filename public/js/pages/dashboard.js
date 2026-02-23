@@ -16,7 +16,6 @@
     if (!src) return '';
     const key = src.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
     if (!key || key === 'n/a' || key === 'na' || key === 'none' || key === 'null' || key === 'undefined') return '';
-    if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(src)) return '';
     if (key === 'mid' || key === 'mid shift') return 'Mid Shift';
     if (key === 'morning' || key === 'morning shift') return 'Morning Shift';
     if (key === 'night' || key === 'night shift') return 'Night Shift';
@@ -25,21 +24,6 @@
       .map((p) => p ? (p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()) : '')
       .join(' ')
       .trim();
-  }
-
-  function resolveTeamLabel(row) {
-    const direct = normalizeTeamLabel(row && row.member_shift);
-    if (direct) return direct;
-    const teamId = String((row && row.member_team_id) || '').trim();
-    if (!teamId) return '';
-    try {
-      if (window.Config && typeof Config.teamById === 'function') {
-        const team = Config.teamById(teamId);
-        const fromConfig = normalizeTeamLabel(team && (team.label || team.id));
-        if (fromConfig) return fromConfig;
-      }
-    } catch (_) { }
-    return normalizeTeamLabel(teamId);
   }
 
   function isShiftActive(shift) {
@@ -61,7 +45,7 @@
       if (!by[key]) by[key] = {
         distribution_title: dist,
         member_name: member,
-        member_shift: resolveTeamLabel(row),
+        member_shift: normalizeTeamLabel(row.member_shift),
         total: 0,
         done: 0,
         pending: 0,
@@ -108,14 +92,14 @@
 
       const grouped = groupRows(state.rows);
       const shiftOptions = Array.from(new Set(grouped
-        .map((r) => String(r.member_shift || '').trim())
+        .map((r) => normalizeTeamLabel(r.member_shift))
         .filter(Boolean)))
         .sort((a, b) => String(a).localeCompare(String(b)));
 
       if (state.shiftFilter && !shiftOptions.includes(state.shiftFilter)) state.shiftFilter = '';
 
       const shownByShift = state.shiftFilter
-        ? grouped.filter((g) => String(g.member_shift || '').trim() === state.shiftFilter)
+        ? grouped.filter((g) => normalizeTeamLabel(g.member_shift) === state.shiftFilter)
         : grouped;
       const shown = state.filter ? shownByShift.filter((g) => String(g.distribution_title || '') === state.filter) : shownByShift;
       const titles = Array.from(new Set(grouped.map((r) => String(r.distribution_title || '').trim()).filter(Boolean))).sort();
