@@ -1662,9 +1662,7 @@ body[data-mode="light"] .audit-pill{background:rgba(255,255,255,.85)}
   50%{ transform: translateY(-1px); }
   100%{ transform: translateY(0); }
 }
-  50%{ box-shadow: 0 0 0 1px rgba(255,255,255,.28), 0 0 40px rgba(255,255,255,.18), 0 10px 22px rgba(0,0,0,.25); }
-  100%{ box-shadow: 0 0 0 1px rgba(255,255,255,.18), 0 0 22px rgba(255,255,255,.10), 0 10px 22px rgba(0,0,0,.25); }
-}
+
 
 .reminder-card.more{
   border-color: rgba(var(--accent-rgb), .55) !important;
