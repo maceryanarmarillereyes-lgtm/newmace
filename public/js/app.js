@@ -3716,6 +3716,87 @@ function updateClocksPreviewTimes(){
     }catch(e){ console.error(e); }
   }
 
+  function bindGlobalSearch(user){
+    const topInput = document.getElementById('globalSearchInput');
+    const topBtn = document.getElementById('globalSearchBtn');
+    const modalInput = document.getElementById('globalSearchModalInput');
+    const resultsEl = document.getElementById('globalSearchResults');
+    const modalId = 'globalSearchModal';
+    const roleLabel = String((user && (user.roleLabel || user.role)) || '').trim();
+    const menuNodes = Array.from(document.querySelectorAll('#leftNav a.nav-item, #leftNav button.nav-item'));
+
+    function listItems(query){
+      const q = String(query || '').trim().toLowerCase();
+      return menuNodes
+        .map((node)=>{
+          const label = String((node.textContent || '').replace(/\s+/g, ' ').trim());
+          if(!label) return null;
+          const href = node.getAttribute('href') || '';
+          return { node, label, href, haystack: `${label} ${href}`.toLowerCase() };
+        })
+        .filter(Boolean)
+        .filter((item)=> !q || item.haystack.includes(q))
+        .slice(0, 12);
+    }
+
+    function render(query){
+      if(!resultsEl) return;
+      const items = listItems(query);
+      if(!items.length){
+        resultsEl.innerHTML = '<div class="muted" style="padding:10px">No matches found.</div>';
+        return;
+      }
+
+      resultsEl.innerHTML = items.map((item)=>{
+        const hint = item.href ? ` <span class="muted">${item.href}</span>` : '';
+        return `<button class="gresult" type="button" data-label="${encodeURIComponent(item.label)}">${item.label}${hint}</button>`;
+      }).join('');
+
+      Array.from(resultsEl.querySelectorAll('[data-label]')).forEach((btn)=>{
+        btn.onclick = ()=>{
+          const label = decodeURIComponent(String(btn.getAttribute('data-label') || ''));
+          const target = items.find((it)=>it.label === label);
+          if(!target) return;
+          try{ target.node.click(); }catch(_){ if(target.href) location.hash = target.href; }
+          UI.closeModal(modalId);
+        };
+      });
+    }
+
+    function open(query){
+      UI.openModal(modalId);
+      if(modalInput){
+        modalInput.value = query || '';
+        render(modalInput.value);
+        setTimeout(()=>{ try{ modalInput.focus(); modalInput.select(); }catch(_){} }, 0);
+      }else{
+        render(query || '');
+      }
+    }
+
+    if(topBtn) topBtn.onclick = ()=> open(topInput ? topInput.value : '');
+    if(topInput){
+      topInput.onkeydown = (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); open(topInput.value); } };
+    }
+    if(modalInput){
+      modalInput.oninput = ()=> render(modalInput.value);
+      modalInput.onkeydown = (e)=>{ if(e.key === 'Escape') UI.closeModal(modalId); };
+    }
+
+    document.addEventListener('keydown', (e)=>{
+      if((e.ctrlKey || e.metaKey) && String(e.key || '').toLowerCase() === 'k'){
+        e.preventDefault();
+        open(topInput ? topInput.value : '');
+      }
+    });
+
+    if(topInput && !topInput.placeholder){
+      topInput.placeholder = roleLabel ? `Search (${roleLabel})` : 'Search…';
+    }
+
+    render('');
+  }
+
 
   function setupClassicTopbarClock(){
     let timer = null;
