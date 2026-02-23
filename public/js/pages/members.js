@@ -14,6 +14,8 @@ window.Pages.members = function(root){
   const isSuper = me.role === Config.ROLES.SUPER_ADMIN;
   const isAdmin = isSuper || me.role === Config.ROLES.ADMIN;
   const isLead = me.role === Config.ROLES.TEAM_LEAD;
+  const canSwitchTeamView = !!isSuper;
+  const actorTeamId = String(me.teamId || '').trim();
 
   // Scheduling grid: STRICT 1-hour blocks (no minutes on the grid)
   // Every assignable unit is 60 minutes.
@@ -143,8 +145,31 @@ window.Pages.members = function(root){
 
 
 
+  function addTeamViewGuardLog(targetTeamId, reason){
+    try{
+      if(!Store || typeof Store.addLog !== 'function') return;
+      Store.addLog({
+        ts: Date.now(),
+        teamId: actorTeamId || String(targetTeamId || '').trim() || '',
+        actorId: me.id,
+        actorName: me.name || me.username || 'Unknown',
+        action: 'TEAM_VIEW_SWITCH_BLOCKED',
+        msg: `${me.name || me.username || 'User'} attempted to switch Members team view`,
+        detail: `role=${String(me.role || '')} from=${actorTeamId || '-'} to=${String(targetTeamId || '').trim() || '-'} reason=${String(reason || 'scope_guard')}`
+      });
+    }catch(_e){}
+  }
+
+  function enforceTeamViewScope(teamId, reason){
+    const requested = String(teamId || '').trim();
+    if(canSwitchTeamView) return requested || (Config.TEAMS[0] && Config.TEAMS[0].id) || '';
+    if(!actorTeamId) return requested || (Config.TEAMS[0] && Config.TEAMS[0].id) || '';
+    if(requested && requested !== actorTeamId) addTeamViewGuardLog(requested, reason || 'scope_guard');
+    return actorTeamId;
+  }
+
   // Team filter
-  let selectedTeamId = isLead ? me.teamId : (Config.TEAMS[0] && Config.TEAMS[0].id);
+  let selectedTeamId = enforceTeamViewScope((Config.TEAMS[0] && Config.TEAMS[0].id) || '', 'init');
 
   // Day tabs (Sun..Sat)
   function getManilaDayIndex(){
@@ -153,15 +178,25 @@ window.Pages.members = function(root){
     return (wd==null) ? 0 : wd;
   }
 
+  function defaultWeekStartISOForVisibleDay(todayISO){
+    // Members grid shows Sun..Sat while the stored anchor is Monday.
+    // For Sundays, anchor to the *next* Monday so the default selected tab
+    // resolves to today's Manila calendar date (not the previous Sunday).
+    const wd = UI.weekdayFromISO(String(todayISO||''));
+    if(wd == null) return String(todayISO||'');
+    const deltaToMon = (wd === 0) ? +1 : (1 - wd);
+    return UI.addDaysISO(String(todayISO||''), deltaToMon);
+  }
+
   let selectedDay = getManilaDayIndex();
 
   // Week scope selector (Manila week starting Monday)
   // Manila week starting Monday, derived from Manila *calendar* date
   const _todayISO = UI.manilaTodayISO();
-  const _todayWD = UI.weekdayFromISO(_todayISO);
-  const _deltaToMon = (_todayWD===0) ? -6 : (1 - _todayWD); // Sun->Mon = -6
-  const defaultWeekStartISO = UI.addDaysISO(_todayISO, _deltaToMon);
-  let weekStartISO = localStorage.getItem('ums_week_start_iso') || defaultWeekStartISO;
+  const defaultWeekStartISO = defaultWeekStartISOForVisibleDay(_todayISO);
+  // Default Members view to the current Manila calendar week on every open.
+  // This prevents stale persisted weeks from showing old dates by default.
+  let weekStartISO = defaultWeekStartISO;
 
   // Paint state (also drives Graph Panel task comparison)
   let paint = {
@@ -581,7 +616,9 @@ function syncTaskSelection(taskId, opts){
         <label class="members-field members-teamfield">
           <span class="label text-zinc-400">Team</span>
           <select class="input" id="teamSelect" aria-label="Select team">
-            ${Config.TEAMS.map(t=>`<option value="${t.id}">${UI.esc(t.label)}</option>`).join('')}
+            ${Config.TEAMS
+              .filter(t=> canSwitchTeamView || !actorTeamId || String(t.id) === actorTeamId)
+              .map(t=>`<option value="${t.id}">${UI.esc(t.label)}</option>`).join('')}
           </select>
         </label>
 
@@ -812,7 +849,7 @@ ${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" t
       if(Number.isFinite(rightW) && rightW>=260 && rightW<=520) grid.style.setProperty('--members-right', `${rightW}px`);
     }
 
-    // Fullscreen overlay toggle (Option A) + focus restore.
+    // Fullscreen overlay toggle (viewport-only) + focus restore.
     const fsBtn = wrap.querySelector('#membersFullscreenBtn');
     let fsOrigin = null;
 
@@ -828,11 +865,6 @@ ${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" t
       wrap.classList.add('members-fullscreen-overlay');
       setFsBtn(true);
 
-      // Try Fullscreen API, but keep overlay behavior even if denied.
-      if(document.fullscreenElement !== wrap && wrap.requestFullscreen){
-        try{ wrap.requestFullscreen(); }catch{}
-      }
-
       // Focus first meaningful control.
       const first = wrap.querySelector('#paintToggle') || wrap.querySelector('#membersRosterSearch') || fsBtn;
       if(first) first.focus({ preventScroll:true });
@@ -843,10 +875,6 @@ ${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" t
       wrap.classList.remove('members-fullscreen-overlay');
       setFsBtn(false);
 
-      if(document.fullscreenElement && document.exitFullscreen){
-        try{ document.exitFullscreen(); }catch{}
-      }
-
       if(fsOrigin && fsOrigin.focus){
         try{ fsOrigin.focus({ preventScroll:true }); }catch{ try{ fsOrigin.focus(); }catch{} }
       }
@@ -854,7 +882,7 @@ ${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" t
     }
 
     function isOverlayActive(){
-      return document.body.classList.contains('members-fullscreen-active') || wrap.classList.contains('members-fullscreen-overlay') || document.fullscreenElement===wrap;
+      return document.body.classList.contains('members-fullscreen-active') || wrap.classList.contains('members-fullscreen-overlay');
     }
 
     if(fsBtn && !fsBtn.dataset.bound){
@@ -866,14 +894,15 @@ ${(isLead||isAdmin||isSuper) ? `<button class="btn primary" id="autoAssignBtn" t
       setFsBtn(isOverlayActive());
     }
 
-    document.addEventListener('fullscreenchange', ()=>{
-      // Keep UI state consistent when ESC exits native fullscreen.
-      if(document.fullscreenElement !== wrap && wrap.classList.contains('members-fullscreen-overlay')){
-        // Overlay can remain, but we treat it as active until user exits.
-        // No-op; explicit exitOverlay will clear both.
-      }
-      setFsBtn(isOverlayActive());
-    });
+    // Bind once so repeated page mounts do not stack listeners.
+    if(!wrap.dataset.membersFsEscBound){
+      wrap.dataset.membersFsEscBound = '1';
+      document.addEventListener('keydown', (ev)=>{
+        if(ev.key === 'Escape' && isOverlayActive()){
+          exitOverlay();
+        }
+      });
+    }
 
     // Splitter drag + keyboard resize.
     function wireSplitter(splitEl, which){
@@ -1360,7 +1389,7 @@ container.innerHTML = `
 
   function currentWeekStartISO(){
     const todayISO = UI.manilaTodayISO();
-    return normalizeToMonday(todayISO);
+    return defaultWeekStartISOForVisibleDay(todayISO);
   }
 
   function renderWeekWarning(){
@@ -1416,8 +1445,18 @@ container.innerHTML = `
   // Header controls
   const teamSel = wrap.querySelector('#teamSelect');
   if(teamSel){
-    teamSel.value = selectedTeamId;
-    teamSel.onchange = ()=>{ selectedTeamId = teamSel.value; renderDayTabs(); renderAll(); };
+    if(!canSwitchTeamView){
+      teamSel.disabled = true;
+      teamSel.title = 'Only Super Admin can switch team view.';
+    }
+    teamSel.value = enforceTeamViewScope(selectedTeamId, 'bind');
+    teamSel.onchange = ()=>{
+      const nextTeamId = enforceTeamViewScope(teamSel.value, 'dropdown_change');
+      selectedTeamId = nextTeamId;
+      teamSel.value = nextTeamId;
+      renderDayTabs();
+      renderAll();
+    };
   }
   const weekSel = wrap.querySelector('#weekSelect');
   if(weekSel){
@@ -2713,9 +2752,9 @@ function buildSegTimeLabels(team, start, end){
   return `<span class="seg-time-stack">${labels.join('')}</span>`;
 }
 function currentWeekStartISOManila(){
-  // Use Manila-local date boundary and snap to the visible week start (Sun–Sat)
+  // Use Manila-local date boundary and align to the Members visible week anchor.
   const todayISO = (UI && UI.manilaTodayISO) ? UI.manilaTodayISO() : new Date().toISOString().slice(0,10);
-  return normalizeToMonday(todayISO);
+  return defaultWeekStartISOForVisibleDay(todayISO);
 }
 
 function isWeekInPast(weekISO){

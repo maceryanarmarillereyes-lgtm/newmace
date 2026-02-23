@@ -1568,18 +1568,21 @@
         id: String(r.id || ('att_' + Math.random().toString(16).slice(2) + '_' + Date.now())),
         ts: Number(r.ts || Date.now()),
         shiftKey: String(r.shiftKey || ''),
+        eventType: String(r.eventType || 'ATTENDANCE'),
         userId: String(r.userId || ''),
         username: String(r.username || ''),
         name: String(r.name || ''),
         teamId: String(r.teamId || ''),
         teamLabel: String(r.teamLabel || ''),
         mode: String(r.mode || ''), // OFFICE | WFH
-        reason: String(r.reason || '')
+        reason: String(r.reason || ''),
+        scheduledEndTs: Number(r.scheduledEndTs || 0),
+        overtimeMinutes: Number(r.overtimeMinutes || 0)
       };
       if(!rec.userId || !rec.shiftKey || !rec.mode) return false;
       const list = Store.getAttendance();
-      // prevent duplicates per userId+shiftKey
-      const exists = list.find(x=>x && x.userId===rec.userId && x.shiftKey===rec.shiftKey);
+      // prevent duplicates per userId+shiftKey+eventType
+      const exists = list.find(x=>x && x.userId===rec.userId && x.shiftKey===rec.shiftKey && String(x.eventType||'ATTENDANCE')===rec.eventType);
       if(exists) return true;
       list.unshift(rec);
       return Store.saveAttendance(list);
@@ -1592,7 +1595,29 @@
       const uid = String(userId||'');
       const sk = String(shiftKey||'');
       if(!uid || !sk) return false;
-      return !!Store.getAttendance().find(r=>r && r.userId===uid && r.shiftKey===sk);
+      return !!Store.getAttendance().find(r=>r && r.userId===uid && r.shiftKey===sk && String(r.eventType||'ATTENDANCE')==='ATTENDANCE');
+    },
+    hasOvertimeConfirmation(userId, shiftKey){
+      const uid = String(userId||'');
+      const sk = String(shiftKey||'');
+      if(!uid || !sk) return false;
+      return !!Store.getAttendance().find(r=>r && r.userId===uid && r.shiftKey===sk && String(r.eventType||'')==='OVERTIME_CONFIRMATION');
+    },
+    getWeeklyOvertimeMinutes(userId, refTs){
+      const uid = String(userId||'');
+      if(!uid) return 0;
+      const endTs = Number(refTs||Date.now());
+      const startTs = endTs - (7 * 24 * 60 * 60 * 1000);
+      let total = 0;
+      const list = Store.getAttendance();
+      for(const r of list){
+        if(!r || r.userId !== uid) continue;
+        if(String(r.eventType||'') !== 'OVERTIME_CONFIRMATION') continue;
+        const ts = Number(r.ts||0);
+        if(ts < startTs || ts > endTs) continue;
+        total += Math.max(0, Number(r.overtimeMinutes||0));
+      }
+      return total;
     },
 
 

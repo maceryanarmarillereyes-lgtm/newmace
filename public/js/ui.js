@@ -527,6 +527,116 @@
       });
     },
 
+    overtimePrompt(user, team, ctx){
+      return new Promise((resolve)=>{
+        const u = user || {};
+        const t = team || { id:'', label:'' };
+        const c = ctx || {};
+        const scheduledEnd = Number(c.scheduledEndTs || 0);
+        const overtimeMinutes = Math.max(0, Number(c.overtimeMinutes || 0));
+        const name = String(u.name || u.fullName || u.username || 'User');
+
+        let modal = document.getElementById('mumsOvertimeModal');
+        if(!modal){
+          modal = document.createElement('div');
+          modal.id = 'mumsOvertimeModal';
+          modal.className = 'modal attendance-modal';
+          modal.innerHTML = `
+            <div class="panel" style="max-width:700px">
+              <div class="head">
+                <div>
+                  <div class="announce-title">Overtime Confirmation Required</div>
+                  <div class="small muted" id="otSub" style="margin-top:2px"></div>
+                </div>
+              </div>
+              <div class="body" style="display:grid;gap:12px">
+                <div class="card pad" style="padding:14px;display:grid;gap:10px">
+                  <div class="small" style="line-height:1.5;color:#e2e8f0">
+                    Your scheduled work hours have ended. Please confirm if you are continuing as overtime.
+                  </div>
+                  <div class="small muted" id="otMeta"></div>
+                  <div class="row" style="gap:10px;flex-wrap:wrap">
+                    <button class="btn primary" type="button" id="otYes">Yes, continue as overtime</button>
+                    <button class="btn" type="button" id="otNo">No, mark shift as completed</button>
+                  </div>
+
+                  <div id="otReasonWrap" style="display:none;margin-top:6px">
+                    <label class="field" style="max-width:none">
+                      <div class="label">Reason for Overtime (required)</div>
+                      <textarea class="input" id="otReason" rows="3" maxlength="300" placeholder="Example: Backlog clean-up, urgent customer cases, production support"></textarea>
+                    </label>
+                    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px">
+                      <button class="btn" type="button" id="otCancelReason">Back</button>
+                      <button class="btn primary" type="button" id="otConfirmYes" disabled>Confirm Overtime</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(modal);
+        }
+
+        UI.bringToFront(modal, { baseZ: 2147483350, panelOffset: 1, headOffset: 2 });
+        const sub = modal.querySelector('#otSub');
+        const meta = modal.querySelector('#otMeta');
+        const yesBtn = modal.querySelector('#otYes');
+        const noBtn = modal.querySelector('#otNo');
+        const reasonWrap = modal.querySelector('#otReasonWrap');
+        const reasonTa = modal.querySelector('#otReason');
+        const cancelReason = modal.querySelector('#otCancelReason');
+        const confirmYes = modal.querySelector('#otConfirmYes');
+
+        sub.textContent = `${name} • Team ${String(t.label || t.id || u.teamId || 'N/A')}`;
+        const when = scheduledEnd ? new Date(scheduledEnd).toLocaleString('en-CA', { year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : 'N/A';
+        const hh = Math.floor(overtimeMinutes / 60);
+        const mm = overtimeMinutes % 60;
+        const otLabel = overtimeMinutes > 0 ? `${hh>0?`${hh}h `:''}${mm}m` : '0m';
+        meta.textContent = `Scheduled end: ${when} • Current overtime: ${otLabel}`;
+
+        const cleanup = ()=>{
+          modal.classList.remove('open');
+          modal.onclick = null;
+          document.removeEventListener('keydown', onKey, true);
+        };
+        const finish = (v)=>{ cleanup(); resolve(v); };
+        const onKey = (e)=>{
+          if(e.key === 'Escape'){ e.preventDefault(); finish({ action:'NO' }); }
+        };
+        document.addEventListener('keydown', onKey, true);
+
+        const syncReasonState = ()=>{
+          const txt = String((reasonTa && reasonTa.value) || '').trim();
+          if(confirmYes) confirmYes.disabled = !txt;
+        };
+
+        if(reasonTa) reasonTa.value = '';
+        if(reasonWrap) reasonWrap.style.display = 'none';
+        if(confirmYes) confirmYes.disabled = true;
+
+        yesBtn.onclick = ()=>{
+          if(reasonWrap) reasonWrap.style.display = '';
+          try{ reasonTa && reasonTa.focus(); }catch(_){ }
+          syncReasonState();
+        };
+        noBtn.onclick = ()=>finish({ action:'NO' });
+        if(reasonTa) reasonTa.oninput = ()=>syncReasonState();
+        if(cancelReason) cancelReason.onclick = ()=>{
+          if(reasonWrap) reasonWrap.style.display = 'none';
+          if(reasonTa) reasonTa.value = '';
+          syncReasonState();
+        };
+        if(confirmYes) confirmYes.onclick = ()=>{
+          const reason = String((reasonTa && reasonTa.value) || '').trim();
+          if(!reason) return;
+          finish({ action:'YES', reason });
+        };
+
+        modal.onclick = (e)=>{ if(e.target===modal){ e.preventDefault(); e.stopPropagation(); } };
+        modal.classList.add('open');
+      });
+    },
+
     downloadJSON(filename, obj){
       const blob = new Blob([JSON.stringify(obj, null, 2)], { type:'application/json' });
       const a = document.createElement('a');
@@ -1735,6 +1845,7 @@
             const bodyMsg = perUser || n.body || 'Your schedule has been updated.';
             const summary = (n.userSummaries && n.userSummaries[user.id]) ? n.userSummaries[user.id] : null;
             const isTaskDist = String(n.type||'') === 'TASK_DISTRIBUTION';
+            const isOvertimeAlert = String(n.type||'') === 'OVERTIME_ALERT';
             const distId = String(n.distribution_id || '');
             const distTitle = String(n.distribution_title || n.title || 'New Task Distribution');
             const taskDistBody = isTaskDist
@@ -1743,8 +1854,16 @@
                 <div class="small">${esc(summary || bodyMsg || 'N/A')}</div>
               `
               : '';
+            const overtimeBody = isOvertimeAlert
+              ? `
+                <div class="notif-intro">${esc(bodyMsg || 'Overtime confirmation recorded.')}</div>
+                <div class="small" style="white-space:pre-line">${esc(String(n.detailText || 'N/A'))}</div>
+              `
+              : '';
             const meta = isTaskDist
               ? `From: ${n.fromName||'Team Lead'} • ${new Date(n.ts||Date.now()).toLocaleString()} • Tasks`
+              : isOvertimeAlert
+                ? `From: Attendance System • ${new Date(n.ts||Date.now()).toLocaleString()} • Overtime`
               : (String(n.type||'')==='MAILBOX_ASSIGN')
                 ? `From: ${n.fromName||'Mailbox Manager'} • ${new Date(n.ts||Date.now()).toLocaleString()} • Mailbox`
                 : `From: ${n.fromName||'Team Lead'} • Week of ${n.weekStartISO||'—'}`;
@@ -1752,7 +1871,7 @@
               <div class="notif-item">
                 <div class="notif-item-head">
                   <div>
-                    <div class="notif-item-title">${esc(isTaskDist ? distTitle : (n.title || 'Schedule Updated'))}</div>
+                    <div class="notif-item-title">${esc(isTaskDist ? distTitle : (n.title || (isOvertimeAlert ? 'Overtime Alert – Team Member' : 'Schedule Updated')))}</div>
                     <div class="small muted">${esc(meta)}</div>
                   </div>
                   <div class="row" style="gap:8px">
@@ -1763,7 +1882,7 @@
                     </button>
                   </div>
                 </div>
-                <div class="notif-item-body">${isTaskDist ? taskDistBody : renderNotifBody(bodyMsg, summary)}</div>
+                <div class="notif-item-body">${isTaskDist ? taskDistBody : (isOvertimeAlert ? overtimeBody : renderNotifBody(bodyMsg, summary))}</div>
               </div>
             `;
           }catch(err){

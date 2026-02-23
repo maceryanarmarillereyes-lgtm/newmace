@@ -11,6 +11,21 @@
     return '🕘';
   }
 
+  function normalizeTeamLabel(raw) {
+    const src = String(raw || '').trim();
+    if (!src) return '';
+    const key = src.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!key || key === 'n/a' || key === 'na' || key === 'none' || key === 'null' || key === 'undefined') return '';
+    if (key === 'mid' || key === 'mid shift') return 'Mid Shift';
+    if (key === 'morning' || key === 'morning shift') return 'Morning Shift';
+    if (key === 'night' || key === 'night shift') return 'Night Shift';
+    return src
+      .split(/\s+/)
+      .map((p) => p ? (p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()) : '')
+      .join(' ')
+      .trim();
+  }
+
   function isShiftActive(shift) {
     const now = new Date();
     const hour = Number(now.getHours());
@@ -30,7 +45,7 @@
       if (!by[key]) by[key] = {
         distribution_title: dist,
         member_name: member,
-        member_shift: row.member_shift || 'N/A',
+        member_shift: normalizeTeamLabel(row.member_shift),
         total: 0,
         done: 0,
         pending: 0,
@@ -48,43 +63,93 @@
 
   async function mountTeamWorkloadPulse() {
     if (!isLeadView) return;
-    let state = { rows: [], filter: '', subscription: null, refreshLock: false };
+    let state = { rows: [], filter: '', shiftFilter: '', subscription: null, refreshLock: false, observer: null };
+    const isSuperAdminView = role === 'SUPER_ADMIN';
+
+    const formatTs = (iso) => {
+      if (!iso) return 'N/A';
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return 'N/A';
+      return d.toLocaleString('en-PH', { hour12: true, year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    };
+
+    const ensureHostMount = () => {
+      const host = root.querySelector('.dashx');
+      if (!host) return null;
+      let mount = root.querySelector('#teamWorkloadPulseMount');
+      if (!mount) {
+        mount = document.createElement('div');
+        mount.id = 'teamWorkloadPulseMount';
+        mount.className = 'dashx-panel twp-enterprise';
+        host.appendChild(mount);
+      }
+      return mount;
+    };
 
     const renderWidget = () => {
-      const mount = root.querySelector('#teamWorkloadPulseMount');
+      const mount = ensureHostMount();
       if (!mount) return;
 
       const grouped = groupRows(state.rows);
-      const titles = Array.from(new Set((state.rows || []).map((r) => String(r.distribution_title || '').trim()).filter(Boolean))).sort();
-      const byDist = grouped.reduce((acc, row) => {
+      const shiftOptions = Array.from(new Set(grouped
+        .map((r) => normalizeTeamLabel(r.member_shift))
+        .filter(Boolean)))
+        .sort((a, b) => String(a).localeCompare(String(b)));
+
+      if (state.shiftFilter && !shiftOptions.includes(state.shiftFilter)) state.shiftFilter = '';
+
+      const shownByShift = state.shiftFilter
+        ? grouped.filter((g) => normalizeTeamLabel(g.member_shift) === state.shiftFilter)
+        : grouped;
+      const shown = state.filter ? shownByShift.filter((g) => String(g.distribution_title || '') === state.filter) : shownByShift;
+      const titles = Array.from(new Set(grouped.map((r) => String(r.distribution_title || '').trim()).filter(Boolean))).sort();
+      const byDist = shown.reduce((acc, row) => {
         const key = row.distribution_title;
         if (!acc[key]) acc[key] = [];
         acc[key].push(row);
         return acc;
       }, {});
 
+      const totalTasks = shown.reduce((n, r) => n + Number(r.total || 0), 0);
+      const completedTasks = shown.reduce((n, r) => n + Number(r.done || 0), 0);
+      const completion = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+      const scopeText = role === 'SUPER_ADMIN' || role === 'SUPER_USER' ? 'All teams view' : 'My team only';
+
       mount.innerHTML = `
-        <div class="ux-card dashx-panel" style="margin-top:12px">
-          <div class="row" style="justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
-            <div>
+        <div class="ux-card twp-shell">
+          <div class="row twp-header">
+            <div class="twp-title-wrap">
               <div class="dashx-title">Team Workload Pulse</div>
-              <div class="small muted">Leadership view across distribution groups.</div>
+              <div class="small muted">Enterprise operations view • ${UI.esc(scopeText)} • ${UI.esc(shown.length)} active members</div>
             </div>
-            <div>
-              <select id="twpFilter" class="ux-focusable">
+            <div class="twp-toolbar">
+              <span class="badge">Tasks: ${UI.esc(totalTasks)}</span>
+              <span class="badge ok">Done: ${UI.esc(completedTasks)}</span>
+              <span class="badge ${completion >= 80 ? 'ok' : completion >= 40 ? 'warn' : ''}">Completion: ${UI.esc(completion)}%</span>
+              ${isSuperAdminView ? `
+                <select id="twpShiftFilter" class="ux-focusable twp-select" title="Filter workload by team shift">
+                  <option value="">All details</option>
+                  ${shiftOptions.map((s) => `<option value="${UI.esc(s)}" ${state.shiftFilter === s ? 'selected' : ''}>${UI.esc(s)}</option>`).join('')}
+                </select>
+              ` : ''}
+              <select id="twpFilter" class="ux-focusable twp-select">
                 <option value="">All Active Tasks</option>
                 ${titles.map((t) => `<option value="${UI.esc(t)}" ${state.filter === t ? 'selected' : ''}>${UI.esc(t)}</option>`).join('')}
               </select>
             </div>
           </div>
 
-          <div style="margin-top:10px">
+          <div class="twp-list">
             ${Object.keys(byDist).map((dist) => `
-              <div class="card pad" style="margin-bottom:10px;border:1px solid rgba(255,255,255,.08)">
-                <div class="small" style="margin-bottom:8px"><b>${UI.esc(dist)}</b> • ${UI.esc(byDist[dist].length)} members helping</div>
-                <table class="table">
+              <div class="card pad twp-dist-card">
+                <div class="small twp-dist-head">
+                  <b>${UI.esc(dist)}</b>
+                  <span class="muted">${UI.esc(byDist[dist].length)} members contributing</span>
+                </div>
+                <div class="twp-table-wrap">
+                <table class="table twp-table">
                   <thead>
-                    <tr><th>Member</th><th>Workload</th><th>Distribution Source</th><th>Progress Bar</th><th>Status</th></tr>
+                    <tr><th>Member</th><th>Workload</th><th>Progress</th><th>Status</th><th>Last Update</th></tr>
                   </thead>
                   <tbody>
                     ${byDist[dist].map((row) => {
@@ -97,21 +162,22 @@
                       else if (progress >= 100) { label = 'Completed'; cls = 'badge ok'; }
                       return `
                         <tr>
-                          <td>${UI.esc(row.member_name)} <span class="badge">${UI.esc(shiftIcon(row.member_shift))} ${UI.esc(row.member_shift || 'N/A')}</span></td>
+                          <td>${UI.esc(row.member_name)} <span class="badge">${UI.esc(shiftIcon(row.member_shift || ''))} ${UI.esc(row.member_shift || '—')}</span></td>
                           <td>${UI.esc(row.total)} items</td>
-                          <td>${UI.esc(row.distribution_title)}</td>
                           <td>
-                            <div style="height:10px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;min-width:140px">
-                              <div style="height:100%;width:${Math.max(0, Math.min(100, progress))}%;background:linear-gradient(90deg,#22c55e,#14b8a6)"></div>
+                            <div class="twp-progress-track">
+                              <div style="height:100%;width:${Math.max(0, Math.min(100, progress))}%;background:linear-gradient(90deg,#22c55e,#0ea5e9)"></div>
                             </div>
                             <div class="small muted" style="margin-top:4px">${UI.esc(progress)}%</div>
                           </td>
                           <td><span class="${cls}">${UI.esc(label)}</span></td>
+                          <td class="small muted">${UI.esc(formatTs(row.last_update))}</td>
                         </tr>
                       `;
                     }).join('') || '<tr><td colspan="5" class="muted">No workload rows for this distribution.</td></tr>'}
                   </tbody>
                 </table>
+                </div>
               </div>
             `).join('') || '<div class="small muted">No workload matrix data found.</div>'}
           </div>
@@ -123,6 +189,14 @@
         filterEl.onchange = () => {
           state.filter = String(filterEl.value || '').trim();
           refreshData();
+        };
+      }
+
+      const shiftFilterEl = root.querySelector('#twpShiftFilter');
+      if (shiftFilterEl) {
+        shiftFilterEl.onchange = () => {
+          state.shiftFilter = String(shiftFilterEl.value || '').trim();
+          renderWidget();
         };
       }
     };
@@ -145,11 +219,8 @@
         if (state.subscription) return;
 
         const token = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
-        // Don't create a client without a token; it can cause RLS issues for any REST usage.
         if (!token) return;
 
-        // Reuse the shared Supabase client to avoid multiple GoTrueClient instances.
-        // If it doesn't exist yet, create it once and store it globally.
         if (!window.__MUMS_SB_CLIENT) {
           const dummyStorage = { getItem() { return null; }, setItem() { }, removeItem() { } };
           window.__MUMS_SB_CLIENT = window.supabase.createClient(sbUrl, sbAnon, {
@@ -166,22 +237,29 @@
           .channel('team-workload-pulse')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'task_items' }, () => refreshData())
           .subscribe();
-
-        const prevCleanup = root._cleanup;
-        root._cleanup = () => {
-          try { if (prevCleanup) prevCleanup(); } catch (_) { }
-          try { if (state.subscription) client.removeChannel(state.subscription); } catch (_) { }
-          state.subscription = null;
-        };
       } catch (_) { }
     };
 
-    const host = root.querySelector('.dashx');
-    if (host && !root.querySelector('#teamWorkloadPulseMount')) {
-      const mount = document.createElement('div');
-      mount.id = 'teamWorkloadPulseMount';
-      host.appendChild(mount);
-    }
+    const prevCleanup = root._cleanup;
+    root._cleanup = () => {
+      try { if (prevCleanup) prevCleanup(); } catch (_) { }
+      try { if (state.observer) state.observer.disconnect(); } catch (_) { }
+      try {
+        const client = window.__MUMS_SB_CLIENT;
+        if (state.subscription && client) client.removeChannel(state.subscription);
+      } catch (_) { }
+      state.subscription = null;
+      state.observer = null;
+    };
+
+    try {
+      state.observer = new MutationObserver(() => {
+        try {
+          if (!root.querySelector('#teamWorkloadPulseMount') && root.querySelector('.dashx')) renderWidget();
+        } catch (_) { }
+      });
+      state.observer.observe(root, { childList: true, subtree: true });
+    } catch (_) { }
 
     await refreshData();
     await ensureRealtime();
