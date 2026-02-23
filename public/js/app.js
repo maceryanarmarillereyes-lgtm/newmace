@@ -1,4 +1,4 @@
-/* File: public/js/app.js */
+/*File: public/js/app.js */
 
 (function(){
   let cleanup = null;
