@@ -268,3 +268,59 @@
     ThemeEngine.init();
   }
 })();
+/* ==========================================================================
+   ENTERPRISE TACTILE MICRO-INTERACTIONS (Appended via Architect)
+   ========================================================================== */
+(function applyEnterpriseTactileFeedback() {
+  // Fault-tolerant DOM event delegation
+  document.addEventListener('mousedown', (e) => {
+    const card = e.target.closest('.th-card');
+    if (card) {
+      // Wag mag-trigger kung admin button (delete/edit) ang pinindot
+      if (e.target.closest('.th-admin-btn')) return; 
+      
+      // Hardware-accelerated press effect
+      card.style.transition = 'all 0.1s cubic-bezier(0.4, 0, 0.2, 1)';
+      card.style.transform = 'scale(0.97) translateZ(0)';
+      card.style.filter = 'brightness(1.3) contrast(1.1)';
+      
+      // Enterprise Haptic Audio Cue (Subtle High-End Tick)
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if(ctx.state === 'running') {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(900, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.04);
+          gain.gain.setValueAtTime(0.03, ctx.currentTime); // Very quiet tick
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.04);
+        }
+      } catch(err) { /* Silent fail kung strict ang browser policies sa audio */ }
+    }
+  });
+
+  // Bounce back on release
+  document.addEventListener('mouseup', (e) => {
+    const card = e.target.closest('.th-card');
+    if (card) {
+      card.style.transition = 'all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)';
+      card.style.transform = '';
+      card.style.filter = '';
+    }
+  });
+
+  // Bounce back if cursor leaves while pressing
+  document.addEventListener('mouseout', (e) => {
+    const card = e.target.closest('.th-card');
+    if (card) {
+      card.style.transition = 'all 0.4s cubic-bezier(0.25, 1, 0.5, 1)';
+      card.style.transform = '';
+      card.style.filter = '';
+    }
+  });
+})();
