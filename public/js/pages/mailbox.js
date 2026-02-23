@@ -881,6 +881,25 @@ function _mbxDutyTone(label){
     function normalizedCaseKey(assigneeId, caseNo){
       return `${String(assigneeId||'').trim()}|${String(caseNo||'').trim().toLowerCase()}`;
     }
+    function deriveConfirmedAt(raw){
+      const explicitConfirmedAt = Number(raw && raw.confirmedAt || 0) || 0;
+      if(explicitConfirmedAt > 0) return explicitConfirmedAt;
+
+      const status = String(raw && raw.status || '').trim().toLowerCase();
+      const acceptedStatuses = new Set(['accepted', 'acknowledged', 'confirmed', 'done']);
+      if(!acceptedStatuses.has(status)) return 0;
+
+      const acceptedAt = Number(
+        raw && (
+          raw.acceptedAt ||
+          raw.updatedAt ||
+          raw.modifiedAt ||
+          raw.ts ||
+          raw.createdAt
+        ) || 0
+      ) || 0;
+      return acceptedAt > 0 ? acceptedAt : Date.now();
+    }
     function upsertMerged(raw){
       if(!raw) return;
       const assigneeId = String(raw.assigneeId||'').trim();
@@ -888,7 +907,7 @@ function _mbxDutyTone(label){
       if(!assigneeId || !caseNo || !by[assigneeId]) return;
       const key = normalizedCaseKey(assigneeId, caseNo);
       const assignedAt = Number(raw.assignedAt||raw.createdAt||raw.ts||Date.now()) || Date.now();
-      const confirmedAt = Number(raw.confirmedAt||0) || 0;
+      const confirmedAt = deriveConfirmedAt(raw);
       const existing = mergedByCase.get(key);
       if(!existing){
         mergedByCase.set(key, {
