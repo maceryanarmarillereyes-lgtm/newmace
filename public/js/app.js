@@ -10,6 +10,9 @@
   let __themeMeta = {};
   let __themeMetaLoaded = false;
   let __themeMetaLoading = null;
+  let __globalThemeSettings = { defaultTheme: 'aurora_midnight' };
+  let __globalThemeLoaded = false;
+  let __globalThemeLoading = null;
 
   function getBearerToken(){
     try{
@@ -38,6 +41,65 @@
       out[id] = { hidden, deleted };
     });
     return out;
+  }
+
+  function getThemeCatalog(){
+    return (Config && Array.isArray(Config.THEMES)) ? Config.THEMES : [];
+  }
+
+  function isValidThemeId(themeId){
+    const id = String(themeId||'').trim();
+    if(!id) return false;
+    return getThemeCatalog().some(t => String(t && t.id || '').trim() === id);
+  }
+
+  function getThemeName(themeId){
+    const id = String(themeId||'').trim();
+    const found = getThemeCatalog().find(t => String(t && t.id || '').trim() === id);
+    return found && found.name ? String(found.name) : id || 'Unknown Theme';
+  }
+
+  async function loadGlobalThemeSettings(force){
+    if(__globalThemeLoaded && !force) return __globalThemeSettings;
+    if(__globalThemeLoading) return __globalThemeLoading;
+
+    __globalThemeLoading = (async ()=>{
+      try{
+        const token = getBearerToken();
+        const headers = { 'Content-Type': 'application/json' };
+        if(token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch('/api/settings/global-theme', { method: 'GET', headers, cache: 'no-store' });
+        const data = await res.json().catch(()=>({}));
+        if(res.ok && data && data.ok){
+          const normalized = String(data.defaultTheme || '').trim();
+          if(isValidThemeId(normalized)){
+            __globalThemeSettings = { defaultTheme: normalized };
+          }
+          __globalThemeLoaded = true;
+        } else {
+          console.warn('Failed to load global theme settings:', data.error || res.status);
+        }
+      }catch(e){
+        console.warn('loadGlobalThemeSettings error:', e);
+      }finally{
+        __globalThemeLoading = null;
+      }
+      return __globalThemeSettings;
+    })();
+
+    return __globalThemeLoading;
+  }
+
+  function resolveEffectiveThemeForUser(){
+    const fromStore = String((Store && Store.getTheme) ? (Store.getTheme() || '') : '').trim();
+    if(isValidThemeId(fromStore)) return fromStore;
+
+    const fromGlobal = String(__globalThemeSettings && __globalThemeSettings.defaultTheme || '').trim();
+    if(isValidThemeId(fromGlobal)) return fromGlobal;
+
+    const catalog = getThemeCatalog();
+    return catalog[0] && catalog[0].id ? String(catalog[0].id) : 'aurora_midnight';
   }
 
   async function loadThemeMeta(force){
@@ -597,43 +659,70 @@
       return;
     }
 
-    const cur = Store.getTheme();
-    const rawThemes = (Config && Array.isArray(Config.THEMES)) ? Config.THEMES : [];
+    const cur = resolveEffectiveThemeForUser();
+    const rawThemes = getThemeCatalog();
+    const globalDefault = String(__globalThemeSettings && __globalThemeSettings.defaultTheme || '').trim() || 'aurora_midnight';
 
     // BULLETPROOF FILTERING LOGIC
     const visibleThemes = rawThemes.filter(t => {
         const m = __themeMeta[t.id] || {};
-        if (m.deleted) return false; 
+        if (m.deleted) return false;
         if (m.hidden) {
-            if (!isSA) return false; 
-            if (isSA && !__themeEditMode) return false; 
+            if (!isSA) return false;
+            if (isSA && !__themeEditMode) return false;
         }
         return true;
     });
 
+    const summaryHtml = `
+      <div class="th-summary">
+        <div class="th-summary-item">
+          <span class="th-summary-label">Your Active Theme</span>
+          <span class="th-summary-value">${UI.esc(getThemeName(cur))}</span>
+        </div>
+        <div class="th-summary-item">
+          <span class="th-summary-label">Org Default</span>
+          <span class="th-summary-value">${UI.esc(getThemeName(globalDefault))}</span>
+        </div>
+      </div>
+    `;
+
     // SUPER ADMIN CONTROL BAR
     const adminBarHtml = isSA ? `
-        <div class="th-toolbar">
-            <div class="th-toolbar-copy">
-               <div class="th-toolbar-title">Enterprise Theme Manager</div>
-               <div class="small muted th-toolbar-subtitle">Globally synced via API. Manage visibility or export clean code.</div>
-            </div>
-            <div class="th-toolbar-actions">
-                <button class="btn-glass btn-glass-ghost" id="exportCleanConfigBtn" title="Get code for config.js to wipe deleted themes globally">
-                    📄 Get Clean Code
-                </button>
-                <button class="btn-glass ${__themeEditMode ? 'btn-glass-danger' : 'btn-glass-primary'}" id="toggleThemeEditBtn">
-                    ${__themeEditMode ? '✅ Done Editing' : '⚙️ Manage Themes'}
-                </button>
-            </div>
+      <div class="th-toolbar">
+        <div class="th-toolbar-copy">
+          <div class="th-toolbar-title">Enterprise Theme Manager</div>
+          <div class="small muted th-toolbar-subtitle">Set org-wide default theme, then manage visibility lifecycle.</div>
         </div>
-    ` : '';
+        <div class="th-toolbar-controls">
+          <div class="th-global-default-panel">
+            <label class="small muted" for="globalDefaultThemeSelect">Global Default Theme</label>
+            <div class="th-global-default-row">
+              <select class="input" id="globalDefaultThemeSelect">
+                ${rawThemes.filter(t => !(__themeMeta[t.id] && __themeMeta[t.id].deleted)).map(t => `<option value="${UI.esc(t.id)}" ${t.id === globalDefault ? 'selected' : ''}>${UI.esc(t.name || t.id)}</option>`).join('')}
+              </select>
+              <button class="btn-glass btn-glass-primary" id="saveGlobalDefaultThemeBtn">Save Default</button>
+            </div>
+            <div class="small" id="globalDefaultThemeStatus" aria-live="polite" style="display:none"></div>
+          </div>
+          <div class="th-toolbar-actions">
+            <button class="btn-glass btn-glass-ghost" id="exportCleanConfigBtn" title="Get code for config.js to wipe deleted themes globally">
+              📄 Get Clean Code
+            </button>
+            <button class="btn-glass ${__themeEditMode ? 'btn-glass-danger' : 'btn-glass-primary'}" id="toggleThemeEditBtn">
+              ${__themeEditMode ? '✅ Done Editing' : '⚙️ Manage Themes'}
+            </button>
+          </div>
+        </div>
+      </div>
+    ` : summaryHtml;
 
     // BUILD COMPACT BENTO CARDS
     const cardsHtml = visibleThemes.map(t => {
       const m = __themeMeta[t.id] || {};
       const active = t.id === cur;
       const isHidden = !!m.hidden;
+      const isGlobalDefault = t.id === globalDefault;
 
       const mode = String(t.mode || '').trim() || 'N/A';
       const adminHtml = `
@@ -648,16 +737,20 @@
       `;
 
       return `
-        <div class="th-card ${active?'is-active':''} ${isHidden?'is-hidden':''} ${__themeEditMode?'show-admin th-jiggle':''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button">
+        <div class="th-card ${active?'is-active':''} ${isHidden?'is-hidden':''} ${__themeEditMode?'show-admin th-jiggle':''}" data-theme="${UI.esc(t.id)}" tabindex="0" role="button" aria-label="Apply theme ${UI.esc(t.name || t.id)}">
            <div class="th-swatch" style="--t-bg:${t.bg || '#0b1220'}; --t-panel:${t.panel || '#121c2f'}; --t-acc:${t.accent || '#4aa3ff'};"></div>
            <div class="th-info">
               <div class="th-title">${UI.esc(t.name || 'Untitled Theme')}</div>
               <div class="th-meta">ID: ${UI.esc(t.id || 'n/a')}</div>
               <div class="th-mode">Mode: ${UI.esc(mode.toUpperCase())}</div>
-              ${active ? '<div class="th-badge th-badge-active">ACTIVE</div>' : ''}
-              ${isHidden ? '<div class="th-badge th-badge-hidden">HIDDEN</div>' : ''}
-           </div>
-           ${isSA ? adminHtml : ''}
+              <div class="th-desc">${UI.esc(t.description || 'Enterprise-ready appearance profile.')}</div>
+              <div class="th-badges">
+                ${active ? '<div class="th-badge th-badge-active">ACTIVE</div>' : ''}
+                ${isGlobalDefault ? '<div class="th-badge th-badge-default">GLOBAL DEFAULT</div>' : ''}
+                ${isHidden ? '<div class="th-badge th-badge-hidden">HIDDEN</div>' : ''}
+              </div>
+            </div>
+            ${isSA ? adminHtml : ''}
         </div>
       `;
     }).join('') || '<div class="muted th-empty">No themes available.</div>';
@@ -695,6 +788,71 @@
             `;
             document.body.appendChild(m);
         };
+    }
+
+    const saveDefaultBtn = document.getElementById('saveGlobalDefaultThemeBtn');
+    if(saveDefaultBtn){
+      saveDefaultBtn.onclick = async () => {
+        const select = document.getElementById('globalDefaultThemeSelect');
+        const status = document.getElementById('globalDefaultThemeStatus');
+        const selectedTheme = String(select && select.value || '').trim();
+        if(!isValidThemeId(selectedTheme)){
+          if(status){
+            status.style.display = 'block';
+            status.style.color = '#fda4af';
+            status.textContent = 'Invalid theme selection.';
+          }
+          return;
+        }
+
+        const token = getBearerToken();
+        if(!token){
+          if(status){
+            status.style.display = 'block';
+            status.style.color = '#fda4af';
+            status.textContent = 'Session expired. Please login again.';
+          }
+          return;
+        }
+
+        saveDefaultBtn.disabled = true;
+        saveDefaultBtn.textContent = 'Saving...';
+        if(status){
+          status.style.display = 'block';
+          status.style.color = '#93c5fd';
+          status.textContent = 'Syncing global default theme...';
+        }
+
+        try{
+          const res = await fetch('/api/settings/global-theme', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ themeId: selectedTheme })
+          });
+          const data = await res.json().catch(()=>({}));
+          if(!res.ok || !data.ok) throw new Error(data.message || data.error || `HTTP ${res.status}`);
+
+          __globalThemeSettings = { defaultTheme: selectedTheme };
+          __globalThemeLoaded = true;
+
+          if(status){
+            status.style.color = '#34d399';
+            status.textContent = `Global default set to ${getThemeName(selectedTheme)}.`;
+          }
+          renderThemeGrid();
+        }catch(e){
+          if(status){
+            status.style.color = '#fda4af';
+            status.textContent = `Failed to save: ${String(e && e.message || e)}`;
+          }
+        }finally{
+          saveDefaultBtn.disabled = false;
+          saveDefaultBtn.textContent = 'Save Default';
+        }
+      };
     }
 
     grid.querySelectorAll('.th-card').forEach(tile => {
@@ -753,8 +911,9 @@
                 btn.innerHTML = '<span class="mbx-spinner"></span> Purging...';
                 
                 if(cur === tid) {
-                    Store.dispatch ? Store.dispatch('UPDATE_THEME', { id:'ocean' }) : Store.setTheme('ocean');
-                    applyTheme('ocean');
+                    const fallbackId = isValidThemeId(globalDefault) ? globalDefault : resolveEffectiveThemeForUser();
+                    Store.dispatch ? Store.dispatch('UPDATE_THEME', { id:fallbackId }) : Store.setTheme(fallbackId);
+                    applyTheme(fallbackId);
                 }
 
                 const res = await saveThemeMeta(nextMeta);
@@ -3863,7 +4022,13 @@ async function boot(){
 
     Store.ensureSeed();
 
-    applyTheme(Store.getTheme());
+    try{ await Promise.all([loadThemeMeta(), loadGlobalThemeSettings()]); }catch(_){ }
+    const effectiveTheme = resolveEffectiveThemeForUser();
+    try{
+      if(Store && Store.dispatch) Store.dispatch('UPDATE_THEME', { id: effectiveTheme });
+      else if(Store && Store.setTheme) Store.setTheme(effectiveTheme);
+    }catch(_){ }
+    applyTheme(effectiveTheme);
     try{ setupClassicTopbarClock(); }catch(_){ }
     try{
       const d = (localStorage.getItem('mums_density')||'normal');

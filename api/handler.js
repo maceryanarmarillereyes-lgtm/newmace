@@ -49,6 +49,8 @@ const ROUTES = {
 
   'theme_access/get': require('../server/routes/theme_access/get'),
   'theme_access/set': require('../server/routes/theme_access/set'),
+  'settings/global_theme': require('../server/routes/settings/global_theme'),
+  'settings/global-theme': require('../server/routes/settings/global_theme'),
 
   'overall_stats': require('../server/routes/overall_stats'),
 

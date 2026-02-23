@@ -302,6 +302,11 @@ body{
   box-shadow:0 30px 80px rgba(2,6,23,.55);
 }
 #themeModal .body{display:grid;gap:14px}
+
+.th-summary{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:12px;margin-bottom:14px}
+.th-summary-item{border:1px solid rgba(148,163,184,.24);border-radius:12px;padding:10px 12px;background:rgba(15,23,42,.52)}
+.th-summary-label{display:block;font-size:11px;color:#94a3b8;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+.th-summary-value{display:block;margin-top:4px;font-size:14px;font-weight:900;color:#e2e8f0}
 .th-toolbar{
   display:flex;
   justify-content:space-between;
@@ -316,7 +321,14 @@ body{
 .th-toolbar-copy{min-width:0}
 .th-toolbar-title{font-weight:900;font-size:16px;color:#f8fafc;letter-spacing:.01em}
 .th-toolbar-subtitle{margin-top:4px}
+.th-toolbar-controls{display:flex;flex-direction:column;gap:10px;min-width:min(420px,100%)}
 .th-toolbar-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+
+
+.th-global-default-panel{border:1px solid rgba(56,189,248,.32);border-radius:12px;padding:10px 12px;background:rgba(8,47,73,.28)}
+.th-global-default-row{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:6px;align-items:center}
+.th-global-default-row .input{min-width:180px}
+#globalDefaultThemeStatus{margin-top:8px;font-weight:700}
 
 .th-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
 .th-card{
@@ -344,9 +356,12 @@ body{
 .th-info{min-width:0;flex:1}
 .th-title{font-weight:900;color:#f8fafc;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .th-meta,.th-mode{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#a7b3ca;margin-top:4px}
+.th-desc{margin-top:8px;font-size:12px;line-height:1.35;color:#cbd5e1;max-height:32px;overflow:hidden}
+.th-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .th-badge{display:inline-flex;padding:3px 8px;margin-top:7px;border-radius:999px;font-size:10px;font-weight:900;letter-spacing:.04em;border:1px solid transparent}
 .th-badge-active{color:#7dd3fc;border-color:rgba(125,211,252,.45);background:rgba(14,116,144,.24)}
 .th-badge-hidden{color:#fecaca;border-color:rgba(248,113,113,.45);background:rgba(127,29,29,.3)}
+.th-badge-default{color:#fde68a;border-color:rgba(250,204,21,.45);background:rgba(113,63,18,.35)}
 
 .th-admin-bar{position:absolute;top:0;right:0;bottom:0;display:flex;flex-direction:column;min-width:132px;background:rgba(2,6,23,.92);border-left:1px solid rgba(148,163,184,.22);transform:translateX(100%);transition:transform .2s ease}
 .th-card.show-admin .th-admin-bar{transform:translateX(0)}
@@ -364,8 +379,11 @@ body{
 .theme-lab-guide{margin-top:14px;border-left:3px solid #38bdf8;padding-left:10px;line-height:1.45}
 
 @media(max-width:900px){
+  .th-summary{grid-template-columns:1fr}
   .th-toolbar{padding:12px;flex-direction:column;align-items:stretch}
+  .th-toolbar-controls{min-width:0}
   .th-toolbar-actions{justify-content:flex-start}
+  .th-global-default-row{grid-template-columns:1fr}
   .th-grid{grid-template-columns:1fr}
 }
 
