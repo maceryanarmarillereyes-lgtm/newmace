@@ -1009,6 +1009,7 @@
       const selected = (viewMode === 'day' && selectedBlockKey === bKey) ? 'is-selected' : '';
       const status = blockStatus(d.iso, b);
       const doneClass = status === 'Completed' ? 'is-completed' : '';
+      const liveClass = (viewMode === 'week' && status === 'In Progress') ? 'is-live-current' : '';
       const localRange = (localTZ && localTZ !== tzManila) ? localRangeLabel(d.iso, b.start, b.end) : '';
       const audit = findAuditForBlock(d.dayIdx, b);
       const auditLine = audit ? `Assigned by ${audit.actorName || '—'} • ${formatTs(audit.ts)}` : '';
@@ -1024,7 +1025,7 @@
 
       return `
         <div
-          class="schedule-block schx-block ${selected} ${compact ? 'compact' : ''} ${doneClass}"
+          class="schedule-block schx-block ${selected} ${compact ? 'compact' : ''} ${doneClass} ${liveClass}"
           data-task-type="${esc(taskTypeAttr(b.schedule))}"
           data-block-key="${esc(bKey)}"
           data-day="${d.dayIdx}"
@@ -1033,6 +1034,7 @@
           tabindex="0"
           data-tooltip="${esc(tooltipLines.join('\n'))}"
           aria-label="${esc(label)}"
+          aria-current="${liveClass ? 'time' : 'false'}"
         >
           <div class="schx-bmeta">
             <span class="schx-time-range">${esc(`${b.start} - ${b.end}`)}</span>
