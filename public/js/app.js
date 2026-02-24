@@ -4191,7 +4191,6 @@ async function boot(){
       try{
         if(!window.__mumsMailboxOverrideRealtimeToastBound){
           window.__mumsMailboxOverrideRealtimeToastBound = true;
-          window.__mumsMailboxOverrideRealtimeLast = '';
           window.addEventListener('mums:realtime_alert', (ev)=>{
             try{
               const row = ev && ev.detail ? ev.detail : null;
@@ -4200,10 +4199,6 @@ async function boot(){
               const scope = String(row.scope||'').toLowerCase();
               if(!['set','reset','freeze'].includes(action)) return;
               if(!['global','superadmin'].includes(scope)) return;
-              const eventKey = [String(row.id||''), String(row.timestamp||''), scope, action, String(row.effective_time||'')].join('|');
-              if(eventKey && window.__mumsMailboxOverrideRealtimeLast === eventKey) return;
-              window.__mumsMailboxOverrideRealtimeLast = eventKey;
-              try{ if(window.Store && Store.startMailboxOverrideSync) Store.startMailboxOverrideSync({ force:true }); }catch(_){ }
               const actor = String(row.actor_name || row.updated_by_name || 'System');
               const scopeLbl = (scope === 'global') ? 'Global' : 'Super Admin';
               let msg = `${scopeLbl} mailbox time override was updated by ${actor}.`;
