@@ -40,6 +40,7 @@ const ROUTES = {
   'mailbox/assign': require('../server/routes/mailbox/assign'),
   'mailbox/confirm': require('../server/routes/mailbox/confirm'),
   'mailbox/case_action': require('../server/routes/mailbox/case_action'),
+  'mailbox/roster': require('../server/routes/mailbox/roster'),
 
   'presence/heartbeat': require('../server/routes/presence/heartbeat'),
   'presence/list': require('../server/routes/presence/list'),

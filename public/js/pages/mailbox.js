@@ -243,6 +243,7 @@ function _mbxDutyTone(label){
 (window.Pages=window.Pages||{}, window.Pages.mailbox = function(root){
   const me = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser()||{}) : {};
   let isManager = false;
+  const _mbxRosterState = { byTeam: new Map(), inflight: new Map() };
 
   window.__mbxUiState = window.__mbxUiState || {
     showArchive: false,
@@ -290,8 +291,7 @@ function _mbxDutyTone(label){
          targetDow = UI && UI.manilaNowDate ? new Date(UI.manilaNowDate()).getDay() : new Date().getDay(); 
       }
 
-      const all = (Store && Store.getUsers ? Store.getUsers() : []) || [];
-      const candidates = all.filter(u=>u && u.teamId===teamId && u.status==='active');
+      const candidates = _mbxGetTeamUsers(teamId);
       const matched = [];
 
       for(const u of candidates){
@@ -354,6 +354,71 @@ function _mbxDutyTone(label){
       const unique = [...new Set(matched)];
       return unique.length > 0 ? unique.join(' & ') : '—';
     }catch(e){ return '—'; }
+  }
+
+
+
+  function _mbxNormalizeRosterRow(raw){
+    if(!raw || typeof raw !== 'object') return null;
+    const id = String(raw.id||raw.user_id||'').trim();
+    if(!id) return null;
+    return {
+      id,
+      name: String(raw.name||raw.username||'N/A'),
+      username: String(raw.username||''),
+      role: String(raw.role||'MEMBER'),
+      teamId: String(raw.teamId||raw.team_id||''),
+      duty: String(raw.duty||''),
+      avatarUrl: String(raw.avatarUrl||raw.avatar_url||''),
+      status: String(raw.status||'active')
+    };
+  }
+
+  function _mbxTeamUsersFromStore(teamId){
+    const Store = window.Store;
+    const all = (Store && Store.getUsers ? Store.getUsers() : []) || [];
+    return all.filter(u=>u && String(u.teamId||u.team_id||'')===String(teamId||'') && String(u.status||'active')==='active');
+  }
+
+  function _mbxGetTeamUsers(teamId){
+    const key = String(teamId||'');
+    const cached = _mbxRosterState.byTeam.get(key);
+    if(Array.isArray(cached) && cached.length) return cached.slice();
+    return _mbxTeamUsersFromStore(key);
+  }
+
+  async function _mbxSyncTeamRoster(teamId){
+    const key = String(teamId||'').trim();
+    if(!key) return [];
+    if(_mbxRosterState.inflight.has(key)) return _mbxRosterState.inflight.get(key);
+    const task = (async()=>{
+      try{
+        const res = await fetch(`/api/mailbox/roster?teamId=${encodeURIComponent(key)}`, {
+          method:'GET',
+          headers: { ..._mbxAuthHeader() },
+          cache:'no-store'
+        });
+        const data = await res.json().catch(()=>({}));
+        if(!res.ok || !data || data.ok!==true || !Array.isArray(data.rows)) return _mbxGetTeamUsers(key);
+        const rows = data.rows.map(_mbxNormalizeRosterRow).filter(Boolean);
+        _mbxRosterState.byTeam.set(key, rows);
+        return rows;
+      }catch(_){
+        return _mbxGetTeamUsers(key);
+      }finally{
+        _mbxRosterState.inflight.delete(key);
+      }
+    })();
+    _mbxRosterState.inflight.set(key, task);
+    return task;
+  }
+
+  function _mbxFindUser(table, userId){
+    const uid = String(userId||'');
+    const fromTable = (table && Array.isArray(table.members)) ? table.members.find(x=>String(x?.id||'')===uid) : null;
+    if(fromTable) return fromTable;
+    const teamId = String(table?.meta?.teamId||'');
+    return _mbxGetTeamUsers(teamId).find(x=>String(x?.id||'')===uid) || null;
   }
 
   function isPrivilegedRole(u){
@@ -427,8 +492,8 @@ function _mbxDutyTone(label){
         buckets = _mbxBuildDefaultBuckets(teamObj || team);
       }
       const nowParts = (UI && UI.mailboxNowParts ? UI.mailboxNowParts() : (UI && UI.manilaNow ? UI.manilaNow() : null));
-      const members = (Store && Store.getUsers ? Store.getUsers() : [])
-        .filter(u=>u && u.teamId===team.id && u.status==='active')
+      const members = _mbxGetTeamUsers(team.id)
+        .filter(u=>u)
         .map(u=>({
           id: u.id,
           name: u.name||u.username||'—',
@@ -479,8 +544,8 @@ function _mbxDutyTone(label){
       }
 
       const nowParts = (UI && UI.mailboxNowParts ? UI.mailboxNowParts() : (UI && UI.manilaNow ? UI.manilaNow() : null));
-      const teamUsers = (Store && Store.getUsers ? Store.getUsers() : [])
-        .filter(u=>u && u.teamId===team.id && u.status==='active')
+      const teamUsers = _mbxGetTeamUsers(team.id)
+        .filter(u=>u)
         .map(u=>({
           id: u.id,
           name: u.name||u.username||'—',
@@ -791,8 +856,8 @@ function _mbxDutyTone(label){
       const UI = window.UI;
       const Store = window.Store;
       const esc = UI.esc;
-      const users = (Store.getUsers ? Store.getUsers() : []) || [];
-      const byId = Object.fromEntries(users.map(u=>[String(u.id), u]));
+      const teamUsers = _mbxGetTeamUsers(String(table?.meta?.teamId||''));
+      const byId = Object.fromEntries(teamUsers.map(u=>[String(u.id), u]));
       const shiftTotal = Number(totals?.shiftTotal)||0;
 
       const roleCounts = {};
@@ -1134,7 +1199,7 @@ function _mbxDutyTone(label){
     const UI = window.UI;
     const Store = window.Store;
     const { table } = ensureShiftTables();
-    const u = (table.members||[]).find(x=>x.id===userId) || (Store.getUsers?Store.getUsers().find(x=>x.id===userId):null);
+    const u = _mbxFindUser(table, userId);
     if(!u) return;
 
     const activeId = computeActiveBucketId(table);
@@ -1238,9 +1303,9 @@ function _mbxDutyTone(label){
       const Store = window.Store;
       const UI = window.UI;
       const teamId = String(table?.meta?.teamId || '');
-      const users = (Store.getUsers ? Store.getUsers() : []) || [];
+      const users = _mbxGetTeamUsers(teamId);
       return users
-        .filter(u=>u && u.status==='active' && String(u.teamId||'')===teamId && String(u.role||'')==='MEMBER' && String(u.id||'')!==String(previousOwnerId||''))
+        .filter(u=>u && String(u.role||'')==='MEMBER' && String(u.id||'')!==String(previousOwnerId||''))
         .map(u=>({ id:String(u.id||''), name:String(u.name||u.username||u.id||'N/A') }))
         .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
     }catch(_){
@@ -1551,7 +1616,7 @@ function _mbxDutyTone(label){
     rows.push(['Assignments']);
     rows.push(['Timestamp','Case #','Assigned To','Mailbox Time','Description','Assigned By']);
     for(const a of (table.assignments||[]).slice().reverse()){
-      const assignee = (Store.getUsers?Store.getUsers().find(x=>x.id===a.assigneeId):null) || {};
+      const assignee = _mbxFindUser(table, a.assigneeId) || {};
       const b = buckets.find(x=>x.id===a.bucketId) || {};
       rows.push([String(a.assignedAt||''), a.caseNo||'', assignee.name||assignee.username||'', _mbxBucketLabel(b||{startMin:0,endMin:0}), a.desc||'', a.actorName||'']);
     }
@@ -1574,7 +1639,7 @@ function _mbxDutyTone(label){
     const tfoot = `<tr><td><b>TOTAL</b></td>${buckets.map(b=>`<td><b>${totals.colTotals[b.id]||0}</b></td>`).join('')}<td><b>${totals.shiftTotal||0}</b></td></tr>`;
 
     const assignRows = (table.assignments||[]).slice().reverse().map(a=>{
-      const assignee = (Store.getUsers?Store.getUsers().find(x=>x.id===a.assigneeId):null) || {};
+      const assignee = _mbxFindUser(table, a.assigneeId) || {};
       const b = buckets.find(x=>x.id===a.bucketId) || {};
       return `<tr>
         <td>${new Date(a.assignedAt||0).toLocaleString()}</td>
@@ -1664,6 +1729,10 @@ function _mbxDutyTone(label){
     const totals = computeTotals(table);
 
     const duty = getDuty();
+    const dutyTeamId = String(duty?.current?.id || '');
+    if(dutyTeamId && !_mbxRosterState.byTeam.has(dutyTeamId)){
+      _mbxSyncTeamRoster(dutyTeamId).then(()=>{ try{ if(isMailboxRouteActive()) scheduleRender('mailbox-roster-sync'); }catch(_){ } });
+    }
     const nowParts = (UI && UI.mailboxNowParts ? UI.mailboxNowParts() : (UI && UI.manilaNow ? UI.manilaNow() : null));
     isManager = canAssignNow({ duty, nowParts });
     
