@@ -1782,6 +1782,57 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   background: rgba(80,160,255,0.10);
 }
 
+
+.tsg-name{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.tsg-avatar{
+  width:28px;
+  height:28px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.45);
+  background: rgba(148,163,184,.18);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  flex:0 0 auto;
+}
+
+.tsg-avatar-img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+.tsg-avatar-fallback{
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.2px;
+  color: rgba(255,255,255,.9);
+}
+
+.tsg-member-name{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.tsg-rest-day{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:12px;
+  font-weight:800;
+  color: rgba(203,213,225,.7);
+  pointer-events:none;
+}
+
 .tsg-timeline{
   border-top:1px solid rgba(120,140,170,.24);
   background: rgba(4,10,20,.94);
