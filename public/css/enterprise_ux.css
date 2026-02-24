@@ -1890,6 +1890,13 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   gap:10px;
 }
 
+.tsg-name-stack{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+
 .tsg-avatar{
   width:28px;
   height:28px;
