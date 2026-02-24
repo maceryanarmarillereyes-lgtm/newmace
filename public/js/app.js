@@ -4075,6 +4075,7 @@ async function boot(){
         }
 
         function open(){
+          try{ if(window.Store && Store.startMailboxOverrideSync) Store.startMailboxOverrideSync({ force:true }); }catch(_){ }
           let o = Store.getMailboxTimeOverride ? Store.getMailboxTimeOverride() : { enabled:false, ms:0, freeze:true, setAt:0, scope:'sa_only' };
           draft = {
             enabled: !!o.enabled,
@@ -4150,6 +4151,10 @@ async function boot(){
             if(!draft.enabled){
               if(Store.disableMailboxTimeOverride) Store.disableMailboxTimeOverride({ propagateGlobal:true });
               else Store.saveMailboxTimeOverride({ enabled:false, ms:0, freeze:true, setAt:0, scope:'sa_only' });
+              try{
+                if(window.UI && UI.toast) UI.toast('Mailbox time override removed. System Manila time is now active.', 'success');
+              }catch(_){ }
+              try{ draft = Store.getMailboxTimeOverride ? Store.getMailboxTimeOverride() : draft; }catch(_){ }
               render();
               return;
             }
@@ -4159,7 +4164,12 @@ async function boot(){
             }
             const payload = { enabled:true, ms: Number(draft.ms)||0, freeze: !!draft.freeze, scope: (draft.scope==='global'?'global':'sa_only') };
             if(!draft.freeze) payload.setAt = Number(draft.setAt)||Date.now();
-            Store.saveMailboxTimeOverride(payload);
+            const saved = Store.saveMailboxTimeOverride(payload);
+            try{ draft = Object.assign({}, draft, saved||{}); }catch(_){ }
+            try{
+              const scopeLbl = (String(draft.scope||'sa_only') === 'global') ? 'Global' : 'Super Admin';
+              if(window.UI && UI.toast) UI.toast(`Mailbox time override applied (${scopeLbl} scope).`, 'success');
+            }catch(_){ }
             render();
           };
         }
@@ -4169,6 +4179,7 @@ async function boot(){
             if(Store.disableMailboxTimeOverride) Store.disableMailboxTimeOverride({ propagateGlobal:true });
             else Store.saveMailboxTimeOverride({ enabled:false, ms:0, freeze:true, setAt:0, scope:'sa_only' });
             draft = Store.getMailboxTimeOverride();
+            try{ if(window.UI && UI.toast) UI.toast('Mailbox time override removed. System Manila time is now active.', 'success'); }catch(_){ }
             if(!draft.ms) draft.ms = Date.now();
             render();
           };
@@ -4176,6 +4187,28 @@ async function boot(){
 
         UI.els('[data-close="mailboxTimeModal"]').forEach(b=>b.onclick=()=>{ stopClock(); UI.closeModal('mailboxTimeModal'); });
       }
+
+      try{
+        if(!window.__mumsMailboxOverrideRealtimeToastBound){
+          window.__mumsMailboxOverrideRealtimeToastBound = true;
+          window.addEventListener('mums:realtime_alert', (ev)=>{
+            try{
+              const row = ev && ev.detail ? ev.detail : null;
+              if(!row) return;
+              const action = String(row.action||'').toLowerCase();
+              const scope = String(row.scope||'').toLowerCase();
+              if(!['set','reset','freeze'].includes(action)) return;
+              if(!['global','superadmin'].includes(scope)) return;
+              const actor = String(row.actor_name || row.updated_by_name || 'System');
+              const scopeLbl = (scope === 'global') ? 'Global' : 'Super Admin';
+              let msg = `${scopeLbl} mailbox time override was updated by ${actor}.`;
+              if(action === 'reset') msg = `${scopeLbl} mailbox time override was removed by ${actor}.`;
+              else if(action === 'freeze') msg = `${scopeLbl} mailbox time override mode changed by ${actor}.`;
+              if(window.UI && UI.toast) UI.toast(msg, 'info');
+            }catch(_){ }
+          });
+        }
+      }catch(_){ }
 
       if(openMailboxTimeBtn){
         bindMailboxTimeModal();
