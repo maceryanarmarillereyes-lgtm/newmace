@@ -1293,8 +1293,8 @@
     const blocks = getBlocksForUserDay(member.id, dayIdx).map(normalizeBlock).sort((a, b) => parseHM(a.start) - parseHM(b.start));
     const memberRestDays = userRestWeekdays(member.id, member.teamId || member.team_id);
     const memberIsRest = isRestDayForUser(member.id, iso, member.teamId || member.team_id);
-    const restText = memberRestDays.length ? `Rest: ${memberRestDays.map(weekdayShortLabel).join(', ')}` : 'Rest: none';
-    const bars = memberIsRest ? '' : blocks.map((b) => {
+    const restText = memberRestDays.length ? ` • Rest: ${memberRestDays.map(weekdayShortLabel).join(', ')}` : '';
+    const bars = blocks.map((b) => {
       const startOff = computeOffset(shift, b.start);
       const endOff = computeOffset(shift, b.end);
       const r = clampShiftRange(shift, startOff, endOff);
@@ -1328,17 +1328,11 @@
 
     return `
       <div class="team-schedule-row member-row" role="row">
-        <div class="tsg-name" role="rowheader">
-          <span class="tsg-avatar">${avatar}</span>
-          <span class="tsg-name-stack">
-            <span class="tsg-member-name">${esc(memberName)}</span>
-            <span class="tsg-member-meta">${esc(restText)}</span>
-          </span>
-        </div>
+        <div class="tsg-name" role="rowheader"><span class="tsg-avatar">${avatar}</span><span class="tsg-member-name">${esc(memberName)}</span>${memberIsRest ? '<span class="tsg-rest-flag">REST DAY</span>' : ''}<span class="tsg-member-meta">${esc(restText || ' • Rest: none')}</span></div>
         <div class="tsg-timeline" role="cell" aria-label="${esc(memberName)} timeline">
           <div class="tsg-hour-grid" style="width:${timelineWidth}px">
             ${bars}
-            ${memberIsRest ? '<div class="tsg-rest-day is-rest">Rest Day</div><span class="tsg-row-rest-badge">REST DAY</span>' : (bars ? '' : '<div class="tsg-rest-day">No Schedule</div>')}
+            ${bars ? '' : `<div class="tsg-rest-day ${memberIsRest ? 'is-rest' : ''}">${memberIsRest ? 'Rest Day' : 'No Schedule'}</div>`}
           </div>
         </div>
       </div>
