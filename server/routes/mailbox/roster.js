@@ -7,6 +7,7 @@ function sendJson(res, statusCode, body) {
 }
 
 const PRIVILEGED_ROLES = new Set(['SUPER_ADMIN', 'SUPER_USER', 'ADMIN', 'TEAM_LEAD']);
+const SHIFT_TEAM_IDS = new Set(['morning', 'mid', 'night']);
 
 module.exports = async (req, res) => {
   try {
@@ -27,9 +28,18 @@ module.exports = async (req, res) => {
     const myRole = String(profile.role || 'MEMBER').toUpperCase();
     const myTeam = String(profile.team_id || '').trim();
     const reqTeam = String((req.query && req.query.teamId) || '').trim();
+    const reqTeamNorm = reqTeam.toLowerCase();
+    const isShiftTeamRequest = SHIFT_TEAM_IDS.has(reqTeamNorm);
 
     let teamId = myTeam;
-    if (reqTeam && PRIVILEGED_ROLES.has(myRole)) teamId = reqTeam;
+    // Mailbox roster must stay globally aligned to the active shift.
+    // Any authenticated user can request one of the canonical shift teams.
+    if (isShiftTeamRequest) {
+      teamId = reqTeamNorm;
+    } else if (reqTeam && PRIVILEGED_ROLES.has(myRole)) {
+      // Keep privileged flexibility for non-canonical team ids used by admins.
+      teamId = reqTeam;
+    }
 
     if (!teamId) return sendJson(res, 200, { ok: true, teamId: '', rows: [] });
 
@@ -55,4 +65,3 @@ module.exports = async (req, res) => {
     return sendJson(res, 500, { ok: false, error: 'server_error', message: e?.message || String(e) });
   }
 };
-
