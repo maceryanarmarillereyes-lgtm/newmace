@@ -79,6 +79,7 @@ async function getRoutes(env) {
     'mailbox/assign': unwrapCjs(await import('../../server/routes/mailbox/assign.js')),
     'mailbox/confirm': unwrapCjs(await import('../../server/routes/mailbox/confirm.js')),
     'mailbox/case_action': unwrapCjs(await import('../../server/routes/mailbox/case_action.js')),
+    'mailbox/roster': unwrapCjs(await import('../../server/routes/mailbox/roster.js')),
 
     'member/schedule': unwrapCjs(await import('../../server/routes/member_schedule.js')),
 
