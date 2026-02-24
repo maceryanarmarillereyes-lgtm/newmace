@@ -39,12 +39,16 @@ async function getRoutes(env) {
   // Static imports via dynamic import (one-time) so env is available at module init.
   ROUTES = {
     env: unwrapCjs(await import('../../server/routes/env.js')),
+    'env': unwrapCjs(await import('../../server/routes/env.js')),
     'env.js': unwrapCjs(await import('../../server/routes/env.js')),
     health: unwrapCjs(await import('../../server/routes/health.js')),
+    'health': unwrapCjs(await import('../../server/routes/health.js')),
+    'health.js': unwrapCjs(await import('../../server/routes/health.js')),
 
     // Vendor bundles served as first-party scripts (avoid 3rd-party storage blocks)
     'vendor/supabase.js': unwrapCjs(await import('../../server/routes/vendor/supabase.js')),
     keep_alive: unwrapCjs(await import('../../server/routes/keep_alive.js')),
+    'keep_alive': unwrapCjs(await import('../../server/routes/keep_alive.js')),
     'keep_alive.js': unwrapCjs(await import('../../server/routes/keep_alive.js')),
     'debug/log': unwrapCjs(await import('../../server/routes/debug/log.js')),
 
@@ -64,6 +68,8 @@ async function getRoutes(env) {
     'settings/global-theme': unwrapCjs(await import('../../server/routes/settings/global_theme.js')),
 
     overall_stats: unwrapCjs(await import('../../server/routes/overall_stats.js')),
+    'overall_stats': unwrapCjs(await import('../../server/routes/overall_stats.js')),
+    'overall_stats.js': unwrapCjs(await import('../../server/routes/overall_stats.js')),
 
     'users/list': unwrapCjs(await import('../../server/routes/users/list.js')),
     'users/create': unwrapCjs(await import('../../server/routes/users/create.js')),
@@ -90,7 +96,8 @@ async function getRoutes(env) {
     'tasks/workload_matrix': unwrapCjs(await import('../../server/routes/tasks/workload_matrix.js')),
     'tasks/members': unwrapCjs(await import('../../server/routes/tasks/members.js')),
     'tasks/monitoring': unwrapCjs(await import('../../server/routes/tasks/monitoring.js')),
-    'tasks/reassign_pending': unwrapCjs(await import('../../server/routes/tasks/reassign_pending.js'))
+    'tasks/reassign_pending': unwrapCjs(await import('../../server/routes/tasks/reassign_pending.js')),
+    'tasks/distribution_export': unwrapCjs(await import('../../server/routes/tasks/distribution_export.js'))
   };
 
   return ROUTES;

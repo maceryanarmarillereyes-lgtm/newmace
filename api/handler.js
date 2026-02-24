@@ -23,7 +23,9 @@ function normalizePath(raw) {
 // Route table (string path => handler)
 const ROUTES = {
   'env': require('../server/routes/env'),
+  'env.js': require('../server/routes/env'),
   'health': require('../server/routes/health'),
+  'health.js': require('../server/routes/health'),
   'debug/log': require('../server/routes/debug/log'),
 
   // Vendor bundles served as first-party scripts (avoid 3rd-party storage blocks)
@@ -54,6 +56,7 @@ const ROUTES = {
   'settings/global-theme': require('../server/routes/settings/global_theme'),
 
   'overall_stats': require('../server/routes/overall_stats'),
+  'overall_stats.js': require('../server/routes/overall_stats'),
 
   'users/create': require('../server/routes/users/create'),
   'users/ensure_profile': require('../server/routes/users/ensure_profile'),
