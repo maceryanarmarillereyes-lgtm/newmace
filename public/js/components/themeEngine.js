@@ -1,11 +1,14 @@
 // Theme Engine Controller
-// Enterprise-grade theme management with Super Admin global controls
-// Author: MUMS Architecture Team
-// Date: 2026-02-23
-// Updated: 2026-02-23 18:19 - Fixed Super Admin panel visibility
-
+// Enterprise-grade theme management with strict token-based theme isolation.
 (function(){
   'use strict';
+
+  const THEME_STORAGE_KEY = 'mums_theme_preference';
+  const DEFAULT_THEME_ID = 'mums_dark';
+  const THEME_ALIAS = {
+    aurora_midnight: 'mums_dark',
+    mono: 'classic_style'
+  };
 
   const ThemeEngine = {
     currentTheme: null,
@@ -14,32 +17,18 @@
 
     async init(){
       try {
-        // ✅ FIXED: Use Auth.getUser() instead of Store.getProfile()
         const user = (window.Auth && Auth.getUser) ? Auth.getUser() : {};
         const rawRole = String(user?.role || '').trim().toUpperCase();
-        
-        // Normalize role (handle "Super Admin" vs "SUPER_ADMIN")
         this.userRole = rawRole.replace(/\s+/g, '_');
-        
-        console.log('[ThemeEngine] User role:', this.userRole);
 
-        // Load global default theme (if Super Admin)
         if (this.userRole === 'SUPER_ADMIN') {
-          console.log('[ThemeEngine] Super Admin detected - loading global default...');
           await this.loadGlobalDefault();
         }
 
-        // Load user theme preference (overrides global)
         this.currentTheme = this.getUserTheme();
-
-        // Apply theme immediately
-        this.applyTheme(this.currentTheme);
-
-        // Setup UI
+        this.applyTheme(this.currentTheme, { persist: false });
         this.renderThemeGrid();
         this.setupEventListeners();
-
-        console.log('[ThemeEngine] Initialized. Current theme:', this.currentTheme);
       } catch(err){
         console.error('[ThemeEngine] Init error:', err);
       }
@@ -48,10 +37,7 @@
     async loadGlobalDefault(){
       try {
         const token = window.CloudAuth?.getAccessToken?.();
-        if (!token) {
-          console.warn('[ThemeEngine] No auth token available');
-          return;
-        }
+        if (!token) return;
 
         const res = await fetch('/api/settings/global-theme', {
           headers: {
@@ -62,87 +48,91 @@
 
         if (res.ok) {
           const data = await res.json();
-          this.globalDefault = data.defaultTheme || 'aurora_midnight';
-          console.log('[ThemeEngine] Global default loaded:', this.globalDefault);
-        } else {
-          console.warn('[ThemeEngine] Failed to load global default:', res.status);
+          this.globalDefault = this.normalizeThemeId(data.defaultTheme || DEFAULT_THEME_ID);
         }
       } catch(err){
         console.warn('[ThemeEngine] Failed to load global default:', err);
-        this.globalDefault = 'aurora_midnight'; // fallback
+        this.globalDefault = DEFAULT_THEME_ID;
       }
     },
 
-    getUserTheme(){
-      // Check localStorage for user override
-      const stored = localStorage.getItem('mums_theme_preference');
-      if (stored && this.isValidTheme(stored)) {
-        return stored;
-      }
+    normalizeThemeId(id){
+      const raw = String(id || '').trim();
+      if (!raw) return DEFAULT_THEME_ID;
+      return THEME_ALIAS[raw] || raw;
+    },
 
-      // Fall back to global default or system default
-      return this.globalDefault || 'aurora_midnight';
+    getAvailableThemes(){
+      const configThemes = Array.isArray(window.Config?.THEMES) ? window.Config.THEMES : [];
+      const normalized = configThemes.map((t) => ({ ...t, id: this.normalizeThemeId(t?.id) }));
+      const fallback = [
+        { id: 'mums_dark', name: 'MUMS Dark', description: 'Default enterprise dark theme.' },
+        { id: 'aurora_light', name: 'Aurora Light', description: 'Clean high-clarity light mode.' },
+        { id: 'monday_workspace', name: 'Monday Workspace', description: 'Modern SaaS productivity look.' },
+        { id: 'classic_style', name: 'Classic Style', description: 'Timeless admin dashboard style.' }
+      ];
+      const byId = new Map();
+      [...fallback, ...normalized].forEach((t) => {
+        const id = this.normalizeThemeId(t?.id);
+        if (!id) return;
+        byId.set(id, { ...t, id });
+      });
+      return [...byId.values()];
     },
 
     isValidTheme(id){
-      const validThemes = ['aurora_midnight', 'mono'];
-      return validThemes.includes(id);
+      const normalized = this.normalizeThemeId(id);
+      return this.getAvailableThemes().some(t => t.id === normalized);
     },
 
-    applyTheme(themeId){
-      const theme = window.Config?.THEMES?.find(t => t.id === themeId);
+    getUserTheme(){
+      const stored = this.normalizeThemeId(localStorage.getItem(THEME_STORAGE_KEY));
+      if (this.isValidTheme(stored)) return stored;
+
+      const globalTheme = this.normalizeThemeId(this.globalDefault);
+      if (this.isValidTheme(globalTheme)) return globalTheme;
+
+      return DEFAULT_THEME_ID;
+    },
+
+    applyTheme(themeId, opts = {}){
+      const normalizedThemeId = this.normalizeThemeId(themeId);
+      const theme = this.getAvailableThemes().find(t => t.id === normalizedThemeId);
       if (!theme) {
         console.warn('[ThemeEngine] Theme not found:', themeId);
         return;
       }
 
-      const root = document.documentElement;
-      
-      // Apply CSS variables
-      root.style.setProperty('--bg', theme.bg);
-      root.style.setProperty('--panel', theme.panel);
-      root.style.setProperty('--panel2', theme.panel2);
-      root.style.setProperty('--text', theme.text);
-      root.style.setProperty('--muted', theme.muted);
-      root.style.setProperty('--border', theme.border);
-      root.style.setProperty('--accent', theme.accent);
-      root.style.setProperty('--bg-rad1', theme.bgRad1);
-      root.style.setProperty('--bg-rad3', theme.bgRad3);
-      
-      if (theme.font) root.style.setProperty('--font', theme.font);
-      if (theme.radius) root.style.setProperty('--radius', theme.radius);
-      if (theme.shadow) root.style.setProperty('--shadow', theme.shadow);
+      document.body?.setAttribute('data-theme', normalizedThemeId);
+      if (theme.mode) document.body?.setAttribute('data-mode', theme.mode);
 
-      // Store user preference
-      localStorage.setItem('mums_theme_preference', themeId);
-      this.currentTheme = themeId;
+      if (opts.persist !== false) {
+        localStorage.setItem(THEME_STORAGE_KEY, normalizedThemeId);
+      }
+      this.currentTheme = normalizedThemeId;
 
-      console.log('[ThemeEngine] Applied theme:', themeId);
+      try { window.dispatchEvent(new CustomEvent('mums:theme', { detail: { id: normalizedThemeId } })); } catch(_){ }
     },
 
     renderThemeGrid(){
       const grid = document.getElementById('themeGrid');
       if (!grid) return;
 
-      // New enterprise layout contract for Theme Settings modal
       grid.classList.remove('theme-grid');
       grid.classList.add('th-grid');
 
-      const themes = window.Config?.THEMES || [];
-      
+      const themes = this.getAvailableThemes();
+
       grid.innerHTML = themes.map(theme => {
         const themeId = String(theme?.id || '').trim();
         const themeName = String(theme?.name || 'N/A').trim() || 'N/A';
         const themeDescription = String(theme?.description || 'Enterprise UI System').trim() || 'Enterprise UI System';
-        const bgColor = String(theme?.bg || theme?.bgColor || '#0f172a').trim() || '#0f172a';
-        const accentColor = String(theme?.accent || theme?.accentColor || '#38bdf8').trim() || '#38bdf8';
         const isActive = this.currentTheme === theme.id;
         const isHidden = Boolean(theme?.hidden || theme?.isHidden);
-        
+
         return `
           <div class="th-card ${isActive ? 'is-active' : ''} ${isHidden ? 'is-hidden' : ''}" data-id="${themeId}">
-            <div class="th-swatch" style="--t-bg: ${bgColor}; --t-acc: ${accentColor};"></div>
-
+            <div class="th-swatch"></div>
             <div class="th-info">
               <div class="th-title">${themeName}</div>
               <div class="th-desc">${themeDescription}</div>
@@ -150,48 +140,33 @@
                 ${isActive ? '<span class="th-badge th-badge-active">Active</span>' : '<span class="th-badge th-badge-default">Inactive</span>'}
               </div>
             </div>
-
             <button class="th-admin-btn edit-btn">Edit</button>
             <button class="th-admin-btn del del-btn">Del</button>
           </div>
         `;
       }).join('');
 
-      // Show Super Admin panel if eligible
       if (this.userRole === 'SUPER_ADMIN') {
-        console.log('[ThemeEngine] Showing Super Admin panel...');
         const adminPanel = document.getElementById('themeAdminPanel');
         if (adminPanel) {
           adminPanel.style.display = 'block';
-          
-          // Set current global default in dropdown
           const select = document.getElementById('globalThemeSelect');
           if (select && this.globalDefault) {
-            select.value = this.globalDefault;
-            console.log('[ThemeEngine] Set dropdown to:', this.globalDefault);
+            select.value = this.normalizeThemeId(this.globalDefault);
           }
-        } else {
-          console.warn('[ThemeEngine] themeAdminPanel element not found in DOM');
         }
-      } else {
-        console.log('[ThemeEngine] User is not SUPER_ADMIN, panel hidden');
       }
     },
 
     setupEventListeners(){
-      // Apply theme by clicking card (excluding admin action buttons)
       document.getElementById('themeGrid')?.addEventListener('click', (e) => {
         if (e.target.closest('.th-admin-btn')) return;
-
         const card = e.target.closest('.th-card');
-        if (card) {
-          const themeId = card.dataset.id;
-          this.applyTheme(themeId);
-          this.renderThemeGrid(); // Re-render to update active state
-        }
+        if (!card) return;
+        this.applyTheme(card.dataset.id);
+        this.renderThemeGrid();
       });
 
-      // Super Admin: Save global default
       document.getElementById('saveGlobalThemeBtn')?.addEventListener('click', async () => {
         await this.saveGlobalDefault();
       });
@@ -201,13 +176,9 @@
       const select = document.getElementById('globalThemeSelect');
       const statusEl = document.getElementById('globalThemeStatus');
       const btn = document.getElementById('saveGlobalThemeBtn');
-      
-      if (!select || !statusEl || !btn) {
-        console.error('[ThemeEngine] Missing UI elements for saveGlobalDefault');
-        return;
-      }
+      if (!select || !statusEl || !btn) return;
 
-      const themeId = select.value;
+      const themeId = this.normalizeThemeId(select.value);
       btn.disabled = true;
       btn.textContent = 'Saving...';
 
@@ -225,28 +196,14 @@
         });
 
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to save');
 
-        if (!res.ok) {
-          throw new Error(data.error || 'Failed to save');
-        }
-
-        // Update local state
         this.globalDefault = themeId;
-
-        // Show success message
-        const themeName = themeId === 'aurora_midnight' ? 'Aurora Midnight' : 'Monochrome';
-        statusEl.textContent = `✓ Global default set to ${themeName}`;
+        statusEl.textContent = `✓ Global default set to ${themeId}`;
         statusEl.style.display = 'block';
         statusEl.style.color = '#34d399';
-
-        setTimeout(() => {
-          statusEl.style.display = 'none';
-        }, 3000);
-
-        console.log('[ThemeEngine] Global default saved:', themeId);
-
+        setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
       } catch(err){
-        console.error('[ThemeEngine] Save error:', err);
         statusEl.textContent = `✗ Error: ${err.message}`;
         statusEl.style.display = 'block';
         statusEl.style.color = '#fb7185';
@@ -257,69 +214,10 @@
     }
   };
 
-  // Expose globally
   window.ThemeEngine = ThemeEngine;
-
-  // Auto-init when DOM ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => ThemeEngine.init());
   } else {
     ThemeEngine.init();
   }
-})();
-/* ==========================================================================
-   ENTERPRISE TACTILE MICRO-INTERACTIONS (Appended via Architect)
-   ========================================================================== */
-(function applyEnterpriseTactileFeedback() {
-  // Fault-tolerant DOM event delegation
-  document.addEventListener('mousedown', (e) => {
-    const card = e.target.closest('.th-card');
-    if (card) {
-      // Wag mag-trigger kung admin button (delete/edit) ang pinindot
-      if (e.target.closest('.th-admin-btn')) return; 
-      
-      // Hardware-accelerated press effect
-      card.style.transition = 'all 0.1s cubic-bezier(0.4, 0, 0.2, 1)';
-      card.style.transform = 'scale(0.97) translateZ(0)';
-      card.style.filter = 'brightness(1.3) contrast(1.1)';
-      
-      // Enterprise Haptic Audio Cue (Subtle High-End Tick)
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        if(ctx.state === 'running') {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(900, ctx.currentTime);
-          osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.04);
-          gain.gain.setValueAtTime(0.03, ctx.currentTime); // Very quiet tick
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
-          osc.start();
-          osc.stop(ctx.currentTime + 0.04);
-        }
-      } catch(err) { /* Silent fail kung strict ang browser policies sa audio */ }
-    }
-  });
-
-  // Bounce back on release
-  document.addEventListener('mouseup', (e) => {
-    const card = e.target.closest('.th-card');
-    if (card) {
-      card.style.transition = 'all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)';
-      card.style.transform = '';
-      card.style.filter = '';
-    }
-  });
-
-  // Bounce back if cursor leaves while pressing
-  document.addEventListener('mouseout', (e) => {
-    const card = e.target.closest('.th-card');
-    if (card) {
-      card.style.transition = 'all 0.4s cubic-bezier(0.25, 1, 0.5, 1)';
-      card.style.transform = '';
-      card.style.filter = '';
-    }
-  });
 })();
