@@ -18,6 +18,8 @@
     if(me && !me.id && sessionUserId) me.id = String(sessionUserId);
   }catch(_){ }
   if(!me) me = { id: String(sessionUserId || ''), role: 'MEMBER' };
+  if (me && me.teamId == null && me.team_id != null) me.teamId = me.team_id;
+  if (me && me.team_id == null && me.teamId != null) me.team_id = me.teamId;
   const role = (me && me.role) ? String(me.role) : 'MEMBER';
   const canEditSelf = (role === 'TEAM_LEAD' || role === 'SUPER_ADMIN');
 
@@ -26,6 +28,24 @@
   try { localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { localTZ = ''; }
 
   const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  function currentTeamId() {
+    const raw = (me && (me.teamId != null ? me.teamId : me.team_id));
+    return String(raw == null ? '' : raw);
+  }
+
+  function getBearerToken() {
+    try {
+      const t = (window.CloudAuth && CloudAuth.accessToken) ? String(CloudAuth.accessToken() || '').trim() : '';
+      if (t) return t;
+    } catch (_) { }
+    try {
+      const sess = (window.CloudAuth && CloudAuth.loadSession) ? CloudAuth.loadSession() : null;
+      const t2 = sess && sess.access_token ? String(sess.access_token).trim() : '';
+      if (t2) return t2;
+    } catch (_) { }
+    return '';
+  }
+
   let teamThemePalette = {};
   let themePaletteLoadedFor = '';
 
@@ -110,12 +130,14 @@
 
   function getTeam() {
     try {
-      if (window.Store && Store.getTeamConfig && me.teamId != null) {
-        const cfg = Store.getTeamConfig(me.teamId);
-        if (cfg) return { id: me.teamId, label: cfg.label || cfg.name || me.teamId, cfg };
+      const tid = currentTeamId();
+      if (window.Store && Store.getTeamConfig && tid !== '') {
+        const cfg = Store.getTeamConfig(tid);
+        if (cfg) return { id: tid, label: cfg.label || cfg.name || tid, cfg };
       }
     } catch (_) { }
-    return { id: me.teamId, label: me.teamId, cfg: null };
+    const tid = currentTeamId();
+    return { id: tid, label: tid, cfg: null };
   }
 
   function inferTeamShift(team) {
@@ -144,7 +166,8 @@
 
   function getTeamTasks() {
     try {
-      if (window.Store && Store.getTeamTasks && me.teamId != null) return Store.getTeamTasks(me.teamId) || [];
+      const tid = currentTeamId();
+      if (window.Store && Store.getTeamTasks && tid !== '') return Store.getTeamTasks(tid) || [];
     } catch (_) { }
     return [];
   }
@@ -534,7 +557,7 @@
     try {
       if (!Store.getWeekAudit) return null;
       const weekStartISO = currentWeekStartMondayISO();
-      const list = Store.getWeekAudit(me.teamId || '', weekStartISO) || [];
+      const list = Store.getWeekAudit(currentTeamId(), weekStartISO) || [];
       if (!list.length) return null;
       const needle = `${b.start}-${b.end}`;
       const dayName = DAYS[dayIdx] || String(dayIdx);
@@ -570,11 +593,14 @@
   let tickTimer = null;
   let storeListener = null;
   let selectedBlockKey = '';
+  let teamMembersCache = [];
+  let teamMembersLoadedFor = '';
 
   function setViewMode(mode) {
     const m = String(mode || '').toLowerCase();
     viewMode = (m === 'day' || m === 'team') ? m : 'week';
     try { localStorage.setItem('mums_sched_view', viewMode); } catch (_) { }
+    if (viewMode === 'team') refreshTeamMembers();
     render();
   }
 
@@ -632,7 +658,7 @@
   function render() {
     const host = root || document.getElementById('main') || document.body;
     const team = getTeam();
-    const teamLabel = (window.Config && Config.teamLabel && me.teamId != null) ? Config.teamLabel(me.teamId) : (team ? (team.label || team.id) : (me.teamId || '—'));
+    const teamLabel = (window.Config && Config.teamLabel && currentTeamId() !== '') ? Config.teamLabel(currentTeamId()) : (team ? (team.label || team.id) : (currentTeamId() || '—'));
     const shift = inferTeamShift(team);
     const sk = shiftKey();
 
@@ -953,7 +979,7 @@
       }
 
       if (window.Store && Store.setUserDayBlocks) {
-        Store.setUserDayBlocks(me.id, me.teamId, dayIdx, nextBlocks);
+        Store.setUserDayBlocks(me.id, currentTeamId(), dayIdx, nextBlocks);
       }
       if (window.UI && UI.toast) {
         UI.toast(matchIndex >= 0 ? 'Action item linked to existing task block.' : 'Action item added to your schedule.', 'ok');
@@ -1100,12 +1126,18 @@
 
   function getTeamMembers() {
     try {
+      const cached = Array.isArray(teamMembersCache) ? teamMembersCache.filter(Boolean) : [];
+      if (cached.length) {
+        const nameOf = (u) => String(u.fullName || u.name || u.displayName || u.username || u.email || u.id || '');
+        cached.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+        return cached;
+      }
       if (!window.Store || !Store.getUsers) return [];
-      const tid = String(me.teamId || '');
+      const tid = currentTeamId();
       const users = Store.getUsers() || [];
       const inTeam = users.filter(u => {
         if (!u) return false;
-        if (String(u.teamId || '') !== tid) return false;
+        if (String((u.teamId != null ? u.teamId : u.team_id) || '') !== tid) return false;
         if (u.deleted || u.isDeleted) return false;
         return true;
       });
@@ -1248,7 +1280,7 @@
   function renderAuditList() {
     try {
       const weekStartISO = currentWeekStartMondayISO();
-      const list = Store.getWeekAudit ? (Store.getWeekAudit(me.teamId || '', weekStartISO) || []) : [];
+      const list = Store.getWeekAudit ? (Store.getWeekAudit(currentTeamId(), weekStartISO) || []) : [];
       const mine = list.filter(a => a && a.targetId === me.id).slice(0, 25);
       if (!mine.length) return `<div class="small muted">No audit entries recorded for your schedule yet this week.</div>`;
       return `<div class="mysx-audit">
@@ -1405,11 +1437,39 @@
     } catch (_) { }
   }
 
+  async function refreshTeamMembers() {
+    const uid = String((me && me.id) || '');
+    const teamId = currentTeamId();
+    if (!uid) return;
+    if (teamMembersLoadedFor === uid) return;
+    try {
+      const jwt = getBearerToken();
+      const headers = jwt ? { Authorization: `Bearer ${jwt}` } : {};
+      const res = await fetch(`/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1`, { headers, cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      const rows = Array.isArray(data && data.teamMembers) ? data.teamMembers : [];
+      teamMembersCache = rows.map((row) => {
+        const r = row && typeof row === 'object' ? row : {};
+        return {
+          id: String(r.id || r.user_id || ''),
+          teamId: String(r.teamId || r.team_id || teamId || ''),
+          role: String(r.role || 'MEMBER'),
+          name: String(r.name || r.username || r.id || ''),
+          fullName: String(r.name || r.username || r.id || ''),
+          username: String(r.username || ''),
+        };
+      }).filter((u) => !!u.id);
+      teamMembersLoadedFor = uid;
+      if (viewMode === 'team') render();
+    } catch (_) { }
+  }
+
   async function refreshMemberScheduleTheme() {
     const uid = String((me && me.id) || '');
     if (!uid || themePaletteLoadedFor === uid) return;
     try {
-      const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+      const jwt = getBearerToken();
       const headers = jwt ? { Authorization: `Bearer ${jwt}` } : {};
       const res = await fetch(`/api/member/${encodeURIComponent(uid)}/schedule`, { headers, cache: 'no-store' });
       if (!res.ok) return;
@@ -1441,4 +1501,5 @@
   render();
   startRealtimeRefresh();
   refreshMemberScheduleTheme();
+  refreshTeamMembers();
 });
