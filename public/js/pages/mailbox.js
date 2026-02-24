@@ -622,8 +622,12 @@ function _mbxDutyTone(label){
     const style = document.createElement('style');
     style.id = 'enterprise-mailbox-styles';
     style.textContent = `
-      .mbx-shell { display:flex; flex-direction:column; gap:20px; padding-bottom: 30px; }
-      
+      .mbx-shell { display:flex; flex-direction:column; gap:16px; min-height:calc(100vh - 130px); max-height:calc(100vh - 130px); padding:16px; overflow:hidden; font-family:Inter, Geist, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%); border:1px solid rgba(255,255,255,0.1); border-radius:18px; box-shadow:0 24px 60px rgba(2,6,23,0.55), inset 0 1px 0 rgba(255,255,255,0.08); }
+      .mbx-liquid-grid { display:grid; grid-template-columns:280px minmax(380px,1fr) minmax(420px,1.2fr); gap:14px; flex:1; min-height:0; }
+      .mbx-liquid-col { min-height:0; overflow:auto; display:flex; flex-direction:column; gap:14px; padding-right:4px; }
+      .mbx-liquid-col::-webkit-scrollbar { width:8px; }
+      .mbx-liquid-col::-webkit-scrollbar-thumb { background:rgba(148,163,184,0.35); border-radius:999px; }
+
       .mbx-header-bar { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:16px; flex-wrap:wrap; gap:14px; }
       .mbx-main-title { font-size: 26px; font-weight: 900; color: #f8fafc; margin: 0; letter-spacing: -0.5px; }
       
@@ -641,10 +645,10 @@ function _mbxDutyTone(label){
       .mbx-stat-sub { font-size:12px; color:#64748b; margin-top:4px; font-weight:600; }
       .timer-display { font-variant-numeric: tabular-nums; font-family: 'Courier New', Courier, monospace; color:#38bdf8; text-shadow: 0 0 10px rgba(56,189,248,0.3); }
       
-      .mbx-analytics-panel { background:rgba(2,6,23,0.4); border:1px solid rgba(255,255,255,0.04); border-radius:14px; padding:24px; margin-top:24px; transition:all 0.3s ease; }
+      .mbx-analytics-panel { background:rgba(255,255,255,0.03); backdrop-filter:blur(16px) saturate(180%); -webkit-backdrop-filter:blur(16px) saturate(180%); border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:24px; transition:all 0.3s ease; }
       .mbx-panel-head { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:12px; margin-bottom:16px; }
       .mbx-panel-title { font-size:18px; font-weight:800; color:#f8fafc; margin:0; }
-      .mbx-panel-desc { font-size:12px; color:#94a3b8; margin-top:4px; }
+      .mbx-panel-desc { font-size:13px; line-height:1.35; color:#94a3b8; margin-top:4px; }
       .mbx-analytics-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:20px; }
       @media (max-width: 900px) { .mbx-analytics-grid { grid-template-columns: 1fr; } }
       .mbx-ana-card { background:rgba(15,23,42,0.6); border:1px solid rgba(255,255,255,0.03); border-radius:10px; padding:16px; }
@@ -1715,6 +1719,11 @@ function _mbxDutyTone(label){
 
   // --- RENDER (MAIN UI) ---
 
+  function renderGlassSkeleton(lines){
+    const count = Math.max(2, Number(lines)||3);
+    return `<div class="mbx-glass-skeleton">${Array.from({ length:count }).map(()=>'<div class="mbx-glass-line"></div>').join('')}</div>`;
+  }
+
   function render(){
     const UI = window.UI;
     const Store = window.Store;
@@ -1753,6 +1762,8 @@ function _mbxDutyTone(label){
     const showAnalytics = window.__mbxUiState.showAnalytics;
     const showArchive = window.__mbxUiState.showArchive;
 
+    const rosterLoading = _mbxRosterState.inflight && _mbxRosterState.inflight.size > 0;
+
     root.innerHTML = `
       <div class="mbx-shell">
         <div class="mbx-header-bar">
@@ -1767,95 +1778,103 @@ function _mbxDutyTone(label){
           </div>
         </div>
 
-        <div class="mbx-summary-grid">
-          <div class="mbx-stat-box" style="border-left: 3px solid #38bdf8;">
-            <div class="mbx-stat-lbl">Active Roster Shift</div>
-            <div id="mbCurDutyLbl" class="mbx-stat-val">${UI ? UI.esc(duty.current.label) : duty.current.label}</div>
-            <div class="mbx-stat-sub">Team Code: ${UI ? UI.esc(duty.current.id) : duty.current.id}</div>
-          </div>
-          
-          <div class="mbx-stat-box" style="border-left: 3px solid #f59e0b; position:relative; overflow:hidden;">
-            ${globalOverrideLabelHtml}
-            <span class="mbx-ana-badge" id="mbOverridePill" title="Mailbox time override is enabled" style="display:none; position:absolute; top:10px; right:10px; background:rgba(245,158,11,0.2); color:#fcd34d;">OVERRIDE</span>
-            <div class="mbx-stat-lbl">Manila Time (Countdown)</div>
-            <div class="mbx-stat-val timer-display" id="dutyTimer">--:--:--</div>
-            <div class="mbx-stat-sub">Remaining in shift</div>
-            <div class="mbx-stat-sub" id="mbOverrideNote" style="display:none; color:#fca5a5;"></div>
-          </div>
+        <div class="mbx-liquid-grid">
+          <section class="mbx-liquid-col" aria-label="Folders column">
+            <div class="mbx-summary-grid">
+              <div class="mbx-stat-box" style="border-left: 3px solid #38bdf8;">
+                <div class="mbx-stat-lbl">Active Roster Shift</div>
+                <div id="mbCurDutyLbl" class="mbx-stat-val">${UI ? UI.esc(duty.current.label) : duty.current.label}</div>
+                <div class="mbx-stat-sub">Team Code: ${UI ? UI.esc(duty.current.id) : duty.current.id}</div>
+              </div>
 
-          <div class="mbx-stat-box" style="border-left: 3px solid ${isManager ? '#10b981' : '#64748b'};">
-            <div class="mbx-stat-lbl">Your Authority Level</div>
-            <div class="mbx-stat-val" style="color:${isManager ? '#34d399' : '#e2e8f0'};">${isManager ? 'Mailbox Manager' : 'View Only Access'}</div>
-            <div class="mbx-stat-sub">${isManager ? 'Double-click any member row below to assign cases.' : 'Assignments are locked to managers.'}</div>
-          </div>
-        </div>
+              <div class="mbx-stat-box" style="border-left: 3px solid #f59e0b; position:relative; overflow:hidden;">
+                ${globalOverrideLabelHtml}
+                <span class="mbx-ana-badge" id="mbOverridePill" title="Mailbox time override is enabled" style="display:none; position:absolute; top:10px; right:10px; background:rgba(245,158,11,0.2); color:#fcd34d;">OVERRIDE</span>
+                <div class="mbx-stat-lbl">Manila Time (Countdown)</div>
+                <div class="mbx-stat-val timer-display" id="dutyTimer">--:--:--</div>
+                <div class="mbx-stat-sub">Remaining in shift</div>
+                <div class="mbx-stat-sub" id="mbOverrideNote" style="display:none; color:#fca5a5;"></div>
+              </div>
 
-        ${renderMyAssignmentsPanel(table)}
-
-        <div class="mbx-analytics-panel" style="padding:0; overflow:hidden;">
-          <div class="mbx-panel-head" style="padding:20px 24px ${showAnalytics ? '16px' : '20px'}; margin:0;">
-            <div>
-              <h3 class="mbx-panel-title">Mailbox Analytics</h3>
-              <div class="mbx-panel-desc">Live summary for the current shift table.</div>
-            </div>
-            <div style="display:flex; gap:10px; align-items:center;">
-               <span class="mbx-ana-badge" style="font-size:14px; background:transparent; border:1px solid rgba(56,189,248,0.3);">Total Cases: ${totals?.shiftTotal||0}</span>
-               <button class="btn-glass btn-glass-ghost" id="mbxToggleAnalytics" style="padding:4px 12px; font-size:11px;">
-                  ${showAnalytics ? 'Hide Analytics ▴' : 'Show Analytics ▾'}
-               </button>
-            </div>
-          </div>
-          <div id="mbxAnalyticsBody" style="display:${showAnalytics ? 'block' : 'none'}; padding:0 24px 24px 24px;">
-            ${renderMailboxAnalyticsPanel(table, prevTable, totals, activeBucketId)}
-          </div>
-        </div>
-
-        <div class="mbx-analytics-panel" style="padding:0; overflow:hidden;">
-          <div class="mbx-panel-head" style="padding:20px 24px 16px 24px; margin:0; background:rgba(15,23,42,0.6);">
-            <div>
-              <h3 class="mbx-panel-title">${UI ? UI.esc(table.meta.teamLabel) : table.meta.teamLabel} <span style="font-weight:400; opacity:0.8;">| Shift Counter</span></h3>
-              <div class="mbx-panel-desc">Real-time assignment distribution map for the active roster.</div>
-            </div>
-            <div style="text-align:right;">
-              <span class="mbx-ana-badge" style="background:rgba(255,255,255,0.05); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1);">
-                Active Manager: <strong style="color:#f8fafc;">${UI ? UI.esc(mbxMgrName) : mbxMgrName}</strong>
-              </span>
-              <div class="mbx-panel-desc" style="margin-top:6px; font-weight:700;">
-                Active Block: <span style="color:#38bdf8;">${UI ? UI.esc((_mbxBucketLabel((table.buckets||[]).find(b=>b.id===activeBucketId)||table.buckets?.[0]||{startMin:0,endMin:0}))) : ''}</span>
+              <div class="mbx-stat-box" style="border-left: 3px solid ${isManager ? '#10b981' : '#64748b'};">
+                <div class="mbx-stat-lbl">Your Authority Level</div>
+                <div class="mbx-stat-val" style="color:${isManager ? '#34d399' : '#e2e8f0'};">${isManager ? 'Mailbox Manager' : 'View Only Access'}</div>
+                <div class="mbx-stat-sub">${isManager ? 'Double-click any member row below to assign cases.' : 'Assignments are locked to managers.'}</div>
               </div>
             </div>
-          </div>
-          <div class="mbx-counter-wrap" id="mbxTableWrap" style="border:none; border-radius:0;">
-            ${renderTable(table, activeBucketId, totals, true)}
-          </div>
-        </div>
 
-        <div class="mbx-analytics-panel" style="padding:0; overflow:hidden;">
-          <div class="mbx-panel-head" style="padding:20px 24px 16px 24px; margin:0; background:rgba(15,23,42,0.6);">
-            <div>
-              <h3 class="mbx-panel-title">Case Monitoring Matrix</h3>
-              <div class="mbx-panel-desc">Double-click any assigned case to open Transfer/Delete controls.</div>
-            </div>
-            <span class="mbx-ana-badge" id="mbxPendingMine" style="display:none; background:rgba(245,158,11,0.15); color:#fcd34d;">Pending: 0</span>
-          </div>
-          <div class="mbx-monitor-wrap mbx-monitor-panel" style="border:none; border-radius:0;">
-            ${renderCaseMonitoring(table, shiftKey)}
-          </div>
-        </div>
+            ${renderMyAssignmentsPanel(table)}
 
-        <div class="mbx-analytics-panel" style="background:rgba(15,23,42,0.3); border-color:transparent;">
-          <div class="mbx-panel-head" style="border-bottom:none; margin-bottom:0;">
-            <div>
-              <h3 class="mbx-panel-title" style="font-size:16px; color:#cbd5e1;">Historical: Previous Shift</h3>
-              <div class="mbx-panel-desc">${prevTable ? (UI ? UI.esc(prevTable.meta.teamLabel)+' • '+UI.esc(prevKey) : '') : 'No previous shift record.'}</div>
+            <div class="mbx-analytics-panel" style="padding:0; overflow:hidden;">
+              <div class="mbx-panel-head" style="padding:20px 24px ${showAnalytics ? '16px' : '20px'}; margin:0;">
+                <div>
+                  <h3 class="mbx-panel-title">Mailbox Analytics</h3>
+                  <div class="mbx-panel-desc">Live summary for the current shift table.</div>
+                </div>
+                <div style="display:flex; gap:10px; align-items:center;">
+                   <span class="mbx-ana-badge" style="font-size:14px; background:transparent; border:1px solid rgba(56,189,248,0.3);">Total Cases: ${totals?.shiftTotal||0}</span>
+                   <button class="btn-glass btn-glass-ghost" id="mbxToggleAnalytics" style="padding:4px 12px; font-size:11px;">
+                      ${showAnalytics ? 'Hide Analytics ▴' : 'Show Analytics ▾'}
+                   </button>
+                </div>
+              </div>
+              <div id="mbxAnalyticsBody" style="display:${showAnalytics ? 'block' : 'none'}; padding:0 24px 24px 24px;">
+                ${rosterLoading ? renderGlassSkeleton(4) : renderMailboxAnalyticsPanel(table, prevTable, totals, activeBucketId)}
+              </div>
             </div>
-            <button class="btn-glass btn-glass-ghost" id="mbxTogglePrev">${prevTable ? (showArchive ? 'Hide Archive' : 'Show Archive') : '—'}</button>
-          </div>
-          <div id="mbxPrevWrap" style="display:${showArchive ? 'block' : 'none'}; margin-top:16px;">
-            <div class="mbx-counter-wrap">
-              ${prevTable ? renderTable(prevTable, '', computeTotals(prevTable), false) : ''}
+          </section>
+
+          <section class="mbx-liquid-col" aria-label="List column">
+            <div class="mbx-analytics-panel" style="padding:0; overflow:hidden;">
+              <div class="mbx-panel-head" style="padding:20px 24px 16px 24px; margin:0; background:rgba(15,23,42,0.6);">
+                <div>
+                  <h3 class="mbx-panel-title">${UI ? UI.esc(table.meta.teamLabel) : table.meta.teamLabel} <span style="font-weight:400; opacity:0.8;">| Shift Counter</span></h3>
+                  <div class="mbx-panel-desc">Real-time assignment distribution map for the active roster.</div>
+                </div>
+                <div style="text-align:right;">
+                  <span class="mbx-ana-badge" style="background:rgba(255,255,255,0.05); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1);">
+                    Active Manager: <strong style="color:#f8fafc;">${UI ? UI.esc(mbxMgrName) : mbxMgrName}</strong>
+                  </span>
+                  <div class="mbx-panel-desc" style="margin-top:6px; font-weight:700;">
+                    Active Block: <span style="color:#38bdf8;">${UI ? UI.esc((_mbxBucketLabel((table.buckets||[]).find(b=>b.id===activeBucketId)||table.buckets?.[0]||{startMin:0,endMin:0}))) : ''}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="mbx-counter-wrap" id="mbxTableWrap" style="border:none; border-radius:0;">
+                ${rosterLoading ? renderGlassSkeleton(8) : renderTable(table, activeBucketId, totals, true)}
+              </div>
             </div>
-          </div>
+
+            <div class="mbx-analytics-panel" style="background:rgba(15,23,42,0.3); border-color:transparent;">
+              <div class="mbx-panel-head" style="border-bottom:none; margin-bottom:0;">
+                <div>
+                  <h3 class="mbx-panel-title" style="font-size:16px; color:#cbd5e1;">Historical: Previous Shift</h3>
+                  <div class="mbx-panel-desc">${prevTable ? (UI ? UI.esc(prevTable.meta.teamLabel)+' • '+UI.esc(prevKey) : '') : 'No previous shift record.'}</div>
+                </div>
+                <button class="btn-glass btn-glass-ghost" id="mbxTogglePrev">${prevTable ? (showArchive ? 'Hide Archive' : 'Show Archive') : '—'}</button>
+              </div>
+              <div id="mbxPrevWrap" style="display:${showArchive ? 'block' : 'none'}; margin-top:16px;">
+                <div class="mbx-counter-wrap">
+                  ${prevTable ? renderTable(prevTable, '', computeTotals(prevTable), false) : ''}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="mbx-liquid-col" aria-label="Detail column">
+            <div class="mbx-analytics-panel" style="padding:0; overflow:hidden;">
+              <div class="mbx-panel-head" style="padding:20px 24px 16px 24px; margin:0; background:rgba(15,23,42,0.6);">
+                <div>
+                  <h3 class="mbx-panel-title">Case Monitoring Matrix</h3>
+                  <div class="mbx-panel-desc">Double-click any assigned case to open Transfer/Delete controls.</div>
+                </div>
+                <span class="mbx-ana-badge" id="mbxPendingMine" style="display:none; background:rgba(245,158,11,0.15); color:#fcd34d;">Pending: 0</span>
+              </div>
+              <div class="mbx-monitor-wrap mbx-monitor-panel" style="border:none; border-radius:0;">
+                ${rosterLoading ? renderGlassSkeleton(10) : renderCaseMonitoring(table, shiftKey)}
+              </div>
+            </div>
+          </section>
         </div>
 
       </div>
