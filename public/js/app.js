@@ -639,7 +639,7 @@
   }
 
   // =========================================================================
-  // BOSS THUNTER: ULTIMATE COMPACT BENTO MANAGER + API SYNC + CODE CLEANSER
+  // BOSS THUNTER: ULTIMATE COMPACT BENTO MANAGER + API SYNC
   // =========================================================================
   function renderThemeGrid(){
     const grid = document.getElementById('themeGrid');
@@ -690,10 +690,6 @@
     // SUPER ADMIN CONTROL BAR
     const adminBarHtml = isSA ? `
       <div class="th-toolbar">
-        <div class="th-toolbar-copy">
-          <div class="th-toolbar-title">Enterprise Theme Manager</div>
-          <div class="small muted th-toolbar-subtitle">Set org-wide default theme, then manage visibility lifecycle.</div>
-        </div>
         <div class="th-toolbar-controls">
           <div class="th-global-default-panel">
             <label class="small muted" for="globalDefaultThemeSelect">Global Default Theme</label>
@@ -706,9 +702,6 @@
             <div class="small" id="globalDefaultThemeStatus" aria-live="polite" style="display:none"></div>
           </div>
           <div class="th-toolbar-actions">
-            <button class="btn-glass btn-glass-ghost" id="exportCleanConfigBtn" title="Get code for config.js to wipe deleted themes globally">
-              📄 Get Clean Code
-            </button>
             <button class="btn-glass ${__themeEditMode ? 'btn-glass-danger' : 'btn-glass-primary'}" id="toggleThemeEditBtn">
               ${__themeEditMode ? '✅ Done Editing' : '⚙️ Manage Themes'}
             </button>
@@ -763,30 +756,6 @@
         toggleBtn.onclick = () => {
             __themeEditMode = !__themeEditMode;
             renderThemeGrid();
-        };
-    }
-
-    const exportBtn = document.getElementById('exportCleanConfigBtn');
-    if(exportBtn) {
-        exportBtn.onclick = () => {
-            const cleanArray = rawThemes.filter(t => !__themeMeta[t.id]?.deleted);
-            const str = "Config.THEMES = " + JSON.stringify(cleanArray, null, 4) + ";";
-            
-            const m = document.createElement('div');
-            m.className = 'mbx-custom-backdrop is-open';
-            m.innerHTML = `
-                <div class="mbx-modal-glass" style="width:min(800px, 95vw);">
-                    <div class="mbx-modal-head">
-                        <h3 style="margin:0; color:#38bdf8;">📄 Clean Theme Configuration</h3>
-                        <button class="btn-glass btn-glass-ghost" onclick="this.closest('.mbx-custom-backdrop').remove()">✕ Close</button>
-                    </div>
-                    <div class="mbx-modal-body">
-                        <div class="small muted" style="margin-bottom:12px;">Copy this block and paste it inside your <b>public/js/config.js</b> file to PERMANENTLY remove the deleted themes for all users globally.</div>
-                        <textarea class="input" style="width:100%; height:300px; font-family:monospace; font-size:11px; background:rgba(0,0,0,0.5); color:#a8b6d6;" readonly>${UI.esc(str)}</textarea>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(m);
         };
     }
 
@@ -899,7 +868,7 @@
                 if(btn.dataset.busy) return;
 
                 const tid = btn.getAttribute('data-del-theme');
-                const ok = await UI.confirm({ title: 'Delete Theme Globally', message: 'Hide and delete this theme for all users? (Use "Get Clean Code" later to permanently remove it from config.js)', okText: 'Yes, Delete', danger: true });
+                const ok = await UI.confirm({ title: 'Delete Theme Globally', message: 'Hide and delete this theme for all users?', okText: 'Yes, Delete', danger: true });
                 if (!ok) return;
                 
                 const nextMeta = JSON.parse(JSON.stringify(__themeMeta));

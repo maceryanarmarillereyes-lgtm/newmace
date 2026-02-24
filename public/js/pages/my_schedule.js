@@ -18,6 +18,8 @@
     if(me && !me.id && sessionUserId) me.id = String(sessionUserId);
   }catch(_){ }
   if(!me) me = { id: String(sessionUserId || ''), role: 'MEMBER' };
+  if (me && me.teamId == null && me.team_id != null) me.teamId = me.team_id;
+  if (me && me.team_id == null && me.teamId != null) me.team_id = me.teamId;
   const role = (me && me.role) ? String(me.role) : 'MEMBER';
   const canEditSelf = (role === 'TEAM_LEAD' || role === 'SUPER_ADMIN');
 
@@ -26,6 +28,24 @@
   try { localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { localTZ = ''; }
 
   const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  function currentTeamId() {
+    const raw = (me && (me.teamId != null ? me.teamId : me.team_id));
+    return String(raw == null ? '' : raw);
+  }
+
+  function getBearerToken() {
+    try {
+      const t = (window.CloudAuth && CloudAuth.accessToken) ? String(CloudAuth.accessToken() || '').trim() : '';
+      if (t) return t;
+    } catch (_) { }
+    try {
+      const sess = (window.CloudAuth && CloudAuth.loadSession) ? CloudAuth.loadSession() : null;
+      const t2 = sess && sess.access_token ? String(sess.access_token).trim() : '';
+      if (t2) return t2;
+    } catch (_) { }
+    return '';
+  }
+
   let teamThemePalette = {};
   let themePaletteLoadedFor = '';
 
@@ -110,12 +130,14 @@
 
   function getTeam() {
     try {
-      if (window.Store && Store.getTeamConfig && me.teamId != null) {
-        const cfg = Store.getTeamConfig(me.teamId);
-        if (cfg) return { id: me.teamId, label: cfg.label || cfg.name || me.teamId, cfg };
+      const tid = currentTeamId();
+      if (window.Store && Store.getTeamConfig && tid !== '') {
+        const cfg = Store.getTeamConfig(tid);
+        if (cfg) return { id: tid, label: cfg.label || cfg.name || tid, cfg };
       }
     } catch (_) { }
-    return { id: me.teamId, label: me.teamId, cfg: null };
+    const tid = currentTeamId();
+    return { id: tid, label: tid, cfg: null };
   }
 
   function inferTeamShift(team) {
@@ -144,7 +166,8 @@
 
   function getTeamTasks() {
     try {
-      if (window.Store && Store.getTeamTasks && me.teamId != null) return Store.getTeamTasks(me.teamId) || [];
+      const tid = currentTeamId();
+      if (window.Store && Store.getTeamTasks && tid !== '') return Store.getTeamTasks(tid) || [];
     } catch (_) { }
     return [];
   }
@@ -534,7 +557,7 @@
     try {
       if (!Store.getWeekAudit) return null;
       const weekStartISO = currentWeekStartMondayISO();
-      const list = Store.getWeekAudit(me.teamId || '', weekStartISO) || [];
+      const list = Store.getWeekAudit(currentTeamId(), weekStartISO) || [];
       if (!list.length) return null;
       const needle = `${b.start}-${b.end}`;
       const dayName = DAYS[dayIdx] || String(dayIdx);
@@ -570,11 +593,15 @@
   let tickTimer = null;
   let storeListener = null;
   let selectedBlockKey = '';
+  let teamMembersCache = [];
+  let teamMembersLoadedFor = '';
+  let teamMembersLoading = false;
 
   function setViewMode(mode) {
     const m = String(mode || '').toLowerCase();
     viewMode = (m === 'day' || m === 'team') ? m : 'week';
     try { localStorage.setItem('mums_sched_view', viewMode); } catch (_) { }
+    if (viewMode === 'team') refreshTeamMembers();
     render();
   }
 
@@ -592,7 +619,11 @@
 
   function blockStatus(dayIso, block) {
     const now = nowManilaParts();
-    if (!now || String(dayIso || '') !== String(now.isoDate || '')) return 'Scheduled';
+    if (!now) return 'Scheduled';
+    const targetIso = String(dayIso || '');
+    const todayIso = String(now.isoDate || '');
+    if (targetIso < todayIso) return 'Completed';
+    if (targetIso > todayIso) return 'Scheduled';
     const nowMin = (Number(now.hh) || 0) * 60 + (Number(now.mm) || 0);
     const s = parseHM(block.start);
     const e = parseHM(block.end);
@@ -601,6 +632,18 @@
     if (active) return 'In Progress';
     if (nowMin >= s) return 'Completed';
     return 'Scheduled';
+  }
+
+  function isDayCompleted(dayIso, blocks) {
+    const now = nowManilaParts();
+    if (!now) return false;
+    const targetIso = String(dayIso || '');
+    const todayIso = String(now.isoDate || '');
+    if (targetIso < todayIso) return true;
+    if (targetIso > todayIso) return false;
+    const list = Array.isArray(blocks) ? blocks : [];
+    if (!list.length) return false;
+    return list.every(b => blockStatus(targetIso, b) === 'Completed');
   }
 
   function formatNowTimeBadge() {
@@ -616,7 +659,7 @@
   function render() {
     const host = root || document.getElementById('main') || document.body;
     const team = getTeam();
-    const teamLabel = (window.Config && Config.teamLabel && me.teamId != null) ? Config.teamLabel(me.teamId) : (team ? (team.label || team.id) : (me.teamId || '—'));
+    const teamLabel = (window.Config && Config.teamLabel && currentTeamId() !== '') ? Config.teamLabel(currentTeamId()) : (team ? (team.label || team.id) : (currentTeamId() || '—'));
     const shift = inferTeamShift(team);
     const sk = shiftKey();
 
@@ -937,7 +980,7 @@
       }
 
       if (window.Store && Store.setUserDayBlocks) {
-        Store.setUserDayBlocks(me.id, me.teamId, dayIdx, nextBlocks);
+        Store.setUserDayBlocks(me.id, currentTeamId(), dayIdx, nextBlocks);
       }
       if (window.UI && UI.toast) {
         UI.toast(matchIndex >= 0 ? 'Action item linked to existing task block.' : 'Action item added to your schedule.', 'ok');
@@ -981,6 +1024,7 @@
     const d = day;
     const todayClass = isTodayISO(d.iso) ? 'is-today' : '';
     const blocks = (d.blocks || []).map(normalizeBlock);
+    const dayCompletedClass = isDayCompleted(d.iso, blocks) ? 'is-completed' : '';
 
     const blocksHtml = blocks.map((b, idx) => {
       const label = taskLabel(b.schedule) || 'Block';
@@ -991,6 +1035,8 @@
       const bKey = blockKey(d.dayIdx, b, idx);
       const selected = (viewMode === 'day' && selectedBlockKey === bKey) ? 'is-selected' : '';
       const status = blockStatus(d.iso, b);
+      const doneClass = status === 'Completed' ? 'is-completed' : '';
+      const liveClass = (viewMode === 'week' && status === 'In Progress') ? 'is-live-current' : '';
       const localRange = (localTZ && localTZ !== tzManila) ? localRangeLabel(d.iso, b.start, b.end) : '';
       const audit = findAuditForBlock(d.dayIdx, b);
       const auditLine = audit ? `Assigned by ${audit.actorName || '—'} • ${formatTs(audit.ts)}` : '';
@@ -1006,7 +1052,7 @@
 
       return `
         <div
-          class="schedule-block schx-block ${selected} ${compact ? 'compact' : ''}"
+          class="schedule-block schx-block ${selected} ${compact ? 'compact' : ''} ${doneClass} ${liveClass}"
           data-task-type="${esc(taskTypeAttr(b.schedule))}"
           data-block-key="${esc(bKey)}"
           data-day="${d.dayIdx}"
@@ -1015,6 +1061,7 @@
           tabindex="0"
           data-tooltip="${esc(tooltipLines.join('\n'))}"
           aria-label="${esc(label)}"
+          aria-current="${liveClass ? 'time' : 'false'}"
         >
           <div class="schx-bmeta">
             <span class="schx-time-range">${esc(`${b.start} - ${b.end}`)}</span>
@@ -1032,8 +1079,8 @@
     const lines = renderGridLines(hours);
 
     return `
-      <section class="schx-day ${todayClass}" aria-label="${esc(d.dayLabel)} schedule">
-        <header class="schx-dayhead ${todayClass}">
+      <section class="schx-day ${todayClass} ${dayCompletedClass}" aria-label="${esc(d.dayLabel)} schedule">
+        <header class="schx-dayhead ${todayClass} ${dayCompletedClass}">
           <div class="schx-dayname">${esc(d.dayLabel.slice(0, 3))}</div>
           <div class="schx-daydate">${esc(formatDateLong(d.iso))}</div>
         </header>
@@ -1080,12 +1127,18 @@
 
   function getTeamMembers() {
     try {
+      const cached = Array.isArray(teamMembersCache) ? teamMembersCache.filter(Boolean) : [];
+      if (cached.length) {
+        const nameOf = (u) => String(u.fullName || u.name || u.displayName || u.username || u.email || u.id || '');
+        cached.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+        return cached;
+      }
       if (!window.Store || !Store.getUsers) return [];
-      const tid = String(me.teamId || '');
+      const tid = currentTeamId();
       const users = Store.getUsers() || [];
       const inTeam = users.filter(u => {
         if (!u) return false;
-        if (String(u.teamId || '') !== tid) return false;
+        if (String((u.teamId != null ? u.teamId : u.team_id) || '') !== tid) return false;
         if (u.deleted || u.isDeleted) return false;
         return true;
       });
@@ -1097,7 +1150,27 @@
     }
   }
 
+  function avatarInitials(member) {
+    const source = String((member && (member.fullName || member.name || member.username || member.email || member.id)) || '').trim();
+    if (!source) return 'N/A';
+    const parts = source.split(/\s+/).filter(Boolean).slice(0, 2);
+    if (!parts.length) return source.slice(0, 2).toUpperCase();
+    return parts.map((p) => p.slice(0, 1).toUpperCase()).join('');
+  }
+
   function renderTeamView(shift, hours, focusISO, focusLong) {
+    if (teamMembersLoading) {
+      return `
+        <div class="team-schedule-head">
+          <div>
+            <div class="mysx-section-title">Team Schedule</div>
+            <div class="small muted">${esc(focusLong)} • ${esc(tzManila)}${(localTZ && localTZ !== tzManila) ? ` • Local: ${esc(localTZ)}` : ''}</div>
+          </div>
+        </div>
+        <div class="small muted" style="padding:16px;border:1px solid rgba(148,163,184,.2);border-radius:14px">Loading team schedules…</div>
+      `;
+    }
+
     const members = getTeamMembers();
     const cols = hours;
     const colLabels = Array.from({ length: cols }, (_, i) => hm(shift.startMin + i * 60));
@@ -1139,6 +1212,10 @@
   function renderTeamRow(member, shift, dayIdx, iso, timelineWidth) {
     const nameOf = (u) => String(u.fullName || u.name || u.displayName || u.username || u.email || u.id || '');
     const memberName = nameOf(member) || 'N/A';
+    const avatarUrl = String((member && (member.avatarUrl || member.avatar_url)) || '').trim();
+    const avatar = avatarUrl
+      ? `<img src="${esc(avatarUrl)}" alt="${esc(memberName)} avatar" class="tsg-avatar-img" loading="lazy" />`
+      : `<span class="tsg-avatar-fallback" aria-hidden="true">${esc(avatarInitials(member))}</span>`;
     const blocks = getBlocksForUserDay(member.id, dayIdx).map(normalizeBlock).sort((a, b) => parseHM(a.start) - parseHM(b.start));
     const bars = blocks.map((b) => {
       const startOff = computeOffset(shift, b.start);
@@ -1174,10 +1251,11 @@
 
     return `
       <div class="team-schedule-row member-row" role="row">
-        <div class="tsg-name" role="rowheader">${esc(memberName)}</div>
+        <div class="tsg-name" role="rowheader"><span class="tsg-avatar">${avatar}</span><span class="tsg-member-name">${esc(memberName)}</span></div>
         <div class="tsg-timeline" role="cell" aria-label="${esc(memberName)} timeline">
           <div class="tsg-hour-grid" style="width:${timelineWidth}px">
             ${bars}
+            ${bars ? '' : '<div class="tsg-rest-day">No Schedule</div>'}
           </div>
         </div>
       </div>
@@ -1228,7 +1306,7 @@
   function renderAuditList() {
     try {
       const weekStartISO = currentWeekStartMondayISO();
-      const list = Store.getWeekAudit ? (Store.getWeekAudit(me.teamId || '', weekStartISO) || []) : [];
+      const list = Store.getWeekAudit ? (Store.getWeekAudit(currentTeamId(), weekStartISO) || []) : [];
       const mine = list.filter(a => a && a.targetId === me.id).slice(0, 25);
       if (!mine.length) return `<div class="small muted">No audit entries recorded for your schedule yet this week.</div>`;
       return `<div class="mysx-audit">
@@ -1385,11 +1463,70 @@
     } catch (_) { }
   }
 
+  async function refreshTeamMembers() {
+    const uid = String((me && me.id) || '');
+    const teamId = String((me && (me.teamId != null ? me.teamId : me.team_id)) || '');
+    if (!uid || !teamId) return;
+    if (teamMembersLoadedFor === `${uid}:${teamId}`) return;
+    teamMembersLoading = true;
+    if (viewMode === 'team') render();
+    try {
+      const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+      const headers = jwt ? { Authorization: `Bearer ${jwt}` } : {};
+      const res = await fetch(`/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1`, { headers, cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      const rows = Array.isArray(data && data.teamMembers) ? data.teamMembers : [];
+      teamMembersCache = rows.map((row) => {
+        const r = row && typeof row === 'object' ? row : {};
+        return {
+          id: String(r.id || r.user_id || ''),
+          teamId: String(r.teamId || r.team_id || teamId || ''),
+          role: String(r.role || 'MEMBER'),
+          name: String(r.name || r.username || r.id || ''),
+          fullName: String(r.name || r.username || r.id || ''),
+          username: String(r.username || ''),
+          avatarUrl: String(r.avatarUrl || r.avatar_url || ''),
+        };
+      }).filter((u) => !!u.id);
+
+      const teamScheduleBlocks = Array.isArray(data && data.teamScheduleBlocks) ? data.teamScheduleBlocks : [];
+      if (window.Store && Store.setUserDayBlocks && teamScheduleBlocks.length) {
+        const bucket = new Map();
+        teamScheduleBlocks.forEach((row) => {
+          const r = row && typeof row === 'object' ? row : {};
+          const memberId = String(r.userId || r.user_id || '').trim();
+          const dayIdx = Number(r.dayIndex);
+          if (!memberId || !Number.isInteger(dayIdx) || dayIdx < 0 || dayIdx > 6) return;
+          const key = `${memberId}|${dayIdx}`;
+          if (!bucket.has(key)) bucket.set(key, []);
+          bucket.get(key).push({
+            start: String(r.start || '00:00'),
+            end: String(r.end || '00:00'),
+            schedule: String(r.schedule || ''),
+            notes: String(r.notes || ''),
+          });
+        });
+        bucket.forEach((blocks, key) => {
+          const [memberId, day] = key.split('|');
+          Store.setUserDayBlocks(memberId, teamId, Number(day), blocks);
+        });
+      }
+
+      teamMembersLoadedFor = `${uid}:${teamId}`;
+      if (viewMode === 'team') render();
+    } catch (_) { }
+    finally {
+      teamMembersLoading = false;
+      if (viewMode === 'team') render();
+    }
+  }
+
   async function refreshMemberScheduleTheme() {
     const uid = String((me && me.id) || '');
     if (!uid || themePaletteLoadedFor === uid) return;
     try {
-      const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+      const jwt = getBearerToken();
       const headers = jwt ? { Authorization: `Bearer ${jwt}` } : {};
       const res = await fetch(`/api/member/${encodeURIComponent(uid)}/schedule`, { headers, cache: 'no-store' });
       if (!res.ok) return;
@@ -1421,4 +1558,5 @@
   render();
   startRealtimeRefresh();
   refreshMemberScheduleTheme();
+  refreshTeamMembers();
 });
