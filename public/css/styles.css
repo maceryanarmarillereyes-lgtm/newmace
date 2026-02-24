@@ -1,3 +1,16 @@
+/*
+===============================================================================
+SYSTEM PROMPT INSTRUCTION / AI CONTRACT — STRICT DESIGN TOKEN ARCHITECTURE
+-------------------------------------------------------------------------------
+1) CORE LAYOUT CLASSES (.card, .btn, .sidebar, grids, tables, modals, etc.)
+   MUST contain structure/spacing/typography only and MUST consume semantic tokens.
+2) THEME BLOCKS (body[data-theme="..."]) are aesthetic overrides only.
+   NEVER place structural layout rules inside theme blocks.
+3) NEVER hardcode colors/shadows/borders in core components.
+   Always use semantic variables from :root token registry.
+4) Adding/editing/removing a theme must NOT break application layout.
+===============================================================================
+*/
 :root{
   /* Enterprise theme (offline-first) */
   --bg:#f5f7fb;
@@ -4193,4 +4206,135 @@ inset 0 0 15px rgba(239, 68, 68, 0.1);
 0% { transform: scale(1) translateZ(0); filter: brightness(1); }
 50% { transform: scale(1.02) translateZ(0); filter: brightness(1.2); }
 100% { transform: scale(1) translateZ(0); filter: brightness(1); }
+}
+
+
+/* ============================================================================
+   ENTERPRISE TOKEN REGISTRY + THEME ISOLATION LAYER (ARCHITECTURE LOCK)
+   ============================================================================ */
+:root{
+  --surface-bg: #050914;
+  --surface-bg-alt: #0b1022;
+  --surface-card: #0b1022;
+  --surface-card-alt: #090e1c;
+  --surface-modal: #0b1022;
+
+  --text-primary: #eef2ff;
+  --text-muted: #b9c1da;
+  --text-inverse: #0f172a;
+
+  --accent-primary: #7c87ff;
+  --accent-primary-hover: #6366f1;
+  --accent-border: rgba(255,255,255,.12);
+
+  --status-success: #16a34a;
+  --status-warn: #d97706;
+  --status-danger: #dc2626;
+
+  --effect-shadow-soft: 0 2px 10px rgba(0,0,0,.20);
+  --effect-shadow-strong: 0 12px 28px rgba(0,0,0,.30);
+  --effect-glow: 0 0 0 3px rgba(124,135,255,.18);
+  --effect-glass-backdrop: rgba(255,255,255,.06);
+
+  /* Legacy alias map (backward compatibility) */
+  --bg: var(--surface-bg);
+  --bg2: var(--surface-bg-alt);
+  --panel: var(--surface-card);
+  --panel2: var(--surface-card-alt);
+  --card: var(--surface-card);
+  --card2: var(--surface-card-alt);
+  --text: var(--text-primary);
+  --muted: var(--text-muted);
+  --primary: var(--accent-primary);
+  --primary2: var(--accent-primary-hover);
+  --border: var(--accent-border);
+  --border2: var(--accent-border);
+  --ok: var(--status-success);
+  --warn: var(--status-warn);
+  --danger: var(--status-danger);
+  --shadow2: var(--effect-shadow-soft);
+  --shadow: var(--effect-shadow-strong);
+  --focus: var(--effect-glow);
+}
+
+body{
+  background: linear-gradient(180deg,var(--surface-bg) 0%, var(--surface-bg-alt) 100%);
+  color: var(--text-primary);
+}
+.card{background:var(--surface-card);border-color:var(--accent-border);box-shadow:var(--effect-shadow-soft);color:var(--text-primary)}
+.btn{background:var(--surface-card);border-color:var(--accent-border);color:var(--text-primary);box-shadow:var(--effect-shadow-soft)}
+.btn:hover{background:var(--surface-card-alt);border-color:var(--accent-border)}
+.btn.primary{background:var(--accent-primary);border-color:var(--accent-primary);color:var(--text-inverse)}
+.btn.primary:hover{background:var(--accent-primary-hover);border-color:var(--accent-primary-hover)}
+input,select,textarea{background:var(--surface-card);border-color:var(--accent-border);color:var(--text-primary)}
+th{background:var(--surface-card-alt);color:var(--text-muted)}
+.badge{background:var(--surface-card-alt);border-color:var(--accent-border);color:var(--text-primary)}
+.sync-status{background:var(--surface-card);border-color:var(--accent-border);box-shadow:var(--effect-shadow-soft);color:var(--text-muted)}
+.realtime-blocker{background:color-mix(in srgb, var(--surface-bg) 70%, #000 30%)}
+.realtime-blocker-card{background:var(--surface-modal);border-color:var(--accent-border);box-shadow:var(--effect-shadow-strong);color:var(--text-primary)}
+
+body[data-theme="mums_dark"]{
+  --surface-bg:#050914;
+  --surface-bg-alt:#0b1022;
+  --surface-card:#0b1022;
+  --surface-card-alt:#090e1c;
+  --surface-modal:#0b1022;
+  --text-primary:#eef2ff;
+  --text-muted:#b9c1da;
+  --text-inverse:#0f172a;
+  --accent-primary:#7c87ff;
+  --accent-primary-hover:#6366f1;
+  --accent-border:rgba(255,255,255,.12);
+}
+body[data-theme="aurora_light"]{
+  --surface-bg:#f5f7fb;
+  --surface-bg-alt:#eef2f8;
+  --surface-card:#ffffff;
+  --surface-card-alt:#f8fafc;
+  --surface-modal:#ffffff;
+  --text-primary:#0f172a;
+  --text-muted:#64748b;
+  --text-inverse:#ffffff;
+  --accent-primary:#2563eb;
+  --accent-primary-hover:#1d4ed8;
+  --accent-border:#d7dee9;
+  --effect-shadow-soft:0 2px 10px rgba(15,23,42,.08);
+  --effect-shadow-strong:0 8px 24px rgba(15,23,42,.12);
+}
+body[data-theme="monday_workspace"]{
+  --surface-bg:#f6f8fb;
+  --surface-bg-alt:#eef3f9;
+  --surface-card:#ffffff;
+  --surface-card-alt:#f7f8fb;
+  --surface-modal:#ffffff;
+  --text-primary:#1f2937;
+  --text-muted:#64748b;
+  --text-inverse:#ffffff;
+  --accent-primary:#0073ea;
+  --accent-primary-hover:#0066cf;
+  --accent-border:#d7dfea;
+  --effect-shadow-soft:0 1px 2px rgba(15,23,42,.06);
+  --effect-shadow-strong:0 10px 26px rgba(15,23,42,.05);
+}
+body[data-theme="classic_style"]{
+  --surface-bg:#f4f5f7;
+  --surface-bg-alt:#eceff3;
+  --surface-card:#ffffff;
+  --surface-card-alt:#f7f8fa;
+  --surface-modal:#ffffff;
+  --text-primary:#1f2937;
+  --text-muted:#6b7280;
+  --text-inverse:#ffffff;
+  --accent-primary:#1d4ed8;
+  --accent-primary-hover:#1e40af;
+  --accent-border:#d6dbe4;
+  --effect-shadow-soft:0 1px 2px rgba(15,23,42,.06);
+  --effect-shadow-strong:0 8px 20px rgba(15,23,42,.08);
+}
+
+body[data-theme="aurora_midnight"]{
+  --surface-bg:#050914;--surface-bg-alt:#0b1022;--surface-card:#0b1022;--surface-card-alt:#090e1c;--surface-modal:#0b1022;--text-primary:#eef2ff;--text-muted:#b9c1da;--text-inverse:#0f172a;--accent-primary:#7c87ff;--accent-primary-hover:#6366f1;--accent-border:rgba(255,255,255,.12);
+}
+body[data-theme="mono"]{
+  --surface-bg:#0b0c10;--surface-bg-alt:#111318;--surface-card:#13151b;--surface-card-alt:#0f1116;--surface-modal:#13151b;--text-primary:#f3f4f6;--text-muted:#b7bcc6;--text-inverse:#0f172a;--accent-primary:#a3a3a3;--accent-primary-hover:#8f8f8f;--accent-border:rgba(255,255,255,.10);
 }
