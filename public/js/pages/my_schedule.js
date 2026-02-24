@@ -592,7 +592,11 @@
 
   function blockStatus(dayIso, block) {
     const now = nowManilaParts();
-    if (!now || String(dayIso || '') !== String(now.isoDate || '')) return 'Scheduled';
+    if (!now) return 'Scheduled';
+    const targetIso = String(dayIso || '');
+    const todayIso = String(now.isoDate || '');
+    if (targetIso < todayIso) return 'Completed';
+    if (targetIso > todayIso) return 'Scheduled';
     const nowMin = (Number(now.hh) || 0) * 60 + (Number(now.mm) || 0);
     const s = parseHM(block.start);
     const e = parseHM(block.end);
@@ -601,6 +605,18 @@
     if (active) return 'In Progress';
     if (nowMin >= s) return 'Completed';
     return 'Scheduled';
+  }
+
+  function isDayCompleted(dayIso, blocks) {
+    const now = nowManilaParts();
+    if (!now) return false;
+    const targetIso = String(dayIso || '');
+    const todayIso = String(now.isoDate || '');
+    if (targetIso < todayIso) return true;
+    if (targetIso > todayIso) return false;
+    const list = Array.isArray(blocks) ? blocks : [];
+    if (!list.length) return false;
+    return list.every(b => blockStatus(targetIso, b) === 'Completed');
   }
 
   function formatNowTimeBadge() {
@@ -981,6 +997,7 @@
     const d = day;
     const todayClass = isTodayISO(d.iso) ? 'is-today' : '';
     const blocks = (d.blocks || []).map(normalizeBlock);
+    const dayCompletedClass = isDayCompleted(d.iso, blocks) ? 'is-completed' : '';
 
     const blocksHtml = blocks.map((b, idx) => {
       const label = taskLabel(b.schedule) || 'Block';
@@ -991,6 +1008,7 @@
       const bKey = blockKey(d.dayIdx, b, idx);
       const selected = (viewMode === 'day' && selectedBlockKey === bKey) ? 'is-selected' : '';
       const status = blockStatus(d.iso, b);
+      const doneClass = status === 'Completed' ? 'is-completed' : '';
       const localRange = (localTZ && localTZ !== tzManila) ? localRangeLabel(d.iso, b.start, b.end) : '';
       const audit = findAuditForBlock(d.dayIdx, b);
       const auditLine = audit ? `Assigned by ${audit.actorName || '—'} • ${formatTs(audit.ts)}` : '';
@@ -1006,7 +1024,7 @@
 
       return `
         <div
-          class="schedule-block schx-block ${selected} ${compact ? 'compact' : ''}"
+          class="schedule-block schx-block ${selected} ${compact ? 'compact' : ''} ${doneClass}"
           data-task-type="${esc(taskTypeAttr(b.schedule))}"
           data-block-key="${esc(bKey)}"
           data-day="${d.dayIdx}"
@@ -1032,8 +1050,8 @@
     const lines = renderGridLines(hours);
 
     return `
-      <section class="schx-day ${todayClass}" aria-label="${esc(d.dayLabel)} schedule">
-        <header class="schx-dayhead ${todayClass}">
+      <section class="schx-day ${todayClass} ${dayCompletedClass}" aria-label="${esc(d.dayLabel)} schedule">
+        <header class="schx-dayhead ${todayClass} ${dayCompletedClass}">
           <div class="schx-dayname">${esc(d.dayLabel.slice(0, 3))}</div>
           <div class="schx-daydate">${esc(formatDateLong(d.iso))}</div>
         </header>
