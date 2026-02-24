@@ -1439,11 +1439,11 @@
 
   async function refreshTeamMembers() {
     const uid = String((me && me.id) || '');
-    const teamId = currentTeamId();
-    if (!uid) return;
-    if (teamMembersLoadedFor === uid) return;
+    const teamId = String((me && me.teamId) || '');
+    if (!uid || !teamId) return;
+    if (teamMembersLoadedFor === `${uid}:${teamId}`) return;
     try {
-      const jwt = getBearerToken();
+      const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
       const headers = jwt ? { Authorization: `Bearer ${jwt}` } : {};
       const res = await fetch(`/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1`, { headers, cache: 'no-store' });
       if (!res.ok) return;
@@ -1460,7 +1460,7 @@
           username: String(r.username || ''),
         };
       }).filter((u) => !!u.id);
-      teamMembersLoadedFor = uid;
+      teamMembersLoadedFor = `${uid}:${teamId}`;
       if (viewMode === 'team') render();
     } catch (_) { }
   }
