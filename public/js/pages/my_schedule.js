@@ -414,69 +414,6 @@
     return getBlocksForUserDay(me.id, dayIdx);
   }
 
-  function userRestWeekdays(userId, teamId) {
-    try {
-      if (!window.Store || !Store.getTeamMaster) return [];
-      const tid = String(teamId != null ? teamId : currentTeamId());
-      const uid = String(userId || '');
-      if (!tid || !uid) return [];
-      const master = Store.getTeamMaster(tid);
-      const member = master && master.members ? master.members[uid] : null;
-      const list = Array.isArray(member && member.restWeekdays) ? member.restWeekdays : [];
-      return list
-        .map(v => Number(v))
-        .filter(v => Number.isInteger(v) && v >= 0 && v <= 6);
-    } catch (_) {
-      return [];
-    }
-  }
-
-  function isRestDayForUser(userId, isoDate, teamId) {
-    const restDays = userRestWeekdays(userId, teamId);
-    if (!restDays.length) return false;
-    const wd = weekdayFromISO(String(isoDate || ''));
-    return restDays.includes(wd);
-  }
-
-  function weekdayShortLabel(dayIdx) {
-    const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const idx = Number(dayIdx);
-    return labels[idx] || 'N/A';
-  }
-
-  function renderRestDayStrip(week, focusIso) {
-    const myRestDays = userRestWeekdays(me && me.id, currentTeamId());
-    const teamMembers = getTeamMembers();
-    const focusRestMembers = teamMembers.filter(member => isRestDayForUser(member.id, focusIso, member.teamId || member.team_id));
-    const todayRestMembers = teamMembers.filter(member => isRestDayForUser(member.id, todayISO, member.teamId || member.team_id));
-    const focusDayIdx = weekdayFromISO(focusIso);
-    const focusIsRest = myRestDays.includes(focusDayIdx);
-
-    const myDaysHtml = week.map(d => {
-      const isRest = myRestDays.includes(d.dayIdx);
-      const isFocus = String(d.iso || '') === String(focusIso || '');
-      return `<span class="schx-rest-chip ${isRest ? 'is-rest' : ''} ${isFocus ? 'is-focus' : ''}">${esc(weekdayShortLabel(d.dayIdx))}</span>`;
-    }).join('');
-
-    return `
-      <section class="schx-rest-strip" aria-label="Rest day schedule">
-        <div class="schx-rest-heading">Rest Day Schedule</div>
-        <div class="schx-rest-grid">
-          <div class="schx-rest-card">
-            <div class="small muted">My rest days</div>
-            <div class="schx-rest-chips">${myDaysHtml || '<span class="small muted">N/A</span>'}</div>
-            <div class="small muted">${focusIsRest ? 'Focused date is your rest day.' : 'Focused date is an active working day.'}</div>
-          </div>
-          <div class="schx-rest-card emphasis">
-            <div class="small muted">Team rest status</div>
-            <div class="big">${focusRestMembers.length} member${focusRestMembers.length === 1 ? '' : 's'} on rest</div>
-            <div class="small muted">Today: ${todayRestMembers.length} • Focused date: ${esc(formatDateLong(focusIso))}</div>
-          </div>
-        </div>
-      </section>
-    `;
-  }
-
   // Time conversion: Manila schedule times -> local display label
   function localTimeLabel(isoDate, hmStr) {
     try {
@@ -739,8 +676,6 @@
     const todayLong = formatDateLong(todayISO);
     const focusISO = isoForDay(focusDay);
     const focusLong = formatDateLong(focusISO);
-    const teamMembers = getTeamMembers();
-    const todayTeamRestCount = teamMembers.filter(member => isRestDayForUser(member.id, todayISO, member.teamId || member.team_id)).length;
 
     const tzLine = (localTZ && localTZ !== tzManila)
       ? `Local: <b>${esc(localTZ)}</b> • Manila: <b>${esc(tzManila)}</b>`
@@ -797,11 +732,6 @@
             <div class="big">${totalWeekBlocks} total</div>
             <div class="small muted">${esc(formatDateLong(weekStartSunISO))} → ${esc(formatDateLong(isoForDay(6)))}</div>
           </div>
-          <div class="schx-kpi rest-kpi">
-            <div class="small muted">Rest day coverage</div>
-            <div class="big">${todayTeamRestCount} member${todayTeamRestCount === 1 ? '' : 's'}</div>
-            <div class="small muted">On rest today</div>
-          </div>
         </div>
 
         <div class="schx-legend" aria-label="Schedule legend and actions">
@@ -809,8 +739,6 @@
             ${scheduleLegendItems().map(item => `<span class="legend-item"><span class="legend-dot" style="background:${esc(item.color)}"></span>${esc(item.label)}</span>`).join('')}
           </div>
         </div>
-
-        ${renderRestDayStrip(week, focusISO)}
 
         ${(mode === 'day' || mode === 'team') ? renderDayTabs(week) : ''}
 
@@ -1070,9 +998,8 @@
       const active = d.dayIdx === focusDay ? 'active' : '';
       const today = isTodayISO(d.iso) ? 'is-today' : '';
       const dot = d.blocks.length ? '<span class="dot" aria-hidden="true"></span>' : '';
-      const rest = isRestDayForUser(me && me.id, d.iso, currentTeamId()) ? '<span class="rest-tag" aria-label="Rest day">REST</span>' : '';
       const date = String(d.iso || '').slice(-2);
-      return `<button class="schx-daytab ${active} ${today}" type="button" data-day="${d.dayIdx}" role="tab" aria-selected="${d.dayIdx === focusDay}"><span class="schx-daytab-date">${esc(date)}</span> <span>${esc(d.dayLabel.slice(0, 3))}</span>${rest}${dot}</button>`;
+      return `<button class="schx-daytab ${active} ${today}" type="button" data-day="${d.dayIdx}" role="tab" aria-selected="${d.dayIdx === focusDay}"><span class="schx-daytab-date">${esc(date)}</span> <span>${esc(d.dayLabel.slice(0, 3))}</span>${dot}</button>`;
     }).join('')}
       </div>
     `;
@@ -1098,10 +1025,6 @@
     const todayClass = isTodayISO(d.iso) ? 'is-today' : '';
     const blocks = (d.blocks || []).map(normalizeBlock);
     const dayCompletedClass = isDayCompleted(d.iso, blocks) ? 'is-completed' : '';
-<<<<<<< HEAD
-=======
-    const isRestDay = isRestDayForUser(me && me.id, d.iso, currentTeamId());
->>>>>>> d53b6873819d37c51477ea279fe1b88e3a55a529
 
     const blocksHtml = blocks.map((b, idx) => {
       const label = taskLabel(b.schedule) || 'Block';
@@ -1159,12 +1082,12 @@
       <section class="schx-day ${todayClass} ${dayCompletedClass}" aria-label="${esc(d.dayLabel)} schedule">
         <header class="schx-dayhead ${todayClass} ${dayCompletedClass}">
           <div class="schx-dayname">${esc(d.dayLabel.slice(0, 3))}</div>
-          <div class="schx-daydate">${esc(formatDateLong(d.iso))}${isRestDay ? '<span class="schx-rest-inline">Rest Day</span>' : ''}</div>
+          <div class="schx-daydate">${esc(formatDateLong(d.iso))}</div>
         </header>
         <div class="schx-daybody" data-day="${d.dayIdx}" style="--shift-len:${shift.lenMin}" aria-label="${esc(d.dayLabel)} blocks">
           ${lines}
           <div class="schx-vline" aria-hidden="true"></div>
-          ${blocksHtml || `<div class="schx-empty small muted ${isRestDay ? 'rest-empty' : ''}">${isRestDay ? 'Rest Day — No schedule required' : 'No blocks'}</div>`}
+          ${blocksHtml || `<div class="schx-empty small muted">No blocks</div>`}
         </div>
       </section>
     `;
@@ -1294,9 +1217,6 @@
       ? `<img src="${esc(avatarUrl)}" alt="${esc(memberName)} avatar" class="tsg-avatar-img" loading="lazy" />`
       : `<span class="tsg-avatar-fallback" aria-hidden="true">${esc(avatarInitials(member))}</span>`;
     const blocks = getBlocksForUserDay(member.id, dayIdx).map(normalizeBlock).sort((a, b) => parseHM(a.start) - parseHM(b.start));
-    const memberRestDays = userRestWeekdays(member.id, member.teamId || member.team_id);
-    const memberIsRest = isRestDayForUser(member.id, iso, member.teamId || member.team_id);
-    const restText = memberRestDays.length ? ` • Rest: ${memberRestDays.map(weekdayShortLabel).join(', ')}` : '';
     const bars = blocks.map((b) => {
       const startOff = computeOffset(shift, b.start);
       const endOff = computeOffset(shift, b.end);
@@ -1331,19 +1251,11 @@
 
     return `
       <div class="team-schedule-row member-row" role="row">
-<<<<<<< HEAD
         <div class="tsg-name" role="rowheader"><span class="tsg-avatar">${avatar}</span><span class="tsg-member-name">${esc(memberName)}</span></div>
         <div class="tsg-timeline" role="cell" aria-label="${esc(memberName)} timeline">
           <div class="tsg-hour-grid" style="width:${timelineWidth}px">
             ${bars}
             ${bars ? '' : '<div class="tsg-rest-day">No Schedule</div>'}
-=======
-        <div class="tsg-name" role="rowheader"><span class="tsg-avatar">${avatar}</span><span class="tsg-member-name">${esc(memberName)}</span>${memberIsRest ? '<span class="tsg-rest-flag">REST DAY</span>' : ''}<span class="tsg-member-meta">${esc(restText || ' • Rest: none')}</span></div>
-        <div class="tsg-timeline" role="cell" aria-label="${esc(memberName)} timeline">
-          <div class="tsg-hour-grid" style="width:${timelineWidth}px">
-            ${bars}
-            ${bars ? '' : `<div class="tsg-rest-day ${memberIsRest ? 'is-rest' : ''}">${memberIsRest ? 'Rest Day' : 'No Schedule'}</div>`}
->>>>>>> d53b6873819d37c51477ea279fe1b88e3a55a529
           </div>
         </div>
       </div>
