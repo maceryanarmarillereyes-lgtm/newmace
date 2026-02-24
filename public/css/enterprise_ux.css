@@ -1314,6 +1314,9 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   min-width:180px;
   border-left:1px solid rgba(120,140,170,.34);
 }
+.schx-day.is-completed{
+  background: rgba(120,130,150,.06);
+}
 .schx-day:first-child{ border-left:none; }
 .schx-dayhead{
   display:flex;
@@ -1334,6 +1337,10 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .schx-dayhead.is-today{
   background: linear-gradient(180deg, rgba(29,78,216,.28), rgba(12,20,34,.96));
   border-bottom-color: rgba(96,165,250,.62);
+}
+.schx-dayhead.is-completed{
+  background: rgba(58,67,82,.70);
+  border-bottom-color: rgba(148,163,184,.35);
 }
 
 .schx-daydate{
@@ -1363,6 +1370,9 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
     rgba(0,0,0,0) 1px,
     rgba(0,0,0,0) var(--schx-row-h)
   );
+}
+.schx-day.is-completed .schx-daybody{
+  background: rgba(44,52,66,.42);
 }
 .schx-lines{ position:absolute; inset:0; pointer-events:none; }
 .schx-vline{ position:absolute; top:0; bottom:0; width:1px; right:0; background: rgba(128,146,175,.34); pointer-events:none; }
@@ -1497,6 +1507,24 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
 .schx-block.compact .schx-block-title{ font-size:13px; }
 .schx-block.is-selected{
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.32), 0 0 0 1px rgba(255,255,255,.18), 0 12px 20px rgba(0,0,0,.25);
+}
+.schx-block.is-completed{
+  border-color: rgba(148,163,184,.55) !important;
+  background: rgba(71,85,105,.36) !important;
+  color: rgba(226,232,240,.9);
+  box-shadow: inset 0 0 0 1px rgba(226,232,240,.15);
+}
+.schx-block.is-completed .schx-block-title,
+.schx-block.is-completed .schx-time-range,
+.schx-block.is-completed .schx-bfoot,
+.schx-block.is-completed .schx-status-icon{
+  color: rgba(226,232,240,.9);
+  text-shadow: none;
+}
+.schx-block.is-completed .schx-status-tag{
+  border-color: rgba(203,213,225,.35);
+  background: rgba(30,41,59,.45);
+  color: rgba(226,232,240,.92);
 }
 
 .schx-legend{
