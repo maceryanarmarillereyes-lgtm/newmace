@@ -89,7 +89,12 @@
     const silent = !!(opts && opts.silent);
     const fromRealtime = !!(opts && opts.fromRealtime);
     if(!silent){
-      try{ window.dispatchEvent(new CustomEvent('mums:store', { detail: { key } })); }catch(e){}
+      try{ window.dispatchEvent(new CustomEvent('mums:store', { detail: { key, source: (fromRealtime ? 'realtime' : 'local') } })); }catch(e){}
+      try{
+        if(key === KEYS.mailbox_time_override_cloud){
+          window.dispatchEvent(new CustomEvent('mums:store', { detail: { key:'mailbox_override_cloud', source:(fromRealtime ? 'realtime' : 'local') } }));
+        }
+      }catch(_){ }
     }
     // Optional cross-browser real-time sync (requires local relay server).
     // Avoid echo loops by not publishing updates that originated from the relay.
