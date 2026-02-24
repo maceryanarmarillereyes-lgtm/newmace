@@ -570,11 +570,14 @@
   let tickTimer = null;
   let storeListener = null;
   let selectedBlockKey = '';
+  let teamMembersCache = [];
+  let teamMembersLoadedFor = '';
 
   function setViewMode(mode) {
     const m = String(mode || '').toLowerCase();
     viewMode = (m === 'day' || m === 'team') ? m : 'week';
     try { localStorage.setItem('mums_sched_view', viewMode); } catch (_) { }
+    if (viewMode === 'team') refreshTeamMembers();
     render();
   }
 
@@ -1100,6 +1103,12 @@
 
   function getTeamMembers() {
     try {
+      const cached = Array.isArray(teamMembersCache) ? teamMembersCache.filter(Boolean) : [];
+      if (cached.length) {
+        const nameOf = (u) => String(u.fullName || u.name || u.displayName || u.username || u.email || u.id || '');
+        cached.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+        return cached;
+      }
       if (!window.Store || !Store.getUsers) return [];
       const tid = String(me.teamId || '');
       const users = Store.getUsers() || [];
@@ -1405,6 +1414,34 @@
     } catch (_) { }
   }
 
+  async function refreshTeamMembers() {
+    const uid = String((me && me.id) || '');
+    const teamId = String((me && me.teamId) || '');
+    if (!uid || !teamId) return;
+    if (teamMembersLoadedFor === `${uid}:${teamId}`) return;
+    try {
+      const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+      const headers = jwt ? { Authorization: `Bearer ${jwt}` } : {};
+      const res = await fetch(`/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1`, { headers, cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      const rows = Array.isArray(data && data.teamMembers) ? data.teamMembers : [];
+      teamMembersCache = rows.map((row) => {
+        const r = row && typeof row === 'object' ? row : {};
+        return {
+          id: String(r.id || r.user_id || ''),
+          teamId: String(r.teamId || r.team_id || teamId || ''),
+          role: String(r.role || 'MEMBER'),
+          name: String(r.name || r.username || r.id || ''),
+          fullName: String(r.name || r.username || r.id || ''),
+          username: String(r.username || ''),
+        };
+      }).filter((u) => !!u.id);
+      teamMembersLoadedFor = `${uid}:${teamId}`;
+      if (viewMode === 'team') render();
+    } catch (_) { }
+  }
+
   async function refreshMemberScheduleTheme() {
     const uid = String((me && me.id) || '');
     if (!uid || themePaletteLoadedFor === uid) return;
@@ -1441,4 +1478,5 @@
   render();
   startRealtimeRefresh();
   refreshMemberScheduleTheme();
+  refreshTeamMembers();
 });

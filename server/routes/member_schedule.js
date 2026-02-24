@@ -119,6 +119,29 @@ async function getTeamThemePalette(teamId) {
   return fromTable || {};
 }
 
+function mapTeamMemberProfile(profile) {
+  const p = profile && typeof profile === 'object' ? profile : {};
+  return {
+    id: safeString(p.user_id, 120),
+    teamId: safeString(p.team_id, 80),
+    role: normalizeRole(p.role),
+    name: safeString(p.name || p.username || p.user_id, 120)
+  };
+}
+
+async function getTeamMembers(teamId) {
+  const safeTeamId = safeString(teamId, 80);
+  if (!safeTeamId) return [];
+  const q = `select=user_id,name,username,team_id,role,deleted_at&team_id=eq.${encodeURIComponent(safeTeamId)}&order=name.asc&limit=500`;
+  const out = await serviceSelect('mums_profiles', q);
+  if (!out.ok) return [];
+  const rows = Array.isArray(out.json) ? out.json : [];
+  return rows
+    .filter((row) => !(row && row.deleted_at))
+    .map(mapTeamMemberProfile)
+    .filter((row) => !!row.id);
+}
+
 module.exports = async (req, res, routeParams) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
@@ -164,9 +187,14 @@ module.exports = async (req, res, routeParams) => {
       return res.end(JSON.stringify({ ok: false, error: 'forbidden' }));
     }
 
-    const [scheduleDoc, palette] = await Promise.all([
+    const includeTeam = String((req.query && req.query.includeTeam) || '').trim().toLowerCase();
+    const wantsTeamMembers = includeTeam === '1' || includeTeam === 'true' || includeTeam === 'yes';
+    const canViewTeamMembers = !!actorTeamId && actorTeamId === targetTeamId;
+
+    const [scheduleDoc, palette, teamMembers] = await Promise.all([
       getScheduleDoc(),
-      getTeamThemePalette(targetTeamId)
+      getTeamThemePalette(targetTeamId),
+      (wantsTeamMembers && canViewTeamMembers) ? getTeamMembers(targetTeamId) : Promise.resolve([])
     ]);
 
     const scheduleBlocks = flattenScheduleBlocks(scheduleDoc, memberId);
@@ -176,6 +204,7 @@ module.exports = async (req, res, routeParams) => {
       memberId,
       teamId: targetTeamId,
       teamThemePalette: palette || {},
+      teamMembers,
       scheduleBlocks
     }));
   } catch (err) {
