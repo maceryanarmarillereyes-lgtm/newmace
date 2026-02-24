@@ -54,3 +54,109 @@
 /* Soft modal entrance (best effort) */
 .modal .panel{transform:translateY(4px);transition:transform .18s ease}
 .modal.open .panel{transform:translateY(0)}
+
+/* Ultra-Enterprise Liquid Glass Layer */
+.mailbox-container,
+.mbx-shell{
+  font-family: Inter, Geist, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+}
+
+.mbx-shell{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  min-height:calc(100vh - 130px);
+  max-height:calc(100vh - 130px);
+  padding:16px;
+  overflow:hidden;
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.55), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.mbx-liquid-grid{
+  display:grid;
+  grid-template-columns:280px minmax(380px, 1fr) minmax(420px, 1.2fr);
+  gap:14px;
+  flex:1;
+  min-height:0;
+}
+
+.mbx-liquid-col{
+  min-height:0;
+  overflow:auto;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  padding-right:4px;
+}
+
+.mbx-liquid-col::-webkit-scrollbar{width:8px}
+.mbx-liquid-col::-webkit-scrollbar-thumb{background:rgba(148,163,184,0.35);border-radius:999px}
+
+.mbx-glass-panel,
+.mbx-analytics-panel,
+.mbx-stat-box,
+.mbx-ana-card,
+.mbx-counter-wrap,
+.mbx-monitor-panel{
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+}
+
+.mbx-panel-desc,
+.mbx-message-preview{
+  font-size:13px;
+  line-height:1.35;
+}
+
+.mbx-counter-table tbody tr,
+.mbx-monitor-table tbody tr,
+.mbx-monitor-table td,
+.mbx-assign-list li,
+.mbx-list-item{
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mbx-counter-table tbody tr:hover,
+.mbx-monitor-table tbody tr:hover,
+.mbx-list-item:hover{
+  background: rgba(59, 130, 246, 0.11);
+}
+
+.mbx-counter-table tr.mbx-row-active td,
+.mbx-monitor-table tr.mbx-row-active td,
+.mbx-selected,
+.mbx-case-selected{
+  box-shadow: inset 4px 0 0 #3b82f6, inset 0 0 0 1px rgba(59,130,246,0.3), inset 0 0 16px rgba(59,130,246,0.16);
+  background: rgba(59,130,246,0.12);
+}
+
+.mbx-glass-skeleton{
+  display:grid;
+  gap:8px;
+  padding:14px;
+}
+
+.mbx-glass-line{
+  height:12px;
+  border-radius:999px;
+  background: linear-gradient(90deg, rgba(148,163,184,0.08), rgba(148,163,184,0.2), rgba(148,163,184,0.08));
+  background-size:200% 100%;
+  animation: mbxGlassPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes mbxGlassPulse{
+  0%{background-position:200% 0;opacity:.65}
+  50%{opacity:1}
+  100%{background-position:-200% 0;opacity:.65}
+}
+
+@media (max-width: 1240px){
+  .mbx-liquid-grid{grid-template-columns:1fr;}
+  .mbx-shell{max-height:none;min-height:unset;}
+}
