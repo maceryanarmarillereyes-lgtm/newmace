@@ -1527,6 +1527,56 @@ button:focus, a:focus, input:focus, select:focus, textarea:focus{ outline:none; 
   color: rgba(226,232,240,.92);
 }
 
+@keyframes schxLivePulse {
+  0%, 100% {
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,.36),
+      0 0 0 1px color-mix(in srgb, var(--task-color, #60a5fa) 52%, rgba(255,255,255,.38)),
+      0 0 14px color-mix(in srgb, var(--task-color, #60a5fa) 40%, transparent),
+      0 0 26px color-mix(in srgb, var(--task-color, #60a5fa) 24%, transparent);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,.5),
+      0 0 0 1px color-mix(in srgb, var(--task-color, #60a5fa) 80%, rgba(255,255,255,.56)),
+      0 0 22px color-mix(in srgb, var(--task-color, #60a5fa) 62%, transparent),
+      0 0 40px color-mix(in srgb, var(--task-color, #60a5fa) 46%, transparent);
+    filter: brightness(1.08);
+  }
+}
+
+@keyframes schxLiveStatusBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .68; }
+}
+
+.schx-block.is-live-current{
+  border-color: color-mix(in srgb, var(--task-color, #60a5fa) 84%, #dbeafe) !important;
+  background:
+    linear-gradient(125deg,
+      color-mix(in srgb, var(--task-color, #60a5fa) 30%, rgba(8,14,26,.88)),
+      color-mix(in srgb, var(--task-color, #60a5fa) 18%, rgba(8,14,26,.78)));
+  animation: schxLivePulse 1.7s ease-in-out infinite;
+  z-index: 6;
+}
+
+.schx-block.is-live-current .schx-status-tag,
+.schx-block.is-live-current .schx-bfoot{
+  border-color: color-mix(in srgb, var(--task-color, #60a5fa) 88%, rgba(255,255,255,.8));
+  background: color-mix(in srgb, var(--task-color, #60a5fa) 28%, rgba(10,15,29,.72));
+  color: #f8fbff;
+  animation: schxLiveStatusBlink 1.1s steps(2, end) infinite;
+}
+
+@media (prefers-reduced-motion: reduce){
+  .schx-block.is-live-current,
+  .schx-block.is-live-current .schx-status-tag,
+  .schx-block.is-live-current .schx-bfoot{
+    animation: none !important;
+  }
+}
+
 .schx-legend{
   display:flex;
   gap:12px;
