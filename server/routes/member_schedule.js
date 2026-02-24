@@ -125,14 +125,27 @@ function mapTeamMemberProfile(profile) {
     id: safeString(p.user_id, 120),
     teamId: safeString(p.team_id, 80),
     role: normalizeRole(p.role),
-    name: safeString(p.name || p.username || p.user_id, 120)
+    name: safeString(p.name || p.username || p.user_id, 120),
+    avatarUrl: safeString(p.avatar_url || p.avatar || '', 500)
   };
+}
+
+
+function flattenScheduleBlocksForMembers(scheduleDoc, memberIds) {
+  const ids = Array.isArray(memberIds) ? memberIds.map((v) => safeString(v, 120)).filter(Boolean) : [];
+  if (!ids.length) return [];
+  const out = [];
+  for (const memberId of ids) {
+    const rows = flattenScheduleBlocks(scheduleDoc, memberId);
+    for (const row of rows) out.push({ userId: memberId, ...row });
+  }
+  return out;
 }
 
 async function getTeamMembers(teamId) {
   const safeTeamId = safeString(teamId, 80);
   if (!safeTeamId) return [];
-  const q = `select=user_id,name,username,team_id,role,deleted_at&team_id=eq.${encodeURIComponent(safeTeamId)}&order=name.asc&limit=500`;
+  const q = `select=user_id,name,username,team_id,role,avatar_url,deleted_at&team_id=eq.${encodeURIComponent(safeTeamId)}&order=name.asc&limit=500`;
   const out = await serviceSelect('mums_profiles', q);
   if (!out.ok) return [];
   const rows = Array.isArray(out.json) ? out.json : [];
@@ -198,6 +211,10 @@ module.exports = async (req, res, routeParams) => {
     ]);
 
     const scheduleBlocks = flattenScheduleBlocks(scheduleDoc, memberId);
+    const teamMemberIds = teamMembers.map((member) => safeString(member && member.id, 120)).filter(Boolean);
+    const teamScheduleBlocks = (wantsTeamMembers && canViewTeamMembers)
+      ? flattenScheduleBlocksForMembers(scheduleDoc, teamMemberIds)
+      : [];
     res.statusCode = 200;
     return res.end(JSON.stringify({
       ok: true,
@@ -205,7 +222,8 @@ module.exports = async (req, res, routeParams) => {
       teamId: targetTeamId,
       teamThemePalette: palette || {},
       teamMembers,
-      scheduleBlocks
+      scheduleBlocks,
+      teamScheduleBlocks
     }));
   } catch (err) {
     res.statusCode = 500;

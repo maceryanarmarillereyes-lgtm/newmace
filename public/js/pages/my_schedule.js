@@ -595,6 +595,7 @@
   let selectedBlockKey = '';
   let teamMembersCache = [];
   let teamMembersLoadedFor = '';
+  let teamMembersLoading = false;
 
   function setViewMode(mode) {
     const m = String(mode || '').toLowerCase();
@@ -1149,7 +1150,27 @@
     }
   }
 
+  function avatarInitials(member) {
+    const source = String((member && (member.fullName || member.name || member.username || member.email || member.id)) || '').trim();
+    if (!source) return 'N/A';
+    const parts = source.split(/\s+/).filter(Boolean).slice(0, 2);
+    if (!parts.length) return source.slice(0, 2).toUpperCase();
+    return parts.map((p) => p.slice(0, 1).toUpperCase()).join('');
+  }
+
   function renderTeamView(shift, hours, focusISO, focusLong) {
+    if (teamMembersLoading) {
+      return `
+        <div class="team-schedule-head">
+          <div>
+            <div class="mysx-section-title">Team Schedule</div>
+            <div class="small muted">${esc(focusLong)} • ${esc(tzManila)}${(localTZ && localTZ !== tzManila) ? ` • Local: ${esc(localTZ)}` : ''}</div>
+          </div>
+        </div>
+        <div class="small muted" style="padding:16px;border:1px solid rgba(148,163,184,.2);border-radius:14px">Loading team schedules…</div>
+      `;
+    }
+
     const members = getTeamMembers();
     const cols = hours;
     const colLabels = Array.from({ length: cols }, (_, i) => hm(shift.startMin + i * 60));
@@ -1191,6 +1212,10 @@
   function renderTeamRow(member, shift, dayIdx, iso, timelineWidth) {
     const nameOf = (u) => String(u.fullName || u.name || u.displayName || u.username || u.email || u.id || '');
     const memberName = nameOf(member) || 'N/A';
+    const avatarUrl = String((member && (member.avatarUrl || member.avatar_url)) || '').trim();
+    const avatar = avatarUrl
+      ? `<img src="${esc(avatarUrl)}" alt="${esc(memberName)} avatar" class="tsg-avatar-img" loading="lazy" />`
+      : `<span class="tsg-avatar-fallback" aria-hidden="true">${esc(avatarInitials(member))}</span>`;
     const blocks = getBlocksForUserDay(member.id, dayIdx).map(normalizeBlock).sort((a, b) => parseHM(a.start) - parseHM(b.start));
     const bars = blocks.map((b) => {
       const startOff = computeOffset(shift, b.start);
@@ -1226,10 +1251,11 @@
 
     return `
       <div class="team-schedule-row member-row" role="row">
-        <div class="tsg-name" role="rowheader">${esc(memberName)}</div>
+        <div class="tsg-name" role="rowheader"><span class="tsg-avatar">${avatar}</span><span class="tsg-member-name">${esc(memberName)}</span></div>
         <div class="tsg-timeline" role="cell" aria-label="${esc(memberName)} timeline">
           <div class="tsg-hour-grid" style="width:${timelineWidth}px">
             ${bars}
+            ${bars ? '' : '<div class="tsg-rest-day">No Schedule</div>'}
           </div>
         </div>
       </div>
@@ -1439,9 +1465,11 @@
 
   async function refreshTeamMembers() {
     const uid = String((me && me.id) || '');
-    const teamId = String((me && me.teamId) || '');
+    const teamId = String((me && (me.teamId != null ? me.teamId : me.team_id)) || '');
     if (!uid || !teamId) return;
     if (teamMembersLoadedFor === `${uid}:${teamId}`) return;
+    teamMembersLoading = true;
+    if (viewMode === 'team') render();
     try {
       const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
       const headers = jwt ? { Authorization: `Bearer ${jwt}` } : {};
@@ -1458,11 +1486,40 @@
           name: String(r.name || r.username || r.id || ''),
           fullName: String(r.name || r.username || r.id || ''),
           username: String(r.username || ''),
+          avatarUrl: String(r.avatarUrl || r.avatar_url || ''),
         };
       }).filter((u) => !!u.id);
+
+      const teamScheduleBlocks = Array.isArray(data && data.teamScheduleBlocks) ? data.teamScheduleBlocks : [];
+      if (window.Store && Store.setUserDayBlocks && teamScheduleBlocks.length) {
+        const bucket = new Map();
+        teamScheduleBlocks.forEach((row) => {
+          const r = row && typeof row === 'object' ? row : {};
+          const memberId = String(r.userId || r.user_id || '').trim();
+          const dayIdx = Number(r.dayIndex);
+          if (!memberId || !Number.isInteger(dayIdx) || dayIdx < 0 || dayIdx > 6) return;
+          const key = `${memberId}|${dayIdx}`;
+          if (!bucket.has(key)) bucket.set(key, []);
+          bucket.get(key).push({
+            start: String(r.start || '00:00'),
+            end: String(r.end || '00:00'),
+            schedule: String(r.schedule || ''),
+            notes: String(r.notes || ''),
+          });
+        });
+        bucket.forEach((blocks, key) => {
+          const [memberId, day] = key.split('|');
+          Store.setUserDayBlocks(memberId, teamId, Number(day), blocks);
+        });
+      }
+
       teamMembersLoadedFor = `${uid}:${teamId}`;
       if (viewMode === 'team') render();
     } catch (_) { }
+    finally {
+      teamMembersLoading = false;
+      if (viewMode === 'team') render();
+    }
   }
 
   async function refreshMemberScheduleTheme() {
