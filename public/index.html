@@ -69,11 +69,12 @@
       </div>
     </div>
 
-    <aside class="side card pad">
+    <aside class="side card pad" id="main-sidebar">
       <div class="usercard" id="userCard"></div>
       <!-- Timezone is shown inside the compact profile card to maximize nav space -->
-      <nav class="nav" id="nav"></nav>
-
+      <div class="sidebar-main-nav">
+        <nav class="nav" id="nav"></nav>
+      </div>
       <div class="side-logs" id="sideLogs">
         <div class="side-logs-head">
           <div class="side-logs-title">Recent Activity</div>
@@ -88,6 +89,13 @@
 
     <aside class="right card pad" id="rightbar">
       <div id="right-sidebar-container"></div>
+      <div class="right-sidebar-bottom-anchor">
+        <hr class="right-enterprise-divider" />
+        <a href="/controller_lab" id="controller-lab-btn" class="nav-item controller-lab-btn" data-page="controller_lab" title="Controller Lab">
+          <i aria-hidden="true">🧪</i>
+          <span>Controller Lab</span>
+        </a>
+      </div>
     </aside>
   </div>
 
@@ -722,6 +730,7 @@
   <script src="/js/pages/my_task.js?v=p1-516"></script>
   <script src="/js/pages/commands.js?v=p1-516"></script>
   <script src="/js/pages/privileges.js?v=p1-516"></script>
+  <script src="/js/pages/controller_lab.js?v=p1-516"></script>
   <script src="/js/pages/gmt_overview.js?v=p1-516"></script>
 
   <script src="/js/pages/distribution_monitoring.js?v=p1-516"></script>

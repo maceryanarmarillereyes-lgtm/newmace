@@ -2,6 +2,7 @@
   const MODULE = 'StatusWidgets';
   const ROOT_ID = 'right-sidebar-container';
   const WRAP_ID = 'status-widget-grid';
+  const CONTROLLER_LAB_ID = 'controller-lab-action';
   const ACK_ENDPOINTS = ['/api/sync/push', '/functions/api/sync/push'];
   const SETTINGS_ENDPOINTS = ['/api/settings/global-theme', '/functions/api/settings/global-theme'];
   const DEFAULT_STATES = {
@@ -147,6 +148,29 @@ wrap.appendChild(frag);
 const targetHost = (host.id === ROOT_ID) ? host : (host.querySelector(`#${ROOT_ID}`) || host);
 if(targetHost.firstChild) targetHost.insertBefore(wrap, targetHost.firstChild);
 else targetHost.appendChild(wrap);
+
+renderControllerLabAction(targetHost);
+}
+
+function renderControllerLabAction(host){
+  if(!host) return;
+  const existing = document.getElementById(CONTROLLER_LAB_ID);
+  if(existing) existing.remove();
+
+  const section = document.createElement('section');
+  section.id = CONTROLLER_LAB_ID;
+  section.className = 'controller-lab-action';
+  section.innerHTML = `
+    <div class="controller-lab-rule"></div>
+    <div class="controller-lab-rule"></div>
+    <button type="button" class="controller-lab-btn" aria-label="Open Controller Lab">Controller Lab</button>
+  `;
+
+  const button = section.querySelector('.controller-lab-btn');
+  if(button){
+    button.addEventListener('click', ()=>routeTo('controller_lab'));
+  }
+  host.appendChild(section);
 }
 
 async function acknowledge(widgetId){
