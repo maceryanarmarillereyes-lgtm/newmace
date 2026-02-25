@@ -4346,3 +4346,38 @@ body[data-theme="aurora_midnight"]{
 body[data-theme="mono"]{
   --surface-bg:#0b0c10;--surface-bg-alt:#111318;--surface-card:#13151b;--surface-card-alt:#0f1116;--surface-modal:#13151b;--text-primary:#f3f4f6;--text-muted:#b7bcc6;--text-inverse:#0f172a;--accent-primary:#a3a3a3;--accent-primary-hover:#8f8f8f;--accent-border:rgba(255,255,255,.10);
 }
+
+/* Controller Lab right-rail action */
+.controller-lab-action {
+  margin-top: clamp(180px, 28vh, 280px);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.controller-lab-rule {
+  width: 100%;
+  height: 1px;
+  border-radius: 999px;
+  background: rgba(156, 163, 175, 0.35);
+}
+
+.controller-lab-btn {
+  align-self: center;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 16px;
+  background: linear-gradient(180deg, #20d163 0%, #14a94e 100%);
+  color: #05260f;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(20, 169, 78, 0.32);
+}
+
+.controller-lab-btn:hover {
+  filter: brightness(1.05);
+}
