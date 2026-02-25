@@ -4274,17 +4274,19 @@ th{background:var(--surface-card-alt);color:var(--text-muted)}
 .realtime-blocker-card{background:var(--surface-modal);border-color:var(--accent-border);box-shadow:var(--effect-shadow-strong);color:var(--text-primary)}
 
 body[data-theme="mums_dark"]{
-  --surface-bg:#050914;
-  --surface-bg-alt:#0b1022;
-  --surface-card:#0b1022;
-  --surface-card-alt:#090e1c;
-  --surface-modal:#0b1022;
-  --text-primary:#eef2ff;
-  --text-muted:#b9c1da;
+  --surface-bg:#0f172a;
+  --surface-bg-alt:#17233c;
+  --surface-card:#1a2742;
+  --surface-card-alt:#22314f;
+  --surface-modal:#1d2b47;
+  --text-primary:#f4f7ff;
+  --text-muted:#c6d2ea;
   --text-inverse:#0f172a;
-  --accent-primary:#7c87ff;
-  --accent-primary-hover:#6366f1;
-  --accent-border:rgba(255,255,255,.12);
+  --accent-primary:#7f9bff;
+  --accent-primary-hover:#97adff;
+  --accent-border:rgba(179,199,255,.34);
+  --effect-shadow-soft:0 4px 14px rgba(6,12,28,.28);
+  --effect-shadow-strong:0 18px 38px rgba(5,10,24,.34);
 }
 body[data-theme="aurora_light"]{
   --surface-bg:#f5f7fb;
@@ -4333,7 +4335,7 @@ body[data-theme="classic_style"]{
 }
 
 body[data-theme="aurora_midnight"]{
-  --surface-bg:#050914;--surface-bg-alt:#0b1022;--surface-card:#0b1022;--surface-card-alt:#090e1c;--surface-modal:#0b1022;--text-primary:#eef2ff;--text-muted:#b9c1da;--text-inverse:#0f172a;--accent-primary:#7c87ff;--accent-primary-hover:#6366f1;--accent-border:rgba(255,255,255,.12);
+  --surface-bg:#0f172a;--surface-bg-alt:#17233c;--surface-card:#1a2742;--surface-card-alt:#22314f;--surface-modal:#1d2b47;--text-primary:#f4f7ff;--text-muted:#c6d2ea;--text-inverse:#0f172a;--accent-primary:#7f9bff;--accent-primary-hover:#97adff;--accent-border:rgba(179,199,255,.34);--effect-shadow-soft:0 4px 14px rgba(6,12,28,.28);--effect-shadow-strong:0 18px 38px rgba(5,10,24,.34);
 }
 body[data-theme="mono"]{
   --surface-bg:#0b0c10;--surface-bg-alt:#111318;--surface-card:#13151b;--surface-card-alt:#0f1116;--surface-modal:#13151b;--text-primary:#f3f4f6;--text-muted:#b7bcc6;--text-inverse:#0f172a;--accent-primary:#a3a3a3;--accent-primary-hover:#8f8f8f;--accent-border:rgba(255,255,255,.10);
