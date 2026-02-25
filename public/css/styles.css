@@ -4106,6 +4106,9 @@ body[data-theme="monday_workspace"] .rtabs{
   display: flex;
   flex-direction: column;
   gap: 12px;
+  height: 100%;
+  min-height: 100%;
+  flex: 1 1 auto;
 }
 .status-widget-grid {
 order: -1;
