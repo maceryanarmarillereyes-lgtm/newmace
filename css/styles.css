@@ -275,17 +275,11 @@ html{
 }
 
 body{
-  min-height: 100vh;
-  overflow-x: hidden;
-}
-
-/* Keep global scaling on the app shell only so fixed overlays
-   (online users + quick links) stay pinned to the actual viewport bottom. */
-body > .app{
   transform: scale(var(--app-scale));
   transform-origin: top left;
   width: calc(100% / var(--app-scale));
   min-height: calc(100vh / var(--app-scale));
+  overflow-x: hidden;
 }
 
 /* Disable narrow-screen grid reflow that causes "layout shatter".
