@@ -202,7 +202,10 @@ module.exports = async (req, res, routeParams) => {
 
     const includeTeam = String((req.query && req.query.includeTeam) || '').trim().toLowerCase();
     const wantsTeamMembers = includeTeam === '1' || includeTeam === 'true' || includeTeam === 'yes';
-    const canViewTeamMembers = !!actorTeamId && actorTeamId === targetTeamId;
+    // Team tab on "My Schedule" should always show the full team roster for the
+    // member being viewed. Some profiles can have stale/missing actor.team_id,
+    // so we must allow "self" requests to resolve members by targetTeamId.
+    const canViewTeamMembers = !!targetTeamId && (isSelf || actorTeamId === targetTeamId || isPrivileged);
 
     const [scheduleDoc, palette, teamMembers] = await Promise.all([
       getScheduleDoc(),
