@@ -4872,3 +4872,17 @@ body.members-fullscreen-active .tooltip{
   position: relative;
   z-index: 18001 !important;
 }
+
+/* Protocol v13: Visibility & Contrast Enforcement */
+.members-page select,
+.members-page .input,
+.members-page option {
+  color: #f4f4f5 !important;
+  background-color: #18181b !important;
+}
+
+/* Fix specific unreadable 'Leave' dropdown selection */
+.members-page .member-actions select {
+  color: #f4f4f5 !important;
+  background-color: rgba(255,255,255,0.05) !important;
+}
