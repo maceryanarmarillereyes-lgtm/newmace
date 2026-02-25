@@ -162,6 +162,7 @@ function renderControllerLabAction(host){
   section.className = 'controller-lab-action';
   section.innerHTML = `
     <div class="controller-lab-rule"></div>
+    <div class="controller-lab-rule"></div>
     <button type="button" class="controller-lab-btn" aria-label="Open Controller Lab">Controller Lab</button>
   `;
 
