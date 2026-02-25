@@ -3,50 +3,139 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Controller Lab - MUMS</title>
+    <title>Controller Lab - MUMS Sandbox</title>
     <link rel="stylesheet" href="/css/styles.css">
     <link rel="stylesheet" href="/css/enterprise_ux.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { 
-            background-color: #0d1117; /* Enterprise Dark Mode Base */
-            color: #c9d1d9; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            height: 100vh; 
-            margin: 0; 
-            font-family: 'Inter', 'Segoe UI', sans-serif; 
-            overflow: hidden;
+        body {
+            background-color: #0d1117;
+            color: #c9d1d9;
+            margin: 0;
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
-        .lab-placeholder {
-            text-align: center;
-            opacity: 0.4;
-            animation: pulse 2s infinite ease-in-out;
+        .lab-header {
+            padding: 15px 30px;
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            backdrop-filter: blur(10px);
         }
-        .lab-placeholder i {
-            font-size: 3rem;
-            margin-bottom: 15px;
-            display: block;
-        }
-        .lab-placeholder h2 {
+        .lab-header h1 {
             font-size: 1.2rem;
-            font-weight: 500;
-            letter-spacing: 2px;
-            text-transform: uppercase;
+            font-weight: 600;
+            margin: 0;
+            color: #ffffff;
+        }
+        .lab-container {
+            padding: 30px;
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 24px;
+            align-content: start;
+        }
+        /* Glassmorphism Widget Card */
+        .lab-widget {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 24px;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+        .lab-widget-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .lab-widget-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #ffffff;
             margin: 0;
         }
-        @keyframes pulse {
-            0% { opacity: 0.3; }
-            50% { opacity: 0.6; }
-            100% { opacity: 0.3; }
+        /* Universal Excel Adapter Styles */
+        .drop-zone {
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 40px 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.01);
         }
+        .drop-zone:hover {
+            border-color: #58a6ff;
+            background: rgba(88, 166, 255, 0.05);
+        }
+        .drop-zone i {
+            font-size: 2.5rem;
+            color: #8b949e;
+            margin-bottom: 15px;
+        }
+        .drop-zone p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: #8b949e;
+        }
+        .btn-primary {
+            width: 100%;
+            margin-top: 15px;
+            padding: 10px;
+            background: #238636;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-primary:hover { background: #2ea043; }
     </style>
 </head>
 <body>
-    <div class="lab-placeholder">
-        <i class="fas fa-server"></i>
-        <h2>Controller Lab Environment</h2>
+<div class="lab-header">
+    <i class="fas fa-gamepad" style="color: #58a6ff; font-size: 1.5rem;"></i>
+    <h1>MUMS Controller Lab</h1>
+</div>
+<div class="lab-container">
+    <div class="lab-widget">
+        <div class="lab-widget-header">
+            <h2 class="lab-widget-title">Universal Excel Adapter Testing</h2>
+            <i class="fas fa-ellipsis-h" style="color: #8b949e; cursor: pointer;"></i>
+        </div>
+
+        <div class="drop-zone" id="excel-drop-zone">
+            <i class="fas fa-file-excel"></i>
+            <p>Drag and Drop Excel File here<br>or click to browse</p>
+            <input type="file" id="excel-file-input" accept=".xlsx, .xls" style="display: none;">
+        </div>
+
+        <button class="btn-primary" onclick="alert('Lab: Simulation Mode Activated. No database mutations will occur.')">
+            <i class="fas fa-play"></i> Run Simulation
+        </button>
     </div>
+</div>
+<script>
+    // Simple Drop Zone Logic for UI Simulation
+    const dropZone = document.getElementById('excel-drop-zone');
+    const fileInput = document.getElementById('excel-file-input');
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', function() {
+        if (this.files && this.files[0]) {
+            dropZone.innerHTML = `<i class="fas fa-check-circle" style="color: #238636;"></i><p>File loaded: <strong>${this.files[0].name}</strong></p>`;
+            dropZone.style.borderColor = '#238636';
+        }
+    });
+</script>
 </body>
 </html>
