@@ -4872,3 +4872,173 @@ body.members-fullscreen-active .tooltip{
   position: relative;
   z-index: 18001 !important;
 }
+
+/* target: public/css/enterprise_ux.css */
+
+/* Ensure the main sidebar is a full-height flex column */
+#main-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  justify-content: space-between; /* Ensures top and bottom spacing */
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* This pushes the bottom section (Line + Controller Lab) perfectly to the bottom */
+.sidebar-bottom-anchor {
+  margin-top: auto; 
+  padding-bottom: 24px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Enterprise Glass Divider (Line) */
+.sidebar-bottom-anchor hr,
+.enterprise-divider {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  margin: 16px 20px;
+  width: calc(100% - 40px);
+}
+
+/* Controller Lab Button Styling Upgrade */
+.nav-item.controller-lab-btn {
+  margin: 4px 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: rgba(115, 103, 240, 0.05); /* Subtle plasma tint */
+  border: 1px solid rgba(115, 103, 240, 0.1);
+  color: var(--text-secondary);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-item.controller-lab-btn:hover {
+  background: rgba(115, 103, 240, 0.15);
+  border-color: rgba(115, 103, 240, 0.4);
+  color: var(--accent-plasma);
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(115, 103, 240, 0.15);
+}
+
+.nav-item.controller-lab-btn i {
+  color: var(--accent-plasma);
+  font-size: 1.1em;
+}
+
+/* target: public/css/enterprise_ux.css */
+
+/* Ensure the Right Sidebar is a full-height flex column */
+#rightbar,
+#right-sidebar, 
+.right-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  justify-content: flex-start; /* Keeps top content at the top */
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Push the Bottom Section (Line + Button) to the absolute bottom of the Right Sidebar */
+.right-sidebar-bottom-anchor {
+  margin-top: auto; /* This does the magic of pinning it to the bottom */
+  padding-bottom: 24px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Right Sidebar Enterprise Glass Divider */
+.right-sidebar-bottom-anchor hr,
+.right-enterprise-divider {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  margin: 16px 20px;
+  width: calc(100% - 40px);
+}
+
+/* Controller Lab Button Styling - Right Aligned Aesthetics */
+.right-sidebar-bottom-anchor .nav-item.controller-lab-btn {
+  margin: 4px 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: rgba(115, 103, 240, 0.05); /* Subtle plasma tint */
+  border: 1px solid rgba(115, 103, 240, 0.1);
+  color: var(--text-secondary);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.right-sidebar-bottom-anchor .nav-item.controller-lab-btn:hover {
+  background: rgba(115, 103, 240, 0.15);
+  border-color: rgba(115, 103, 240, 0.4);
+  color: var(--accent-plasma);
+  transform: translateX(-4px); /* Subtle hover effect pulls slightly left */
+  box-shadow: 0 4px 12px rgba(115, 103, 240, 0.15);
+}
+
+.right-sidebar-bottom-anchor .nav-item.controller-lab-btn i {
+  color: var(--accent-plasma);
+  font-size: 1.1em;
+}
+
+/* Controller Lab Right Sidebar Block */
+.controller-lab-action-block {
+    margin-top: auto; /* Pushes to bottom if right sidebar is a flex column */
+    padding: 16px 20px 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+hr.right-sidebar-divider {
+    border: none;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    margin: 2px 0;
+    width: 100%;
+}
+
+.btn-controller-lab {
+    margin-top: 8px;
+    background: linear-gradient(45deg, #00b09b, #96c93d); /* Green CTA */
+    color: #ffffff;
+    border: none;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 15px rgba(0, 176, 155, 0.2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.btn-controller-lab:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 176, 155, 0.5);
+    background: linear-gradient(45deg, #96c93d, #00b09b);
+}
+
+.btn-controller-lab i {
+    font-size: 1.2em;
+}

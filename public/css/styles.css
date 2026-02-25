@@ -275,11 +275,17 @@ html{
 }
 
 body{
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Keep global scaling on the app shell only so fixed overlays
+   (online users + quick links) stay pinned to the actual viewport bottom. */
+body > .app{
   transform: scale(var(--app-scale));
   transform-origin: top left;
   width: calc(100% / var(--app-scale));
   min-height: calc(100vh / var(--app-scale));
-  overflow-x: hidden;
 }
 
 /* Disable narrow-screen grid reflow that causes "layout shatter".
@@ -2876,7 +2882,7 @@ body.attendance-locked #app{
    - Quick links: lower center
    - Online users bar: above dock (4 sections incl. Developer Access)
 ================================ */
-:root{ --mums-dock-h: 86px; --mums-onlinebar-h: 44px; }
+:root{ --mums-dock-h: 86px; --mums-onlinebar-h: 44px; --mums-shell-gap: 18px; }
 
 
 .online-users-bar{
@@ -2968,7 +2974,19 @@ body.attendance-locked #app{
 
 /* Ensure the app body never gets hidden behind the online bar + dock.
    Keep this tight so we don't waste vertical real estate. */
-.app{ padding-bottom: calc(var(--mums-dock-h) + var(--mums-onlinebar-h) + 18px); }
+.app{ padding-bottom: calc(var(--mums-dock-h) + var(--mums-onlinebar-h) + var(--mums-shell-gap)); }
+
+/* Desktop shell lock:
+   keep left/main/right panes pinned above the Online Members + Quick Links dock.
+   This prevents sidebars/main content from being pushed downward as content grows. */
+@media (min-width: 981px){
+  body > .app{
+    height: calc((100vh - var(--mums-dock-h) - var(--mums-onlinebar-h) - var(--mums-shell-gap)) / var(--app-scale));
+    min-height: calc((100vh - var(--mums-dock-h) - var(--mums-onlinebar-h) - var(--mums-shell-gap)) / var(--app-scale));
+    max-height: calc((100vh - var(--mums-dock-h) - var(--mums-onlinebar-h) - var(--mums-shell-gap)) / var(--app-scale));
+    overflow: hidden;
+  }
+}
 
 /* When a modal is open, prevent fixed overlays (dock + online bar) from intercepting clicks.
    This also avoids visual "overlap" when modals are positioned close to the bottom. */
@@ -4345,4 +4363,86 @@ body[data-theme="aurora_midnight"]{
 }
 body[data-theme="mono"]{
   --surface-bg:#0b0c10;--surface-bg-alt:#111318;--surface-card:#13151b;--surface-card-alt:#0f1116;--surface-modal:#13151b;--text-primary:#f3f4f6;--text-muted:#b7bcc6;--text-inverse:#0f172a;--accent-primary:#a3a3a3;--accent-primary-hover:#8f8f8f;--accent-border:rgba(255,255,255,.10);
+}
+
+/* Controller Lab right-rail action */
+.controller-lab-action {
+  margin-top: auto;
+  padding: 10px 0 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.controller-lab-rule {
+  width: 100%;
+  height: 1px;
+  border-radius: 999px;
+  background: rgba(156, 163, 175, 0.35);
+}
+
+.controller-lab-btn {
+  align-self: center;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 16px;
+  background: linear-gradient(180deg, #20d163 0%, #14a94e 100%);
+  color: #05260f;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(20, 169, 78, 0.32);
+}
+
+.controller-lab-btn:hover {
+  filter: brightness(1.05);
+}
+
+/* Controller Lab Right Sidebar Block */
+.controller-lab-action-block {
+    margin-top: auto; /* Pushes to bottom if right sidebar is a flex column */
+    padding: 16px 20px 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+hr.right-sidebar-divider {
+    border: none;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    margin: 2px 0;
+    width: 100%;
+}
+
+.btn-controller-lab {
+    margin-top: 8px;
+    background: linear-gradient(45deg, #00b09b, #96c93d); /* Green CTA */
+    color: #ffffff;
+    border: none;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 15px rgba(0, 176, 155, 0.2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.btn-controller-lab:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 176, 155, 0.5);
+    background: linear-gradient(45deg, #96c93d, #00b09b);
+}
+
+.btn-controller-lab i {
+    font-size: 1.2em;
 }
