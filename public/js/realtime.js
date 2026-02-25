@@ -529,6 +529,19 @@ function applyRemoteKey(key, value){
             if(window.dispatchEvent){
               window.dispatchEvent(new CustomEvent('mums:realtime_alert', { detail: row }));
             }
+
+            // Mailbox override events must propagate immediately across online users.
+            // Trigger a forced cloud override sync as soon as the audit row arrives,
+            // so pages reflect set/lift changes without requiring refresh.
+            try{
+              const action = String(row.action || '').toLowerCase();
+              const scope = String(row.scope || '').toLowerCase();
+              if(['set','reset','freeze'].includes(action) && ['global','superadmin'].includes(scope)){
+                if(window.Store && typeof Store.startMailboxOverrideSync === 'function'){
+                  Store.startMailboxOverrideSync({ force:true });
+                }
+              }
+            }catch(_){ }
           } catch (_) {}
         })
         .subscribe((status) => {
