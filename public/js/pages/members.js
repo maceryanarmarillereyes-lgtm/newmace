@@ -1,5 +1,9 @@
 (window.Pages = window.Pages || {});
 
+// CRITICAL: Global placeholders to prevent ReferenceErrors in other modules
+window.copiedBlocks = null;
+window.copiedLabel = "";
+
 window.Pages.members = function(root){
   root.innerHTML = '<div class="small muted">Loading…</div>';
   (async()=>{

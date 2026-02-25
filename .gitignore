@@ -11,3 +11,6 @@
 # OS
 .DS_Store
 Thumbs.db
+
+# Packaging artifacts
+protocol-v13-dashboard-repair.zip
