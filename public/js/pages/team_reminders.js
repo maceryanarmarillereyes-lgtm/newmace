@@ -24,6 +24,7 @@ const me = Auth.getUser();
   const canAdminSettings = (me.role === (Config?.ROLES?.SUPER_ADMIN || 'SUPER_ADMIN')) || (me.role === (Config?.ROLES?.ADMIN || 'ADMIN'));
 
   let editingId = null;
+  let renderCleanup = null;
 
   function settings(){
     try{ return (Store.getReminderSettings && Store.getReminderSettings()) || { snoozePresets:[5,10,15,30], categories:['Work','Personal','Urgent'], escalationAfterMin:2, maxVisible:3 }; }
@@ -172,6 +173,9 @@ const me = Auth.getUser();
   }
 
   function render(){
+    try{ if(typeof renderCleanup === 'function') renderCleanup(); }catch(_){}
+    renderCleanup = null;
+
     const list = getList();
     const members = teamMembers();
     const k = computeKpis(list);
@@ -752,9 +756,15 @@ const me = Auth.getUser();
     }
     window.addEventListener('mums:store', onStore);
 
-    root._cleanup = ()=>{
+    renderCleanup = ()=>{
       try{ root.removeEventListener('click', onClick); }catch(_){}
       try{ window.removeEventListener('mums:store', onStore); }catch(_){}
+      try{ window.removeEventListener('mums:globalFocus', applyGlobalFocus); }catch(_){}
+    };
+
+    root._cleanup = ()=>{
+      try{ if(typeof renderCleanup === 'function') renderCleanup(); }catch(_){}
+      renderCleanup = null;
     };
   }
 

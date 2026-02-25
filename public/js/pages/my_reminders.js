@@ -23,6 +23,7 @@ const me = Auth.getUser();
   const PREF_KEY = 'mums_reminder_prefs_' + String(me.id);
 
   let editingId = null;
+  let renderCleanup = null;
 
   function settings(){
     try{ return (Store.getReminderSettings && Store.getReminderSettings()) || { snoozePresets:[5,10,15,30], categories:['Work','Personal','Urgent'], escalationAfterMin:2, maxVisible:3 }; }
@@ -170,6 +171,9 @@ const me = Auth.getUser();
   }
 
   function render(){
+    try{ if(typeof renderCleanup === 'function') renderCleanup(); }catch(_){}
+    renderCleanup = null;
+
     const list = getList();
     const k = computeKpis(list);
     const p = prefs();
@@ -660,9 +664,14 @@ const me = Auth.getUser();
     }
     window.addEventListener('mums:store', onStore);
 
-    root._cleanup = ()=>{
+    renderCleanup = ()=>{
       try{ root.removeEventListener('click', onClick); }catch(_){}
       try{ window.removeEventListener('mums:store', onStore); }catch(_){}
+    };
+
+    root._cleanup = ()=>{
+      try{ if(typeof renderCleanup === 'function') renderCleanup(); }catch(_){}
+      renderCleanup = null;
     };
   }
 
