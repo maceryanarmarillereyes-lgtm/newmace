@@ -29,7 +29,21 @@
 
   const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   function currentTeamId() {
-    const raw = (me && (me.teamId != null ? me.teamId : me.team_id));
+    let raw = (me && (me.teamId != null ? me.teamId : me.team_id));
+    if (raw == null || raw === '') {
+      try {
+        const uid = String((me && me.id) || sessionUserId || '');
+        const profile = (uid && window.Store && Store.getUserById) ? Store.getUserById(uid) : null;
+        const fallbackTeamId = profile && (profile.teamId != null ? profile.teamId : profile.team_id);
+        if (fallbackTeamId != null && fallbackTeamId !== '') {
+          raw = fallbackTeamId;
+          if (me) {
+            me.teamId = fallbackTeamId;
+            me.team_id = fallbackTeamId;
+          }
+        }
+      } catch (_) { }
+    }
     return String(raw == null ? '' : raw);
   }
 
@@ -1465,9 +1479,10 @@
 
   async function refreshTeamMembers() {
     const uid = String((me && me.id) || '');
-    const teamId = String((me && (me.teamId != null ? me.teamId : me.team_id)) || '');
-    if (!uid || !teamId) return;
-    if (teamMembersLoadedFor === `${uid}:${teamId}`) return;
+    const initialTeamId = currentTeamId();
+    if (!uid) return;
+    const cacheKey = `${uid}:${initialTeamId}`;
+    if (teamMembersLoadedFor === cacheKey) return;
     teamMembersLoading = true;
     if (viewMode === 'team') render();
     try {
@@ -1476,12 +1491,17 @@
       const res = await fetch(`/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1`, { headers, cache: 'no-store' });
       if (!res.ok) return;
       const data = await res.json().catch(() => ({}));
+      const resolvedTeamId = String((data && data.teamId) || initialTeamId || '');
+      if (resolvedTeamId && me) {
+        me.teamId = resolvedTeamId;
+        me.team_id = resolvedTeamId;
+      }
       const rows = Array.isArray(data && data.teamMembers) ? data.teamMembers : [];
       teamMembersCache = rows.map((row) => {
         const r = row && typeof row === 'object' ? row : {};
         return {
           id: String(r.id || r.user_id || ''),
-          teamId: String(r.teamId || r.team_id || teamId || ''),
+          teamId: String(r.teamId || r.team_id || resolvedTeamId || ''),
           role: String(r.role || 'MEMBER'),
           name: String(r.name || r.username || r.id || ''),
           fullName: String(r.name || r.username || r.id || ''),
@@ -1509,11 +1529,13 @@
         });
         bucket.forEach((blocks, key) => {
           const [memberId, day] = key.split('|');
-          Store.setUserDayBlocks(memberId, teamId, Number(day), blocks);
+          const memberTeamId = String(((teamMembersCache.find((m) => String(m.id) === String(memberId)) || {}).teamId) || resolvedTeamId || currentTeamId() || '');
+          if (!memberTeamId) return;
+          Store.setUserDayBlocks(memberId, memberTeamId, Number(day), blocks);
         });
       }
 
-      teamMembersLoadedFor = `${uid}:${teamId}`;
+      teamMembersLoadedFor = `${uid}:${resolvedTeamId || initialTeamId}`;
       if (viewMode === 'team') render();
     } catch (_) { }
     finally {
