@@ -157,20 +157,32 @@ function renderControllerLabAction(host){
   const existing = document.getElementById(CONTROLLER_LAB_ID);
   if(existing) existing.remove();
 
-  const section = document.createElement('section');
-  section.id = CONTROLLER_LAB_ID;
-  section.className = 'controller-lab-action';
-  section.innerHTML = `
-    <div class="controller-lab-rule"></div>
-    <div class="controller-lab-rule"></div>
-    <button type="button" class="controller-lab-btn" aria-label="Open Controller Lab">Controller Lab</button>
+  const controllerLabBlock = document.createElement('div');
+  controllerLabBlock.id = CONTROLLER_LAB_ID;
+  controllerLabBlock.className = 'controller-lab-action-block';
+  controllerLabBlock.innerHTML = `
+    <hr class="right-sidebar-divider top-divider" />
+    <hr class="right-sidebar-divider bottom-divider" />
+    <button id="btn-nav-controller-lab" class="btn-controller-lab" data-page="controller_lab" type="button">
+      <i class="fas fa-flask"></i> Controller Lab
+    </button>
   `;
 
-  const button = section.querySelector('.controller-lab-btn');
-  if(button){
-    button.addEventListener('click', ()=>routeTo('controller_lab'));
+  // Bind click event to trigger the SPA router
+  const btnLab = controllerLabBlock.querySelector('#btn-nav-controller-lab');
+  if(btnLab) {
+    btnLab.addEventListener('click', () => {
+      if (window.MUMS && window.MUMS.App && typeof window.MUMS.App.navigate === 'function') {
+        window.MUMS.App.navigate('controller_lab');
+      } else {
+        console.warn('MUMS App Navigator not found, fallback triggered.');
+        routeTo('controller_lab');
+      }
+    });
   }
-  host.appendChild(section);
+
+  // Append controllerLabBlock to your main right sidebar wrapper element here.
+  host.appendChild(controllerLabBlock);
 }
 
 async function acknowledge(widgetId){

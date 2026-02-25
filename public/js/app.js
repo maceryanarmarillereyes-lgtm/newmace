@@ -2817,6 +2817,14 @@ function updateClocksPreviewTimes(){
     }
   }
 
+  try{
+    window.MUMS = window.MUMS || {};
+    window.MUMS.App = window.MUMS.App || {};
+    window.MUMS.App.navigate = function(pageId, opts){
+      navigateToPageId(pageId, opts);
+    };
+  }catch(_){ }
+
   function route(reason){
     const runSeq = ++NAV_RENDER.seq;
     NAV_RENDER.inFlight = true;
@@ -2857,7 +2865,17 @@ function updateClocksPreviewTimes(){
       main.dataset.routeSeq = String(runSeq);
 
       try{
-        window.Pages[pageId](main);
+        if(
+          pageId === 'controller_lab' &&
+          window.MUMS &&
+          window.MUMS.Pages &&
+          window.MUMS.Pages.ControllerLab &&
+          typeof window.MUMS.Pages.ControllerLab.render === 'function'
+        ){
+          window.MUMS.Pages.ControllerLab.render(main);
+        }else{
+          window.Pages[pageId](main);
+        }
       }catch(pageErr){
         showFatalError(pageErr);
       }
