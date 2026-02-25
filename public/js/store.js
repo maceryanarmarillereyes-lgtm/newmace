@@ -89,7 +89,12 @@
     const silent = !!(opts && opts.silent);
     const fromRealtime = !!(opts && opts.fromRealtime);
     if(!silent){
-      try{ window.dispatchEvent(new CustomEvent('mums:store', { detail: { key } })); }catch(e){}
+      try{ window.dispatchEvent(new CustomEvent('mums:store', { detail: { key, source: (fromRealtime ? 'realtime' : 'local') } })); }catch(e){}
+      try{
+        if(key === KEYS.mailbox_time_override_cloud){
+          window.dispatchEvent(new CustomEvent('mums:store', { detail: { key:'mailbox_override_cloud', source:(fromRealtime ? 'realtime' : 'local') } }));
+        }
+      }catch(_){ }
     }
     // Optional cross-browser real-time sync (requires local relay server).
     // Avoid echo loops by not publishing updates that originated from the relay.
@@ -1761,27 +1766,24 @@
     // - global: applies to all sessions (entire users affected on this device)
     getMailboxTimeOverride(){
       const def = { enabled:false, ms:0, freeze:true, setAt:0, scope:'sa_only' };
-      const d = read(KEYS.mailbox_time_override, null);
-      if(!d || typeof d !== 'object') return def;
-      const o = Object.assign({}, def, d);
-      o.enabled = !!o.enabled;
-      o.ms = Number(o.ms)||0;
-      o.freeze = (o.freeze !== false);
-      o.setAt = Number(o.setAt)||0;
-      o.scope = (String(o.scope||'sa_only') === 'global') ? 'global' : 'sa_only';
+      const normalize = (raw, fallbackScope)=>{
+        if(!raw || typeof raw !== 'object') return null;
+        const out = Object.assign({}, def, raw);
+        out.enabled = !!out.enabled;
+        out.ms = Number(out.ms)||0;
+        out.freeze = (out.freeze !== false);
+        out.setAt = Number(out.setAt)||0;
+        const scope = String(out.scope || fallbackScope || 'sa_only');
+        out.scope = (scope === 'global') ? 'global' : 'sa_only';
+        return out;
+      };
 
       // Cloud-global override (across devices/browsers) takes precedence.
-      const cloud = read(KEYS.mailbox_time_override_cloud, null);
-      if (cloud && typeof cloud === 'object' && cloud.enabled && String(cloud.scope) === 'global') {
-        const c = Object.assign({}, def, cloud);
-        c.enabled = !!c.enabled;
-        c.ms = Number(c.ms)||0;
-        c.freeze = (c.freeze !== false);
-        c.setAt = Number(c.setAt)||0;
-        c.scope = 'global';
-        return c;
-      }
-      return o;
+      const c = normalize(read(KEYS.mailbox_time_override_cloud, null), 'global');
+      if (c && c.enabled && c.scope === 'global') return c;
+
+      const o = normalize(read(KEYS.mailbox_time_override, null), 'sa_only');
+      return o || def;
     },
     saveMailboxTimeOverride(next, opts){
       const cur = Store.getMailboxTimeOverride();
