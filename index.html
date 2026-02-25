@@ -1,9 +1,7 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <base href="/" />
+<html lang="en" data-app-scale="1.000" style="--app-scale: 1.000; --bg: #0f172a; --panel: #1a2742; --panel2: #22314f; --text: #f4f7ff; --muted: #c6d2ea; --border: rgba(179,199,255,.34); --accent: #7f9bff; --accent-rgb: 127,155,255; --bgRad1: #2a3b67; --bgRad3: #0c1427; --font: 'Plus Jakarta Sans', Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; --radius: 16px; --shadow: 0 16px 34px rgba(5,10,24,.34); --surface-0: #0f172a; --surface-1: #1a2742; --surface-2: #22314f; --text-0: #f4f7ff; --text-muted: #c6d2ea; --border-0: rgba(179,199,255,.34); --control-bg: rgba(18,24,38,.92); --control-border: rgba(179,199,255,.34); --control-text: #f4f7ff; --overlay-scrim: rgba(0,0,0,.55); --btn-glass-top: rgba(255,255,255,.08); --btn-glass-bot: rgba(255,255,255,.02); --accent-contrast: #0b1220;" data-mode="dark"><head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <base href="/">
   <script>
     // Root access must always load the login page.
     // Keep the SPA router intact for /dashboard, /members, etc.
@@ -17,84 +15,39 @@
       } catch (_) {}
     })();
   </script>
-  <title>MUMS | MUMS User Management System</title><link rel="stylesheet" href="/css/styles.css?v=p1-516" />
-  <link rel="stylesheet" href="/css/mailbox.css?v=p1-516" />
-  <link rel="stylesheet" href="/css/enterprise_ux.css?v=p1-516" />
-  
-  <style id="enterprise-glass-globals">
-    /* Glass Modals Base */
-    #settingsModal .panel, #themeModal .panel, #systemCheckModal .panel {
-      background: linear-gradient(145deg, rgba(15,23,42,0.85), rgba(2,6,23,0.95)) !important;
-      backdrop-filter: blur(24px) !important;
-      -webkit-backdrop-filter: blur(24px) !important;
-      border: 1px solid rgba(56,189,248,0.25) !important;
-      box-shadow: 0 30px 60px -12px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.1) !important;
-    }
-    #settingsModal .head, #themeModal .head, #systemCheckModal .head {
-      border-bottom: 1px solid rgba(255,255,255,0.08) !important;
-      background: rgba(15,23,42,0.5) !important;
-    }
-
-    /* Settings Grid */
-    .settings-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-    }
-    .settings-card {
-      background: linear-gradient(145deg, rgba(30,41,59,0.4), rgba(15,23,42,0.6)) !important;
-      border: 1px solid rgba(255,255,255,0.06) !important;
-      border-radius: 16px !important;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02), 0 4px 12px rgba(0,0,0,0.2) !important;
-      padding: 24px !important;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-    }
-    .settings-card:hover {
-      transform: translateY(-4px);
-      border-color: rgba(56,189,248,0.5) !important;
-      box-shadow: 0 12px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05) !important;
-      background: linear-gradient(145deg, rgba(30,41,59,0.7), rgba(15,23,42,0.85)) !important;
-    }
-    .settings-card-title {
-      font-size: 16px !important;
-      font-weight: 900 !important;
-      color: #f8fafc !important;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      letter-spacing: -0.3px;
-    }
-    .settings-card .muted { color: #94a3b8 !important; }
-
-    /* Universal Glass Buttons */
-    .btn-glass { padding: 8px 16px; border-radius: 8px; font-weight: 800; font-size: 12px; cursor: pointer; transition: all 0.2s; outline: none; display:inline-flex; align-items:center; justify-content:center; gap:6px; border:none; letter-spacing: 0.3px; }
-    .btn-glass-ghost { background: rgba(255,255,255,0.05); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.1); }
-    .btn-glass-ghost:hover { background: rgba(255,255,255,0.1); color: #f8fafc; border-color: rgba(255,255,255,0.25); transform: translateY(-1px); }
-    .btn-glass-danger { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
-    .btn-glass-danger:hover { background: rgba(239,68,68,0.3); color: #fff; border-color: rgba(239,68,68,0.6); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(239,68,68,0.2); }
-
-    /* Theme Tiles - Isolated Class to avoid conflict */
-    #themeGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; margin-top: 10px; }
-    .glass-theme-tile { position: relative; background: rgba(15,23,42,0.4); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; padding: 18px; cursor: pointer; transition: all 0.3s ease; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2); }
-    .glass-theme-tile:hover { transform: translateY(-4px); border-color: rgba(56,189,248,0.4); box-shadow: 0 10px 25px rgba(0,0,0,0.4); background: rgba(15,23,42,0.7); }
-    .glass-theme-tile.active { background: linear-gradient(145deg, rgba(14,165,233,0.15), rgba(2,132,199,0.25)); border: 1px solid rgba(56,189,248,0.7); box-shadow: 0 0 20px rgba(14,165,233,0.3), inset 0 0 10px rgba(56,189,248,0.2); }
-    .theme-swatch-box { width: 100%; height: 60px; border-radius: 10px; margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.1); display: flex; overflow:hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-    .theme-swatch-p1 { flex: 1; height: 100%; background: var(--t-bg); }
-    .theme-swatch-p2 { flex: 1; height: 100%; background: var(--t-panel); display:flex; align-items:center; justify-content:center; border-left: 1px solid rgba(255,255,255,0.05); }
-    .theme-swatch-acc { width: 60%; height: 8px; border-radius: 4px; background: var(--t-acc); box-shadow: 0 0 10px var(--t-acc); }
-    .is-hidden-theme { opacity: 0.4; filter: grayscale(80%); border: 1px dashed rgba(255,255,255,0.3) !important; }
-    .is-hidden-theme:hover { opacity: 0.8; filter: grayscale(0%); border: 1px dashed rgba(56,189,248,0.6) !important; }
-    .theme-admin-controls { display: flex; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.08); }
-    .theme-admin-controls button { flex: 1; z-index: 2; position: relative; }
-  </style>
-</head>
-<body>
-  <div class="app">
+  <title>MUMS | MUMS User Management System (Build MUMS Phase 1-516)</title><link rel="stylesheet" href="/css/styles.css?v=p1-516">
+  <link rel="stylesheet" href="/css/mailbox.css?v=p1-516">
+  <link rel="stylesheet" href="/css/enterprise_ux.css?v=p1-516">
+<script defer="" src="/functions/vendor/supabase.js"></script><style id="ms-teams-toast-styles">
+            @keyframes toastSlideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+            @keyframes toastSlideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(120%); opacity: 0; } }
+            @keyframes toastProgress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+            
+            .ms-enterprise-toast {
+                position: relative; background: linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98));
+                backdrop-filter: blur(12px); border: 1px solid rgba(16,185,129,0.3); border-left: 4px solid #10b981;
+                border-radius: 12px; padding: 16px 20px; box-shadow: 0 15px 35px -5px rgba(0,0,0,0.6), 0 0 20px rgba(16,185,129,0.1);
+                display: flex; align-items: center; gap: 16px; width: 360px; pointer-events: auto; overflow: hidden;
+                animation: toastSlideIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            }
+            .ms-enterprise-toast.hiding { animation: toastSlideOut 0.4s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards; }
+            
+            .ms-toast-close {
+                position: absolute; top: 8px; right: 8px; background: transparent; border: none;
+                color: #94a3b8; cursor: pointer; font-size: 14px; padding: 4px; border-radius: 4px;
+                transition: all 0.2s; line-height: 1; z-index: 10;
+            }
+            .ms-toast-close:hover { background: rgba(255,255,255,0.1); color: #f8fafc; }
+            
+            .ms-toast-progress {
+                position: absolute; bottom: 0; left: 0; height: 3px; background: linear-gradient(90deg, #0ea5e9, #10b981);
+                width: 100%; transform-origin: left; animation: toastProgress 6s linear forwards;
+            }
+        </style></head>
+<body data-theme="aurora_midnight" data-mode="dark">
+  <div class="app" style="">
     <div class="topbar">
-      <div class="topbrand" aria-label="MUMS">
+      <div class="topbrand" aria-label="MUMS" style="">
         <div class="brand-mark" aria-hidden="true">
           <button class="btn ghost iconbtn sidebar-toggle-overlay" id="sidebarToggle" type="button" title="Toggle sidebar (click) / Pin rail (double-click)" aria-label="Toggle sidebar">
             <span class="ico" data-ico="menu" aria-hidden="true"></span>
@@ -102,14 +55,14 @@
         </div>
         <div class="brand-text">
           <div class="brand-name">MUMS</div>
-          <div class="brand-sub">MUMS User Management System</div>
-          <div class="brand-build">Build ID: <span data-build-label></span></div>
+          <div class="brand-sub" style="">MUMS User Management System</div>
+          <div class="brand-build">Build ID: <span data-build-label="">MUMS Phase 1-516</span></div>
         </div>
       </div>
 
       <div class="topbar-center">
         <div id="reminderFloatHost" class="reminder-float-host" aria-live="polite"></div>
-        <div class="announce-bar" id="announceBar" style="visibility:hidden" title="Click to read full announcement">
+        <div class="announce-bar" id="announceBar" style="visibility:hidden" title="Click to read full announcement" data-count="0" data-idx="0">
           <div class="announce-left">
             <div class="announce-avatar" id="announceAvatar" aria-hidden="true"></div>
             <div class="announce-who" id="announceWho"></div>
@@ -124,47 +77,287 @@
       <div class="topbar-actions">
         <div class="top-global-search" role="search">
           <span class="ico" data-ico="search" aria-hidden="true"></span>
-          <input id="globalSearchInput" type="text" placeholder="Search…" autocomplete="off" aria-label="Global search (Ctrl+K)" />
+          <input id="globalSearchInput" type="text" placeholder="Search…" autocomplete="off" aria-label="Global search (Ctrl+K)">
           <button class="btn ghost iconbtn" id="globalSearchBtn" type="button" title="Global search (Ctrl+K)" aria-label="Open global search"><span class="ico" data-ico="search" aria-hidden="true"></span></button>
         </div>
         <button class="btn ghost iconbtn" id="releaseNotesBtn" type="button" title="Release Notes" aria-label="Release Notes"><span class="ico" data-ico="notes" aria-hidden="true"></span></button>
         <button class="btn ghost iconbtn" id="dictionaryBtn" type="button" title="MUMS Dictionary" aria-label="MUMS Dictionary"><span class="ico" data-ico="book" aria-hidden="true"></span></button>
 <button class="btn ghost iconbtn" id="settingsBtn" type="button" title="Settings" aria-label="Settings"><span class="ico" data-ico="gear" aria-hidden="true"></span></button>
-        <div id="realtimeSyncStatus" class="sync-status" title="Realtime Sync Status">
+        <div id="realtimeSyncStatus" class="sync-status ok" title="Supabase Realtime connected">
           <span class="dot" aria-hidden="true"></span>
           <span class="label">Sync:</span>
-          <span class="state">—</span>
+          <span class="state">Connected</span>
         </div>
         <button class="btn" id="logoutBtn" type="button">Logout</button>
       </div>
     </div>
 
-    <aside class="side card pad">
-      <div class="usercard" id="userCard"></div>
-      <nav class="nav" id="nav"></nav>
-
-      <div class="side-logs" id="sideLogs">
-        <div class="side-logs-head">
-          <div class="side-logs-title">Recent Activity</div>
-          <span class="small muted" id="sideLogsHint"></span>
+    <aside class="side card pad" style="">
+      <div class="usercard" id="userCard">
+      <div class="sp-compact sp-compact-v3" role="group" aria-label="User profile">
+        <div class="sp-row">
+          <div class="sp-photo sp-photo-sm sp-photo-circle" aria-hidden="true">
+            <div class="initials">MD</div>
+            <span class="sp-presence-dot is-active" title="Active"></span>
+          </div>
+          <div class="sp-info sp-info-row">
+            <div class="sp-name sp-name-strong" style="font-size: 22px;">Michael David Fidel</div>
+            <div class="sp-meta sp-meta-subtitle" title="Timezone: Asia/Manila" style="font-size: 11px;">MEMBER • Morning Shift</div>
+          </div>
         </div>
-        <div class="side-logs-list" id="sideLogsList"></div>
+      </div>
+    </div>
+      <!-- Timezone is shown inside the compact profile card to maximize nav space -->
+      <nav class="nav" id="nav" style=""><div class="nav-section-label" data-section="main">MAIN</div><a class="nav-item depth-0 active" href="/dashboard" data-page="dashboard" data-label="Dashboard" style="padding-left: 12px;" title="Dashboard">
+          <span class="nav-ico" data-ico="dashboard" aria-hidden="true"></span>
+          <span class="nav-label">Dashboard</span>
+        </a><a class="nav-item depth-0" href="/mailbox" data-page="mailbox" data-label="Mailbox" style="padding-left: 12px;" title="Mailbox">
+          <span class="nav-ico" data-ico="mailbox" aria-hidden="true"></span>
+          <span class="nav-label">Mailbox</span>
+        </a><div class="nav-section-label" data-section="records" style="">RECORDS</div>
+        <div class="nav-group is-record-group" data-group="my_record">
+          <button class="nav-group-head depth-0" type="button" data-toggle="my_record" aria-expanded="true" style="padding-left:12px" data-label="My Record" title="My Record">
+            <span class="nav-ico" data-ico="schedule" aria-hidden="true"></span>
+            <span class="nav-label">My Record</span>
+            <span class="chev">▾</span>
+          </button>
+          <div class="nav-group-kids depth-1" style="display:block"><a class="nav-item depth-1 nav-subitem" href="/my_attendance" data-page="my_attendance" data-label="My Attendance" style="padding-left:24px" title="My Attendance">
+          <span class="nav-ico" data-ico="schedule" aria-hidden="true"></span>
+          <span class="nav-label">My Attendance</span>
+        </a><a class="nav-item depth-1 nav-subitem" href="/my_schedule" data-page="my_schedule" data-label="My Schedule" style="padding-left:24px" title="My Schedule">
+          <span class="nav-ico" data-ico="schedule" aria-hidden="true"></span>
+          <span class="nav-label">My Schedule</span>
+        </a><a class="nav-item depth-1 nav-subitem" href="/my_case" data-page="my_case" data-label="My Case" style="padding-left:24px" title="My Case">
+          <span class="nav-ico" data-ico="mailbox" aria-hidden="true"></span>
+          <span class="nav-label">My Case</span>
+        </a><a class="nav-item depth-1 nav-subitem" href="/my_task" data-page="my_task" data-label="My Task" style="padding-left:24px" title="My Task">
+          <span class="nav-ico" data-ico="tasks" aria-hidden="true"></span>
+          <span class="nav-label">My Task</span>
+        </a></div>
+        </div>
+      <div class="nav-section-label" data-section="notifications">NOTIFICATIONS</div><a class="nav-item depth-0" href="/my_reminders" data-page="my_reminders" data-label="My Reminders" style="padding-left:12px" title="My Reminders">
+          <span class="nav-ico" data-ico="reminder_me" aria-hidden="true"></span>
+          <span class="nav-label">My Reminders</span>
+        </a><a class="nav-item depth-0" href="/team_reminders" data-page="team_reminders" data-label="Team Reminders" style="padding-left:12px" title="Team Reminders">
+          <span class="nav-ico" data-ico="reminder_team" aria-hidden="true"></span>
+          <span class="nav-label">Team Reminders</span>
+        </a></nav>
+
+      <div class="side-logs" id="sideLogs" style="">
+        
+        
         <button class="btn ghost side-logs-viewall" id="sideLogsViewAll" type="button">View All Activity</button>
       </div>
     </aside>
 
-    <main class="main card pad" id="main"></main>
+    <main class="main card pad" id="main" data-route-seq="1" style="">
+          <div class="dashx">
+            <div class="dashx-head">
+              <div>
+                <div class="ux-row" style="gap:12px">
+                  <h2 class="ux-h1" style="margin:0">Dashboard</h2>
+                  <span class="badge bad" id="dashSyncBadge">Offline</span>
+                </div>
+                <div class="small muted ux-sub">
+                  <span id="dashNow">Thu, Feb 26, 2026, 05:13:35</span> • Team: <b>morning</b> • Duty: <b>Night Shift</b> (next: Morning Shift in <span id="dashDutyLeft">00:46:25</span>)
+                </div>
+              </div>
+              <div class="dashx-actions">
+                <button class="btn" type="button" id="dashToggleSidebar">Toggle Sidebar</button>
+                <a class="btn" href="/mailbox">Assign Case</a>
+                <a class="btn" href="/my_schedule">Schedule</a>
+                <a class="btn" href="/logs">Export Logs</a>
+              </div>
+            </div>
+            <div class="dashx-cards">
+              <div class="ux-card dashx-card"><div class="k">Active cases</div><div class="v">21</div><div class="s">Your team workload signal</div></div>
+              <div class="ux-card dashx-card"><div class="k">My active cases</div><div class="v">0</div><div class="s">Assigned to you</div></div>
+              <div class="ux-card dashx-card"><div class="k">Pending acknowledgements</div><div class="v">0</div><div class="s">Schedule blocks awaiting your acknowledge</div></div>
+              <div class="ux-card dashx-card"><div class="k">Mailbox shift load</div><div class="v">—</div><div class="s">Mailbox not loaded</div></div>
+            </div>
+            <div class="dashx-layout">
+              <div class="ux-card dashx-panel">
+                <div class="dashx-title">Team Activity Heatmap</div>
+                <div class="small muted" style="margin-top:6px">Last 7 days • 4-hour bins • Hover for counts</div>
+                <div class="dashx-heatmap" id="dashHeatmap"><div></div><div class="h">Fri</div><div class="h">Sat</div><div class="h">Sun</div><div class="h">Mon</div><div class="h">Tue</div><div class="h">Wed</div><div class="h">Thu</div><div class="h" style="text-align:left;padding-left:4px">00</div><div class="cell" title="2026-02-20 00–04 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-21 00–04 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-22 00–04 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-23 00–04 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-24 00–04 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-25 00–04 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-26 00–04 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="h" style="text-align:left;padding-left:4px">04</div><div class="cell" title="2026-02-20 04–08 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-21 04–08 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-22 04–08 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-23 04–08 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-24 04–08 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-25 04–08 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-26 04–08 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="h" style="text-align:left;padding-left:4px">08</div><div class="cell" title="2026-02-20 08–12 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-21 08–12 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-22 08–12 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-23 08–12 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-24 08–12 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-25 08–12 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-26 08–12 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="h" style="text-align:left;padding-left:4px">12</div><div class="cell" title="2026-02-20 12–16 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-21 12–16 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-22 12–16 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-23 12–16 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-24 12–16 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-25 12–16 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-26 12–16 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="h" style="text-align:left;padding-left:4px">16</div><div class="cell" title="2026-02-20 16–20 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-21 16–20 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-22 16–20 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-23 16–20 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-24 16–20 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-25 16–20 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-26 16–20 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="h" style="text-align:left;padding-left:4px">20</div><div class="cell" title="2026-02-20 20–24 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-21 20–24 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-22 20–24 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-23 20–24 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-24 20–24 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-25 20–24 • 0 events" style="background: rgba(255,255,255,0.040)"></div><div class="cell" title="2026-02-26 20–24 • 0 events" style="background: rgba(255,255,255,0.040)"></div></div>
+                <div style="margin-top:14px" class="dashx-title">Notification Center</div>
+                <div class="dashx-notif-tools">
+                  <button class="dashx-filter ux-focusable active" data-filter="unread" id="dashF_unread">Unread (0)</button>
+                  <button class="dashx-filter ux-focusable" data-filter="schedule" id="dashF_schedule">Schedule (14)</button>
+                  <button class="dashx-filter ux-focusable" data-filter="mailbox" id="dashF_mailbox">Mailbox</button>
+                  <button class="dashx-filter ux-focusable" data-filter="system" id="dashF_system">System</button>
+                  <button class="dashx-filter ux-focusable" data-filter="all" id="dashF_all">All</button>
+                  <input class="dashx-filter" style="flex:1;min-width:180px" id="dashNotifSearch" placeholder="Search…" value="">
+                </div>
+                <div class="dashx-notifs" id="dashNotifs"><div class="small muted" style="padding:10px 2px">No items for this filter.</div></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div class="ux-card dashx-panel">
+                  <div class="dashx-title">Mailbox Analytics</div>
+                  <div class="small muted" style="margin-top:6px">Shift: <b>night</b></div>
+                  
+                  <div style="margin-top:10px"><div class="small muted" style="margin-top:8px">Mailbox table not loaded yet for this shift.</div></div>
+                  
+                  
+                </div>
+                <div class="ux-card dashx-panel" style="">
+                  <div class="dashx-title" style="">Quick Navigation</div>
+                  <div class="small muted" style="margin-top:6px">Role-aware shortcuts</div>
+                  <div class="dashx-actions" style="margin-top:10px">
+                    <a class="btn" href="/my_schedule">My Schedule</a>
+                    <a class="btn" href="/mailbox">Mailbox</a>
+                    <a class="btn" href="/attendance">Attendance</a>
+                    <a class="btn" href="/tasks">Tasks</a>
+                    
+                    
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
 
-    <aside class="right card pad" id="rightbar">
-      <div id="right-sidebar-container"></div>
+    <aside class="right card pad" id="rightbar" style="">
+      <div id="right-sidebar-container"><section id="status-widget-grid" class="status-widget-grid" aria-label="Programmable status widgets" style="order: -1;"><button type="button" class="status-widget-tile is-blue" data-widget-id="cases" data-target-page="pages/my_case.js" aria-label="Cases">
+    <span class="status-widget-title">Cases</span>
+    <span class="status-widget-sub">Idle</span>
+  </button><button type="button" class="status-widget-tile is-yellow" data-widget-id="reminders" data-target-page="pages/my_reminders.js" aria-label="Reminders">
+    <span class="status-widget-title">Reminders</span>
+    <span class="status-widget-sub">Idle</span>
+  </button><button type="button" class="status-widget-tile is-red" data-widget-id="deadlines" data-target-page="pages/team_reminders.js" aria-label="Deadlines">
+    <span class="status-widget-title">Deadlines</span>
+    <span class="status-widget-sub">Idle</span>
+  </button></section>
+        <hr style="border: 0; border-top: 1px solid rgba(255, 255, 255, 0.1); margin: 24px 0 16px 0; width: 100%; display: block;">
+<button id="btn-controller-lab" onclick="window.open('/controller_lab.html', '_blank')" style="width: 100%; padding: 12px 16px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: #ffffff; cursor: pointer; text-align: center; font-weight: 600; font-size: 14px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: all 0.2s ease-in-out; display: flex; align-items: center; justify-content: center; gap: 10px; box-sizing: border-box;" onmouseover="this.style.background='rgba(255, 255, 255, 0.1)'; this.style.borderColor='rgba(255, 255, 255, 0.2)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.05)'; this.style.borderColor='rgba(255, 255, 255, 0.1)';">
+  <i class="fas fa-gamepad" style="font-size: 16px;"></i> Controller Lab
+</button>
+      </div>
     </aside>
   </div>
 
-  <div class="online-users-bar" id="onlineUsersBar" aria-label="Online users" role="region"></div>
+  <!-- Online users status bar (above the quick links bar) -->
+  <div class="online-users-bar" id="onlineUsersBar" aria-label="Online users" role="region" style="">
+      
+      <div class="onlinebar-inner">
+        
+        <div class="onlinebar-sec">
+          <div class="onlinebar-head">
+            <div class="onlinebar-title">Morning Shift</div>
+            <div class="onlinebar-count">1</div>
+          </div>
+          <div class="onlinebar-list">
+          <div class="online-pill " title="Michael David Fidel">
+            <span class="ini">MF</span>
+          </div>
+        </div>
+        </div>
+      
+        
+        <div class="onlinebar-sec">
+          <div class="onlinebar-head">
+            <div class="onlinebar-title">Mid Shift</div>
+            <div class="onlinebar-count">0</div>
+          </div>
+          <div class="onlinebar-list"><span class="small" style="opacity:.7">—</span></div>
+        </div>
+      
+        
+        <div class="onlinebar-sec">
+          <div class="onlinebar-head">
+            <div class="onlinebar-title">Night Shift</div>
+            <div class="onlinebar-count">0</div>
+          </div>
+          <div class="onlinebar-list"><span class="small" style="opacity:.7">—</span></div>
+        </div>
+      
+        
+        <div class="onlinebar-sec">
+          <div class="onlinebar-head">
+            <div class="onlinebar-title">Developer Access</div>
+            <div class="onlinebar-count">0</div>
+          </div>
+          <div class="onlinebar-list"><span class="small" style="opacity:.7">—</span></div>
+        </div>
+      
+      </div>
+    </div>
 
+  <!-- Bottom quick links bar (10 customizable circles) -->
   <div class="quicklinks-bar" id="quickLinksBar" aria-label="Quick links" role="navigation">
+    <!-- World clocks (left side) -->
     <div class="clocks-wrap" id="worldClocks" aria-label="World clocks"></div>
-    <div class="quicklinks-inner" id="quickLinksInner"></div>
+    <div class="quicklinks-inner" id="quickLinksInner">
+        <div class="qitem" data-idx="0" data-tip="Link 1">
+          <div class="qlabel"></div>
+          <button class="qcircle " type="button" data-idx="0" aria-label="Quick link 1">
+            <span class="qtxt">1</span>
+          </button>
+        </div>
+      
+        <div class="qitem" data-idx="1" data-tip="Link 2">
+          <div class="qlabel"></div>
+          <button class="qcircle " type="button" data-idx="1" aria-label="Quick link 2">
+            <span class="qtxt">2</span>
+          </button>
+        </div>
+      
+        <div class="qitem" data-idx="2" data-tip="Link 3">
+          <div class="qlabel"></div>
+          <button class="qcircle " type="button" data-idx="2" aria-label="Quick link 3">
+            <span class="qtxt">3</span>
+          </button>
+        </div>
+      
+        <div class="qitem" data-idx="3" data-tip="Link 4">
+          <div class="qlabel"></div>
+          <button class="qcircle " type="button" data-idx="3" aria-label="Quick link 4">
+            <span class="qtxt">4</span>
+          </button>
+        </div>
+      
+        <div class="qitem" data-idx="4" data-tip="Link 5">
+          <div class="qlabel"></div>
+          <button class="qcircle " type="button" data-idx="4" aria-label="Quick link 5">
+            <span class="qtxt">5</span>
+          </button>
+        </div>
+      
+        <div class="qitem" data-idx="5" data-tip="Link 6">
+          <div class="qlabel"></div>
+          <button class="qcircle " type="button" data-idx="5" aria-label="Quick link 6">
+            <span class="qtxt">6</span>
+          </button>
+        </div>
+      
+        <div class="qitem" data-idx="6" data-tip="Link 7">
+          <div class="qlabel"></div>
+          <button class="qcircle " type="button" data-idx="6" aria-label="Quick link 7">
+            <span class="qtxt">7</span>
+          </button>
+        </div>
+      
+        <div class="qitem" data-idx="7" data-tip="Link 8">
+          <div class="qlabel"></div>
+          <button class="qcircle " type="button" data-idx="7" aria-label="Quick link 8">
+            <span class="qtxt">8</span>
+          </button>
+        </div>
+      
+        <div class="qitem" data-idx="8" data-tip="Link 9">
+          <div class="qlabel"></div>
+          <button class="qcircle " type="button" data-idx="8" aria-label="Quick link 9">
+            <span class="qtxt">9</span>
+          </button>
+        </div>
+      
+        <div class="qitem" data-idx="9" data-tip="Link 10">
+          <div class="qlabel"></div>
+          <button class="qcircle " type="button" data-idx="9" aria-label="Quick link 10">
+            <span class="qtxt">10</span>
+          </button>
+        </div>
+      </div>
   </div>
 
   <div class="modal" id="topAnnModal">
@@ -181,116 +374,96 @@
   </div>
 
   <div class="modal" id="settingsModal">
-    <div class="panel" style="max-width:1000px;">
+    <div class="panel">
       <div class="head">
         <div>
-          <div class="announce-title" style="font-size:24px; font-weight:900; color:#38bdf8; display:flex; align-items:center; gap:10px;"><span aria-hidden="true">⚙️</span> Command Center</div>
-          <div class="small muted" style="margin-top:6px; font-size:13px;">Manage application preferences, notifications, and enterprise tools.</div>
+          <div class="announce-title">Settings</div>
+          <div class="small">Manage profile and notification sound.</div>
         </div>
         <button class="btn ghost" type="button" data-close="settingsModal">✕</button>
       </div>
-      <div class="body" style="padding:24px;">
+      <div class="body">
         <div class="settings-grid">
           <div class="settings-card">
-            <div>
-                <div class="settings-card-title"><span>👤</span> Profile Identity</div>
-                <div class="small muted" style="margin-top:8px; line-height:1.5;">Update your photo, display name, and UI profile layout.</div>
-            </div>
-            <div style="margin-top:20px">
-              <button class="btn primary" id="openProfileBtn" type="button" style="width:100%;">Open Profile Settings</button>
+            <div class="settings-card-title">Profile</div>
+            <div class="small muted" style="margin-top:6px">Update your photo and display name.</div>
+            <div style="margin-top:10px">
+              <button class="btn primary" id="openProfileBtn" type="button">Open Profile Settings</button>
             </div>
           </div>
 
           <div class="settings-card">
-            <div>
-                <div class="settings-card-title"><span>🔔</span> Notification Engine</div>
-                <div class="small muted" style="margin-top:8px; line-height:1.5;">Adjust sound type, volume, and mute rules for pop-up alerts.</div>
-            </div>
-            <div style="margin-top:20px">
-              <button class="btn" id="openSoundBtn" type="button" style="width:100%;">Open Sound Settings</button>
+            <div class="settings-card-title">Notification Sound</div>
+            <div class="small muted" style="margin-top:6px">Adjust sound type and volume for pop-up notifications.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openSoundBtn" type="button">Open Sound Settings</button>
             </div>
           </div>
 
           <div class="settings-card">
-            <div>
-                <div class="settings-card-title"><span>🎨</span> Theme Engine</div>
-                <div class="small muted" style="margin-top:8px; line-height:1.5;">Configure global UI aesthetics with high-level Glassmorphism.</div>
-            </div>
-            <div style="margin-top:20px">
-              <button class="btn" id="openThemeBtn" type="button" style="width:100%; border-color:#38bdf8; color:#38bdf8;">Open Theme Settings</button>
+            <div class="settings-card-title">Theme</div>
+            <div class="small muted" style="margin-top:6px">Choose a professional color theme for MUMS.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openThemeBtn" type="button">Open Theme Settings</button>
             </div>
           </div>
 
           <div class="settings-card">
-            <div>
-                <div class="settings-card-title"><span>🔗</span> Quick Links</div>
-                <div class="small muted" style="margin-top:8px; line-height:1.5;">Set up to 10 favorite URL shortcuts shown on the bottom bar.</div>
-            </div>
-            <div style="margin-top:20px">
-              <button class="btn" id="openLinksBtn" type="button" style="width:100%;">Manage Quick Links</button>
+            <div class="settings-card-title">Quick Links</div>
+            <div class="small muted" style="margin-top:6px">Set up to 10 favorite links shown on the bottom bar.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openLinksBtn" type="button">Manage Quick Links</button>
             </div>
           </div>
 
           <div class="settings-card">
-            <div>
-                <div class="settings-card-title"><span>🖱️</span> Cursor Settings</div>
-                <div class="small muted" style="margin-top:8px; line-height:1.5;">Toggle between the custom in-app pointer or your OS system cursor.</div>
-            </div>
-            <div style="margin-top:20px">
-              <button class="btn" id="openCursorBtn" type="button" style="width:100%;">Cursor Configuration</button>
+            <div class="settings-card-title">Cursor</div>
+            <div class="small muted" style="margin-top:6px">Choose between the custom in-app cursor or your system cursor.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openCursorBtn" type="button">Cursor settings</button>
             </div>
           </div>
 
           <div class="settings-card">
-            <div>
-                <div class="settings-card-title"><span>📐</span> Sidebar Density</div>
-                <div class="small muted" style="margin-top:8px; line-height:1.5;">Collapse the navigation menu for compact screen layouts.</div>
-            </div>
-            <div style="margin-top:20px">
-              <button class="btn" id="openSidebarBtn" type="button" style="width:100%;">Sidebar Settings</button>
+            <div class="settings-card-title">Sidebar</div>
+            <div class="small muted" style="margin-top:6px">Collapse the menu for compact navigation.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openSidebarBtn" type="button">Sidebar settings</button>
             </div>
           </div>
 
-          <div class="settings-card">
-            <div>
-                <div class="settings-card-title"><span>💾</span> Data Tools</div>
-                <div class="small muted" style="margin-top:8px; line-height:1.5;">Export, import, and validate offline local storage payloads.</div>
-            </div>
-            <div style="margin-top:20px">
-              <button class="btn" id="openDataToolsBtn" type="button" style="width:100%;">Open Data Tools</button>
+          <div class="settings-card" style="display: none;">
+            <div class="settings-card-title">Data tools</div>
+            <div class="small muted" style="margin-top:6px">Export, import, and validate offline local storage.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openDataToolsBtn" type="button">Open data tools</button>
             </div>
           </div>
 
           <div class="settings-card" id="timeOverrideCard" style="display:none">
-            <div>
-                <div class="settings-card-title"><span>⏳</span> Mailbox Time Override</div>
-                <div class="small muted" style="margin-top:8px; line-height:1.5;">Super Admin tool: override internal Manila time used in Mailbox rules.</div>
-            </div>
-            <div style="margin-top:20px">
-              <button class="btn danger" id="openMailboxTimeBtn" type="button" style="width:100%; background:rgba(239,68,68,0.2); color:#fca5a5; border-color:rgba(239,68,68,0.4);">Configure Time Shift</button>
+            <div class="settings-card-title">Mailbox Time Override</div>
+            <div class="small muted" style="margin-top:6px">Super Admin testing tool: override Manila time used in the Mailbox screen.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openMailboxTimeBtn" type="button" disabled="">Configure Mailbox Time</button>
             </div>
           </div>
 
           <div class="settings-card">
-            <div>
-                <div class="settings-card-title"><span>🌍</span> World Clocks</div>
-	            <div class="small muted" style="margin-top:8px; line-height:1.5;">Pin timezone clocks and GMT offsets to your bottom bar.</div>
-            </div>
-            <div style="margin-top:20px">
+            <div class="settings-card-title">World Clocks</div>
+	            <div class="small muted" style="margin-top:6px">Configure clocks for regions or fixed GMT offsets (label, style, colors, alarms).</div>
+            <div style="margin-top:10px">
 	              <div class="row" style="gap:8px;flex-wrap:wrap">
-	                <button class="btn" id="openClocksBtn" type="button" style="flex:1;">Configure</button>
-	                <button class="btn ghost" id="openGmtOverviewPageBtn" type="button" style="flex:1;">GMT Map</button>
+	                <button class="btn" id="openClocksBtn" type="button">Configure Clocks</button>
+	                <button class="btn ghost" id="openGmtOverviewPageBtn" type="button">Open GMT Overview</button>
 	              </div>
             </div>
           </div>
 
           <div class="settings-card" id="systemCheckCard" style="display:none">
-            <div>
-                <div class="settings-card-title"><span>🛠️</span> System Diagnostics</div>
-                <div class="small muted" style="margin-top:8px; line-height:1.5;">Run diagnostics, tests, and auto-fixes for deployment environments.</div>
-            </div>
-            <div style="margin-top:20px">
-              <button class="btn" id="openSystemCheckBtn" type="button" style="width:100%;">Run System Check</button>
+            <div class="settings-card-title">System Check</div>
+            <div class="small muted" style="margin-top:6px">Run diagnostics, tests, and auto-fixes. Available to Super Admin and Super User.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openSystemCheckBtn" type="button">Run System Check</button>
             </div>
           </div>
 
@@ -298,99 +471,6 @@
       </div>
     </div>
   </div>
-
-  <div class="modal" id="themeModal">
-    <div class="panel" style="max-width:1200px; width:95vw;">
-      <div class="head">
-        <div>
-          <div class="announce-title" style="font-size:24px; font-weight:900; color:#38bdf8; display:flex; align-items:center; gap:10px;">
-            <span aria-hidden="true">🎨</span> Theme Engine
-          </div>
-          <div class="small muted" style="margin-top:6px; font-size:13px;">
-            Enterprise-grade UI theming system. Changes apply instantly across all panels.
-          </div>
-        </div>
-        <button class="btn ghost" type="button" data-close="themeModal">✕</button>
-      </div>
-      <div class="body" style="padding:32px;">
-        
-        <!-- Super Admin Global Control -->
-        <div id="themeAdminPanel" style="display:none; margin-bottom:32px;">
-          <div class="card" style="background:linear-gradient(145deg, rgba(124,135,255,0.08), rgba(56,189,248,0.12)); border:1px solid rgba(124,135,255,0.3); padding:24px; border-radius:16px;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:20px; flex-wrap:wrap;">
-              <div>
-                <div style="font-size:18px; font-weight:900; color:#7c87ff; display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-                  <span>⚡</span> Global Theme Control
-                </div>
-                <div class="small muted" style="line-height:1.6;">
-                  As Super Admin, set the default theme for all users system-wide. Users can still override with personal preference.
-                </div>
-              </div>
-              <div style="display:flex; gap:12px; align-items:center;">
-                <div>
-                  <div class="small muted" style="margin-bottom:6px;">Current Default</div>
-                  <select class="input" id="globalThemeSelect" style="min-width:200px; font-weight:800;">
-                    <option value="aurora_midnight">Aurora Midnight</option>
-                    <option value="mono">Monochrome</option>
-                  </select>
-                </div>
-                <button class="btn primary" id="saveGlobalThemeBtn" type="button" style="height:fit-content; background:linear-gradient(135deg, #7c87ff, #4f46e5); border:none; box-shadow:0 4px 12px rgba(124,135,255,0.4);">
-                  Save Default
-                </button>
-              </div>
-            </div>
-            <div id="globalThemeStatus" class="small" style="margin-top:12px; color:#34d399; display:none;">
-              ✓ Global default updated successfully
-            </div>
-          </div>
-        </div>
-
-        <!-- Theme Selection Grid -->
-        <div style="margin-bottom:20px;">
-          <div style="font-size:16px; font-weight:900; color:#f8fafc; margin-bottom:8px;">
-            Select Your Theme
-          </div>
-          <div class="small muted">
-            Choose between Aurora Midnight (vibrant purple) or Monochrome (minimalist grayscale). Your preference overrides the global default.
-          </div>
-        </div>
-
-        <div id="themeGrid"></div>
-
-        <!-- Theme Info Panel -->
-        <div style="margin-top:32px; padding-top:24px; border-top:1px solid rgba(255,255,255,0.08);">
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:20px;">
-            <div class="card" style="background:rgba(30,41,59,0.4); border:1px solid rgba(255,255,255,0.06); padding:20px; border-radius:12px;">
-              <div style="font-size:14px; font-weight:800; color:#38bdf8; margin-bottom:8px;">
-                🎯 Theme Philosophy
-              </div>
-              <div class="small muted" style="line-height:1.6;">
-                Reduced to 2 enterprise-grade themes for consistency. Aurora Midnight offers vibrant focus, while Monochrome provides distraction-free clarity.
-              </div>
-            </div>
-            <div class="card" style="background:rgba(30,41,59,0.4); border:1px solid rgba(255,255,255,0.06); padding:20px; border-radius:12px;">
-              <div style="font-size:14px; font-weight:800; color:#22c55e; margin-bottom:8px;">
-                ⚙️ How It Works
-              </div>
-              <div class="small muted" style="line-height:1.6;">
-                Super Admin sets global default → All users see that theme by default → Individual users can override with personal preference.
-              </div>
-            </div>
-            <div class="card" style="background:rgba(30,41,59,0.4); border:1px solid rgba(255,255,255,0.06); padding:20px; border-radius:12px;">
-              <div style="font-size:14px; font-weight:800; color:#fbbf24; margin-bottom:8px;">
-                💡 Pro Tip
-              </div>
-              <div class="small muted" style="line-height:1.6;">
-                Themes use CSS variables for instant switching. No page reload required. Perfect for shift-based teams with different lighting preferences.
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </div>
-
 
   <div class="modal" id="systemCheckModal">
     <div class="panel" style="max-width:980px">
@@ -457,29 +537,29 @@
           <div class="timer" id="mbTimeClock">--:--:--</div>
           <div class="small" id="mbTimeClockDate" style="margin-top:2px"></div>
           <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px">
-            <button class="btn" type="button" data-mbshift="-3600000">-1h</button>
-            <button class="btn" type="button" data-mbshift="-900000">-15m</button>
-            <button class="btn" type="button" data-mbshift="900000">+15m</button>
-            <button class="btn" type="button" data-mbshift="3600000">+1h</button>
-            <button class="btn" type="button" id="mbTimeSetNow">Set to system Manila now</button>
+            <button class="btn" type="button" data-mbshift="-3600000" disabled="">-1h</button>
+            <button class="btn" type="button" data-mbshift="-900000" disabled="">-15m</button>
+            <button class="btn" type="button" data-mbshift="900000" disabled="">+15m</button>
+            <button class="btn" type="button" data-mbshift="3600000" disabled="">+1h</button>
+            <button class="btn" type="button" id="mbTimeSetNow" disabled="">Set to system Manila now</button>
           </div>
         </div>
         <div class="grid2">
           <div>
             <label class="small">Override date &amp; time (Manila)</label>
-            <input class="input" type="datetime-local" id="mbTimeInput" />
+            <input class="input" type="datetime-local" id="mbTimeInput" disabled="">
           </div>
           <div>
             <label class="small">Mode</label>
             <label class="row small" style="gap:10px;align-items:center;margin-top:8px">
-              <input type="checkbox" id="mbTimeFreeze" />
+              <input type="checkbox" id="mbTimeFreeze" disabled="">
               <span>Freeze time</span>
             </label>
           </div>
         </div>
         <div style="margin-top:10px">
           <label class="small">Override scope</label>
-          <select class="input" id="mbTimeScope" style="margin-top:6px">
+          <select class="input" id="mbTimeScope" style="margin-top:6px" disabled="">
             <option value="sa_only">Super Admin only</option>
             <option value="global">Global (all users)</option>
           </select>
@@ -487,20 +567,41 @@
         </div>
         <div class="row" style="gap:12px;flex-wrap:wrap;margin-top:12px;align-items:center">
           <label class="row small" style="gap:10px;align-items:center">
-            <input type="checkbox" id="mbTimeEnabled" />
+            <input type="checkbox" id="mbTimeEnabled" disabled="">
             <span>Enable override</span>
           </label>
           <div class="small muted" id="mbTimeEffective"></div>
         </div>
         <div class="err" id="mbTimeErr"></div>
         <div class="row" style="justify-content:flex-end;gap:10px;margin-top:14px">
-          <button class="btn" type="button" id="mbTimeReset">Return to normal time</button>
-          <button class="btn primary" type="button" id="mbTimeSave">Save</button>
+          <button class="btn" type="button" id="mbTimeReset" disabled="" style="display: none;">Return to normal time</button>
+          <button class="btn primary" type="button" id="mbTimeSave" disabled="" style="display: none;">Save</button>
         </div>
       </div>
     </div>
   </div>
-
+  <div class="modal" id="themeModal">
+    <div class="panel" style="max-width:920px">
+      <div class="head">
+        <div>
+          <div class="announce-title">Theme</div>
+          <div class="small">Pick your personal theme. Super Admin sets the org default, and users can still override it here anytime.</div>
+        </div>
+        <button class="btn ghost" type="button" data-close="themeModal">✕</button>
+      </div>
+      <div class="body">
+        <div class="theme-grid" id="themeGrid"></div>
+        <div class="theme-audit" id="themeAudit" style="display:none">
+          <div class="h3" style="margin:0 0 6px">Theme Lab</div>
+          <div class="small muted">Automatic readability checks (contrast + key UI elements). Use this to validate themes like Aurora (Ecommerce Light).</div>
+          <div id="themeAuditInner" style="margin-top:10px"></div>
+        </div>
+      </div>
+      <div class="foot" style="display:flex;justify-content:flex-end;gap:10px">
+        <button class="btn" type="button" data-close="themeModal">Close</button>
+      </div>
+    </div>
+  </div>
 
   <div class="modal" id="linksModal">
     <div class="panel" style="max-width:980px">
@@ -562,7 +663,7 @@
       <div class="body">
         <div class="row" style="justify-content:space-between;gap:12px;flex-wrap:wrap">
           <label class="small" style="display:flex;gap:10px;align-items:center">
-            <input type="checkbox" id="sndEnabled" />
+            <input type="checkbox" id="sndEnabled">
             Sound enabled
           </label>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
@@ -579,7 +680,7 @@
             </select>
           </label>
           <label class="small">Volume
-            <input class="input" id="sndVol" type="range" min="0" max="100" value="65" />
+            <input class="input" id="sndVol" type="range" min="0" max="100" value="65">
           </label>
         </div>
         <div class="small muted" style="margin-top:10px">Tip: If you turn sound Off, notifications still pop out—just silent.</div>
@@ -605,23 +706,23 @@
             <div class="avatar-xl" id="profileAvatar"></div>
             <label class="btn" style="margin-top:10px;display:inline-block">
               Upload photo
-              <input id="profilePhotoInput" type="file" accept="image/*" style="display:none" />
+              <input id="profilePhotoInput" type="file" accept="image/*" style="display:none">
             </label>
             <button class="btn ghost" id="profileRemovePhoto" type="button" style="margin-top:8px">Remove photo</button>
             <div class="small muted" style="margin-top:8px">Tip: Use a square photo for best results.</div>
           </div>
           <div class="profile-fields">
             <label class="small">Full Name
-              <input class="input" id="profileName" />
+              <input class="input" id="profileName">
             </label>
             <label class="small">Email
-              <input class="input" id="profileEmail" disabled />
+              <input class="input" id="profileEmail" disabled="">
             </label>
             <label class="small">Role
-              <input class="input" id="profileRole" disabled />
+              <input class="input" id="profileRole" disabled="">
             </label>
             <label class="small">Team
-              <input class="input" id="profileTeam" disabled />
+              <input class="input" id="profileTeam" disabled="">
             </label>
             <label class="small">Profile layout
               <select class="input" id="profileLayout">
@@ -656,7 +757,7 @@
           <canvas id="cropCanvas" width="320" height="320"></canvas>
         </div>
         <label class="small" style="margin-top:12px;display:block">Zoom
-          <input class="input" id="cropZoom" type="range" min="1" max="3" value="1" step="0.01" />
+          <input class="input" id="cropZoom" type="range" min="1" max="3" value="1" step="0.01">
         </label>
         <div class="small muted" style="margin-top:8px">Tip: For best results, use a clear face photo with good lighting.</div>
       </div>
@@ -680,7 +781,7 @@
         <div class="dict-top">
           <div class="dict-search">
             <label class="small">Search release notes</label>
-            <input class="input" id="rnSearch" placeholder="Type: aurora, theme, clock, members, settings, bug fix..." />
+            <input class="input" id="rnSearch" placeholder="Type: aurora, theme, clock, members, settings, bug fix...">
           </div>
           <div class="dict-ask">
             <label class="small">Filter</label>
@@ -711,14 +812,14 @@
             <div class="h3" style="margin:14px 0 8px">Add a release note</div>
             <div class="grid2">
               <label class="small">Build / version
-                <input class="input" id="rnVer" placeholder="e.g. 20260120-aurora-fix16" />
+                <input class="input" id="rnVer" placeholder="e.g. 20260120-aurora-fix16">
               </label>
               <label class="small">Tags (comma-separated)
-                <input class="input" id="rnTags" placeholder="fix, ui, theme" />
+                <input class="input" id="rnTags" placeholder="fix, ui, theme">
               </label>
             </div>
             <label class="small" style="margin-top:10px">Title
-              <input class="input" id="rnTitle" placeholder="Short summary" />
+              <input class="input" id="rnTitle" placeholder="Short summary">
             </label>
 
             <div class="rn-editor" style="margin-top:10px">
@@ -750,7 +851,7 @@
             <div class="small muted">Upload JSON (.json) to merge/replace notes, or upload a text/markdown file to create a single note (first line becomes the title).</div>
             <div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:10px">
               <label class="small" style="flex:1 1 360px">File
-                <input class="input" id="rnImportFile" type="file" accept=".json,.txt,.md" />
+                <input class="input" id="rnImportFile" type="file" accept=".json,.txt,.md">
               </label>
               <label class="small" style="flex:0 0 200px">Mode
                 <select class="input" id="rnImportMode">
@@ -784,12 +885,12 @@
         <div class="dict-top">
           <div class="dict-search">
             <label class="small">Search features / guide</label>
-            <input class="input" id="dictSearch" placeholder="Type: rest day, auto schedule, leaves, send, acknowledgement..." />
+            <input class="input" id="dictSearch" placeholder="Type: rest day, auto schedule, leaves, send, acknowledgement...">
           </div>
           <div class="dict-ask">
             <label class="small">Ask a question</label>
             <div class="row" style="gap:8px;align-items:center">
-              <input class="input" id="dictQuestion" placeholder="Ask anything about MUMS..." />
+              <input class="input" id="dictQuestion" placeholder="Ask anything about MUMS...">
               <button class="btn" id="dictAskBtn" type="button">Save</button>
             </div>
             <div class="small muted" id="dictAskHint" style="margin-top:6px">Saved questions appear to you as notes (local only).</div>
@@ -820,7 +921,7 @@
         // Vercel (UAT)
         '/api/vendor/supabase.js',
         // Last-resort fallback
-        '[https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.0/dist/umd/supabase.min.js](https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.0/dist/umd/supabase.min.js)'
+        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.0/dist/umd/supabase.min.js'
       ];
 
       function loadAt(i) {
@@ -842,6 +943,7 @@
       loadAt(0);
     })();
   </script>
+  <!-- Load in order (no modules) so it works via file:// in Edge -->
   <script src="/js/config/version.js?v=p1-516"></script>
   <script src="/js/config.js?v=p1-516"></script>
   <script src="/js/store.js?v=p1-516"></script>
@@ -851,16 +953,184 @@
   <script src="/js/auth.js?v=p1-516"></script>
   <script src="/js/realtime.js?v=p1-516"></script>
   <script src="/js/sync_status_ui.js?v=p1-516"></script>
-  <script src="/js/ui.js?v=p1-516"></script>
+<script src="/js/ui.js?v=p1-516"></script>
   <script>try{ window.UI && UI.initAppCursor && UI.initAppCursor(); }catch(e){} </script>
 
+  <!-- Components -->
   <script src="/js/components/sidebarLogs.js?v=p1-516"></script>
   <script src="/js/components/statusWidgets.js?v=p1-516"></script>
   <script src="/js/components/coverageMeter.js?v=p1-516"></script>
   <script src="/js/components/memberRow.js?v=p1-516"></script>
   <script src="/js/components/graph_panel.js?v=p1-516"></script>
-  <script src="/js/components/themeEngine.js?v=p1-517"></script>
 
+  <!-- Pages -->
   <script src="/js/pages/dashboard.js?v=p1-516"></script>
-</body>
-</html>
+  <script src="/js/pages/overall_stats.js?v=p1-516"></script>
+  <script src="/js/pages/members.js?v=p1-516"></script>
+  <script src="/js/pages/master_schedule.js?v=p1-516"></script>
+  <script src="/js/pages/users.js?v=p1-516"></script>
+  <script src="/js/pages/announcements.js?v=p1-516"></script>
+  <script src="/js/pages/mailbox.js?v=p1-516"></script>
+  <script src="/js/pages/logs.js?v=p1-516"></script>
+  <script src="/js/pages/my_reminders.js?v=p1-516"></script>
+  <script src="/js/pages/team_reminders.js?v=p1-516"></script>
+  <script src="/js/pages/team_config.js?v=p1-516"></script>
+  <script src="/js/pages/my_attendance.js?v=p1-516"></script>
+  <script src="/js/pages/my_schedule.js?v=p1-516"></script>
+  <script src="/js/pages/my_case.js?v=p1-516"></script>
+  <script src="/js/pages/my_task.js?v=p1-516"></script>
+  <script src="/js/pages/commands.js?v=p1-516"></script>
+  <script src="/js/pages/privileges.js?v=p1-516"></script>
+  <script src="/js/pages/gmt_overview.js?v=p1-516"></script>
+
+  <script src="/js/pages/distribution_monitoring.js?v=p1-516"></script>
+  <script src="/js/app.js?v=p1-516"></script>
+  <script src="/js/presence_client.js?v=p1-516"></script>
+  <script>
+    // Boot the app after all scripts load
+    try{
+      if(window.App && typeof App.boot === 'function'){
+        Promise.resolve(App.boot()).catch((e)=>{ try{ console.error(e); }catch(_){} });
+      }
+    }catch(e){ try{ console.error(e); }catch(_){} }
+  </script>
+
+
+
+
+  <!-- Global search -->
+  <div class="modal" id="globalSearchModal" role="dialog" aria-modal="true" aria-labelledby="globalSearchTitle">
+    <div class="panel" style="max-width: 860px">
+      <div class="head">
+        <div>
+          <div class="announce-title" id="globalSearchTitle">Global Search</div>
+          <div class="small">Search across users, reminders, announcements, and cases.</div>
+        </div>
+        <button class="btn ghost" type="button" data-close="globalSearchModal">✕</button>
+      </div>
+      <div class="body">
+        <div class="gsearch" style="margin:0 0 12px">
+          <span class="gsearch-ico">🔎</span>
+          <input id="globalSearchModalInput" type="text" placeholder="Type to search… (Esc to close)" autocomplete="off">
+        </div>
+        <div id="globalSearchResults" class="gresults" aria-live="polite"><div class="muted" style="padding:10px">No matches found.</div></div>
+        <div class="small muted" style="margin-top:10px">Tips: Press <b>Enter</b> to open the top result. Use <b>↑/↓</b> to navigate.</div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Cursor settings -->
+  <div class="modal" id="cursorSettingsModal">
+    <div class="panel">
+      <div class="head">
+        <div>
+          <div class="announce-title">Cursor</div>
+          <div class="small">Choose between the custom in-app cursor or your system cursor.</div>
+        </div>
+        <button class="btn ghost" type="button" data-close="cursorSettingsModal">✕</button>
+      </div>
+      <div class="body">
+        <div class="form-row">
+          <label class="small muted">Cursor mode</label>
+          <select id="cursorModeSelect">
+            <option value="custom">Custom (always visible)</option>
+            <option value="system">System cursor</option>
+          </select>
+        </div>
+        <div class="small muted" style="margin-top:10px">Tip: Custom cursor remains consistent regardless of OS pointer settings.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar settings -->
+  <div class="modal" id="sidebarSettingsModal">
+    <div class="panel">
+      <div class="head">
+        <div>
+          <div class="announce-title">Sidebar</div>
+          <div class="small">Adjust sidebar density and behavior.</div>
+        </div>
+        <button class="btn ghost" type="button" data-close="sidebarSettingsModal">✕</button>
+      </div>
+      <div class="body">
+        <div class="form-row">
+          <label class="small muted">Density</label>
+          <select id="densitySelect">
+            <option value="normal">Normal</option>
+            <option value="compact">Compact</option>
+          </select>
+        </div>
+        <div class="form-row" style="margin-top:10px">
+          <label class="small muted">Default state</label>
+          <select id="sidebarDefaultSelect">
+            <option value="expanded">Expanded</option>
+            <option value="collapsed">Collapsed</option>
+          </select>
+        </div>
+        <label class="gswitch" style="margin-top:12px;display:flex;gap:10px;align-items:center">
+          <input type="checkbox" id="sidebarHoverExpandToggle">
+          <span>Auto-expand on hover when collapsed</span>
+        </label>
+        <div class="small muted" style="margin-top:10px">You can toggle anytime using the menu button in the top bar. Shortcut: Ctrl+B.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data & health tools -->
+  <div class="modal" id="dataHealthModal">
+    <div class="panel">
+      <div class="head">
+        <div>
+          <div class="announce-title">Data tools</div>
+          <div class="small">Export, import, and validate offline data stored in this browser.</div>
+        </div>
+        <button class="btn ghost" type="button" data-close="dataHealthModal">✕</button>
+      </div>
+      <div class="body">
+        <div class="settings-grid" style="grid-template-columns:1fr 1fr;gap:12px">
+          <div class="settings-card">
+            <div class="settings-card-title">Storage health</div>
+            <div class="small muted" id="storageHealthSummary" style="margin-top:6px">—</div>
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn" id="runHealthCheckBtn" type="button">Run health check</button>
+              <button class="btn" id="exportAllBtn" type="button">Export all</button>
+              <label class="btn" style="cursor:pointer">
+                Import all<input id="importAllInput" type="file" accept="application/json" style="display:none">
+              </label>
+            </div>
+          </div>
+          <div class="settings-card">
+            <div class="settings-card-title">Recovery</div>
+            <div class="small muted" style="margin-top:6px">If data becomes corrupted, you can export it then reset.</div>
+            <div style="margin-top:10px">
+              <button class="btn danger" id="factoryResetBtn2" type="button">Factory reset (local)</button>
+            </div>
+          </div>
+        </div>
+        <div class="small muted" id="healthDetails" style="margin-top:12px;white-space:pre-wrap"></div>
+      </div>
+    </div>
+  </div>
+
+
+
+<div class="modal" id="schedNotifModal" style="z-index: 99999; background: rgba(2, 6, 23, 0.85); backdrop-filter: blur(8px);">
+              <div class="task-modal-glass notification-popout" style="width:min(900px, 100vw); background:linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98)); border:1px solid rgba(56,189,248,0.3); border-radius:16px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.7); display:flex; flex-direction:column; max-height:90vh; overflow:hidden;">
+                <div class="head modal-header-glass" style="padding:20px 24px; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center; background:rgba(15,23,42,0.6);">
+                  <div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="background:#0ea5e9; color:#fff; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px;">🔔</span>
+                        <div class="announce-title" id="schedNotifTitle" style="font-size:18px; font-weight:800; color:#f8fafc; letter-spacing:-0.5px;">Schedule Notifications</div>
+                    </div>
+                    <div class="small" id="schedNotifMeta" style="color:#94a3b8; margin-top:4px; font-size:13px;">—</div>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:12px;">
+                      <div class="notif-member" id="schedNotifMember" style="background:rgba(255,255,255,0.05); padding:6px 12px; border-radius:999px; font-size:12px; font-weight:700; color:#cbd5e1;">—</div>
+                      <div class="notif-count" id="schedNotifCount" style="background:#ef4444; color:#fff; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:900;"></div>
+                      <button class="btn-glass btn-glass-ghost" onclick="window.UI.closeModal('schedNotifModal')" style="padding:6px 12px; border:1px solid rgba(255,255,255,0.1); color:#cbd5e1; background:transparent; border-radius:8px; cursor:pointer;">✕</button>
+                  </div>
+                </div>
+                <div class="body modal-body-scroll" id="schedNotifBody" style="padding:24px; overflow-y:auto; overflow-x:hidden; flex:1; display:flex; flex-direction:column; gap:16px;"></div>
+              </div>
+        </div></body></html>
