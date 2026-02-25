@@ -2308,10 +2308,12 @@ function updateClocksPreviewTimes(){
     const list = UI.el('#sideLogsList');
     const hint = UI.el('#sideLogsHint');
     const viewAllBtn = UI.el('#sideLogsViewAll');
-    if(!box || !list) return;
+    if(!box) return;
 
     const openLogs = ()=>{ window.location.hash = '#logs'; };
     if(viewAllBtn) viewAllBtn.onclick = openLogs;
+
+    if(!list || !hint) return;
 
     const logs = Store.getLogs().filter(l=>canSeeLog(user,l)).slice(0,6);
     if(hint) hint.textContent = logs.length ? `Updated ${logs.length} item${logs.length>1?'s':''}` : 'No activity';

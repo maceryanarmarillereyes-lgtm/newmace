@@ -198,16 +198,26 @@ function _mbxDutyLabelForUser(user, nowParts){
     const todayBlocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, dow) || []) : [];
     const prevBlocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(user.id, prevDow) || []) : [];
 
+    const rolePriority = (role)=>{
+      const key = String(role||'').toLowerCase();
+      if(key === 'mailbox_manager') return 100;
+      if(key === 'mailbox_call' || key === 'call_available' || key === 'call_onqueue') return 80;
+      if(key.includes('break') || key.includes('lunch')) return 20;
+      return 50;
+    };
+
     const getRoleLabel = (role)=>{
       const sc = Config.scheduleById ? Config.scheduleById(role) : null;
       return (sc && sc.label) ? sc.label : String(role||'—');
     };
 
+    const activeRoles = [];
+
     for(const b of todayBlocks){
       const s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
       const e = (UI && UI.parseHM) ? UI.parseHM(b.end) : _mbxParseHM(b.end);
       if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
-      if(_mbxBlockHit(nowMin, s, e)) return getRoleLabel(b.role);
+      if(_mbxBlockHit(nowMin, s, e)) activeRoles.push(String(b.role||''));
     }
 
     // Overnight spill from the previous day (e.g. 22:00-02:00)
@@ -215,7 +225,14 @@ function _mbxDutyLabelForUser(user, nowParts){
       const s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
       const e = (UI && UI.parseHM) ? UI.parseHM(b.end) : _mbxParseHM(b.end);
       if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
-      if(e <= s && nowMin < e) return getRoleLabel(b.role);
+      if(e <= s && nowMin < e) activeRoles.push(String(b.role||''));
+    }
+
+    if(activeRoles.length){
+      const selectedRole = activeRoles
+        .slice()
+        .sort((a,b)=>rolePriority(b)-rolePriority(a))[0];
+      return getRoleLabel(selectedRole);
     }
 
     return '—';
@@ -326,10 +343,6 @@ function _mbxDutyTone(label){
                     if (label.includes('manager') || rawRole.includes('manager')) {
                         isMgr = true;
                     }
-                    // If the block is Call Available, it overrides and KICKS THEM OUT of the Manager slot!
-                    if (label.includes('call') || rawRole.includes('call')) {
-                        isMgr = false; 
-                    }
                 }
             }
         }
@@ -339,9 +352,6 @@ function _mbxDutyTone(label){
             const defaultTask = String(u.task || u.taskId || u.taskRole || u.primaryTask || u.schedule || '').toLowerCase();
             if (defaultTask.includes('manager')) {
                 isMgr = true;
-            }
-            if (defaultTask.includes('call')) {
-                isMgr = false;
             }
         }
 
