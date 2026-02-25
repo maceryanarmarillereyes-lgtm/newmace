@@ -294,17 +294,22 @@ function _mbxDutyTone(label){
       const Store = window.Store;
       const Config = window.Config;
 
+      const shiftStartMin = _mbxParseHM(table?.meta?.dutyStart || '00:00');
+      const shiftKey = String(table?.meta?.shiftKey||'');
+      const shiftDatePart = (shiftKey.split('|')[1] || '').split('T')[0];
+      let shiftDow = 0;
+      try {
+        shiftDow = new Date(`${shiftDatePart}T00:00:00+08:00`).getDay();
+      } catch (_){
+        shiftDow = UI && UI.manilaNowDate ? new Date(UI.manilaNowDate()).getDay() : new Date().getDay();
+      }
+
       let bStart = Number(bucket.startMin)||0;
       let bEnd = Number(bucket.endMin)||0;
-      if(bEnd <= bStart) bEnd += 1440; // Convert to absolute 24h+ timeline
-
-      const shiftKey = String(table?.meta?.shiftKey||'');
-      const datePart = (shiftKey.split('|')[1] || '').split('T')[0];
-      let targetDow = 1;
-      try { 
-         targetDow = new Date(datePart + 'T00:00:00+08:00').getDay(); 
-      } catch(e) { 
-         targetDow = UI && UI.manilaNowDate ? new Date(UI.manilaNowDate()).getDay() : new Date().getDay(); 
+      if(bEnd <= bStart) bEnd += 1440;
+      if(bStart < shiftStartMin){
+        bStart += 1440;
+        bEnd += 1440;
       }
 
       const all = (Store && Store.getUsers ? Store.getUsers() : []) || [];
@@ -313,52 +318,35 @@ function _mbxDutyTone(label){
 
       for(const u of candidates){
         let isMgr = false;
-        let hasBlocks = false;
-        // Search yesterday, today, and tomorrow to prevent any overlap issues
-        const dows = [ (targetDow+6)%7, targetDow, (targetDow+1)%7 ];
+        const dayRefs = [
+          { dow: shiftDow, offset: 0 },
+          { dow: (shiftDow + 1) % 7, offset: 1440 }
+        ];
 
-        // 1. SCAN EXPLICIT DAY BLOCKS FIRST
-        for(let i=0; i<3; i++){
-            const di = dows[i];
-            const offset = (i===0) ? -1440 : (i===2) ? 1440 : 0;
-            const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(u.id, di) || []) : [];
+        for(const ref of dayRefs){
+          const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(u.id, ref.dow) || []) : [];
+          for(const b of blocks){
+            let s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
+            let e = (UI && UI.parseHM) ? UI.parseHM(b.end) : _mbxParseHM(b.end);
+            if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+            if(e <= s) e += 1440;
+            s += ref.offset;
+            e += ref.offset;
 
-            for(const b of blocks){
-                hasBlocks = true;
-                let s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
-                let e = (UI && UI.parseHM) ? UI.parseHM(b.end) : _mbxParseHM(b.end);
-                if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+            if(!(s < bEnd && bStart < e)) continue;
 
-                if(e <= s) e += 1440;
-                s += offset;
-                e += offset;
-
-                // PERFECT INTERSECTION: If the block touches the bucket window
-                if (s < bEnd && bStart < e) {
-                    const rawRole = String(b.role||'').toLowerCase();
-                    const sc = Config && Config.scheduleById ? Config.scheduleById(b.role) : null;
-                    const label = (sc && sc.label ? sc.label : rawRole).toLowerCase();
-
-                    // If the block is Manager, mark them.
-                    if (label.includes('manager') || rawRole.includes('manager')) {
-                        isMgr = true;
-                    }
-                }
+            const roleId = String(b.role||'').toLowerCase();
+            const sc = Config && Config.scheduleById ? Config.scheduleById(b.role) : null;
+            const label = String(sc && sc.label ? sc.label : roleId).toLowerCase();
+            if(roleId === 'mailbox_manager' || label.includes('mailbox manager')){
+              isMgr = true;
+              break;
             }
+          }
+          if(isMgr) break;
         }
 
-        // 2. ONLY USE FALLBACK IF THEY HAVE NO BLOCKS AT ALL
-        if (!hasBlocks) {
-            const defaultTask = String(u.task || u.taskId || u.taskRole || u.primaryTask || u.schedule || '').toLowerCase();
-            if (defaultTask.includes('manager')) {
-                isMgr = true;
-            }
-        }
-
-        // Push if validated
-        if (isMgr) {
-            matched.push(String(u.name || u.username || '—'));
-        }
+        if(isMgr) matched.push(String(u.name || u.username || '—'));
       }
 
       const unique = [...new Set(matched)];
