@@ -3233,7 +3233,7 @@ function updateClocksPreviewTimes(){
         `;
         host.appendChild(card);
 
-        card.addEventListener('click', async (e)=>{
+        const handleCardAction = async (e)=>{
           try{
             const closeBtn = e.target && e.target.closest && e.target.closest('.rc-close');
             const pill = e.target && e.target.closest && e.target.closest('.reminder-pill');
@@ -3252,7 +3252,7 @@ function updateClocksPreviewTimes(){
                 const min = Number(pill.getAttribute('data-min')||10);
                 handleSnooze(user, kind, r, min);
               }else if(act==='open'){
-                window.location.hash = isMy ? '#my_reminders' : '#team_reminders';
+                openReminderPage(isMy);
               }else if(act==='mute'){
                 const min = Math.max(1, Number(pill.getAttribute('data-min')||15));
                 const until = Date.now() + min*60*1000;
@@ -3265,7 +3265,12 @@ function updateClocksPreviewTimes(){
             if(expanded.has(key)) expanded.delete(key); else expanded.add(key);
             tickSoon(0);
           }catch(_){}
-        });
+        };
+
+        card.addEventListener('click', handleCardAction);
+        const closeEl = card.querySelector('.rc-close');
+        if(closeEl) closeEl.addEventListener('click', handleCardAction);
+        card.querySelectorAll('.reminder-pill').forEach(btn=> btn.addEventListener('click', handleCardAction));
       });
     }
 
@@ -3308,6 +3313,16 @@ function updateClocksPreviewTimes(){
       }else{
         Store.snoozeTeamReminderForUser(r.id, user.id, Math.max(1, Number(minutes||10)));
       }
+    }
+
+    function openReminderPage(isMy){
+      const targetHash = isMy ? '#my_reminders' : '#team_reminders';
+      if(window.location.hash === targetHash){
+        try{ window.dispatchEvent(new Event('hashchange')); }catch(_){}
+        try{ window.dispatchEvent(new Event('popstate')); }catch(_){}
+        return;
+      }
+      window.location.hash = targetHash;
     }
 
     function computeNextDelay(user, active){
