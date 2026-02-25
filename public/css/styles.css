@@ -2882,7 +2882,7 @@ body.attendance-locked #app{
    - Quick links: lower center
    - Online users bar: above dock (4 sections incl. Developer Access)
 ================================ */
-:root{ --mums-dock-h: 86px; --mums-onlinebar-h: 44px; }
+:root{ --mums-dock-h: 86px; --mums-onlinebar-h: 44px; --mums-shell-gap: 18px; }
 
 
 .online-users-bar{
@@ -2974,7 +2974,19 @@ body.attendance-locked #app{
 
 /* Ensure the app body never gets hidden behind the online bar + dock.
    Keep this tight so we don't waste vertical real estate. */
-.app{ padding-bottom: calc(var(--mums-dock-h) + var(--mums-onlinebar-h) + 18px); }
+.app{ padding-bottom: calc(var(--mums-dock-h) + var(--mums-onlinebar-h) + var(--mums-shell-gap)); }
+
+/* Desktop shell lock:
+   keep left/main/right panes pinned above the Online Members + Quick Links dock.
+   This prevents sidebars/main content from being pushed downward as content grows. */
+@media (min-width: 981px){
+  body > .app{
+    height: calc((100vh - var(--mums-dock-h) - var(--mums-onlinebar-h) - var(--mums-shell-gap)) / var(--app-scale));
+    min-height: calc((100vh - var(--mums-dock-h) - var(--mums-onlinebar-h) - var(--mums-shell-gap)) / var(--app-scale));
+    max-height: calc((100vh - var(--mums-dock-h) - var(--mums-onlinebar-h) - var(--mums-shell-gap)) / var(--app-scale));
+    overflow: hidden;
+  }
+}
 
 /* When a modal is open, prevent fixed overlays (dock + online bar) from intercepting clicks.
    This also avoids visual "overlap" when modals are positioned close to the bottom. */
