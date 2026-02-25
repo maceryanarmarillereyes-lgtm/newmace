@@ -3,137 +3,205 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Controller Lab - MUMS Sandbox</title>
+    <title>Controller Lab - Enterprise Sandbox</title>
     <link rel="stylesheet" href="/css/styles.css">
     <link rel="stylesheet" href="/css/enterprise_ux.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    >     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { background-color: #0d1117; color: #c9d1d9; margin: 0; font-family: 'Inter', 'Segoe UI', sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
-        .lab-header { padding: 15px 30px; background: rgba(255, 255, 255, 0.03); border-bottom: 1px solid rgba(255, 255, 255, 0.1); display: flex; align-items: center; gap: 15px; backdrop-filter: blur(10px); }
-        .lab-header h1 { font-size: 1.2rem; font-weight: 600; margin: 0; color: #ffffff; }
-        .lab-container { padding: 30px; flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px; align-content: start; }
-        .lab-widget { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 24px; backdrop-filter: blur(12px); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3); }
-        .lab-widget-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .lab-widget-title { font-size: 1.1rem; font-weight: 600; color: #ffffff; margin: 0; }
-        .drop-zone { border: 2px dashed rgba(255, 255, 255, 0.2); border-radius: 8px; padding: 40px 20px; text-align: center; transition: all 0.3s ease; cursor: pointer; background: rgba(255, 255, 255, 0.01); }
-        .drop-zone:hover, .drop-zone.dragover { border-color: #58a6ff; background: rgba(88, 166, 255, 0.05); }
-        .drop-zone i { font-size: 2.5rem; color: #8b949e; margin-bottom: 15px; }
-        .drop-zone p { margin: 0; font-size: 0.9rem; color: #8b949e; }
-        .btn-primary { width: 100%; margin-top: 15px; padding: 10px; background: #238636; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; font-weight: 600; cursor: pointer; transition: background 0.2s; display: flex; justify-content: center; align-items: center; gap: 8px; }
-        .btn-primary:hover { background: #2ea043; }
-        .btn-primary:disabled { background: #3b4252; color: #8b949e; cursor: not-allowed; border-color: transparent; }
-        
-        /* Fault-Tolerant JSON Terminal Styles */
-        .json-terminal { background: #010409; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 15px; margin-top: 20px; font-family: 'Courier New', Courier, monospace; font-size: 0.85rem; color: #a5d6ff; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; }
-        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
-        .status-badge.success { background: rgba(46, 160, 67, 0.15); color: #3fb950; border: 1px solid rgba(46, 160, 67, 0.4); }
+        body { background-color: #0d1117; color: #c9d1d9; margin: 0; font-family: 'Inter', 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* Header & Tabs */
+        .lab-header { padding: 10px 30px; background: rgba(255, 255, 255, 0.03); border-bottom: 1px solid rgba(255, 255, 255, 0.1); display: flex; align-items: center; gap: 20px; backdrop-filter: blur(10px); z-index: 10; }
+        .lab-header h1 { font-size: 1.2rem; font-weight: 600; margin: 0; color: #ffffff; display: flex; align-items: center; gap: 10px; }
+        .tab-group { display: flex; gap: 10px; margin-left: 20px; }
+        .tab-btn { background: transparent; border: 1px solid transparent; color: #8b949e; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s; }
+        .tab-btn:hover { color: #c9d1d9; background: rgba(255,255,255,0.05); }
+        .tab-btn.active { background: rgba(88, 166, 255, 0.1); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.4); }
+
+        /* Tab Contents */
+        .tab-content { display: none; flex: 1; overflow-y: auto; padding: 30px; }
+        .tab-content.active { display: block; }
+        .grid-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px; align-content: start; }
+
+        /* UI/UX Studio Layout */
+        .studio-layout { display: flex; gap: 20px; height: calc(100vh - 130px); margin: -10px; }
+        .toolbox { width: 300px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; backdrop-filter: blur(12px); }
+        .canvas-wrapper { flex: 1; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; overflow: hidden; background: #000; display: flex; flex-direction: column; }
+        #live-canvas { width: 100%; flex: 1; border: none; background: #0d1117; }
+
+        /* Reused Widgets */
+        .lab-widget { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 24px; backdrop-filter: blur(12px); }
+        .drop-zone { border: 2px dashed rgba(255, 255, 255, 0.2); border-radius: 8px; padding: 40px 20px; text-align: center; cursor: pointer; }
+        .btn-action { width: 100%; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; transition: 0.2s; }
+        .btn-action:hover { background: rgba(255,255,255,0.1); }
+        .btn-action.active-toggle { background: rgba(46, 160, 67, 0.2); border-color: #3fb950; color: #3fb950; }
+        .btn-action.danger-toggle { background: rgba(248, 81, 73, 0.2); border-color: #f85149; color: #f85149; }
+        .btn-primary { background: #238636; border: 1px solid rgba(255,255,255,0.1); color: white; padding: 10px; border-radius: 6px; width: 100%; cursor: pointer; font-weight: 600; }
+        .json-terminal { background: #010409; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 15px; font-family: monospace; font-size: 12px; color: #a5d6ff; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; flex: 1; resize: none; width: 100%; box-sizing: border-box; }
     </style>
 </head>
 <body>
 <div class="lab-header">
-    <i class="fas fa-gamepad" style="color: #58a6ff; font-size: 1.5rem;"></i>
-    <h1>MUMS Controller Lab</h1>
-    <span class="status-badge success" style="margin-left: auto;">Sandbox Mode Active</span>
+    <h1><i class="fas fa-gamepad" style="color: #58a6ff;"></i> MUMS Controller Lab</h1>
+    <div class="tab-group">
+        <button class="tab-btn active" onclick="switchTab('tab-ui', event)"><i class="fas fa-paint-brush"></i> UI/UX Studio</button>
+        <button class="tab-btn" onclick="switchTab('tab-data', event)"><i class="fas fa-database"></i> Data Adapters</button>
+    </div>
 </div>
-<div class="lab-container">
-    >         <div class="lab-widget">
-        <div class="lab-widget-header">
-            <h2 class="lab-widget-title">Universal Excel Adapter Testing</h2>
-            <i class="fas fa-file-excel" style="color: #238636; font-size: 1.2rem;"></i>
+<div id="tab-ui" class="tab-content active" style="padding: 20px;">
+    <div class="studio-layout">
+        <div class="toolbox">
+            <h3 style="margin: 0; font-size: 14px; text-transform: uppercase; color: #8b949e;">Visual Architect Tools</h3>
+
+            <div style="display: flex; gap: 10px;">
+                <button id="btn-edit-mode" class="btn-action" onclick="toggleEditMode()"><i class="fas fa-font"></i> Text Edit</button>
+                <button id="btn-erase-mode" class="btn-action" onclick="toggleEraseMode()"><i class="fas fa-eraser"></i> Eraser</button>
+            </div>
+            <hr style="border-color: rgba(255,255,255,0.05); width: 100%;">
+            <h4 style="margin: 0; font-size: 12px; color: #8b949e;">Inject Widgets (Appends to Canvas)</h4>
+            <button class="btn-action" onclick="injectHTML(`<div style='padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; backdrop-filter: blur(10px); color: white; margin-bottom: 15px;'><h3>Glass Card</h3><p>New Enterprise Content Here</p></div>`)"><i class="fas fa-square"></i> Glass Card</button>
+            <button class="btn-action" onclick="injectHTML(`<button style='padding: 10px 20px; background: #58a6ff; color: #000; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;'>Enterprise Button</button>`)"><i class="fas fa-stop"></i> Solid Button</button>
+            <button class="btn-action" onclick="injectHTML(`<hr style='border: 0; border-top: 1px solid rgba(255, 255, 255, 0.1); margin: 20px 0; width: 100%;' />`)"><i class="fas fa-minus"></i> Divider</button>
+            <hr style="border-color: rgba(255,255,255,0.05); width: 100%;">
+            <button class="btn-primary" onclick="exportCodexCode()"><i class="fas fa-code"></i> Export Codex DOM</button>
+            <textarea id="codex-export-box" class="json-terminal" placeholder="Generated HTML will appear here..."></textarea>
         </div>
-        
-        <div class="drop-zone" id="excel-drop-zone">
-            <i class="fas fa-cloud-upload-alt"></i>
-            <p>Drag and Drop Excel File here<br>or click to browse (.xlsx, .xls, .csv)</p>
-            <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" style="display: none;">
+
+        <div class="canvas-wrapper">
+            <div style="background: rgba(255,255,255,0.05); padding: 8px 15px; font-size: 12px; color: #8b949e; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between;">
+                <span><i class="fas fa-desktop"></i> Live Sandbox Rendering: <strong style="color:white;">/index.html</strong></span>
+                <span id="canvas-status" style="color: #3fb950;">View Mode</span>
+            </div>
+            <iframe id="live-canvas" src="/index.html"></iframe>
         </div>
-        
-        <button class="btn-primary" id="btn-run-sim" disabled>
-            <i class="fas fa-cogs"></i> Process Data Payload
-        </button>
-        
-        >             <div id="json-output" class="json-terminal" style="display: none;">Awaiting file payload...</div>
+    </div>
+</div>
+<div id="tab-data" class="tab-content">
+    <div class="grid-layout">
+        <div class="lab-widget">
+            <h2 style="font-size: 1.1rem; margin-top: 0;">Universal Excel Adapter Testing</h2>
+            <div class="drop-zone" id="excel-drop-zone">
+                <i class="fas fa-cloud-upload-alt" style="font-size: 2rem; color: #8b949e;"></i>
+                <p style="color: #8b949e;">Drag and Drop Excel File here</p>
+                <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" style="display: none;">
+            </div>
+            <button class="btn-primary" id="btn-run-sim" style="margin-top: 15px;" disabled><i class="fas fa-cogs"></i> Process Payload</button>
+            <div id="json-output" class="json-terminal" style="display: none; height: 200px; margin-top: 15px;"></div>
+        </div>
     </div>
 </div>
 <script>
+    // --- TAB LOGIC ---
+    function switchTab(tabId, event) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        event.currentTarget.classList.add('active');
+    }
+
+    // --- UI/UX STUDIO ENGINE ---
+    const canvas = document.getElementById('live-canvas');
+    const statusTxt = document.getElementById('canvas-status');
+    const btnEdit = document.getElementById('btn-edit-mode');
+    const btnErase = document.getElementById('btn-erase-mode');
+
+    let isEditMode = false;
+    let isEraseMode = false;
+
+    function disableAllModes() {
+        isEditMode = false;
+        isEraseMode = false;
+        btnEdit.classList.remove('active-toggle');
+        btnErase.classList.remove('danger-toggle');
+        if (canvas.contentDocument) {
+            canvas.contentDocument.designMode = 'off';
+            canvas.contentDocument.body.removeEventListener('click', eraserClickHandle, true);
+        }
+        statusTxt.innerText = 'View Mode';
+        statusTxt.style.color = '#3fb950';
+    }
+
+    function toggleEditMode() {
+        if (isEditMode) {
+            disableAllModes();
+            return;
+        }
+        disableAllModes();
+        isEditMode = true;
+        btnEdit.classList.add('active-toggle');
+        canvas.contentDocument.designMode = 'on';
+        statusTxt.innerText = 'Text Edit Mode Active';
+        statusTxt.style.color = '#58a6ff';
+    }
+
+    function toggleEraseMode() {
+        if (isEraseMode) {
+            disableAllModes();
+            return;
+        }
+        disableAllModes();
+        isEraseMode = true;
+        btnErase.classList.add('danger-toggle');
+        canvas.contentDocument.body.addEventListener('click', eraserClickHandle, true);
+        statusTxt.innerText = 'Eraser Mode: Click elements to delete';
+        statusTxt.style.color = '#f85149';
+    }
+
+    function eraserClickHandle(e) {
+        if (isEraseMode) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.target.remove();
+        }
+    }
+
+    function injectHTML(htmlString) {
+        const doc = canvas.contentDocument;
+        const container = doc.createElement('div');
+        container.innerHTML = htmlString;
+        // Injecting into the main container if it exists, else body
+        const target = doc.querySelector('.main-content') || doc.body;
+        if (container.firstElementChild) {
+            target.appendChild(container.firstElementChild);
+            alert('Widget Injected to bottom of canvas!');
+        }
+    }
+
+    function exportCodexCode() {
+        // Clean up before export
+        disableAllModes();
+        const rawHTML = canvas.contentDocument.documentElement.outerHTML;
+        document.getElementById('codex-export-box').value = rawHTML;
+    }
+
+    // --- EXCEL LOGIC (Restored for continuity) ---
     const dropZone = document.getElementById('excel-drop-zone');
     const fileInput = document.getElementById('excel-file-input');
     const btnRunSim = document.getElementById('btn-run-sim');
     const jsonOutput = document.getElementById('json-output');
-    
     let parsedExcelData = null;
-    // 1. Setup Drag and Drop Fault-Tolerance
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
-    });
-    ['dragenter', 'dragover'].forEach(eventName => {
-        dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
-    });
-    ['dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
-    });
-    dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files), false);
+
     dropZone.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', e => handleFiles(e.target.files));
-    // 2. Extract and Parse
-    function handleFiles(files) {
-        if(files && files[0]) {
-            const file = files[0];
-            dropZone.innerHTML = `<i class="fas fa-check-circle" style="color: #3fb950;"></i><p>Loaded: <strong>${file.name}</strong></p>`;
-            dropZone.style.borderColor = '#3fb950';
-            jsonOutput.style.display = 'block';
-            jsonOutput.innerHTML = `<span style="color: #8b949e;">Scanning ${file.name} with SheetJS Engine...</span>`;
-            
+
+    fileInput.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (file) {
+            dropZone.innerHTML = `<i class="fas fa-check" style="color:#3fb950; font-size:2rem;"></i><p>${file.name}</p>`;
             const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, {type: 'array'});
-                    const firstSheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[firstSheetName];
-                    
-                    // EXTREME FAULT TOLERANCE: defval null ensures empty cells don't shift keys
-                    parsedExcelData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
-                    
-                    jsonOutput.innerHTML = `<span style="color: #3fb950;">[SUCCESS] Extracted ${parsedExcelData.length} valid rows from memory.</span>\n\nReady for payload simulation.`;
-                    btnRunSim.disabled = false;
-                } catch (error) {
-                    jsonOutput.innerHTML = `<span style="color: #f85149;">[CRITICAL ERROR] Failed to parse file. Unsupported format or corrupted.</span>\nDetails: ${error.message}`;
-                    btnRunSim.disabled = true;
-                }
+            reader.onload = ev => {
+                const workbook = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+                parsedExcelData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: null });
+                btnRunSim.disabled = false;
             };
             reader.readAsArrayBuffer(file);
         }
-    }
-    // 3. Simulate Payload Transformation
+    });
+
     btnRunSim.addEventListener('click', () => {
-        if(!parsedExcelData) return;
-        
-        btnRunSim.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Processing Payload...`;
-        btnRunSim.disabled = true;
-        
-        // Mock delay for UI UX realism
-        setTimeout(() => {
-            const totalRows = parsedExcelData.length;
-            const previewData = parsedExcelData.slice(0, 3); // Preview top 3
-            const hasNulls = parsedExcelData.some(row => Object.values(row).includes(null));
-            
-            let log = `<span style="color: #79c0ff;">[MUMS ORCHESTRATOR SIMULATION]</span>\n`;
-            log += `Total Records Read: ${totalRows}\n`;
-            log += `DB Null Violation Risk: ${hasNulls ? '<span style="color: #f85149;">DETECTED (Handled safely by defval)</span>' : '<span style="color: #3fb950;">CLEAN</span>'}\n`;
-            log += `\n<span style="color: #8b949e;">--- TOP 3 ROW JSON PREVIEW ---</span>\n`;
-            log += JSON.stringify(previewData, null, 2);
-            
-            if (totalRows > 3) log += `\n... ${totalRows - 3} more records omitted for brevity.`;
-            
-            jsonOutput.innerHTML = log;
-            
-            btnRunSim.innerHTML = `<i class="fas fa-check"></i> Simulation Complete`;
-            setTimeout(() => {
-                btnRunSim.innerHTML = `<i class="fas fa-cogs"></i> Re-Run Processing`;
-                btnRunSim.disabled = false;
-            }, 2000);
-        }, 800);
+        jsonOutput.style.display = 'block';
+        jsonOutput.innerHTML = JSON.stringify(parsedExcelData.slice(0, 3), null, 2) + '\n... showing top 3 records';
     });
 </script>
+</body>
+</html>
