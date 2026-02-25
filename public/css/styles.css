@@ -4353,10 +4353,10 @@ body[data-theme="mono"]{
 /* Controller Lab right-rail action */
 .controller-lab-action {
   margin-top: auto;
-  padding: 0 0 clamp(110px, 18vh, 190px);
+  padding: 10px 0 2px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .controller-lab-rule {
