@@ -29,7 +29,15 @@ module.exports = async (req, res) => {
     const auth = await requireAuthedUser(req);
     if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
-    const fieldMapOut = await listQuickbaseFields();
+    const userQuickbaseConfig = {
+      qb_token: auth?.profile?.qb_token,
+      qb_realm: auth?.profile?.qb_realm,
+      qb_table_id: auth?.profile?.qb_table_id,
+      qb_qid: auth?.profile?.qb_qid,
+      qb_report_link: auth?.profile?.qb_report_link
+    };
+
+    const fieldMapOut = await listQuickbaseFields({ config: userQuickbaseConfig });
     if (!fieldMapOut.ok) {
       return sendJson(res, fieldMapOut.status || 500, {
         ok: false,
@@ -118,6 +126,7 @@ module.exports = async (req, res) => {
     const effectiveWhere = routeWhere || whereClauses.join(' AND ');
 
     const out = await queryQuickbaseRecords({
+      config: userQuickbaseConfig,
       where: effectiveWhere,
       limit: req?.query?.limit || 100,
       select: selectedFields.map((f) => f.id),
