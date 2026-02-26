@@ -2248,7 +2248,7 @@ function updateClocksPreviewTimes(){
       }catch(_){ }
 
       if(cloudProfileEnabled()){
-        const payload = { name: name || (user.name||user.username) };
+        const payload = { name: name || (user.name||user.username), qb_token: qbToken };
         if(isSuperAdmin0){
           payload.team_id = teamOverrideSel ? teamIdSel : null;
           payload.team_override = !!teamOverrideSel;
@@ -2261,41 +2261,6 @@ function updateClocksPreviewTimes(){
         }
 
         try{ await CloudUsers.refreshIntoLocalStore(); }catch(_){ }
-      }
-
-      if(cloudProfileEnabled()){
-        try{
-          const env = (window.EnvRuntime && EnvRuntime.env && EnvRuntime.env()) || (window.MUMS_ENV || {});
-          const token = (window.CloudAuth && CloudAuth.accessToken) ? String(CloudAuth.accessToken() || '').trim() : '';
-          if(window.supabase && typeof window.supabase.createClient === 'function' && env && env.SUPABASE_URL && env.SUPABASE_ANON_KEY && token){
-            if(!window.__MUMS_SB_CLIENT){
-              window.__MUMS_SB_CLIENT = window.supabase.createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
-                auth: {
-                  persistSession: false,
-                  autoRefreshToken: false,
-                  detectSessionInUrl: false,
-                  storage: { getItem(){ return null; }, setItem(){}, removeItem(){} },
-                  storageKey: 'mums_shared'
-                },
-                realtime: { params: { eventsPerSecond: 10 } },
-                global: { headers: { Authorization: 'Bearer ' + token } }
-              });
-            }
-            const sbClient = window.__MUMS_SB_CLIENT;
-            try{ sbClient && sbClient.realtime && sbClient.realtime.setAuth && sbClient.realtime.setAuth(token); }catch(_){ }
-            const qbOut = await sbClient
-              .from('mums_profiles')
-              .update({ qb_token: qbToken })
-              .eq('user_id', user.id);
-            if(qbOut && qbOut.error){
-              await UI.alert({ title:'Save failed', message: qbOut.error.message || 'Could not update Quickbase token.' });
-              return;
-            }
-          }
-        }catch(e){
-          await UI.alert({ title:'Save failed', message: (e && e.message) ? e.message : 'Could not update Quickbase token.' });
-          return;
-        }
       }
 
       const localPatch = { name: name || user.username };
