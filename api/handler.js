@@ -76,6 +76,8 @@ const ROUTES = {
   'tasks/monitoring': require('../server/routes/tasks/monitoring'),
   'tasks/reassign_pending': require('../server/routes/tasks/reassign_pending'),
   'tasks/distribution_export': require('../server/routes/tasks/distribution_export'),
+
+  'quickbase/monitoring': require('../server/routes/quickbase/monitoring'),
 };
 
 const DYNAMIC_ROUTES = [

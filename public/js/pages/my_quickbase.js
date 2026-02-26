@@ -44,10 +44,13 @@ const loadData = async () => {
       loader.innerHTML = `<div style="font-weight:600; color:#94a3b8;">No records found in Quickbase table.</div>`;
       return;
     }
-    // Dynamic columns extraction based on first record
-    const firstRecordFields = data[0].fields || {};
+    // Dynamic columns extraction based on first record (defensive for schema drift)
+    const first = data[0] || {};
+    const firstRecordFields = (first.fields && typeof first.fields === 'object')
+      ? first.fields
+      : ((first.techMonitoringData && typeof first.techMonitoringData === 'object') ? first.techMonitoringData : {});
     // Limit to max 7 columns for compact UI
-    const keys = Object.keys(firstRecordFields).slice(0, 7); 
+    const keys = Object.keys(firstRecordFields).slice(0, 7);
     // Render Glassmorphism Headers
     thead.innerHTML = `<tr>
       <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:left;">Record ID</th>
@@ -55,14 +58,17 @@ const loadData = async () => {
     </tr>`;
     // Render Table Body Data
     tbody.innerHTML = data.map(row => {
-      const f = row.fields || {};
+      const f = (row && row.fields && typeof row.fields === 'object')
+        ? row.fields
+        : ((row && row.techMonitoringData && typeof row.techMonitoringData === 'object') ? row.techMonitoringData : {});
       const recId = row.qbRecordId || 'N/A';
       return `<tr style="border-bottom:1px solid rgba(255,255,255,0.02); transition: background 0.2s;">
         <td style="padding:12px; color:#38bdf8; font-size:13px; font-weight:700;">${window.UI.esc(recId)}</td>
         ${keys.map(k => {
           let val = f[k];
-          if(val && typeof val === 'object' && val.value !== undefined) val = val.value;
-          return `<td style="padding:12px; color:#e2e8f0; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px;">${window.UI.esc(val) || '—'}</td>`;
+          if (val && typeof val === 'object' && val.value !== undefined) val = val.value;
+          const safe = (val === null || val === undefined || val === '') ? '—' : window.UI.esc(val);
+          return `<td style="padding:12px; color:#e2e8f0; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px;">${safe}</td>`;
         }).join('')}
       </tr>`;
     }).join('');
