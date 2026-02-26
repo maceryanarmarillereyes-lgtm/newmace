@@ -730,3 +730,16 @@ with check (public.mums_is_super_admin(auth.uid()));
 
 commit;
 
+
+-- ===========================================================================
+-- Migration: 20260226_02_profiles_quickbase_columns.sql
+-- ===========================================================================
+
+-- 2026-02-26: Ensure Quickbase configuration columns exist on mums_profiles
+-- Safe to run multiple times.
+alter table if exists public.mums_profiles
+  add column if not exists qb_token text,
+  add column if not exists qb_realm text,
+  add column if not exists qb_table_id text,
+  add column if not exists qb_qid text,
+  add column if not exists qb_report_link text;

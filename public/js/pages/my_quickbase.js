@@ -113,12 +113,12 @@
           <input class="input" type="text" id="qbReportLink" placeholder="https://&lt;realm&gt;.quickbase.com/db/&lt;tableid&gt;?a=q&amp;qid=..." value="${esc(currentLink)}" />
         </label>
         <label class="field">
-          <div class="label" style="font-weight:700;">Table ID</div>
-          <input class="input" type="text" id="qbTableId" placeholder="e.g. bq7m2ab12" value="${esc(currentTableId)}" />
-        </label>
-        <label class="field">
           <div class="label" style="font-weight:700;">Query ID (qID)</div>
           <input class="input" type="text" id="qbQid" placeholder="e.g. -2021117" value="${esc(currentQid)}" />
+        </label>
+        <label class="field">
+          <div class="label" style="font-weight:700;">Table ID</div>
+          <input class="input" type="text" id="qbTableId" placeholder="e.g. bq7m2ab12" value="${esc(currentTableId)}" />
         </label>
         <div class="row" style="justify-content:flex-end; gap:10px; margin-top:10px;">
           <button class="btn primary" id="saveQbSettingsBtn" type="button">Save Settings</button>
