@@ -14,15 +14,51 @@ function getEnv(name) {
   return '';
 }
 
-function readQuickbaseConfig() {
-  const realm = getEnv('QB_REALM') || getEnv('QUICKBASE_REALM');
-  const token = getEnv('QB_USER_TOKEN') || getEnv('QUICKBASE_TOKEN');
-  const tableId = getEnv('QB_TABLE_ID') || getEnv('QUICKBASE_TABLE_ID');
-  return { realm, token, tableId };
+function extractQuickbaseInfoFromLink(linkRaw) {
+  const link = String(linkRaw || '').trim();
+  if (!link) return { realm: '', tableId: '' };
+
+  let realm = '';
+  let tableId = '';
+  try {
+    const parsed = new URL(link);
+    realm = String(parsed.hostname || '').trim();
+  } catch (_) {}
+
+  const dbMatch = link.match(/\/db\/([a-zA-Z0-9]+)/i);
+  if (dbMatch && dbMatch[1]) {
+    tableId = String(dbMatch[1]).trim();
+  }
+
+  if (!tableId) {
+    const tableMatch = link.match(/\/table\/([a-zA-Z0-9]+)/i);
+    if (tableMatch && tableMatch[1]) {
+      tableId = String(tableMatch[1]).trim();
+    }
+  }
+
+  return { realm, tableId };
+}
+
+function readQuickbaseConfig(override) {
+  const envRealm = getEnv('QB_REALM') || getEnv('QUICKBASE_REALM');
+  const envToken = getEnv('QB_USER_TOKEN') || getEnv('QUICKBASE_TOKEN');
+  const envTableId = getEnv('QB_TABLE_ID') || getEnv('QUICKBASE_TABLE_ID');
+  const envQid = getEnv('QB_QUERY_ID') || getEnv('QUICKBASE_QUERY_ID') || '-2021117';
+
+  const o = override && typeof override === 'object' ? override : {};
+  const fromLink = extractQuickbaseInfoFromLink(o.reportLink || o.qb_report_link || '');
+
+  const realm = String(o.realm || o.qb_realm || fromLink.realm || envRealm || '').trim();
+  const token = String(o.token || o.qb_token || envToken || '').trim();
+  const tableId = String(o.tableId || o.qb_table_id || fromLink.tableId || envTableId || '').trim();
+  const qid = String(o.queryId || o.qb_qid || envQid || '-2021117').trim() || '-2021117';
+
+  return { realm, token, tableId, qid };
 }
 
 async function queryQuickbaseRecords(opts = {}) {
-  const cfg = readQuickbaseConfig();
+  const cfg = readQuickbaseConfig(opts.config);
   if (!cfg.realm || !cfg.token || !cfg.tableId) {
     return {
       ok: false,
@@ -35,7 +71,7 @@ async function queryQuickbaseRecords(opts = {}) {
   const limit = Number(opts.limit);
   const body = {
     from: cfg.tableId,
-    queryId: "-2021117", // Strictly enforces personal report filters
+    queryId: cfg.qid,
     options: {
       top: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50,
       skip: 0
@@ -83,7 +119,7 @@ async function queryQuickbaseRecords(opts = {}) {
 }
 
 async function listQuickbaseFields() {
-  const cfg = readQuickbaseConfig();
+  const cfg = readQuickbaseConfig(arguments[0] && arguments[0].config);
   if (!cfg.realm || !cfg.token || !cfg.tableId) {
     return {
       ok: false,
