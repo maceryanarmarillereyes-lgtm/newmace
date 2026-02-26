@@ -89,6 +89,8 @@ module.exports = async (req, res) => {
     const statusFieldId = resolveFieldId('Case Status');
     const assignedToFieldId = resolveFieldId('Assigned to');
 
+    const hasPersonalQuickbaseQuery = !!String(auth?.profile?.qb_qid || '').trim();
+
     const defaultSettings = {
       types: ['Graphical Screen Service', 'CS Triaging'],
       endUsers: ['Woolworths', 'Coles', 'Countdown'],
@@ -104,10 +106,20 @@ module.exports = async (req, res) => {
     const excludeStatus = parseCsvOrArray(req?.query?.excludeStatus);
 
     const whereClauses = [];
-    const typeClause = buildAnyEqualsClause(typeFieldId, typeFilter.length ? typeFilter : defaultSettings.types);
+    const effectiveTypes = typeFilter.length
+      ? typeFilter
+      : (hasPersonalQuickbaseQuery ? [] : defaultSettings.types);
+    const effectiveEndUsers = endUserFilter.length
+      ? endUserFilter
+      : (hasPersonalQuickbaseQuery ? [] : defaultSettings.endUsers);
+    const effectiveExcludedStatuses = excludeStatus.length
+      ? excludeStatus
+      : (hasPersonalQuickbaseQuery ? [] : [defaultSettings.excludedStatus]);
+
+    const typeClause = buildAnyEqualsClause(typeFieldId, effectiveTypes);
     if (typeClause) whereClauses.push(typeClause);
 
-    const endUserClause = buildAnyEqualsClause(endUserFieldId, endUserFilter.length ? endUserFilter : defaultSettings.endUsers);
+    const endUserClause = buildAnyEqualsClause(endUserFieldId, effectiveEndUsers);
     if (endUserClause) whereClauses.push(endUserClause);
 
     const assignedToClause = buildAnyEqualsClause(assignedToFieldId, assignedToFilter);
@@ -116,8 +128,7 @@ module.exports = async (req, res) => {
     const caseStatusClause = buildAnyEqualsClause(statusFieldId, caseStatusFilter);
     if (caseStatusClause) whereClauses.push(caseStatusClause);
 
-    const excludedStatuses = excludeStatus.length ? excludeStatus : [defaultSettings.excludedStatus];
-    excludedStatuses.forEach((status) => {
+    effectiveExcludedStatuses.forEach((status) => {
       if (!Number.isFinite(statusFieldId) || !status) return;
       whereClauses.push(`{${statusFieldId}.XEX.'${encodeQuickbaseLiteral(status)}'}`);
     });
