@@ -61,6 +61,28 @@ module.exports = async (req, res) => {
       if (duty.length > 120) return sendJson(res, 400, { ok: false, error: 'invalid_duty' });
       patch.duty = duty;
     }
+
+    // Personal Quickbase config updates (save via server/service-role to avoid client RLS failures).
+    if (Object.prototype.hasOwnProperty.call(body, 'qb_report_link')) {
+      const link = String(body.qb_report_link || '').trim();
+      if (link.length > 2000) return sendJson(res, 400, { ok: false, error: 'invalid_qb_report_link' });
+      patch.qb_report_link = link;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'qb_qid')) {
+      const qid = String(body.qb_qid || '').trim();
+      if (qid.length > 120) return sendJson(res, 400, { ok: false, error: 'invalid_qb_qid' });
+      patch.qb_qid = qid;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'qb_realm')) {
+      const realm = String(body.qb_realm || '').trim().toLowerCase();
+      if (realm.length > 255) return sendJson(res, 400, { ok: false, error: 'invalid_qb_realm' });
+      patch.qb_realm = realm;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'qb_table_id')) {
+      const tableId = String(body.qb_table_id || '').trim();
+      if (tableId.length > 80) return sendJson(res, 400, { ok: false, error: 'invalid_qb_table_id' });
+      patch.qb_table_id = tableId;
+    }
     const prof = await getProfileForUserId(authed.id);
     if (!prof) return sendJson(res, 404, { ok: false, error: 'profile_missing', message: 'Profile not found. Call /api/users/me first.' });
 
