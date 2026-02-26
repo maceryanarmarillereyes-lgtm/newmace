@@ -42,6 +42,17 @@ async function queryQuickbaseRecords(opts = {}) {
   };
 
   if (opts.where) body.where = String(opts.where);
+  if (Array.isArray(opts.select) && opts.select.length) {
+    body.select = opts.select.map((id) => Number(id)).filter((id) => Number.isFinite(id));
+  }
+  if (Array.isArray(opts.sortBy) && opts.sortBy.length) {
+    body.sortBy = opts.sortBy
+      .map((entry) => ({
+        fieldId: Number(entry && entry.fieldId),
+        order: String(entry && entry.order || '').toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
+      }))
+      .filter((entry) => Number.isFinite(entry.fieldId));
+  }
 
   const response = await fetch('https://api.quickbase.com/v1/records/query', {
     method: 'POST',
@@ -70,6 +81,45 @@ async function queryQuickbaseRecords(opts = {}) {
   return { ok: true, status: 200, records };
 }
 
+async function listQuickbaseFields() {
+  const cfg = readQuickbaseConfig();
+  if (!cfg.realm || !cfg.token || !cfg.tableId) {
+    return {
+      ok: false,
+      status: 500,
+      error: 'quickbase_env_missing',
+      message: 'Quickbase environment variables are missing.'
+    };
+  }
+
+  const url = `https://api.quickbase.com/v1/fields?tableId=${encodeURIComponent(cfg.tableId)}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'QB-Realm-Hostname': cfg.realm,
+      Authorization: `QB-USER-TOKEN ${cfg.token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  const rawText = await response.text();
+  let json;
+  try { json = rawText ? JSON.parse(rawText) : {}; } catch (_) { json = {}; }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status || 502,
+      error: 'quickbase_fields_failed',
+      message: json.message || `Quickbase fields lookup failed with status ${response.status}`
+    };
+  }
+
+  const fields = Array.isArray(json) ? json : (Array.isArray(json.fields) ? json.fields : []);
+  return { ok: true, status: 200, fields };
+}
+
 module.exports = {
-  queryQuickbaseRecords
+  queryQuickbaseRecords,
+  listQuickbaseFields
 };

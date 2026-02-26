@@ -38,40 +38,37 @@ const loadData = async () => {
   loader.style.display = 'block';
   wrap.style.display = 'none';
   try {
-    const data = await window.QuickbaseAdapter.fetchMonitoringData();
-    
-    if (!data || !Array.isArray(data) || data.length === 0) {
+    const payload = await window.QuickbaseAdapter.fetchMonitoringData();
+    const data = Array.isArray(payload && payload.rows) ? payload.rows : [];
+    const columns = Array.isArray(payload && payload.columns) ? payload.columns : [];
+
+    if (!data.length) {
       loader.innerHTML = `<div style="font-weight:600; color:#94a3b8;">No records found in Quickbase table.</div>`;
       return;
     }
-    // Dynamic columns extraction based on first record (defensive for schema drift)
-    const first = data[0] || {};
-    const firstRecordFields = (first.fields && typeof first.fields === 'object')
-      ? first.fields
-      : ((first.techMonitoringData && typeof first.techMonitoringData === 'object') ? first.techMonitoringData : {});
-    // Limit to max 7 columns for compact UI
-    const keys = Object.keys(firstRecordFields).slice(0, 7);
-    // Render Glassmorphism Headers
+
+    const safeColumns = columns.length ? columns : Object.keys((data[0] && data[0].fields) || {}).slice(0, 8).map((id) => ({ id, label: `Field ${id}` }));
+
     thead.innerHTML = `<tr>
-      <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:left;">Record ID</th>
-      ${keys.map(k => `<th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:left;">Field ${k}</th>`).join('')}
+      <th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:left;">Case #</th>
+      ${safeColumns.map((c) => `<th style="background:rgba(15,23,42,0.95); padding:14px 12px; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:left;">${window.UI.esc(c.label || c.id)}</th>`).join('')}
     </tr>`;
-    // Render Table Body Data
-    tbody.innerHTML = data.map(row => {
-      const f = (row && row.fields && typeof row.fields === 'object')
-        ? row.fields
-        : ((row && row.techMonitoringData && typeof row.techMonitoringData === 'object') ? row.techMonitoringData : {});
+
+    tbody.innerHTML = data.map((row) => {
+      const f = (row && row.fields && typeof row.fields === 'object') ? row.fields : {};
       const recId = row.qbRecordId || 'N/A';
       return `<tr style="border-bottom:1px solid rgba(255,255,255,0.02); transition: background 0.2s;">
         <td style="padding:12px; color:#38bdf8; font-size:13px; font-weight:700;">${window.UI.esc(recId)}</td>
-        ${keys.map(k => {
-          let val = f[k];
+        ${safeColumns.map((c) => {
+          const key = String(c.id || '');
+          let val = f[key];
           if (val && typeof val === 'object' && val.value !== undefined) val = val.value;
-          const safe = (val === null || val === undefined || val === '') ? '—' : window.UI.esc(val);
-          return `<td style="padding:12px; color:#e2e8f0; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px;">${safe}</td>`;
+          const safe = (val === null || val === undefined || val === '') ? 'N/A' : window.UI.esc(val);
+          return `<td style="padding:12px; color:#e2e8f0; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px;">${safe}</td>`;
         }).join('')}
       </tr>`;
     }).join('');
+
     loader.style.display = 'none';
     wrap.style.display = 'block';
   } catch (err) {
@@ -81,7 +78,6 @@ const loadData = async () => {
 };
 const refreshBtn = root.querySelector('#qbRefreshBtn');
 if (refreshBtn) refreshBtn.onclick = loadData;
-// Init trigger
 await loadData();
 };
 })();
