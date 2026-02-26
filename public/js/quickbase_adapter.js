@@ -17,7 +17,7 @@
   }
 
   function toSafePayload(payload) {
-    if (!payload || !payload.ok) return { columns: [], rows: [] };
+    if (!payload || !payload.ok) return { columns: [], rows: [], settings: {} };
     const rows = Array.isArray(payload.records) ? payload.records : [];
     const columns = Array.isArray(payload.columns) ? payload.columns : [];
     return {
@@ -32,7 +32,8 @@
           qbRecordId: (r && (r.qbRecordId || (r.fields && r.fields['3'] && r.fields['3'].value))) || 'N/A',
           fields: (r && r.fields && typeof r.fields === 'object') ? r.fields : {}
         };
-      })
+      }),
+      settings: (payload && payload.settings && typeof payload.settings === 'object') ? payload.settings : {}
     };
   }
 

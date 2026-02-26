@@ -1,6 +1,29 @@
 const { sendJson, requireAuthedUser } = require('../tasks/_common');
 const { queryQuickbaseRecords, listQuickbaseFields } = require('../../lib/quickbase');
 
+function encodeQuickbaseLiteral(value) {
+  return String(value == null ? '' : value).replace(/'/g, "\\'");
+}
+
+function buildAnyEqualsClause(fieldId, values) {
+  if (!Number.isFinite(fieldId)) return '';
+  const safeValues = (Array.isArray(values) ? values : [])
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+  if (!safeValues.length) return '';
+  if (safeValues.length === 1) {
+    return `{${fieldId}.EX.'${encodeQuickbaseLiteral(safeValues[0])}'}`;
+  }
+  return `(${safeValues.map((v) => `{${fieldId}.EX.'${encodeQuickbaseLiteral(v)}'}`).join(' OR ')})`;
+}
+
+function parseCsvOrArray(value) {
+  if (Array.isArray(value)) return value.map((v) => String(v || '').trim()).filter(Boolean);
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  return raw.split(',').map((v) => String(v || '').trim()).filter(Boolean);
+}
+
 module.exports = async (req, res) => {
   try {
     const auth = await requireAuthedUser(req);
@@ -53,11 +76,55 @@ module.exports = async (req, res) => {
       });
     }
 
+    const typeFieldId = resolveFieldId('Type');
+    const endUserFieldId = resolveFieldId('End User');
+    const statusFieldId = resolveFieldId('Case Status');
+    const assignedToFieldId = resolveFieldId('Assigned to');
+
+    const defaultSettings = {
+      types: ['Graphical Screen Service', 'CS Triaging'],
+      endUsers: ['Woolworths', 'Coles', 'Countdown'],
+      excludedStatus: 'C - Resolved',
+      dynamicFilters: ['Assigned to', 'Case Status', 'Type'],
+      sortBy: ['End User ASC', 'Type ASC']
+    };
+
+    const typeFilter = parseCsvOrArray(req?.query?.type);
+    const endUserFilter = parseCsvOrArray(req?.query?.endUser);
+    const assignedToFilter = parseCsvOrArray(req?.query?.assignedTo);
+    const caseStatusFilter = parseCsvOrArray(req?.query?.caseStatus);
+    const excludeStatus = parseCsvOrArray(req?.query?.excludeStatus);
+
+    const whereClauses = [];
+    const typeClause = buildAnyEqualsClause(typeFieldId, typeFilter.length ? typeFilter : defaultSettings.types);
+    if (typeClause) whereClauses.push(typeClause);
+
+    const endUserClause = buildAnyEqualsClause(endUserFieldId, endUserFilter.length ? endUserFilter : defaultSettings.endUsers);
+    if (endUserClause) whereClauses.push(endUserClause);
+
+    const assignedToClause = buildAnyEqualsClause(assignedToFieldId, assignedToFilter);
+    if (assignedToClause) whereClauses.push(assignedToClause);
+
+    const caseStatusClause = buildAnyEqualsClause(statusFieldId, caseStatusFilter);
+    if (caseStatusClause) whereClauses.push(caseStatusClause);
+
+    const excludedStatuses = excludeStatus.length ? excludeStatus : [defaultSettings.excludedStatus];
+    excludedStatuses.forEach((status) => {
+      if (!Number.isFinite(statusFieldId) || !status) return;
+      whereClauses.push(`{${statusFieldId}.XEX.'${encodeQuickbaseLiteral(status)}'}`);
+    });
+
+    const routeWhere = String(req?.query?.where || '').trim();
+    const effectiveWhere = routeWhere || whereClauses.join(' AND ');
+
     const out = await queryQuickbaseRecords({
-      where: req?.query?.where || '',
+      where: effectiveWhere,
       limit: req?.query?.limit || 100,
       select: selectedFields.map((f) => f.id),
-      sortBy: [{ fieldId: resolveFieldId('Case #') || 3, order: 'DESC' }]
+      sortBy: [
+        { fieldId: endUserFieldId || resolveFieldId('Case #') || 3, order: 'ASC' },
+        { fieldId: typeFieldId || resolveFieldId('Case #') || 3, order: 'ASC' }
+      ]
     });
 
     if (!out.ok) {
@@ -84,7 +151,26 @@ module.exports = async (req, res) => {
       };
     });
 
-    return sendJson(res, 200, { ok: true, columns, records });
+    return sendJson(res, 200, {
+      ok: true,
+      columns,
+      records,
+      settings: {
+        ...defaultSettings,
+        fieldIds: {
+          type: typeFieldId || null,
+          endUser: endUserFieldId || null,
+          assignedTo: assignedToFieldId || null,
+          caseStatus: statusFieldId || null
+        },
+        appliedWhere: effectiveWhere,
+        appliedDynamicFilters: {
+          assignedTo: assignedToFilter,
+          caseStatus: caseStatusFilter,
+          type: typeFilter
+        }
+      }
+    });
   } catch (err) {
     return sendJson(res, 500, {
       ok: false,
