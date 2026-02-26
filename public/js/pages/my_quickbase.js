@@ -21,13 +21,14 @@
   }
 
   function parseQuickbaseLink(link) {
-    const out = { realm: '', tableId: '' };
+    const out = { realm: '', tableId: '', qid: '' };
     const value = String(link || '').trim();
     if (!value) return out;
 
     try {
       const urlObj = new URL(value);
       out.realm = String(urlObj.hostname || '').trim();
+      out.qid = String(urlObj.searchParams.get('qid') || '').trim();
     } catch (_) {}
 
     const dbMatch = value.match(/\/db\/([a-zA-Z0-9]+)/i);
@@ -38,7 +39,24 @@
       if (tableMatch && tableMatch[1]) out.tableId = String(tableMatch[1]).trim();
     }
 
+    if (!out.qid) {
+      const reportMatch = value.match(/\/report\/(-?\d+)/i);
+      if (reportMatch && reportMatch[1]) out.qid = String(reportMatch[1]).trim();
+    }
+
     return out;
+  }
+
+  async function upsertQuickbaseProfile(client, userId, payload) {
+    const safeUserId = String(userId || '').trim();
+    if (!safeUserId) throw new Error('User ID is missing. Please relogin and retry.');
+
+    const row = Object.assign({}, payload || {}, { user_id: safeUserId });
+    const out = await client
+      .from('mums_profiles')
+      .upsert(row);
+
+    if (out && out.error) throw out.error;
   }
 
   function renderRecords(root, payload) {
@@ -174,13 +192,14 @@
 
         const link = String((root.querySelector('#qbReportLink') || {}).value || '').trim();
         const tableIdInput = String((root.querySelector('#qbTableId') || {}).value || '').trim();
-        const qid = String((root.querySelector('#qbQid') || {}).value || '').trim();
+        const qidInput = String((root.querySelector('#qbQid') || {}).value || '').trim();
 
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving...';
         try {
           const parsed = parseQuickbaseLink(link);
           const resolvedTableId = tableIdInput || parsed.tableId;
+          const resolvedQid = qidInput || parsed.qid;
 
           if(!window.__MUMS_SB_CLIENT){
             const env = (window.EnvRuntime && EnvRuntime.env && EnvRuntime.env()) || (window.MUMS_ENV || {});
@@ -203,21 +222,17 @@
             throw new Error('Supabase client is not ready. Please relogin and try again.');
           }
 
-          const { error } = await window.__MUMS_SB_CLIENT
-            .from('mums_profiles')
-            .update({
-              qb_report_link: link,
-              qb_qid: qid,
-              qb_realm: parsed.realm,
-              qb_table_id: resolvedTableId
-            })
-            .eq('user_id', me.id);
-          if (error) throw error;
+          await upsertQuickbaseProfile(window.__MUMS_SB_CLIENT, me.id, {
+            qb_report_link: link,
+            qb_qid: resolvedQid,
+            qb_realm: parsed.realm,
+            qb_table_id: resolvedTableId
+          });
 
           if (window.Store && Store.setProfile) {
             Store.setProfile(me.id, {
               qb_report_link: link,
-              qb_qid: qid,
+              qb_qid: resolvedQid,
               qb_realm: parsed.realm,
               qb_table_id: resolvedTableId,
               updatedAt: Date.now()
