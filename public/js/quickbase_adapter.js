@@ -85,6 +85,11 @@
           continue;
         }
         const safePayload = toSafePayload(data);
+        if (safePayload.warning === 'quickbase_credentials_missing') {
+          const missingCredsErr = new Error('Missing Quickbase Credentials: Token or Realm not found. Please verify your Profile Settings.');
+          missingCredsErr.code = 'quickbase_credentials_missing';
+          throw missingCredsErr;
+        }
         try { console.info('[Enterprise DB] Quickbase Payload mapped:', safePayload.rows); } catch (_) {}
         return safePayload;
       } catch (e) {

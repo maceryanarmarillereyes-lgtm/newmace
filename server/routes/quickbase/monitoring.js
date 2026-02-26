@@ -66,6 +66,8 @@ module.exports = async (req, res) => {
       qb_report_link: profileLink
     };
 
+    console.log('[Enterprise Debug] Quickbase Config:', userQuickbaseConfig);
+
     if (!userQuickbaseConfig.qb_token || (!userQuickbaseConfig.qb_realm && !userQuickbaseConfig.qb_report_link)) {
       return sendJson(res, 200, {
         ok: true,

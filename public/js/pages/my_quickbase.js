@@ -172,12 +172,19 @@
         const data = await window.QuickbaseAdapter.fetchMonitoringData();
         renderRecords(root, data || {});
       } catch (err) {
-        if (meta) meta.textContent = 'Check Connection';
+        const isMissingCreds = String(err && err.code || '') === 'quickbase_credentials_missing'
+          || String(err && err.message || '').toLowerCase().indexOf('missing quickbase credentials') >= 0;
+        const title = isMissingCreds ? 'Missing Quickbase Credentials' : 'Check Connection';
+        const detail = isMissingCreds
+          ? 'Missing Quickbase Credentials: Token or Realm not found. Please verify your Profile Settings.'
+          : String(err && err.message ? err.message : 'Unable to load Quickbase records.');
+
+        if (meta) meta.textContent = title;
         if (host) {
           host.innerHTML = `
-            <div style="padding:24px; border-radius:14px; background: linear-gradient(135deg, rgba(30,41,59,.5), rgba(15,23,42,.72)); border:1px solid rgba(248,113,113,.25); box-shadow:0 10px 35px rgba(0,0,0,.35); color:#fecaca;">
-              <div style="font-size:15px; font-weight:700; color:#fca5a5;">Check Connection</div>
-              <div style="margin-top:8px; font-size:12px; color:#fecdd3;">${esc(String(err && err.message ? err.message : 'Unable to load Quickbase records.'))}</div>
+            <div style="padding:24px; border-radius:14px; background: linear-gradient(135deg, rgba(60,10,20,.6), rgba(30,10,20,.78)); border:1px solid rgba(248,113,113,.35); box-shadow:0 10px 35px rgba(0,0,0,.35); color:#fecaca;">
+              <div style="font-size:15px; font-weight:700; color:#fca5a5;">${esc(title)}</div>
+              <div style="margin-top:8px; font-size:12px; color:#fecdd3;">${esc(detail)}</div>
             </div>
           `;
         }
