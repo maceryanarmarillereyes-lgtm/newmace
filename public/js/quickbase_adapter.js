@@ -16,15 +16,24 @@
     return '';
   }
 
-  function toSafeRows(payload) {
-    if (!payload || !payload.ok) return [];
+  function toSafePayload(payload) {
+    if (!payload || !payload.ok) return { columns: [], rows: [] };
     const rows = Array.isArray(payload.records) ? payload.records : [];
-    return rows.map(function(r){
-      return {
-        qbRecordId: (r && (r.qbRecordId || (r.fields && r.fields['3'] && r.fields['3'].value))) || 'N/A',
-        fields: (r && r.fields && typeof r.fields === 'object') ? r.fields : {}
-      };
-    });
+    const columns = Array.isArray(payload.columns) ? payload.columns : [];
+    return {
+      columns: columns.map(function(c){
+        return {
+          id: String((c && c.id) || ''),
+          label: String((c && c.label) || '')
+        };
+      }).filter(function(c){ return !!c.id; }),
+      rows: rows.map(function(r){
+        return {
+          qbRecordId: (r && (r.qbRecordId || (r.fields && r.fields['3'] && r.fields['3'].value))) || 'N/A',
+          fields: (r && r.fields && typeof r.fields === 'object') ? r.fields : {}
+        };
+      })
+    };
   }
 
   async function fetchMonitoringData() {
@@ -49,7 +58,7 @@
           continue;
         }
         const data = await res.json();
-        return toSafeRows(data);
+        return toSafePayload(data);
       } catch (e) {
         lastErr = e;
       }
