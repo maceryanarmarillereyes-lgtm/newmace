@@ -1,0 +1,25 @@
+/**
+ * worker/index.mjs
+ * Cloudflare Worker module setup.
+ */
+export default {
+  async fetch(request, env) {
+    const REALM = env.QB_REALM;
+    const TOKEN = env.QB_USER_TOKEN;
+    const TABLE_ID = env.QB_TABLE_ID;
+if (!REALM || !TOKEN || !TABLE_ID) {
+  return new Response(JSON.stringify({ ok: false, error: 'missing env' }), { status: 500, headers: { 'Content-Type': 'application/json' }});
+}
+const qbRes = await fetch('https://api.quickbase.com/v1/records/query', {
+  method: 'POST',
+  headers: {
+    'QB-Realm-Hostname': REALM,
+    'Authorization': `QB-USER-TOKEN ${TOKEN}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ from: TABLE_ID })
+});
+const data = await qbRes.json();
+return new Response(JSON.stringify({ ok: true, data }), { headers: { 'Content-Type': 'application/json' }});
+}
+};
