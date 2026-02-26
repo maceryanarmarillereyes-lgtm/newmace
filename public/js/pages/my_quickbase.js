@@ -54,7 +54,9 @@
     const row = Object.assign({}, payload || {}, { user_id: safeUserId });
     const out = await client
       .from('mums_profiles')
-      .upsert(row);
+      .upsert(row, { onConflict: 'user_id' })
+      .select('id,user_id')
+      .limit(1);
 
     if (out && out.error) throw out.error;
   }
