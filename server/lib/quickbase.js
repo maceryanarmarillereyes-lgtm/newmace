@@ -16,13 +16,20 @@ function getEnv(name) {
 
 function extractQuickbaseInfoFromLink(linkRaw) {
   const link = String(linkRaw || '').trim();
-  if (!link) return { realm: '', tableId: '' };
+  if (!link) return { realm: '', tableId: '', queryId: '' };
 
   let realm = '';
   let tableId = '';
+  let queryId = '';
   try {
     const parsed = new URL(link);
     realm = String(parsed.hostname || '').trim();
+    queryId = String(parsed.searchParams.get('qid') || '').trim();
+
+    if (!queryId) {
+      const reportMatch = String(parsed.pathname || '').match(/\/report\/(-?\d+)/i);
+      if (reportMatch && reportMatch[1]) queryId = String(reportMatch[1]).trim();
+    }
   } catch (_) {}
 
   const dbMatch = link.match(/\/db\/([a-zA-Z0-9]+)/i);
@@ -37,7 +44,26 @@ function extractQuickbaseInfoFromLink(linkRaw) {
     }
   }
 
-  return { realm, tableId };
+  if (!queryId) {
+    const reportMatch = link.match(/\/report\/(-?\d+)/i);
+    if (reportMatch && reportMatch[1]) queryId = String(reportMatch[1]).trim();
+  }
+
+  return { realm, tableId, queryId };
+}
+
+function queryIdVariants(rawQid) {
+  const qid = String(rawQid || '').trim();
+  const variants = [];
+  if (!qid) return variants;
+
+  variants.push(qid);
+
+  // Some Quickbase links expose report ids as negative (e.g. /report/-2021130)
+  // while records/query expects the positive numeric queryId.
+  if (/^-\d+$/.test(qid)) variants.push(qid.slice(1));
+
+  return Array.from(new Set(variants.filter(Boolean)));
 }
 
 function readQuickbaseConfig(override) {
@@ -52,7 +78,7 @@ function readQuickbaseConfig(override) {
   const realm = String(o.realm || o.qb_realm || fromLink.realm || envRealm || '').trim();
   const token = String(o.token || o.qb_token || envToken || '').trim();
   const tableId = String(o.tableId || o.qb_table_id || fromLink.tableId || envTableId || '').trim();
-  const qid = String(o.queryId || o.qb_qid || envQid || '-2021117').trim() || '-2021117';
+  const qid = String(o.queryId || o.qb_qid || fromLink.queryId || envQid || '-2021117').trim() || '-2021117';
 
   return { realm, token, tableId, qid };
 }
@@ -77,19 +103,18 @@ async function queryQuickbaseRecords(opts = {}) {
   // Keep a deterministic fallback to include the Case # fid.
   if (!select.length) select.push(3);
 
-  const body = {
+  const baseBody = {
     from: cfg.tableId,
     select,
-    queryId: cfg.qid,
     options: {
       top: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50,
       skip: 0
     }
   };
 
-  if (opts.where) body.where = String(opts.where);
+  if (opts.where) baseBody.where = String(opts.where);
   if (Array.isArray(opts.sortBy) && opts.sortBy.length) {
-    body.sortBy = opts.sortBy
+    baseBody.sortBy = opts.sortBy
       .map((entry) => ({
         fieldId: Number(entry && entry.fieldId),
         order: String(entry && entry.order || '').toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
@@ -97,30 +122,49 @@ async function queryQuickbaseRecords(opts = {}) {
       .filter((entry) => Number.isFinite(entry.fieldId));
   }
 
-  const response = await fetch('https://api.quickbase.com/v1/records/query', {
-    method: 'POST',
-    headers: {
-      'QB-Realm-Hostname': cfg.realm,
-      Authorization: `QB-USER-TOKEN ${cfg.token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
+  const variants = queryIdVariants(cfg.qid);
+  if (!variants.length) variants.push('');
 
-  const rawText = await response.text();
-  let json;
-  try { json = rawText ? JSON.parse(rawText) : {}; } catch (_) { json = {}; }
+  let records = [];
+  let lastFailure = null;
 
-  if (!response.ok) {
-    return {
-      ok: false,
-      status: response.status || 502,
-      error: 'quickbase_query_failed',
-      message: json.message || `Quickbase query failed with status ${response.status}`
-    };
+  for (const qidVariant of variants) {
+    const body = Object.assign({}, baseBody);
+    if (qidVariant) body.queryId = qidVariant;
+
+    const response = await fetch('https://api.quickbase.com/v1/records/query', {
+      method: 'POST',
+      headers: {
+        'QB-Realm-Hostname': cfg.realm,
+        Authorization: `QB-USER-TOKEN ${cfg.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    const rawText = await response.text();
+    let json;
+    try { json = rawText ? JSON.parse(rawText) : {}; } catch (_) { json = {}; }
+
+    if (!response.ok) {
+      lastFailure = {
+        ok: false,
+        status: response.status || 502,
+        error: 'quickbase_query_failed',
+        message: json.message || `Quickbase query failed with status ${response.status}`
+      };
+      continue;
+    }
+
+    records = Array.isArray(json.data) ? json.data : [];
+    if (records.length > 0 || qidVariant === variants[variants.length - 1]) {
+      lastFailure = null;
+      break;
+    }
   }
 
-  const records = Array.isArray(json.data) ? json.data : [];
+  if (lastFailure) return lastFailure;
+
   const mappedRecords = records.map((record) => {
     const src = record && typeof record === 'object' ? record : {};
     const mapped = {};
