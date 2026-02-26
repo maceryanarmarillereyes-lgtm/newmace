@@ -69,8 +69,17 @@ async function queryQuickbaseRecords(opts = {}) {
   }
 
   const limit = Number(opts.limit);
+  const select = Array.isArray(opts.select)
+    ? Array.from(new Set(opts.select.map((id) => Number(id)).filter((id) => Number.isFinite(id))))
+    : [];
+
+  // Quickbase can return empty row payloads when no `select` fields are sent.
+  // Keep a deterministic fallback to include the Case # fid.
+  if (!select.length) select.push(3);
+
   const body = {
     from: cfg.tableId,
+    select,
     queryId: cfg.qid,
     options: {
       top: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50,
@@ -79,9 +88,6 @@ async function queryQuickbaseRecords(opts = {}) {
   };
 
   if (opts.where) body.where = String(opts.where);
-  if (Array.isArray(opts.select) && opts.select.length) {
-    body.select = opts.select.map((id) => Number(id)).filter((id) => Number.isFinite(id));
-  }
   if (Array.isArray(opts.sortBy) && opts.sortBy.length) {
     body.sortBy = opts.sortBy
       .map((entry) => ({
@@ -115,7 +121,22 @@ async function queryQuickbaseRecords(opts = {}) {
   }
 
   const records = Array.isArray(json.data) ? json.data : [];
-  return { ok: true, status: 200, records };
+  const mappedRecords = records.map((record) => {
+    const src = record && typeof record === 'object' ? record : {};
+    const mapped = {};
+    Object.keys(src).forEach((key) => {
+      const fid = String(key || '');
+      if (!fid) return;
+      const raw = src[fid];
+      const value = (raw && typeof raw === 'object' && Object.prototype.hasOwnProperty.call(raw, 'value'))
+        ? raw.value
+        : raw;
+      mapped[fid] = value == null ? '' : value;
+    });
+    return mapped;
+  });
+
+  return { ok: true, status: 200, records, mappedRecords };
 }
 
 async function listQuickbaseFields() {

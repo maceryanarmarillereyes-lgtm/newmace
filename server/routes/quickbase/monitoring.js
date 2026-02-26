@@ -199,13 +199,29 @@ module.exports = async (req, res) => {
       .filter((f) => String(f.label).toLowerCase() !== 'case #')
       .map((f) => ({ id: String(f.id), label: f.label }));
 
-    const records = out.records.map((row) => {
+    const mappedSource = Array.isArray(out.mappedRecords) && out.mappedRecords.length
+      ? out.mappedRecords
+      : [];
+
+    const records = out.records.map((row, idx) => {
+      const mappedRow = (mappedSource[idx] && typeof mappedSource[idx] === 'object') ? mappedSource[idx] : {};
       const normalized = {};
       selectedFields.forEach((f) => {
-        normalized[String(f.id)] = row?.[String(f.id)] || { value: '' };
+        const fid = String(f.id);
+        const nestedField = row?.[fid];
+        const nestedValue = nestedField && typeof nestedField === 'object' && Object.prototype.hasOwnProperty.call(nestedField, 'value')
+          ? nestedField.value
+          : nestedField;
+        const mappedValue = Object.prototype.hasOwnProperty.call(mappedRow, fid) ? mappedRow[fid] : nestedValue;
+        normalized[fid] = { value: mappedValue == null ? '' : mappedValue };
       });
+
+      const mappedRecordId = Object.prototype.hasOwnProperty.call(mappedRow, String(caseIdFieldId))
+        ? mappedRow[String(caseIdFieldId)]
+        : '';
+
       return {
-        qbRecordId: row?.[String(caseIdFieldId)]?.value || row?.recordId || 'N/A',
+        qbRecordId: mappedRecordId || row?.[String(caseIdFieldId)]?.value || row?.recordId || 'N/A',
         fields: normalized
       };
     });

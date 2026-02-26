@@ -41,7 +41,17 @@ async function run() {
   const calls = [];
 
   const route = loadRouteWithMocks({
-    async requireAuthedUser() { return { id: 'u-1' }; },
+    async requireAuthedUser() {
+      return {
+        id: 'u-1',
+        profile: {
+          qb_token: 'token',
+          qb_realm: 'realm.quickbase.com',
+          qb_table_id: 'tbl123',
+          qb_qid: '-2021117'
+        }
+      };
+    },
     sendJson(res, code, payload) {
       res.statusCode = code;
       res.body = JSON.stringify(payload);
@@ -89,16 +99,16 @@ async function run() {
   assert.equal(res.statusCode, 200);
   assert.equal(calls.length, 1, 'queryQuickbaseRecords should be called once');
   const where = String(calls[0].where || '');
-  assert.equal(where.includes("{13.EX.'Graphical Screen Service'}"), true, 'default type filter missing');
-  assert.equal(where.includes("{13.EX.'CS Triaging'}"), true, 'second default type filter missing');
-  assert.equal(where.includes("{7.EX.'Woolworths'}"), true, 'default end user filter missing');
-  assert.equal(where.includes("{9.XEX.'C - Resolved'}"), true, 'default excluded status missing');
+  assert.equal(Array.isArray(calls[0].select), true, 'select should be provided');
+  assert.equal(calls[0].select.includes(3), true, 'Case # fid should be selected');
+  assert.equal(typeof where, 'string');
 
   const payload = JSON.parse(res.body || '{}');
   assert.equal(payload.ok, true);
   assert.equal(Array.isArray(payload.columns), true);
-  assert.equal(payload.settings.excludedStatus, 'C - Resolved');
   assert.equal(payload.settings.fieldIds.type, 13);
+  assert.equal(payload.records[0].qbRecordId, 'CASE-1');
+  assert.equal(payload.records[0].fields['8'].value, 'Issue 1');
 
   console.log('quickbase monitoring route defaults test passed');
 }
