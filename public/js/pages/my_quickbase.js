@@ -47,6 +47,20 @@
     return out;
   }
 
+  async function upsertQuickbaseProfile(client, userId, payload) {
+    const safeUserId = String(userId || '').trim();
+    if (!safeUserId) throw new Error('User ID is missing. Please relogin and retry.');
+
+    const row = Object.assign({}, payload || {}, { user_id: safeUserId });
+    const out = await client
+      .from('mums_profiles')
+      .upsert(row, { onConflict: 'user_id' })
+      .select('user_id')
+      .limit(1);
+
+    if (out && out.error) throw out.error;
+  }
+
   function renderRecords(root, payload) {
     const host = root.querySelector('#qbDataBody');
     const meta = root.querySelector('#qbDataMeta');
