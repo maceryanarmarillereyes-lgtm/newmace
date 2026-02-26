@@ -90,9 +90,6 @@ module.exports = async (req, res) => {
     const assignedToFieldId = resolveFieldId('Assigned to');
 
     const defaultSettings = {
-      types: ['Graphical Screen Service', 'CS Triaging'],
-      endUsers: ['Woolworths', 'Coles', 'Countdown'],
-      excludedStatus: 'C - Resolved',
       dynamicFilters: ['Assigned to', 'Case Status', 'Type'],
       sortBy: ['End User ASC', 'Type ASC']
     };
@@ -104,10 +101,11 @@ module.exports = async (req, res) => {
     const excludeStatus = parseCsvOrArray(req?.query?.excludeStatus);
 
     const whereClauses = [];
-    const typeClause = buildAnyEqualsClause(typeFieldId, typeFilter.length ? typeFilter : defaultSettings.types);
+
+    const typeClause = buildAnyEqualsClause(typeFieldId, typeFilter);
     if (typeClause) whereClauses.push(typeClause);
 
-    const endUserClause = buildAnyEqualsClause(endUserFieldId, endUserFilter.length ? endUserFilter : defaultSettings.endUsers);
+    const endUserClause = buildAnyEqualsClause(endUserFieldId, endUserFilter);
     if (endUserClause) whereClauses.push(endUserClause);
 
     const assignedToClause = buildAnyEqualsClause(assignedToFieldId, assignedToFilter);
@@ -116,8 +114,7 @@ module.exports = async (req, res) => {
     const caseStatusClause = buildAnyEqualsClause(statusFieldId, caseStatusFilter);
     if (caseStatusClause) whereClauses.push(caseStatusClause);
 
-    const excludedStatuses = excludeStatus.length ? excludeStatus : [defaultSettings.excludedStatus];
-    excludedStatuses.forEach((status) => {
+    excludeStatus.forEach((status) => {
       if (!Number.isFinite(statusFieldId) || !status) return;
       whereClauses.push(`{${statusFieldId}.XEX.'${encodeQuickbaseLiteral(status)}'}`);
     });
