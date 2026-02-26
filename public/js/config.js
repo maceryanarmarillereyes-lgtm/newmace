@@ -122,6 +122,7 @@ THEMES: [
           { id: 'my_schedule', label: 'My Schedule', icon: '📅', perm: 'view_my_record' },
           { id: 'my_case', label: 'My Case', icon: '📨', perm: 'view_my_record' },
           { id: 'my_task', label: 'My Task', icon: '✅', perm: 'view_my_record' },
+          { id: 'my_quickbase', label: 'My Quickbase', icon: 'database' },
         ]
       },
 
