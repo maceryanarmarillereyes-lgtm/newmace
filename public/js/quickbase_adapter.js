@@ -17,10 +17,12 @@
   }
 
   function toSafePayload(payload) {
-    if (!payload || !payload.ok) return { columns: [], rows: [], settings: {} };
-    const rows = Array.isArray(payload.records) ? payload.records : [];
-    const columns = Array.isArray(payload.columns) ? payload.columns : [];
+    const src = payload && typeof payload === 'object' ? payload : {};
+    const rows = Array.isArray(src.records) ? src.records : [];
+    const columns = Array.isArray(src.columns) ? src.columns : [];
     return {
+      ok: !!src.ok,
+      warning: String(src.warning || ''),
       columns: columns.map(function(c){
         return {
           id: String((c && c.id) || ''),
@@ -33,7 +35,7 @@
           fields: (r && r.fields && typeof r.fields === 'object') ? r.fields : {}
         };
       }),
-      settings: (payload && payload.settings && typeof payload.settings === 'object') ? payload.settings : {}
+      settings: (src.settings && typeof src.settings === 'object') ? src.settings : {}
     };
   }
 
@@ -54,11 +56,12 @@
     for (const url of candidates) {
       try {
         const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
+        const data = await res.json().catch(function(){ return {}; });
         if (!res.ok) {
-          lastErr = new Error('Endpoint ' + url + ' failed with ' + res.status);
+          const message = data && data.message ? String(data.message) : ('Endpoint ' + url + ' failed with ' + res.status);
+          lastErr = new Error(message);
           continue;
         }
-        const data = await res.json();
         return toSafePayload(data);
       } catch (e) {
         lastErr = e;
