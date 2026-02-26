@@ -52,10 +52,29 @@ function extractQuickbaseInfoFromLink(linkRaw) {
   return { realm, tableId, queryId };
 }
 
+function normalizeRealmHostname(rawRealm, fallbackLink) {
+  const direct = String(rawRealm || '').trim();
+  const fallback = String(fallbackLink || '').trim();
+  const candidate = direct || fallback;
+  if (!candidate) return '';
+
+  try {
+    const hasScheme = /^https?:\/\//i.test(candidate);
+    const parsed = new URL(hasScheme ? candidate : `https://${candidate}`);
+    return String(parsed.hostname || '').trim().toLowerCase();
+  } catch (_) {
+    return String(candidate)
+      .replace(/^https?:\/\//i, '')
+      .replace(/\/.*/, '')
+      .trim()
+      .toLowerCase();
+  }
+}
+
 function queryIdVariants(rawQid) {
   const qid = String(rawQid || '').trim();
   const variants = [];
-  if (!qid) return variants;
+  if (!qid) return [''];
 
   variants.push(qid);
 
@@ -63,7 +82,10 @@ function queryIdVariants(rawQid) {
   // while records/query expects the positive numeric queryId.
   if (/^-\d+$/.test(qid)) variants.push(qid.slice(1));
 
-  return Array.from(new Set(variants.filter(Boolean)));
+  // Fallback: if a report id is stale/empty, retry base table query.
+  variants.push('');
+
+  return Array.from(new Set(variants));
 }
 
 function readQuickbaseConfig(override) {
@@ -75,7 +97,10 @@ function readQuickbaseConfig(override) {
   const o = override && typeof override === 'object' ? override : {};
   const fromLink = extractQuickbaseInfoFromLink(o.reportLink || o.qb_report_link || '');
 
-  const realm = String(o.realm || o.qb_realm || fromLink.realm || envRealm || '').trim();
+  const realm = normalizeRealmHostname(
+    o.realm || o.qb_realm || fromLink.realm || envRealm || '',
+    o.reportLink || o.qb_report_link || ''
+  );
   const token = String(o.token || o.qb_token || envToken || '').trim();
   const tableId = String(o.tableId || o.qb_table_id || fromLink.tableId || envTableId || '').trim();
   const qid = String(o.queryId || o.qb_qid || fromLink.queryId || envQid || '-2021117').trim() || '-2021117';
