@@ -16,6 +16,21 @@
     return '';
   }
 
+
+  function flattenFidFields(fields) {
+    const src = fields && typeof fields === 'object' ? fields : {};
+    const mapped = {};
+    Object.keys(src).forEach(function(fid){
+      if (!fid) return;
+      const raw = src[fid];
+      const value = (raw && typeof raw === 'object' && Object.prototype.hasOwnProperty.call(raw, 'value'))
+        ? raw.value
+        : raw;
+      mapped[String(fid)] = value == null ? '' : value;
+    });
+    return mapped;
+  }
+
   function toSafePayload(payload) {
     const src = payload && typeof payload === 'object' ? payload : {};
     const rows = Array.isArray(src.records) ? src.records : [];
@@ -30,9 +45,16 @@
         };
       }).filter(function(c){ return !!c.id; }),
       rows: rows.map(function(r){
+        const normalizedFields = flattenFidFields(r && r.fields);
+        const fallbackRecordId = normalizedFields['3'];
+        const qbRecordId = String((r && r.qbRecordId) || fallbackRecordId || 'N/A');
+        const fields = {};
+        Object.keys(normalizedFields).forEach(function(fid){
+          fields[fid] = { value: normalizedFields[fid] == null ? '' : normalizedFields[fid] };
+        });
         return {
-          qbRecordId: (r && (r.qbRecordId || (r.fields && r.fields['3'] && r.fields['3'].value))) || 'N/A',
-          fields: (r && r.fields && typeof r.fields === 'object') ? r.fields : {}
+          qbRecordId: qbRecordId,
+          fields: fields
         };
       }),
       settings: (src.settings && typeof src.settings === 'object') ? src.settings : {}
@@ -62,7 +84,9 @@
           lastErr = new Error(message);
           continue;
         }
-        return toSafePayload(data);
+        const safePayload = toSafePayload(data);
+        try { console.info('[Enterprise DB] Quickbase Payload mapped:', safePayload.rows); } catch (_) {}
+        return safePayload;
       } catch (e) {
         lastErr = e;
       }
