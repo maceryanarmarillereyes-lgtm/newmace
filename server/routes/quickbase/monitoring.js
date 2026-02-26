@@ -29,13 +29,55 @@ module.exports = async (req, res) => {
     const auth = await requireAuthedUser(req);
     if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
+    const profile = auth?.profile || {};
+    const profileToken = String(
+      profile.qb_token
+      || profile.quickbase_token
+      || profile.quickbase_user_token
+      || ''
+    ).trim();
+    const profileLink = String(
+      profile.qb_report_link
+      || profile.quickbase_url
+      || profile.quickbase_report_link
+      || ''
+    ).trim();
+    const profileRealm = String(
+      profile.qb_realm
+      || profile.quickbase_realm
+      || ''
+    ).trim();
+    const profileQid = String(
+      profile.qb_qid
+      || profile.quickbase_qid
+      || ''
+    ).trim();
+    const profileTableId = String(
+      profile.qb_table_id
+      || profile.quickbase_table_id
+      || ''
+    ).trim();
+
     const userQuickbaseConfig = {
-      qb_token: auth?.profile?.qb_token,
-      qb_realm: auth?.profile?.qb_realm,
-      qb_table_id: auth?.profile?.qb_table_id,
-      qb_qid: auth?.profile?.qb_qid,
-      qb_report_link: auth?.profile?.qb_report_link
+      qb_token: profileToken,
+      qb_realm: profileRealm,
+      qb_table_id: profileTableId,
+      qb_qid: profileQid,
+      qb_report_link: profileLink
     };
+
+    if (!userQuickbaseConfig.qb_token || (!userQuickbaseConfig.qb_realm && !userQuickbaseConfig.qb_report_link)) {
+      return sendJson(res, 200, {
+        ok: true,
+        columns: [],
+        records: [],
+        settings: {
+          dynamicFilters: ['Assigned to', 'Case Status', 'Type'],
+          sortBy: ['End User ASC', 'Type ASC']
+        },
+        warning: 'quickbase_credentials_missing'
+      });
+    }
 
     const fieldMapOut = await listQuickbaseFields({ config: userQuickbaseConfig });
     if (!fieldMapOut.ok) {
@@ -89,7 +131,7 @@ module.exports = async (req, res) => {
     const statusFieldId = resolveFieldId('Case Status');
     const assignedToFieldId = resolveFieldId('Assigned to');
 
-    const hasPersonalQuickbaseQuery = !!String(auth?.profile?.qb_qid || '').trim();
+    const hasPersonalQuickbaseQuery = !!String(userQuickbaseConfig.qb_qid || '').trim();
 
     const defaultSettings = {
       dynamicFilters: ['Assigned to', 'Case Status', 'Type'],
