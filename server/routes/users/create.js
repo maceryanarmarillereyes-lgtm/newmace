@@ -133,6 +133,29 @@ function isMissingColumn(payload, table, column) {
   return msg.includes(`column ${tbl}.${col} does not exist`) || msg.includes(`column \"${col}\" does not exist`) || msg.includes(`column ${col} does not exist`);
 }
 
+function isNotNullViolation(payload, column) {
+  if (!payload || !column) return false;
+  const msg = extractErrorMessage(payload).toLowerCase();
+  const code = String((payload && payload.code) || (Array.isArray(payload) && payload[0] && payload[0].code) || '').trim();
+  if (code && code !== '23502') return false;
+  const col = String(column || '').toLowerCase();
+  return msg.includes(`null value in column "${col}"`) || msg.includes(`null value in column ${col}`);
+}
+
+function generateUuid() {
+  try {
+    if (globalThis && globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+      return String(globalThis.crypto.randomUUID());
+    }
+  } catch (_) {}
+  try {
+    // eslint-disable-next-line global-require
+    const { randomUUID } = require('crypto');
+    if (typeof randomUUID === 'function') return String(randomUUID());
+  } catch (_) {}
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+}
+
 // POST /api/users/create
 // Invite-only create: whitelist user in public.mums_profiles only (no auth.signUp/auth admin create).
 module.exports = async (req, res) => {
@@ -260,6 +283,16 @@ module.exports = async (req, res) => {
         };
         ins = await serviceInsert('mums_profiles', [retryRow]);
       }
+
+      // Backward-compat: some older databases still require user_id NOT NULL.
+      // Invite-only flow whitelists users before auth account exists, so we insert a
+      // temporary UUID and let auth trigger overwrite it on first successful login.
+      if (!ins.ok && isNotNullViolation(ins.json, 'user_id')) {
+        const retryRow = Object.assign({}, row, { user_id: generateUuid() });
+        if (!supportsEmailColumn) delete retryRow.email;
+        ins = await serviceInsert('mums_profiles', [retryRow]);
+      }
+
       if (!ins.ok) {
         return sendJson(res, ins.status || 500, { ok: false, error: 'profile_create_failed', details: ins.json || ins.text });
       }

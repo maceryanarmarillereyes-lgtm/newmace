@@ -63,6 +63,11 @@ module.exports = async (req, res) => {
     }
 
     // Personal Quickbase config updates (save via server/service-role to avoid client RLS failures).
+    if (Object.prototype.hasOwnProperty.call(body, 'qb_token')) {
+      const qbToken = String(body.qb_token || '').trim();
+      if (qbToken.length > 255) return sendJson(res, 400, { ok: false, error: 'invalid_qb_token' });
+      patch.qb_token = qbToken;
+    }
     if (Object.prototype.hasOwnProperty.call(body, 'qb_report_link')) {
       const link = String(body.qb_report_link || '').trim();
       if (link.length > 2000) return sendJson(res, 400, { ok: false, error: 'invalid_qb_report_link' });
