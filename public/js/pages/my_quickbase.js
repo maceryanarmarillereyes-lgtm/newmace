@@ -203,33 +203,17 @@
           const resolvedTableId = tableIdInput || parsed.tableId;
           const resolvedQid = qidInput || parsed.qid;
 
-          if(!window.__MUMS_SB_CLIENT){
-            const env = (window.EnvRuntime && EnvRuntime.env && EnvRuntime.env()) || (window.MUMS_ENV || {});
-            const token = (window.CloudAuth && CloudAuth.accessToken) ? String(CloudAuth.accessToken() || '').trim() : '';
-            if(window.supabase && typeof window.supabase.createClient === 'function' && env && env.SUPABASE_URL && env.SUPABASE_ANON_KEY && token){
-              window.__MUMS_SB_CLIENT = window.supabase.createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
-                auth: {
-                  persistSession: false,
-                  autoRefreshToken: false,
-                  detectSessionInUrl: false,
-                  storage: { getItem(){ return null; }, setItem(){}, removeItem(){} },
-                  storageKey: 'mums_shared'
-                },
-                realtime: { params: { eventsPerSecond: 10 } },
-                global: { headers: { Authorization: 'Bearer ' + token } }
-              });
-            }
-          }
-          if(!window.__MUMS_SB_CLIENT){
-            throw new Error('Supabase client is not ready. Please relogin and try again.');
+          if (!window.CloudUsers || typeof window.CloudUsers.updateMe !== 'function') {
+            throw new Error('Cloud user API is unavailable. Please reload and try again.');
           }
 
-          await upsertQuickbaseProfile(window.__MUMS_SB_CLIENT, me.id, {
+          const saveOut = await window.CloudUsers.updateMe({
             qb_report_link: link,
             qb_qid: resolvedQid,
             qb_realm: parsed.realm,
             qb_table_id: resolvedTableId
           });
+          if (!saveOut.ok) throw new Error(saveOut.message || 'Could not save Quickbase settings.');
 
           if (window.Store && Store.setProfile) {
             Store.setProfile(me.id, {
