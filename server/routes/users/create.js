@@ -113,6 +113,26 @@ function pickTeamId(body) {
   }
 }
 
+function extractErrorMessage(payload) {
+  if (!payload) return '';
+  if (Array.isArray(payload) && payload[0]) return extractErrorMessage(payload[0]);
+  if (typeof payload === 'string') return payload;
+  if (typeof payload === 'object') {
+    return String(payload.message || payload.error || payload.hint || '').trim();
+  }
+  return '';
+}
+
+function isMissingColumn(payload, table, column) {
+  if (!payload || !column) return false;
+  const msg = extractErrorMessage(payload).toLowerCase();
+  const code = String((payload && payload.code) || (Array.isArray(payload) && payload[0] && payload[0].code) || '').trim();
+  if (code && code !== '42703') return false;
+  const tbl = String(table || '').toLowerCase();
+  const col = String(column || '').toLowerCase();
+  return msg.includes(`column ${tbl}.${col} does not exist`) || msg.includes(`column \"${col}\" does not exist`) || msg.includes(`column ${col} does not exist`);
+}
+
 // POST /api/users/create
 // Invite-only create: whitelist user in public.mums_profiles only (no auth.signUp/auth admin create).
 module.exports = async (req, res) => {
@@ -205,26 +225,41 @@ module.exports = async (req, res) => {
     }
 
     try {
-      const existingUsername = await serviceSelect('mums_profiles', `select=user_id,username,email&username=eq.${encodeURIComponent(username)}&limit=1`);
+      const existingUsername = await serviceSelect('mums_profiles', `select=user_id,username&username=eq.${encodeURIComponent(username)}&limit=1`);
       if (existingUsername.ok && Array.isArray(existingUsername.json) && existingUsername.json.length > 0) {
         return sendJson(res, 409, { ok: false, error: 'username_exists', message: 'Username is already in use.' });
       }
 
-      const existingEmail = await serviceSelect('mums_profiles', `select=user_id,username,email&email=eq.${encodeURIComponent(email)}&limit=1`);
+      let supportsEmailColumn = true;
+      const existingEmail = await serviceSelect('mums_profiles', `select=user_id,email&email=eq.${encodeURIComponent(email)}&limit=1`);
       if (existingEmail.ok && Array.isArray(existingEmail.json) && existingEmail.json.length > 0) {
         return sendJson(res, 409, { ok: false, error: 'email_exists', message: 'Email is already whitelisted.' });
       }
+      if (!existingEmail.ok && isMissingColumn(existingEmail.json, 'mums_profiles', 'email')) {
+        supportsEmailColumn = false;
+      }
 
       const row = {
-        email,
         username,
         name: fullName,
         role,
         team_id: finalTeamId,
         duty: duty || ''
       };
+      if (supportsEmailColumn) row.email = email;
 
-      const ins = await serviceInsert('mums_profiles', [row]);
+      let ins = await serviceInsert('mums_profiles', [row]);
+      if (!ins.ok && supportsEmailColumn && isMissingColumn(ins.json, 'mums_profiles', 'email')) {
+        supportsEmailColumn = false;
+        const retryRow = {
+          username,
+          name: fullName,
+          role,
+          team_id: finalTeamId,
+          duty: duty || ''
+        };
+        ins = await serviceInsert('mums_profiles', [retryRow]);
+      }
       if (!ins.ok) {
         return sendJson(res, ins.status || 500, { ok: false, error: 'profile_create_failed', details: ins.json || ins.text });
       }
@@ -235,6 +270,7 @@ module.exports = async (req, res) => {
       return sendJson(res, 200, {
         ok: true,
         invite_only: true,
+        schema_compat: { email: supportsEmailColumn },
         user: null,
         profile: Array.isArray(ins.json) && ins.json[0] ? ins.json[0] : null
       });
