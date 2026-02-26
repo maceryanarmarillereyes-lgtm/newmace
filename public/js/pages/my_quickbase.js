@@ -92,6 +92,7 @@
 
     const currentLink = profile?.qb_report_link || profile?.quickbase_url || '';
     const currentQid = profile?.qb_qid || profile?.quickbase_qid || '';
+    const currentTableId = profile?.qb_table_id || profile?.quickbase_table_id || parseQuickbaseLink(currentLink).tableId || '';
     root.innerHTML = `
   <div class="dashx">
     <div class="dashx-head">
@@ -104,12 +105,16 @@
     <div class="card pad" style="margin-top:20px; max-width: 760px; background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.06);">
       <div class="h3" style="margin-top:0; color:#38bdf8;">Report Configuration</div>
       <div class="small muted" style="margin-bottom:16px;">
-        Enter your target Quickbase Report Link and Query ID (qID). This will uniquely bind your view to your personal Quickbase filters. Note: Ensure your Quickbase Token is set in your Profile Settings.
+        Enter your target Quickbase Report Link, Table ID, and Query ID (qID). This will uniquely bind your view to your personal Quickbase filters. Note: Ensure your Quickbase Token is set in your Profile Settings.
       </div>
       <div style="display:grid; gap:14px;">
         <label class="field">
           <div class="label" style="font-weight:700;">Full Report Link</div>
           <input class="input" type="text" id="qbReportLink" placeholder="https://&lt;realm&gt;.quickbase.com/db/&lt;tableid&gt;?a=q&amp;qid=..." value="${esc(currentLink)}" />
+        </label>
+        <label class="field">
+          <div class="label" style="font-weight:700;">Table ID</div>
+          <input class="input" type="text" id="qbTableId" placeholder="e.g. bq7m2ab12" value="${esc(currentTableId)}" />
         </label>
         <label class="field">
           <div class="label" style="font-weight:700;">Query ID (qID)</div>
@@ -168,12 +173,14 @@
         }
 
         const link = String((root.querySelector('#qbReportLink') || {}).value || '').trim();
+        const tableIdInput = String((root.querySelector('#qbTableId') || {}).value || '').trim();
         const qid = String((root.querySelector('#qbQid') || {}).value || '').trim();
 
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving...';
         try {
           const parsed = parseQuickbaseLink(link);
+          const resolvedTableId = tableIdInput || parsed.tableId;
 
           if(!window.__MUMS_SB_CLIENT){
             const env = (window.EnvRuntime && EnvRuntime.env && EnvRuntime.env()) || (window.MUMS_ENV || {});
@@ -202,7 +209,7 @@
               qb_report_link: link,
               qb_qid: qid,
               qb_realm: parsed.realm,
-              qb_table_id: parsed.tableId
+              qb_table_id: resolvedTableId
             })
             .eq('user_id', me.id);
           if (error) throw error;
@@ -212,7 +219,7 @@
               qb_report_link: link,
               qb_qid: qid,
               qb_realm: parsed.realm,
-              qb_table_id: parsed.tableId,
+              qb_table_id: resolvedTableId,
               updatedAt: Date.now()
             });
           }
