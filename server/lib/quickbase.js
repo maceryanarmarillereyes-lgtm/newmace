@@ -35,6 +35,7 @@ async function queryQuickbaseRecords(opts = {}) {
   const limit = Number(opts.limit);
   const body = {
     from: cfg.tableId,
+    queryId: "-2021117", // Strictly enforces personal report filters
     options: {
       top: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50,
       skip: 0
