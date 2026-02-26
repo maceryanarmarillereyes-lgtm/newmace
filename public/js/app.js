@@ -2064,6 +2064,7 @@ function updateClocksPreviewTimes(){
     const emailEl = UI.el('#profileEmail');
     const roleEl = UI.el('#profileRole');
     const teamEl = UI.el('#profileTeam');
+    const qbTokenEl = UI.el('#profileQbToken');
 
     let teamSel = UI.el('#profileTeamSelect');
     if(isSuperAdmin0){
@@ -2119,6 +2120,7 @@ function updateClocksPreviewTimes(){
     }
     if(roleEl) roleEl.value = user.role||'';
     if(teamEl) teamEl.value = (teamForLabel && teamForLabel.label) ? teamForLabel.label : '';
+    if(qbTokenEl) qbTokenEl.value = String(prof.qb_token || '');
 
     try{
       if(isSuperAdmin0 && teamSel){
@@ -2158,6 +2160,10 @@ function updateClocksPreviewTimes(){
             }
 
             if(emailEl && p.email) emailEl.value = p.email;
+            if(qbTokenEl && p.qb_token !== undefined && p.qb_token !== null){
+              qbTokenEl.value = String(p.qb_token || '');
+              try{ Store.setProfile(user.id, { qb_token: String(p.qb_token || ''), updatedAt: Date.now() }); }catch(_){ }
+            }
             if(isSuperAdmin0 && teamSel){
               const roleUp = String(p.role || user.role || '').toUpperCase();
               const isSuperRole = (roleUp === 'SUPER_ADMIN' || roleUp === 'SUPER_USER');
@@ -2230,6 +2236,7 @@ function updateClocksPreviewTimes(){
 
     UI.el('#profileSave').onclick = async ()=>{
       const name = String((nameEl && nameEl.value) || '').trim();
+      const qbToken = String((qbTokenEl && qbTokenEl.value) || '').trim();
 
       let teamIdSel = '';
       let teamOverrideSel = false;
@@ -2256,12 +2263,48 @@ function updateClocksPreviewTimes(){
         try{ await CloudUsers.refreshIntoLocalStore(); }catch(_){ }
       }
 
+      if(cloudProfileEnabled()){
+        try{
+          const env = (window.EnvRuntime && EnvRuntime.env && EnvRuntime.env()) || (window.MUMS_ENV || {});
+          const token = (window.CloudAuth && CloudAuth.accessToken) ? String(CloudAuth.accessToken() || '').trim() : '';
+          if(window.supabase && typeof window.supabase.createClient === 'function' && env && env.SUPABASE_URL && env.SUPABASE_ANON_KEY && token){
+            if(!window.__MUMS_SB_CLIENT){
+              window.__MUMS_SB_CLIENT = window.supabase.createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
+                auth: {
+                  persistSession: false,
+                  autoRefreshToken: false,
+                  detectSessionInUrl: false,
+                  storage: { getItem(){ return null; }, setItem(){}, removeItem(){} },
+                  storageKey: 'mums_shared'
+                },
+                realtime: { params: { eventsPerSecond: 10 } },
+                global: { headers: { Authorization: 'Bearer ' + token } }
+              });
+            }
+            const sbClient = window.__MUMS_SB_CLIENT;
+            try{ sbClient && sbClient.realtime && sbClient.realtime.setAuth && sbClient.realtime.setAuth(token); }catch(_){ }
+            const qbOut = await sbClient
+              .from('mums_profiles')
+              .update({ qb_token: qbToken })
+              .eq('user_id', user.id);
+            if(qbOut && qbOut.error){
+              await UI.alert({ title:'Save failed', message: qbOut.error.message || 'Could not update Quickbase token.' });
+              return;
+            }
+          }
+        }catch(e){
+          await UI.alert({ title:'Save failed', message: (e && e.message) ? e.message : 'Could not update Quickbase token.' });
+          return;
+        }
+      }
+
       const localPatch = { name: name || user.username };
       if(isSuperAdmin0){
         localPatch.teamOverride = !!teamOverrideSel;
         localPatch.teamId = teamOverrideSel ? teamIdSel : '';
       }
       Store.updateUser(user.id, localPatch);
+      try{ Store.setProfile(user.id, { qb_token: qbToken, updatedAt: Date.now() }); }catch(_){ }
 
       if(layoutSel){
         localStorage.setItem('mums_profile_layout', String(layoutSel.value||'card'));
