@@ -92,9 +92,6 @@ module.exports = async (req, res) => {
     const hasPersonalQuickbaseQuery = !!String(auth?.profile?.qb_qid || '').trim();
 
     const defaultSettings = {
-      types: ['Graphical Screen Service', 'CS Triaging'],
-      endUsers: ['Woolworths', 'Coles', 'Countdown'],
-      excludedStatus: 'C - Resolved',
       dynamicFilters: ['Assigned to', 'Case Status', 'Type'],
       sortBy: ['End User ASC', 'Type ASC']
     };
