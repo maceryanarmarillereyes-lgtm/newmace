@@ -3,13 +3,14 @@ on:
   schedule:
     - cron: '0 * * * *' # hourly
   workflow_dispatch:
+
 jobs:
   reconcile:
     runs-on: ubuntu-latest
     steps:
       - name: Call reconciliation endpoint
         run: |
-          curl -sS -X POST "https://$VERCEL_URL/api/monitoring" || true
+          curl -sS -X POST "https://$VERCEL_URL/api/reconcile" || true
         env:
           QB_USER_TOKEN: ${{ secrets.QB_USER_TOKEN }}
           QB_REALM: ${{ secrets.QB_REALM }}
