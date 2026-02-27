@@ -100,8 +100,10 @@ async function run() {
   assert.equal(calls.length, 1, 'queryQuickbaseRecords should be called once');
   const where = String(calls[0].where || '');
   assert.equal(Array.isArray(calls[0].select), true, 'select should be provided');
-  assert.equal(calls[0].select.includes(3), true, 'Case # fid should be selected');
+  assert.equal(calls[0].select.length, 0, 'QID-backed query should allow dynamic report fields');
+  assert.equal(calls[0].allowEmptySelect, true, 'allowEmptySelect should be enabled for QID-backed query');
   assert.equal(typeof where, 'string');
+  assert.equal(where.includes('Owner Email'), false, 'QID-backed query should not force owner email clause');
 
   const payload = JSON.parse(res.body || '{}');
   assert.equal(payload.ok, true);

@@ -166,49 +166,27 @@ module.exports = async (req, res) => {
     const excludeStatus = parseCsvOrArray(req?.query?.excludeStatus);
 
     const whereClauses = [];
-    // QID is used as a report reference, not a field filter.
+    // QID already represents a pre-filtered Quickbase report definition.
+    // We should not force user-email filtering here because report owners can
+    // filter with team fields, store names, or non-email assignees.
+    console.log('[Quickbase Monitoring] Using QID-based report definition:', qid);
 
-    if (!hasPersonalQuickbaseQuery) {
-      const effectiveTypes = typeFilter.length ? typeFilter : defaultSettings.types;
-      const effectiveEndUsers = endUserFilter.length ? endUserFilter : defaultSettings.endUsers;
-      const effectiveExcludedStatuses = excludeStatus.length
-        ? excludeStatus
-        : [defaultSettings.excludedStatus];
+    const typeClause = buildAnyEqualsClause(typeFieldId, typeFilter);
+    if (typeClause) whereClauses.push(typeClause);
 
-      const typeClause = buildAnyEqualsClause(typeFieldId, effectiveTypes);
-      if (typeClause) whereClauses.push(typeClause);
+    const endUserClause = buildAnyEqualsClause(endUserFieldId, endUserFilter);
+    if (endUserClause) whereClauses.push(endUserClause);
 
-      const endUserClause = buildAnyEqualsClause(endUserFieldId, effectiveEndUsers);
-      if (endUserClause) whereClauses.push(endUserClause);
+    const assignedToClause = buildAnyEqualsClause(assignedToFieldId, assignedToFilter);
+    if (assignedToClause) whereClauses.push(assignedToClause);
 
-      const assignedToClause = buildAnyEqualsClause(assignedToFieldId, assignedToFilter);
-      if (assignedToClause) whereClauses.push(assignedToClause);
+    const caseStatusClause = buildAnyEqualsClause(statusFieldId, caseStatusFilter);
+    if (caseStatusClause) whereClauses.push(caseStatusClause);
 
-      const caseStatusClause = buildAnyEqualsClause(statusFieldId, caseStatusFilter);
-      if (caseStatusClause) whereClauses.push(caseStatusClause);
-
-      effectiveExcludedStatuses.forEach((status) => {
-        if (!Number.isFinite(statusFieldId) || !status) return;
-        whereClauses.push(`{${statusFieldId}.XEX.'${encodeQuickbaseLiteral(status)}'}`);
-      });
-    } else {
-      console.log('[Quickbase Monitoring] Using QID-based report definition:', qid);
-
-      // Filter by logged-in user's email to ensure they only see their own data
-      const userEmail = auth?.user?.email || auth?.profile?.email || '';
-      const ownerEmailFieldId = resolveFieldId('Owner Email')
-        || resolveFieldId('Assigned User')
-        || resolveFieldId('Related User')
-        || resolveFieldId('User Email')
-        || resolveFieldId('Assigned to');
-
-      if (ownerEmailFieldId && userEmail) {
-        whereClauses.push(`{${ownerEmailFieldId}.EX.'${encodeQuickbaseLiteral(userEmail)}'}`);
-        console.log('[Quickbase] Applied user email filter:', userEmail, 'on field ID:', ownerEmailFieldId);
-      } else {
-        console.warn('[Quickbase] WARNING: No user email field found in Quickbase table. All records will be visible to all users.');
-      }
-    }
+    excludeStatus.forEach((status) => {
+      if (!Number.isFinite(statusFieldId) || !status) return;
+      whereClauses.push(`{${statusFieldId}.XEX.'${encodeQuickbaseLiteral(status)}'}`);
+    });
 
     const routeWhere = String(req?.query?.where || '').trim();
     const effectiveWhere = routeWhere || whereClauses.join(' AND ');
