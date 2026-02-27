@@ -88,6 +88,28 @@ module.exports = async (req, res) => {
       if (tableId.length > 80) return sendJson(res, 400, { ok: false, error: 'invalid_qb_table_id' });
       patch.qb_table_id = tableId;
     }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'qb_custom_columns')) {
+      const cols = Array.isArray(body.qb_custom_columns) ? body.qb_custom_columns : [];
+      const normalized = cols
+        .map((v) => String(v == null ? '' : v).trim())
+        .filter(Boolean)
+        .slice(0, 200);
+      patch.qb_custom_columns = normalized;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'qb_custom_filters')) {
+      const filters = Array.isArray(body.qb_custom_filters) ? body.qb_custom_filters : [];
+      const normalized = filters
+        .filter((f) => f && typeof f === 'object')
+        .map((f) => ({
+          fieldId: String((f.fieldId ?? f.field_id ?? '')).trim(),
+          operator: String((f.operator ?? 'EX')).trim().toUpperCase(),
+          value: String((f.value ?? '')).trim()
+        }))
+        .filter((f) => f.fieldId && f.value)
+        .slice(0, 200);
+      patch.qb_custom_filters = normalized;
+    }
     const prof = await getProfileForUserId(authed.id);
     if (!prof) return sendJson(res, 404, { ok: false, error: 'profile_missing', message: 'Profile not found. Call /api/users/me first.' });
 

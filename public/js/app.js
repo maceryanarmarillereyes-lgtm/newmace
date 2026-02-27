@@ -1693,14 +1693,20 @@ function updateClocksPreviewTimes(){
       return map[id] || 'dashboard';
     };
 
+    function canAccessNavItem(n){
+      const id = String(n && n.id || '').trim();
+      if(id === 'my_quickbase') return true;
+      return !!Config.can(user, n.perm);
+    }
+
     function renderItem(n, depth){
-      if(!Config.can(user, n.perm)) return '';
       const padVal = (12 + depth*12);
       const pad = `style="padding-left:${padVal}px"`;
       const hasKids = Array.isArray(n.children) && n.children.length;
       const depthClass = depth > 0 ? ' nav-subitem' : '';
 
       if(!hasKids){
+        if(!canAccessNavItem(n)) return '';
         const href = (n && n.route) ? String(n.route) : (`/${n.id}`);
         return `<a class="nav-item depth-${depth}${depthClass}" href="${href}" data-page="${n.id}" data-label="${UI.esc(n.label)}" ${pad} title="${UI.esc(n.label)}">
           <span class="nav-ico" data-ico="${iconFor(n.id)}" aria-hidden="true"></span>
@@ -1715,6 +1721,7 @@ function updateClocksPreviewTimes(){
         .map(k => renderItem(k, depth+1))
         .filter(Boolean)
         .join('');
+      if(!canAccessNavItem(n) && !kidsHtml) return '';
       if(!kidsHtml) return '';
 
       const special = n.id === 'my_record' ? ' is-record-group' : '';
