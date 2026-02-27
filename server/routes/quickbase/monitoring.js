@@ -116,9 +116,23 @@ module.exports = async (req, res) => {
       return fieldsByLowerLabel[String(label || '').toLowerCase()] || null;
     };
 
-    const selectedFields = wantedLabels
+    const hasPersonalQuickbaseQuery = !!String(userQuickbaseConfig.qb_qid || '').trim();
+    const allKnownFields = (fieldMapOut.fields || [])
+      .map((f) => {
+        const id = Number(f?.id);
+        const label = String(f?.label || '').trim();
+        if (!Number.isFinite(id)) return null;
+        return { id, label: label || `Field ${id}` };
+      })
+      .filter(Boolean);
+
+    const wantedFieldSelection = wantedLabels
       .map((label) => ({ label, id: resolveFieldId(label) }))
       .filter((x) => Number.isFinite(x.id));
+
+    const selectedFields = hasPersonalQuickbaseQuery
+      ? allKnownFields
+      : wantedFieldSelection;
 
     if (!selectedFields.length) {
       return sendJson(res, 500, {
@@ -132,8 +146,6 @@ module.exports = async (req, res) => {
     const endUserFieldId = resolveFieldId('End User');
     const statusFieldId = resolveFieldId('Case Status');
     const assignedToFieldId = resolveFieldId('Assigned to');
-
-    const hasPersonalQuickbaseQuery = !!String(userQuickbaseConfig.qb_qid || '').trim();
 
     const defaultSettings = {
       dynamicFilters: ['Assigned to', 'Case Status', 'Type'],
@@ -181,7 +193,8 @@ module.exports = async (req, res) => {
       config: userQuickbaseConfig,
       where: effectiveWhere,
       limit: req?.query?.limit || 100,
-      select: selectedFields.map((f) => f.id),
+      select: hasPersonalQuickbaseQuery ? [] : selectedFields.map((f) => f.id),
+      allowEmptySelect: hasPersonalQuickbaseQuery,
       sortBy: [
         { fieldId: endUserFieldId || resolveFieldId('Case #') || 3, order: 'ASC' },
         { fieldId: typeFieldId || resolveFieldId('Case #') || 3, order: 'ASC' }
@@ -197,9 +210,36 @@ module.exports = async (req, res) => {
     }
 
     const caseIdFieldId = resolveFieldId('Case #') || 3;
-    const columns = selectedFields
-      .filter((f) => String(f.label).toLowerCase() !== 'case #')
-      .map((f) => ({ id: String(f.id), label: f.label }));
+
+    const dynamicFieldIds = [];
+    const seenFieldIds = new Set();
+    (Array.isArray(out.records) ? out.records : []).forEach((row) => {
+      Object.keys(row || {}).forEach((fidRaw) => {
+        const fidNum = Number(fidRaw);
+        if (!Number.isFinite(fidNum)) return;
+        const fid = String(fidNum);
+        if (seenFieldIds.has(fid)) return;
+        seenFieldIds.add(fid);
+        dynamicFieldIds.push(fid);
+      });
+    });
+
+    const quickLookupById = Object.create(null);
+    selectedFields.forEach((f) => {
+      quickLookupById[String(f.id)] = { id: Number(f.id), label: String(f.label || `Field ${f.id}`) };
+    });
+
+    const effectiveFields = hasPersonalQuickbaseQuery
+      ? (dynamicFieldIds.length
+          ? dynamicFieldIds.map((fid) => quickLookupById[fid] || { id: Number(fid), label: `Field ${fid}` })
+          : selectedFields)
+      : selectedFields;
+
+    const columns = effectiveFields
+      .filter((f) => String(f.label).toLowerCase() !== 'case #' && Number(f.id) !== Number(caseIdFieldId))
+      .map((f) => ({ id: String(f.id), label: String(f.label || `Field ${f.id}`) }));
+
+    console.info('[Quickbase Monitoring] Dynamic columns sent to client:', columns);
 
     const mappedSource = Array.isArray(out.mappedRecords) && out.mappedRecords.length
       ? out.mappedRecords
@@ -208,7 +248,7 @@ module.exports = async (req, res) => {
     const records = out.records.map((row, idx) => {
       const mappedRow = (mappedSource[idx] && typeof mappedSource[idx] === 'object') ? mappedSource[idx] : {};
       const normalized = {};
-      selectedFields.forEach((f) => {
+      effectiveFields.forEach((f) => {
         const fid = String(f.id);
         const nestedField = row?.[fid];
         const nestedValue = nestedField && typeof nestedField === 'object' && Object.prototype.hasOwnProperty.call(nestedField, 'value')

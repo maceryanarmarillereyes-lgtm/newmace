@@ -67,7 +67,9 @@
     if (!host || !meta) return;
 
     const columns = Array.isArray(payload && payload.columns) ? payload.columns : [];
-    const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+    const rows = Array.isArray(payload && payload.records)
+      ? payload.records
+      : (Array.isArray(payload && payload.rows) ? payload.rows : []);
 
     if (!columns.length || !rows.length) {
       meta.textContent = 'No Quickbase Records Found';

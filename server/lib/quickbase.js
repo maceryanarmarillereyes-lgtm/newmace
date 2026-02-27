@@ -125,8 +125,9 @@ async function queryQuickbaseRecords(opts = {}) {
     : [];
 
   // Quickbase can return empty row payloads when no `select` fields are sent.
-  // Keep a deterministic fallback to include the Case # fid.
-  if (!select.length) select.push(3);
+  // Keep a deterministic fallback to include the Case # fid unless caller opts into
+  // dynamic report-defined fields (qid-aware queries).
+  if (!select.length && !opts.allowEmptySelect) select.push(3);
 
   const baseBody = {
     from: cfg.tableId,
