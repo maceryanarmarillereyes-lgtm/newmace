@@ -87,7 +87,6 @@
       reportLink: initialLink,
       qid: String(profile.qb_qid || profile.quickbase_qid || parsedFromLink.qid || '').trim(),
       tableId: String(profile.qb_table_id || profile.quickbase_table_id || parsedFromLink.tableId || '').trim(),
-      realm: String(profile.qb_realm || profile.quickbase_realm || parsedFromLink.realm || '').trim(),
       customColumns: Array.isArray(profile.qb_custom_columns) ? profile.qb_custom_columns.map((v) => String(v)) : [],
       customFilters: normalizeFilters(profile.qb_custom_filters),
       allAvailableFields: []
@@ -276,15 +275,11 @@
       const qidInput = String((root.querySelector('#qbQid') || {}).value || '').trim();
       const tableIdInput = String((root.querySelector('#qbTableId') || {}).value || '').trim();
       const parsed = parseQuickbaseLink(reportLink);
-      const resolvedQid = String(qidInput || parsed.qid || state.qid || '').trim();
-      const resolvedTableId = String(tableIdInput || parsed.tableId || state.tableId || '').trim();
-      const resolvedRealm = String(parsed.realm || state.realm || '').trim();
-
       const payload = {
         qb_report_link: reportLink,
-        qb_qid: resolvedQid,
-        qb_realm: resolvedRealm,
-        qb_table_id: resolvedTableId,
+        qb_qid: qidInput || parsed.qid,
+        qb_realm: parsed.realm,
+        qb_table_id: tableIdInput || parsed.tableId,
         qb_custom_columns: Array.from(new Set((state.customColumns || []).map((v) => String(v).trim()).filter(Boolean))),
         qb_custom_filters: normalizeFilters(state.customFilters)
       };
@@ -297,10 +292,6 @@
         }
         const out = await window.CloudUsers.updateMe(payload);
         if (!out.ok) throw new Error(out.message || 'Could not save Quickbase settings.');
-
-        state.qid = payload.qb_qid;
-        state.tableId = payload.qb_table_id;
-        state.realm = payload.qb_realm;
 
         if (window.Store && Store.setProfile) {
           Store.setProfile(me.id, Object.assign({}, payload, { updatedAt: Date.now() }));
