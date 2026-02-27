@@ -166,34 +166,35 @@ module.exports = async (req, res) => {
     const excludeStatus = parseCsvOrArray(req?.query?.excludeStatus);
 
     const whereClauses = [];
-    whereClauses.push(`{3.EX.'${encodeQuickbaseLiteral(qid)}'}`);
+    // QID is used as a report reference, not a field filter.
+    // User-specific filtering is handled by the report definition itself.
 
-    const effectiveTypes = typeFilter.length
-      ? typeFilter
-      : (hasPersonalQuickbaseQuery ? [] : defaultSettings.types);
-    const effectiveEndUsers = endUserFilter.length
-      ? endUserFilter
-      : (hasPersonalQuickbaseQuery ? [] : defaultSettings.endUsers);
-    const effectiveExcludedStatuses = excludeStatus.length
-      ? excludeStatus
-      : (hasPersonalQuickbaseQuery ? [] : [defaultSettings.excludedStatus]);
+    if (!hasPersonalQuickbaseQuery) {
+      const effectiveTypes = typeFilter.length ? typeFilter : defaultSettings.types;
+      const effectiveEndUsers = endUserFilter.length ? endUserFilter : defaultSettings.endUsers;
+      const effectiveExcludedStatuses = excludeStatus.length
+        ? excludeStatus
+        : [defaultSettings.excludedStatus];
 
-    const typeClause = buildAnyEqualsClause(typeFieldId, effectiveTypes);
-    if (typeClause) whereClauses.push(typeClause);
+      const typeClause = buildAnyEqualsClause(typeFieldId, effectiveTypes);
+      if (typeClause) whereClauses.push(typeClause);
 
-    const endUserClause = buildAnyEqualsClause(endUserFieldId, effectiveEndUsers);
-    if (endUserClause) whereClauses.push(endUserClause);
+      const endUserClause = buildAnyEqualsClause(endUserFieldId, effectiveEndUsers);
+      if (endUserClause) whereClauses.push(endUserClause);
 
-    const assignedToClause = buildAnyEqualsClause(assignedToFieldId, assignedToFilter);
-    if (assignedToClause) whereClauses.push(assignedToClause);
+      const assignedToClause = buildAnyEqualsClause(assignedToFieldId, assignedToFilter);
+      if (assignedToClause) whereClauses.push(assignedToClause);
 
-    const caseStatusClause = buildAnyEqualsClause(statusFieldId, caseStatusFilter);
-    if (caseStatusClause) whereClauses.push(caseStatusClause);
+      const caseStatusClause = buildAnyEqualsClause(statusFieldId, caseStatusFilter);
+      if (caseStatusClause) whereClauses.push(caseStatusClause);
 
-    effectiveExcludedStatuses.forEach((status) => {
-      if (!Number.isFinite(statusFieldId) || !status) return;
-      whereClauses.push(`{${statusFieldId}.XEX.'${encodeQuickbaseLiteral(status)}'}`);
-    });
+      effectiveExcludedStatuses.forEach((status) => {
+        if (!Number.isFinite(statusFieldId) || !status) return;
+        whereClauses.push(`{${statusFieldId}.XEX.'${encodeQuickbaseLiteral(status)}'}`);
+      });
+    } else {
+      console.log('[Quickbase Monitoring] Using QID-based report definition:', qid);
+    }
 
     const routeWhere = String(req?.query?.where || '').trim();
     const effectiveWhere = routeWhere || whereClauses.join(' AND ');
