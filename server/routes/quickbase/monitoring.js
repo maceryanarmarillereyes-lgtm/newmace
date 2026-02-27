@@ -84,17 +84,27 @@ function sortFieldsByProfileOrder(fields, profileColumnOrder) {
 }
 function buildProfileFilterClauses(rawFilters) {
   if (!Array.isArray(rawFilters)) return [];
-  const out = [];
+  const groupedByField = new Map();
   rawFilters.forEach((f) => {
     if (!f || typeof f !== 'object') return;
-    const fieldId = Number(f.fieldId ?? f.field_id);
+    const fieldId = Number(f.fieldId ?? f.field_id ?? f.fid ?? f.id);
     const value = String(f.value ?? '').trim();
     const opRaw = String(f.operator ?? 'EX').trim().toUpperCase();
-    const operator = ['EX', 'XEX', 'CT', 'XCT', 'GT', 'GTE', 'LT', 'LTE'].includes(opRaw) ? opRaw : 'EX';
+    const operator = ['EX', 'XEX', 'CT'].includes(opRaw) ? opRaw : 'EX';
     if (!Number.isFinite(fieldId) || !value) return;
-    out.push(`{${fieldId}.${operator}.'${encodeQuickbaseLiteral(value)}'}`);
+    if (!groupedByField.has(fieldId)) groupedByField.set(fieldId, []);
+    groupedByField.get(fieldId).push(`{${fieldId}.${operator}.'${encodeQuickbaseLiteral(value)}'}`);
   });
-  return out;
+
+  return Array.from(groupedByField.values()).map((clauses) => {
+    if (!Array.isArray(clauses) || !clauses.length) return '';
+    if (clauses.length === 1) return clauses[0];
+    return `(${clauses.join(' OR ')})`;
+  }).filter(Boolean);
+}
+
+function normalizeFilterMatch(raw) {
+  return String(raw || '').trim().toUpperCase() === 'ANY' ? 'ANY' : 'ALL';
 }
 
 module.exports = async (req, res) => {
@@ -250,6 +260,7 @@ module.exports = async (req, res) => {
     }
 
     const profileFilterClauses = buildProfileFilterClauses(profile.qb_custom_filters);
+    const profileFilterMatch = normalizeFilterMatch(profile.qb_filter_match || profile.qb_custom_filter_match);
 
     const routeWhere = String(req?.query?.where || '').trim();
     const manualWhere = whereClauses.length > 0 ? whereClauses.join(' AND ') : '';
@@ -269,7 +280,10 @@ module.exports = async (req, res) => {
       finalWhere = reportMetadata.filter;
     }
     if (profileFilterClauses.length) {
-      finalWhere = [finalWhere, ...profileFilterClauses].filter(Boolean).join(' AND ');
+      const groupedProfileClause = profileFilterClauses.length === 1
+        ? profileFilterClauses[0]
+        : `(${profileFilterClauses.join(` ${profileFilterMatch === 'ANY' ? 'OR' : 'AND'} `)})`;
+      finalWhere = [finalWhere, groupedProfileClause].filter(Boolean).join(' AND ');
     }
 
     const out = await queryQuickbaseRecords({
@@ -369,7 +383,8 @@ module.exports = async (req, res) => {
           assignedTo: assignedToFilter,
           caseStatus: caseStatusFilter,
           type: typeFilter,
-          custom: profileFilterClauses
+          custom: profileFilterClauses,
+          customMatch: profileFilterMatch
         }
       }
     });

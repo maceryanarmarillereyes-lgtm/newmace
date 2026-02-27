@@ -42,11 +42,16 @@
     return raw
       .filter((f) => f && typeof f === 'object')
       .map((f) => ({
-        fieldId: String((f.fieldId ?? f.field_id ?? '')).trim(),
+        fieldId: String((f.fieldId ?? f.field_id ?? f.fid ?? f.id ?? '')).trim(),
         operator: String((f.operator ?? 'EX')).trim().toUpperCase(),
         value: String((f.value ?? '')).trim()
       }))
       .filter((f) => f.fieldId && f.value);
+  }
+
+  function normalizeFilterMatch(raw) {
+    const value = String(raw || '').trim().toUpperCase();
+    return value === 'ANY' ? 'ANY' : 'ALL';
   }
 
   function renderRecords(root, payload) {
@@ -89,6 +94,7 @@
       tableId: String(profile.qb_table_id || profile.quickbase_table_id || parsedFromLink.tableId || '').trim(),
       customColumns: Array.isArray(profile.qb_custom_columns) ? profile.qb_custom_columns.map((v) => String(v)) : [],
       customFilters: normalizeFilters(profile.qb_custom_filters),
+      filterMatch: normalizeFilterMatch(profile.qb_filter_match || profile.qb_custom_filter_match),
       allAvailableFields: []
     };
 
@@ -158,6 +164,13 @@
               <div class="row" style="justify-content:space-between;align-items:center;">
                 <div class="h3" style="margin:0;">3) Filter Config</div>
                 <button class="btn" id="qbAddFilterBtn" type="button">+ Add Filter</button>
+              </div>
+              <div class="row" style="margin-top:10px;align-items:center;gap:8px;">
+                <span class="small muted">Match</span>
+                <select class="input" id="qbFilterMatch" style="max-width:180px;">
+                  <option value="ALL" ${state.filterMatch === 'ALL' ? 'selected' : ''}>ALL of the following rules</option>
+                  <option value="ANY" ${state.filterMatch === 'ANY' ? 'selected' : ''}>ANY of the following rules</option>
+                </select>
               </div>
               <div id="qbFilterRows" style="display:grid;gap:8px;margin-top:10px;"></div>
             </section>
@@ -248,9 +261,9 @@
         <div class="row" data-filter-idx="${idx}" style="gap:8px;align-items:center;flex-wrap:wrap;">
           <select class="input" data-f="fieldId" style="max-width:300px;"><option value="">Select field</option>${fieldOptions}</select>
           <select class="input" data-f="operator" style="max-width:120px;">
-            <option value="EX" ${f.operator === 'EX' ? 'selected' : ''}>Equals</option>
+            <option value="EX" ${f.operator === 'EX' ? 'selected' : ''}>Is (Exact)</option>
+            <option value="XEX" ${f.operator === 'XEX' ? 'selected' : ''}>Is Not</option>
             <option value="CT" ${f.operator === 'CT' ? 'selected' : ''}>Contains</option>
-            <option value="XEX" ${f.operator === 'XEX' ? 'selected' : ''}>Not Equals</option>
           </select>
           <input type="text" class="input" data-f="value" value="${esc(activeValue)}" placeholder="Filter value" style="min-width:220px;" />
           <button class="btn" data-remove-filter="${idx}" type="button">Remove</button>
@@ -294,6 +307,13 @@
           });
         });
       });
+
+      const match = root.querySelector('#qbFilterMatch');
+      if (match) {
+        match.onchange = () => {
+          state.filterMatch = normalizeFilterMatch(match.value);
+        };
+      }
     }
 
     function bindColumnSearch() {
@@ -420,7 +440,8 @@
         qb_realm: parsed.realm,
         qb_table_id: tableIdInput || parsed.tableId,
         qb_custom_columns: orderedColumns,
-        qb_custom_filters: normalizeFilters(state.customFilters)
+        qb_custom_filters: normalizeFilters(state.customFilters),
+        qb_filter_match: normalizeFilterMatch(state.filterMatch)
       };
 
       saveBtn.disabled = true;
