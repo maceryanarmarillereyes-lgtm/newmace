@@ -114,7 +114,7 @@ THEMES: [
 
       {
         id: 'my_record',
-        label: 'My Record',
+        label: 'My Records',
         icon: '🗂️',
         perm: 'view_my_record',
         children: [

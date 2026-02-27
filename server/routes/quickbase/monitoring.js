@@ -10,8 +10,6 @@ async function getQuickbaseReportMetadata({ config, qid }) {
 
   try {
     const url = `https://api.quickbase.com/v1/reports/${qid}?tableId=${config.qb_table_id}`;
-    
-    console.log('[Quickbase] Fetching report metadata from:', url);
 
     const response = await fetch(url, {
       method: 'GET',
@@ -23,31 +21,18 @@ async function getQuickbaseReportMetadata({ config, qid }) {
     });
 
     const json = await response.json();
-
-    if (!response.ok) {
-      console.error('[Quickbase] Report metadata fetch failed:', {
-        status: response.status,
-        message: json.message,
-        description: json.description,
-        qid: qid,
-        tableId: config.qb_table_id
-      });
-      return null;
-    }
+    if (!response.ok) return null;
 
     const columnFieldIds = (json.query?.fields || [])
       .map((f) => Number(f))
       .filter((id) => Number.isFinite(id));
-
-    console.log('[Quickbase] Report metadata fetched. Columns:', columnFieldIds);
 
     return {
       fields: columnFieldIds,
       filter: json.query?.filter || '',
       sortBy: json.query?.sortBy || []
     };
-  } catch (err) {
-    console.error('[Quickbase] Failed to fetch report metadata:', err.message);
+  } catch (_) {
     return null;
   }
 }
@@ -75,39 +60,39 @@ function parseCsvOrArray(value) {
   return raw.split(',').map((v) => String(v || '').trim()).filter(Boolean);
 }
 
+function normalizeProfileColumns(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((v) => Number(v))
+    .filter((n) => Number.isFinite(n));
+}
+
+function buildProfileFilterClauses(rawFilters) {
+  if (!Array.isArray(rawFilters)) return [];
+  const out = [];
+  rawFilters.forEach((f) => {
+    if (!f || typeof f !== 'object') return;
+    const fieldId = Number(f.fieldId ?? f.field_id);
+    const value = String(f.value ?? '').trim();
+    const opRaw = String(f.operator ?? 'EX').trim().toUpperCase();
+    const operator = ['EX', 'XEX', 'CT', 'XCT', 'GT', 'GTE', 'LT', 'LTE'].includes(opRaw) ? opRaw : 'EX';
+    if (!Number.isFinite(fieldId) || !value) return;
+    out.push(`{${fieldId}.${operator}.'${encodeQuickbaseLiteral(value)}'}`);
+  });
+  return out;
+}
+
 module.exports = async (req, res) => {
   try {
     const auth = await requireAuthedUser(req);
     if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
     const profile = auth?.profile || {};
-    const profileToken = String(
-      profile.qb_token
-      || profile.quickbase_token
-      || profile.quickbase_user_token
-      || ''
-    ).trim();
-    const profileLink = String(
-      profile.qb_report_link
-      || profile.quickbase_url
-      || profile.quickbase_report_link
-      || ''
-    ).trim();
-    const profileRealm = String(
-      profile.qb_realm
-      || profile.quickbase_realm
-      || ''
-    ).trim();
-    const profileQid = String(
-      profile.qb_qid
-      || profile.quickbase_qid
-      || ''
-    ).trim();
-    const profileTableId = String(
-      profile.qb_table_id
-      || profile.quickbase_table_id
-      || ''
-    ).trim();
+    const profileToken = String(profile.qb_token || profile.quickbase_token || profile.quickbase_user_token || '').trim();
+    const profileLink = String(profile.qb_report_link || profile.quickbase_url || profile.quickbase_report_link || '').trim();
+    const profileRealm = String(profile.qb_realm || profile.quickbase_realm || '').trim();
+    const profileQid = String(profile.qb_qid || profile.quickbase_qid || '').trim();
+    const profileTableId = String(profile.qb_table_id || profile.quickbase_table_id || '').trim();
 
     let qid = String(req?.query?.qid || req?.query?.qId || '').trim();
     let tableId = String(req?.query?.tableId || req?.query?.table_id || '').trim();
@@ -135,13 +120,12 @@ module.exports = async (req, res) => {
       qb_report_link: profileLink
     };
 
-    console.log('[Enterprise Debug] Quickbase Config:', userQuickbaseConfig);
-
     if (!userQuickbaseConfig.qb_token || (!userQuickbaseConfig.qb_realm && !userQuickbaseConfig.qb_report_link)) {
       return sendJson(res, 200, {
         ok: true,
         columns: [],
         records: [],
+        allAvailableFields: [],
         settings: {
           dynamicFilters: ['Assigned to', 'Case Status', 'Type'],
           sortBy: ['End User ASC', 'Type ASC']
@@ -159,6 +143,11 @@ module.exports = async (req, res) => {
       });
     }
 
+    const allAvailableFields = (fieldMapOut.fields || [])
+      .map((f) => ({ id: Number(f?.id), label: String(f?.label || '').trim() }))
+      .filter((f) => Number.isFinite(f.id) && f.label)
+      .sort((a, b) => a.label.localeCompare(b.label));
+
     const fieldsByLabel = Object.create(null);
     const fieldsByLowerLabel = Object.create(null);
     (fieldMapOut.fields || []).forEach((f) => {
@@ -168,6 +157,11 @@ module.exports = async (req, res) => {
       fieldsByLabel[label] = id;
       fieldsByLowerLabel[label.toLowerCase()] = id;
     });
+
+    const resolveFieldId = (label) => {
+      if (fieldsByLabel[label]) return fieldsByLabel[label];
+      return fieldsByLowerLabel[String(label || '').toLowerCase()] || null;
+    };
 
     const wantedLabels = [
       'Case #',
@@ -180,17 +174,20 @@ module.exports = async (req, res) => {
       'Type'
     ];
 
-    const resolveFieldId = (label) => {
-      if (fieldsByLabel[label]) return fieldsByLabel[label];
-      return fieldsByLowerLabel[String(label || '').toLowerCase()] || null;
-    };
-
     const hasPersonalQuickbaseQuery = !!String(qid || '').trim();
+    const profileCustomColumns = normalizeProfileColumns(profile.qb_custom_columns);
+    const mappedProfileColumns = profileCustomColumns
+      .map((id) => {
+        const found = allAvailableFields.find((f) => Number(f.id) === Number(id));
+        return found ? { id: Number(found.id), label: found.label } : null;
+      })
+      .filter(Boolean);
+
     const wantedFieldSelection = wantedLabels
       .map((label) => ({ label, id: resolveFieldId(label) }))
       .filter((x) => Number.isFinite(x.id));
 
-    const selectedFields = wantedFieldSelection;
+    const selectedFields = mappedProfileColumns.length ? mappedProfileColumns : wantedFieldSelection;
 
     if (!hasPersonalQuickbaseQuery && !selectedFields.length) {
       return sendJson(res, 500, {
@@ -218,14 +215,7 @@ module.exports = async (req, res) => {
 
     const whereClauses = [];
 
-    if (hasPersonalQuickbaseQuery) {
-      // QID-based reports have pre-defined filters and columns.
-      // Do NOT apply any manual WHERE clauses or they will override the report definition.
-      console.log('[Quickbase] Using QID report definition - skipping manual filters:', qid);
-    } else {
-      // Legacy mode: manual filtering for non-QID queries
-      console.log('[Quickbase] No QID - applying manual filters');
-
+    if (!hasPersonalQuickbaseQuery) {
       const typeClause = buildAnyEqualsClause(typeFieldId, typeFilter);
       if (typeClause) whereClauses.push(typeClause);
 
@@ -244,58 +234,28 @@ module.exports = async (req, res) => {
       });
     }
 
+    const profileFilterClauses = buildProfileFilterClauses(profile.qb_custom_filters);
+
     const routeWhere = String(req?.query?.where || '').trim();
     const manualWhere = whereClauses.length > 0 ? whereClauses.join(' AND ') : '';
     const effectiveWhere = routeWhere || (manualWhere || null);
 
-    console.log('[Quickbase] WHERE clause status:', {
-      hasRouteWhere: !!routeWhere,
-      hasManualWhere: !!manualWhere,
-      finalWhere: effectiveWhere || '(none - using report filters)'
-    });
-
     let reportMetadata = null;
     if (hasPersonalQuickbaseQuery) {
-      console.log('[Quickbase] Fetching report metadata for QID:', qid);
-      reportMetadata = await getQuickbaseReportMetadata({
-        config: userQuickbaseConfig,
-        qid
-      });
-
-      if (reportMetadata) {
-        console.log('[Quickbase] ✅ Report metadata loaded:', {
-          fields: reportMetadata.fields?.length || 0,
-          hasFilter: !!reportMetadata.filter,
-          filter: reportMetadata.filter || '(none)'
-        });
-      } else {
-        console.warn('[Quickbase] ⚠️ Report metadata fetch FAILED');
-      }
+      reportMetadata = await getQuickbaseReportMetadata({ config: userQuickbaseConfig, qid });
     }
 
     const selectFields = hasPersonalQuickbaseQuery && reportMetadata?.fields?.length
-      ? reportMetadata.fields
-      : (hasPersonalQuickbaseQuery ? [] : selectedFields.map((f) => f.id));
+      ? (mappedProfileColumns.length ? mappedProfileColumns.map((f) => f.id) : reportMetadata.fields)
+      : selectedFields.map((f) => f.id);
 
-    // CRITICAL: Use report filter instead of manual WHERE
     let finalWhere = effectiveWhere;
     if (hasPersonalQuickbaseQuery && reportMetadata?.filter) {
       finalWhere = reportMetadata.filter;
-      console.log('[Quickbase] ✅ Using report filter:', finalWhere);
-    } else if (effectiveWhere) {
-      console.log('[Quickbase] Using manual WHERE:', effectiveWhere);
-    } else {
-      console.log('[Quickbase] ⚠️ NO FILTER APPLIED - will return all table records');
     }
-
-    console.log('[Quickbase] SELECT fields:', selectFields);
-
-    console.log('[Quickbase Monitoring] Query config:', {
-      qid: userQuickbaseConfig.qb_qid,
-      hasWhere: !!finalWhere,
-      selectCount: selectFields?.length || 0,
-      enableFallback: !hasPersonalQuickbaseQuery
-    });
+    if (profileFilterClauses.length) {
+      finalWhere = [finalWhere, ...profileFilterClauses].filter(Boolean).join(' AND ');
+    }
 
     const out = await queryQuickbaseRecords({
       config: userQuickbaseConfig,
@@ -310,12 +270,6 @@ module.exports = async (req, res) => {
       ]
     });
 
-    console.log('[Quickbase Monitoring] Query result:', {
-      ok: out.ok,
-      recordCount: out.records?.length || 0,
-      expected: 70
-    });
-
     if (!out.ok) {
       return sendJson(res, out.status || 500, {
         ok: false,
@@ -326,11 +280,8 @@ module.exports = async (req, res) => {
 
     const caseIdFieldId = resolveFieldId('Case #') || 3;
     const fieldsMetaById = Object.create(null);
-    (fieldMapOut.fields || []).forEach((f) => {
-      const id = Number(f?.id);
-      const label = String(f?.label || '').trim();
-      if (!Number.isFinite(id) || !label) return;
-      fieldsMetaById[String(id)] = { id, label };
+    (allAvailableFields || []).forEach((f) => {
+      fieldsMetaById[String(f.id)] = { id: Number(f.id), label: String(f.label) };
     });
 
     const firstRecord = Array.isArray(out.records) && out.records.length ? out.records[0] : null;
@@ -342,9 +293,9 @@ module.exports = async (req, res) => {
       : [];
 
     const effectiveFields = hasPersonalQuickbaseQuery
-      ? dynamicFieldIds
-          .map((fid) => fieldsMetaById[fid])
-          .filter(Boolean)
+      ? (mappedProfileColumns.length
+          ? mappedProfileColumns
+          : dynamicFieldIds.map((fid) => fieldsMetaById[fid]).filter(Boolean))
       : selectedFields
           .map((f) => fieldsMetaById[String(f.id)] || { id: Number(f.id), label: String(f.label || '').trim() })
           .filter((f) => Number.isFinite(f.id) && String(f.label || '').trim());
@@ -355,17 +306,13 @@ module.exports = async (req, res) => {
           .map((f) => ({ id: String(f.id), label: String(f.label) }))
       : [];
 
-    console.info('[Quickbase Monitoring] Dynamic columns sent to client:', columns);
-
-    const mappedSource = Array.isArray(out.mappedRecords) && out.mappedRecords.length
-      ? out.mappedRecords
-      : [];
+    const mappedSource = Array.isArray(out.mappedRecords) && out.mappedRecords.length ? out.mappedRecords : [];
 
     const records = (Array.isArray(out.records) ? out.records : []).map((row, idx) => {
       const mappedRow = (mappedSource[idx] && typeof mappedSource[idx] === 'object') ? mappedSource[idx] : {};
       const normalized = {};
       const fieldList = hasPersonalQuickbaseQuery
-        ? dynamicFieldIds
+        ? (effectiveFields.length ? effectiveFields.map((f) => String(f.id)) : dynamicFieldIds)
         : effectiveFields.map((f) => String(f.id));
 
       fieldList.forEach((fid) => {
@@ -378,9 +325,7 @@ module.exports = async (req, res) => {
         normalized[fieldId] = { value: mappedValue == null ? '' : mappedValue };
       });
 
-      const mappedRecordId = Object.prototype.hasOwnProperty.call(mappedRow, String(caseIdFieldId))
-        ? mappedRow[String(caseIdFieldId)]
-        : '';
+      const mappedRecordId = Object.prototype.hasOwnProperty.call(mappedRow, String(caseIdFieldId)) ? mappedRow[String(caseIdFieldId)] : '';
       const nestedRecordId = row?.[String(caseIdFieldId)]?.value || row?.[String(3)]?.value || '';
 
       return {
@@ -389,23 +334,11 @@ module.exports = async (req, res) => {
       };
     });
 
-    // DEBUG: Expose server-side info to client
-    const debugInfo = {
-      qid: userQuickbaseConfig.qb_qid,
-      hasReportMetadata: !!reportMetadata,
-      reportFilter: reportMetadata?.filter || '(none)',
-      reportFieldCount: reportMetadata?.fields?.length || 0,
-      finalWhere: finalWhere || '(none)',
-      recordCount: records.length,
-      expected: 72
-    };
-
-    console.log('[Quickbase] DEBUG INFO:', debugInfo);
-
     return sendJson(res, 200, {
       ok: true,
       columns,
       records,
+      allAvailableFields,
       settings: {
         ...defaultSettings,
         fieldIds: {
@@ -414,14 +347,14 @@ module.exports = async (req, res) => {
           assignedTo: assignedToFieldId || null,
           caseStatus: statusFieldId || null
         },
-        appliedWhere: effectiveWhere,
+        appliedWhere: finalWhere || null,
         appliedDynamicFilters: {
           assignedTo: assignedToFilter,
           caseStatus: caseStatusFilter,
-          type: typeFilter
+          type: typeFilter,
+          custom: profileFilterClauses
         }
-      },
-      __debug: debugInfo
+      }
     });
   } catch (err) {
     return sendJson(res, 500, {
