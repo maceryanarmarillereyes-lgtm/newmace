@@ -265,6 +265,7 @@ module.exports = async (req, res) => {
       limit: req?.query?.limit || 100,
       select: selectFields,
       allowEmptySelect: hasPersonalQuickbaseQuery && !reportMetadata,
+      enableQueryIdFallback: !hasPersonalQuickbaseQuery,
       sortBy: reportMetadata?.sortBy || [
         { fieldId: endUserFieldId || resolveFieldId('Case #') || 3, order: 'ASC' },
         { fieldId: typeFieldId || resolveFieldId('Case #') || 3, order: 'ASC' }

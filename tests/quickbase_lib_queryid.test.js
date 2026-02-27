@@ -43,7 +43,8 @@ async function run() {
         qb_table_id: 'tbl123',
         qb_qid: '-2021130'
       },
-      select: [3, 7]
+      select: [3, 7],
+      enableQueryIdFallback: true
     });
 
     assert.equal(out.ok, true, 'fallback variant should recover query');

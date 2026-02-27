@@ -102,6 +102,7 @@ async function run() {
   assert.equal(Array.isArray(calls[0].select), true, 'select should be provided');
   assert.equal(calls[0].select.length, 0, 'QID-backed query should allow dynamic report fields');
   assert.equal(calls[0].allowEmptySelect, true, 'allowEmptySelect should be enabled for QID-backed query');
+  assert.equal(calls[0].enableQueryIdFallback, false, 'QID-backed query must not fall back to table-wide query');
   assert.equal(typeof where, 'string');
   assert.equal(where.includes('Owner Email'), false, 'QID-backed query should not force owner email clause');
 
