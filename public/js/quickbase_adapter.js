@@ -33,8 +33,24 @@
 
   function toSafePayload(payload) {
     const src = payload && typeof payload === 'object' ? payload : {};
-    const rows = Array.isArray(src.records) ? src.records : [];
+    const rows = Array.isArray(src.records)
+      ? src.records
+      : (Array.isArray(src.rows) ? src.rows : []);
     const columns = Array.isArray(src.columns) ? src.columns : [];
+    const normalizedRows = rows.map(function(r){
+      const normalizedFields = flattenFidFields(r && r.fields);
+      const fallbackRecordId = normalizedFields['3'];
+      const qbRecordId = String((r && r.qbRecordId) || fallbackRecordId || 'N/A');
+      const fields = {};
+      Object.keys(normalizedFields).forEach(function(fid){
+        fields[fid] = { value: normalizedFields[fid] == null ? '' : normalizedFields[fid] };
+      });
+      return {
+        qbRecordId: qbRecordId,
+        fields: fields
+      };
+    });
+
     return {
       ok: !!src.ok,
       warning: String(src.warning || ''),
@@ -44,19 +60,9 @@
           label: String((c && c.label) || '')
         };
       }).filter(function(c){ return !!c.id; }),
-      rows: rows.map(function(r){
-        const normalizedFields = flattenFidFields(r && r.fields);
-        const fallbackRecordId = normalizedFields['3'];
-        const qbRecordId = String((r && r.qbRecordId) || fallbackRecordId || 'N/A');
-        const fields = {};
-        Object.keys(normalizedFields).forEach(function(fid){
-          fields[fid] = { value: normalizedFields[fid] == null ? '' : normalizedFields[fid] };
-        });
-        return {
-          qbRecordId: qbRecordId,
-          fields: fields
-        };
-      }),
+      rows: normalizedRows,
+      records: normalizedRows,
+      allAvailableFields: Array.isArray(src.allAvailableFields) ? src.allAvailableFields : [],
       settings: (src.settings && typeof src.settings === 'object') ? src.settings : {}
     };
   }
