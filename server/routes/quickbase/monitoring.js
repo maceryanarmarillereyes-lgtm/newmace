@@ -117,24 +117,13 @@ module.exports = async (req, res) => {
     };
 
     const hasPersonalQuickbaseQuery = !!String(userQuickbaseConfig.qb_qid || '').trim();
-    const allKnownFields = (fieldMapOut.fields || [])
-      .map((f) => {
-        const id = Number(f?.id);
-        const label = String(f?.label || '').trim();
-        if (!Number.isFinite(id)) return null;
-        return { id, label: label || `Field ${id}` };
-      })
-      .filter(Boolean);
-
     const wantedFieldSelection = wantedLabels
       .map((label) => ({ label, id: resolveFieldId(label) }))
       .filter((x) => Number.isFinite(x.id));
 
-    const selectedFields = hasPersonalQuickbaseQuery
-      ? allKnownFields
-      : wantedFieldSelection;
+    const selectedFields = wantedFieldSelection;
 
-    if (!selectedFields.length) {
+    if (!hasPersonalQuickbaseQuery && !selectedFields.length) {
       return sendJson(res, 500, {
         ok: false,
         error: 'quickbase_fields_not_mapped',
@@ -210,34 +199,35 @@ module.exports = async (req, res) => {
     }
 
     const caseIdFieldId = resolveFieldId('Case #') || 3;
-
-    const dynamicFieldIds = [];
-    const seenFieldIds = new Set();
-    (Array.isArray(out.records) ? out.records : []).forEach((row) => {
-      Object.keys(row || {}).forEach((fidRaw) => {
-        const fidNum = Number(fidRaw);
-        if (!Number.isFinite(fidNum)) return;
-        const fid = String(fidNum);
-        if (seenFieldIds.has(fid)) return;
-        seenFieldIds.add(fid);
-        dynamicFieldIds.push(fid);
-      });
+    const fieldsMetaById = Object.create(null);
+    (fieldMapOut.fields || []).forEach((f) => {
+      const id = Number(f?.id);
+      const label = String(f?.label || '').trim();
+      if (!Number.isFinite(id) || !label) return;
+      fieldsMetaById[String(id)] = { id, label };
     });
 
-    const quickLookupById = Object.create(null);
-    selectedFields.forEach((f) => {
-      quickLookupById[String(f.id)] = { id: Number(f.id), label: String(f.label || `Field ${f.id}`) };
-    });
+    const firstRecord = Array.isArray(out.records) && out.records.length ? out.records[0] : null;
+    const dynamicFieldIds = hasPersonalQuickbaseQuery && firstRecord
+      ? Object.keys(firstRecord)
+          .map((fidRaw) => Number(fidRaw))
+          .filter((fidNum) => Number.isFinite(fidNum))
+          .map((fidNum) => String(fidNum))
+      : [];
 
     const effectiveFields = hasPersonalQuickbaseQuery
-      ? (dynamicFieldIds.length
-          ? dynamicFieldIds.map((fid) => quickLookupById[fid] || { id: Number(fid), label: `Field ${fid}` })
-          : selectedFields)
-      : selectedFields;
+      ? dynamicFieldIds
+          .map((fid) => fieldsMetaById[fid])
+          .filter(Boolean)
+      : selectedFields
+          .map((f) => fieldsMetaById[String(f.id)] || { id: Number(f.id), label: String(f.label || '').trim() })
+          .filter((f) => Number.isFinite(f.id) && String(f.label || '').trim());
 
-    const columns = effectiveFields
-      .filter((f) => String(f.label).toLowerCase() !== 'case #' && Number(f.id) !== Number(caseIdFieldId))
-      .map((f) => ({ id: String(f.id), label: String(f.label || `Field ${f.id}`) }));
+    const columns = (Array.isArray(out.records) && out.records.length)
+      ? effectiveFields
+          .filter((f) => String(f.label).toLowerCase() !== 'case #' && Number(f.id) !== Number(caseIdFieldId))
+          .map((f) => ({ id: String(f.id), label: String(f.label) }))
+      : [];
 
     console.info('[Quickbase Monitoring] Dynamic columns sent to client:', columns);
 
@@ -245,25 +235,30 @@ module.exports = async (req, res) => {
       ? out.mappedRecords
       : [];
 
-    const records = out.records.map((row, idx) => {
+    const records = (Array.isArray(out.records) ? out.records : []).map((row, idx) => {
       const mappedRow = (mappedSource[idx] && typeof mappedSource[idx] === 'object') ? mappedSource[idx] : {};
       const normalized = {};
-      effectiveFields.forEach((f) => {
-        const fid = String(f.id);
-        const nestedField = row?.[fid];
+      const fieldList = hasPersonalQuickbaseQuery
+        ? dynamicFieldIds
+        : effectiveFields.map((f) => String(f.id));
+
+      fieldList.forEach((fid) => {
+        const fieldId = String(fid);
+        const nestedField = row?.[fieldId];
         const nestedValue = nestedField && typeof nestedField === 'object' && Object.prototype.hasOwnProperty.call(nestedField, 'value')
           ? nestedField.value
           : nestedField;
-        const mappedValue = Object.prototype.hasOwnProperty.call(mappedRow, fid) ? mappedRow[fid] : nestedValue;
-        normalized[fid] = { value: mappedValue == null ? '' : mappedValue };
+        const mappedValue = Object.prototype.hasOwnProperty.call(mappedRow, fieldId) ? mappedRow[fieldId] : nestedValue;
+        normalized[fieldId] = { value: mappedValue == null ? '' : mappedValue };
       });
 
       const mappedRecordId = Object.prototype.hasOwnProperty.call(mappedRow, String(caseIdFieldId))
         ? mappedRow[String(caseIdFieldId)]
         : '';
+      const nestedRecordId = row?.[String(caseIdFieldId)]?.value || row?.[String(3)]?.value || '';
 
       return {
-        qbRecordId: mappedRecordId || row?.[String(caseIdFieldId)]?.value || row?.recordId || 'N/A',
+        qbRecordId: mappedRecordId || nestedRecordId || row?.recordId || 'N/A',
         fields: normalized
       };
     });
