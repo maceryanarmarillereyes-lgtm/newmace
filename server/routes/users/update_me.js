@@ -167,8 +167,33 @@ module.exports = async (req, res) => {
 
     if (!Object.keys(patch).length) return sendJson(res, 200, { ok: true, updated: false, profile: null });
 
-    const out = await serviceUpdate('mums_profiles', patch, { user_id: `eq.${authed.id}` });
-    if (!out.ok) return sendJson(res, 500, { ok: false, error: 'update_failed', details: out.json || out.text });
+    let out = await serviceUpdate('mums_profiles', patch, { user_id: `eq.${authed.id}` });
+
+    // Backward-compatible fallback:
+    // If environment DB is missing qb_custom_* columns, retry update without those keys
+    // so core Quickbase config (token/qid/table/realm/link) still saves successfully.
+    if (!out.ok) {
+      const detailBlob = JSON.stringify(out.json || out.text || '').toLowerCase();
+      const missingCustomCols = detailBlob.includes('qb_custom_columns') || detailBlob.includes('qb_custom_filters');
+      if (missingCustomCols) {
+        const retryPatch = { ...patch };
+        delete retryPatch.qb_custom_columns;
+        delete retryPatch.qb_custom_filters;
+        if (Object.keys(retryPatch).length > 0) {
+          out = await serviceUpdate('mums_profiles', retryPatch, { user_id: `eq.${authed.id}` });
+          if (out.ok) {
+            return sendJson(res, 200, {
+              ok: true,
+              updated: true,
+              patch: retryPatch,
+              warning: 'qb_custom_columns_missing_in_db',
+              message: 'Saved core Quickbase settings. Run latest migrations to enable custom columns/filters persistence.'
+            });
+          }
+        }
+      }
+      return sendJson(res, 500, { ok: false, error: 'update_failed', details: out.json || out.text });
+    }
 
     return sendJson(res, 200, { ok: true, updated: true, patch });
   } catch (err) {
