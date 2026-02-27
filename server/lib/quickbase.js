@@ -138,7 +138,13 @@ async function queryQuickbaseRecords(opts = {}) {
     }
   };
 
-  if (opts.where) baseBody.where = String(opts.where);
+  const whereClause = String(opts.where || '').trim();
+  if (whereClause) {
+    baseBody.where = whereClause;
+    console.log('[Quickbase] Applying WHERE:', whereClause);
+  } else {
+    console.log('[Quickbase] No WHERE clause - using report/QID filters only');
+  }
   if (Array.isArray(opts.sortBy) && opts.sortBy.length) {
     baseBody.sortBy = opts.sortBy
       .map((entry) => ({
