@@ -88,6 +88,28 @@ module.exports = async (req, res) => {
       if (tableId.length > 80) return sendJson(res, 400, { ok: false, error: 'invalid_qb_table_id' });
       patch.qb_table_id = tableId;
     }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'qb_custom_columns')) {
+      const cols = Array.isArray(body.qb_custom_columns) ? body.qb_custom_columns : [];
+      const normalized = cols
+        .map((v) => String(v == null ? '' : v).trim())
+        .filter(Boolean)
+        .slice(0, 200);
+      patch.qb_custom_columns = normalized;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'qb_custom_filters')) {
+      const filters = Array.isArray(body.qb_custom_filters) ? body.qb_custom_filters : [];
+      const normalized = filters
+        .filter((f) => f && typeof f === 'object')
+        .map((f) => ({
+          fieldId: String((f.fieldId ?? f.field_id ?? '')).trim(),
+          operator: String((f.operator ?? 'EX')).trim().toUpperCase(),
+          value: String((f.value ?? '')).trim()
+        }))
+        .filter((f) => f.fieldId && f.value)
+        .slice(0, 200);
+      patch.qb_custom_filters = normalized;
+    }
     const prof = await getProfileForUserId(authed.id);
     if (!prof) return sendJson(res, 404, { ok: false, error: 'profile_missing', message: 'Profile not found. Call /api/users/me first.' });
 
@@ -145,8 +167,33 @@ module.exports = async (req, res) => {
 
     if (!Object.keys(patch).length) return sendJson(res, 200, { ok: true, updated: false, profile: null });
 
-    const out = await serviceUpdate('mums_profiles', patch, { user_id: `eq.${authed.id}` });
-    if (!out.ok) return sendJson(res, 500, { ok: false, error: 'update_failed', details: out.json || out.text });
+    let out = await serviceUpdate('mums_profiles', patch, { user_id: `eq.${authed.id}` });
+
+    // Backward-compatible fallback:
+    // If environment DB is missing qb_custom_* columns, retry update without those keys
+    // so core Quickbase config (token/qid/table/realm/link) still saves successfully.
+    if (!out.ok) {
+      const detailBlob = JSON.stringify(out.json || out.text || '').toLowerCase();
+      const missingCustomCols = detailBlob.includes('qb_custom_columns') || detailBlob.includes('qb_custom_filters');
+      if (missingCustomCols) {
+        const retryPatch = { ...patch };
+        delete retryPatch.qb_custom_columns;
+        delete retryPatch.qb_custom_filters;
+        if (Object.keys(retryPatch).length > 0) {
+          out = await serviceUpdate('mums_profiles', retryPatch, { user_id: `eq.${authed.id}` });
+          if (out.ok) {
+            return sendJson(res, 200, {
+              ok: true,
+              updated: true,
+              patch: retryPatch,
+              warning: 'qb_custom_columns_missing_in_db',
+              message: 'Saved core Quickbase settings. Run latest migrations to enable custom columns/filters persistence.'
+            });
+          }
+        }
+      }
+      return sendJson(res, 500, { ok: false, error: 'update_failed', details: out.json || out.text });
+    }
 
     return sendJson(res, 200, { ok: true, updated: true, patch });
   } catch (err) {
