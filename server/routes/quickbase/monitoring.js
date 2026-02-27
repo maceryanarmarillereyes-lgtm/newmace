@@ -167,7 +167,6 @@ module.exports = async (req, res) => {
 
     const whereClauses = [];
     // QID is used as a report reference, not a field filter.
-    // User-specific filtering is handled by the report definition itself.
 
     if (!hasPersonalQuickbaseQuery) {
       const effectiveTypes = typeFilter.length ? typeFilter : defaultSettings.types;
@@ -194,6 +193,21 @@ module.exports = async (req, res) => {
       });
     } else {
       console.log('[Quickbase Monitoring] Using QID-based report definition:', qid);
+
+      // Filter by logged-in user's email to ensure they only see their own data
+      const userEmail = auth?.user?.email || auth?.profile?.email || '';
+      const ownerEmailFieldId = resolveFieldId('Owner Email')
+        || resolveFieldId('Assigned User')
+        || resolveFieldId('Related User')
+        || resolveFieldId('User Email')
+        || resolveFieldId('Assigned to');
+
+      if (ownerEmailFieldId && userEmail) {
+        whereClauses.push(`{${ownerEmailFieldId}.EX.'${encodeQuickbaseLiteral(userEmail)}'}`);
+        console.log('[Quickbase] Applied user email filter:', userEmail, 'on field ID:', ownerEmailFieldId);
+      } else {
+        console.warn('[Quickbase] WARNING: No user email field found in Quickbase table. All records will be visible to all users.');
+      }
     }
 
     const routeWhere = String(req?.query?.where || '').trim();
