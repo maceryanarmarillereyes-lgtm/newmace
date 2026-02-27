@@ -1,6 +1,48 @@
 const { sendJson, requireAuthedUser } = require('../tasks/_common');
 const { queryQuickbaseRecords, listQuickbaseFields } = require('../../lib/quickbase');
 
+async function getQuickbaseReportMetadata({ config, qid }) {
+  const cfg = {
+    qb_token: config.qb_token,
+    qb_realm: config.qb_realm,
+    qb_table_id: config.qb_table_id
+  };
+
+  try {
+    const url = `https://api.quickbase.com/v1/reports/${qid}?tableId=${config.qb_table_id}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'QB-Realm-Hostname': cfg.qb_realm,
+        Authorization: `QB-USER-TOKEN ${cfg.qb_token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const json = await response.json();
+
+    if (!response.ok) {
+      console.warn('[Quickbase] Could not fetch report metadata:', json.message);
+      return null;
+    }
+
+    const columnFieldIds = (json.query?.fields || [])
+      .map((f) => Number(f))
+      .filter((id) => Number.isFinite(id));
+
+    console.log('[Quickbase] Report metadata fetched. Columns:', columnFieldIds);
+
+    return {
+      fields: columnFieldIds,
+      filter: json.query?.filter || '',
+      sortBy: json.query?.sortBy || []
+    };
+  } catch (err) {
+    console.error('[Quickbase] Failed to fetch report metadata:', err.message);
+    return null;
+  }
+}
+
 function encodeQuickbaseLiteral(value) {
   return String(value == null ? '' : value).replace(/'/g, "\\'");
 }
@@ -166,38 +208,57 @@ module.exports = async (req, res) => {
     const excludeStatus = parseCsvOrArray(req?.query?.excludeStatus);
 
     const whereClauses = [];
-    // QID already represents a pre-filtered Quickbase report definition.
-    // We should not force user-email filtering here because report owners can
-    // filter with team fields, store names, or non-email assignees.
-    console.log('[Quickbase Monitoring] Using QID-based report definition:', qid);
 
-    const typeClause = buildAnyEqualsClause(typeFieldId, typeFilter);
-    if (typeClause) whereClauses.push(typeClause);
+    if (hasPersonalQuickbaseQuery) {
+      // QID-based reports have pre-defined filters and columns.
+      // Do NOT apply any manual WHERE clauses or they will override the report definition.
+      console.log('[Quickbase] Using QID report definition - skipping manual filters:', qid);
+    } else {
+      // Legacy mode: manual filtering for non-QID queries
+      console.log('[Quickbase] No QID - applying manual filters');
 
-    const endUserClause = buildAnyEqualsClause(endUserFieldId, endUserFilter);
-    if (endUserClause) whereClauses.push(endUserClause);
+      const typeClause = buildAnyEqualsClause(typeFieldId, typeFilter);
+      if (typeClause) whereClauses.push(typeClause);
 
-    const assignedToClause = buildAnyEqualsClause(assignedToFieldId, assignedToFilter);
-    if (assignedToClause) whereClauses.push(assignedToClause);
+      const endUserClause = buildAnyEqualsClause(endUserFieldId, endUserFilter);
+      if (endUserClause) whereClauses.push(endUserClause);
 
-    const caseStatusClause = buildAnyEqualsClause(statusFieldId, caseStatusFilter);
-    if (caseStatusClause) whereClauses.push(caseStatusClause);
+      const assignedToClause = buildAnyEqualsClause(assignedToFieldId, assignedToFilter);
+      if (assignedToClause) whereClauses.push(assignedToClause);
 
-    excludeStatus.forEach((status) => {
-      if (!Number.isFinite(statusFieldId) || !status) return;
-      whereClauses.push(`{${statusFieldId}.XEX.'${encodeQuickbaseLiteral(status)}'}`);
-    });
+      const caseStatusClause = buildAnyEqualsClause(statusFieldId, caseStatusFilter);
+      if (caseStatusClause) whereClauses.push(caseStatusClause);
+
+      excludeStatus.forEach((status) => {
+        if (!Number.isFinite(statusFieldId) || !status) return;
+        whereClauses.push(`{${statusFieldId}.XEX.'${encodeQuickbaseLiteral(status)}'}`);
+      });
+    }
 
     const routeWhere = String(req?.query?.where || '').trim();
     const effectiveWhere = routeWhere || whereClauses.join(' AND ');
 
+    let reportMetadata = null;
+    if (hasPersonalQuickbaseQuery) {
+      reportMetadata = await getQuickbaseReportMetadata({
+        config: userQuickbaseConfig,
+        qid
+      });
+    }
+
+    const selectFields = hasPersonalQuickbaseQuery && reportMetadata?.fields?.length
+      ? reportMetadata.fields
+      : (hasPersonalQuickbaseQuery ? [] : selectedFields.map((f) => f.id));
+
+    console.log('[Quickbase] SELECT fields:', selectFields);
+
     const out = await queryQuickbaseRecords({
       config: userQuickbaseConfig,
-      where: effectiveWhere,
+      where: effectiveWhere || undefined,
       limit: req?.query?.limit || 100,
-      select: hasPersonalQuickbaseQuery ? [] : selectedFields.map((f) => f.id),
-      allowEmptySelect: hasPersonalQuickbaseQuery,
-      sortBy: [
+      select: selectFields,
+      allowEmptySelect: hasPersonalQuickbaseQuery && !reportMetadata,
+      sortBy: reportMetadata?.sortBy || [
         { fieldId: endUserFieldId || resolveFieldId('Case #') || 3, order: 'ASC' },
         { fieldId: typeFieldId || resolveFieldId('Case #') || 3, order: 'ASC' }
       ]
