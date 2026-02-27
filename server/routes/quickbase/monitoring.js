@@ -389,6 +389,19 @@ module.exports = async (req, res) => {
       };
     });
 
+    // DEBUG: Expose server-side info to client
+    const debugInfo = {
+      qid: userQuickbaseConfig.qb_qid,
+      hasReportMetadata: !!reportMetadata,
+      reportFilter: reportMetadata?.filter || '(none)',
+      reportFieldCount: reportMetadata?.fields?.length || 0,
+      finalWhere: finalWhere || '(none)',
+      recordCount: records.length,
+      expected: 72
+    };
+
+    console.log('[Quickbase] DEBUG INFO:', debugInfo);
+
     return sendJson(res, 200, {
       ok: true,
       columns,
@@ -407,7 +420,8 @@ module.exports = async (req, res) => {
           caseStatus: caseStatusFilter,
           type: typeFilter
         }
-      }
+      },
+      __debug: debugInfo
     });
   } catch (err) {
     return sendJson(res, 500, {
