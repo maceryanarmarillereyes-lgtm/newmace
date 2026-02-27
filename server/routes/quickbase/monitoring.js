@@ -236,7 +236,14 @@ module.exports = async (req, res) => {
     }
 
     const routeWhere = String(req?.query?.where || '').trim();
-    const effectiveWhere = routeWhere || whereClauses.join(' AND ');
+    const manualWhere = whereClauses.length > 0 ? whereClauses.join(' AND ') : '';
+    const effectiveWhere = routeWhere || (manualWhere || null);
+
+    console.log('[Quickbase] WHERE clause status:', {
+      hasRouteWhere: !!routeWhere,
+      hasManualWhere: !!manualWhere,
+      finalWhere: effectiveWhere || '(none - using report filters)'
+    });
 
     let reportMetadata = null;
     if (hasPersonalQuickbaseQuery) {
