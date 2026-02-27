@@ -10,6 +10,9 @@ async function getQuickbaseReportMetadata({ config, qid }) {
 
   try {
     const url = `https://api.quickbase.com/v1/reports/${qid}?tableId=${config.qb_table_id}`;
+    
+    console.log('[Quickbase] Fetching report metadata from:', url);
+
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -22,7 +25,13 @@ async function getQuickbaseReportMetadata({ config, qid }) {
     const json = await response.json();
 
     if (!response.ok) {
-      console.warn('[Quickbase] Could not fetch report metadata:', json.message);
+      console.error('[Quickbase] Report metadata fetch failed:', {
+        status: response.status,
+        message: json.message,
+        description: json.description,
+        qid: qid,
+        tableId: config.qb_table_id
+      });
       return null;
     }
 
@@ -247,28 +256,50 @@ module.exports = async (req, res) => {
 
     let reportMetadata = null;
     if (hasPersonalQuickbaseQuery) {
+      console.log('[Quickbase] Fetching report metadata for QID:', qid);
       reportMetadata = await getQuickbaseReportMetadata({
         config: userQuickbaseConfig,
         qid
       });
+
+      if (reportMetadata) {
+        console.log('[Quickbase] ✅ Report metadata loaded:', {
+          fields: reportMetadata.fields?.length || 0,
+          hasFilter: !!reportMetadata.filter,
+          filter: reportMetadata.filter || '(none)'
+        });
+      } else {
+        console.warn('[Quickbase] ⚠️ Report metadata fetch FAILED');
+      }
     }
 
     const selectFields = hasPersonalQuickbaseQuery && reportMetadata?.fields?.length
       ? reportMetadata.fields
       : (hasPersonalQuickbaseQuery ? [] : selectedFields.map((f) => f.id));
 
+    // CRITICAL: Use report filter instead of manual WHERE
+    let finalWhere = effectiveWhere;
+    if (hasPersonalQuickbaseQuery && reportMetadata?.filter) {
+      finalWhere = reportMetadata.filter;
+      console.log('[Quickbase] ✅ Using report filter:', finalWhere);
+    } else if (effectiveWhere) {
+      console.log('[Quickbase] Using manual WHERE:', effectiveWhere);
+    } else {
+      console.log('[Quickbase] ⚠️ NO FILTER APPLIED - will return all table records');
+    }
+
     console.log('[Quickbase] SELECT fields:', selectFields);
 
     console.log('[Quickbase Monitoring] Query config:', {
       qid: userQuickbaseConfig.qb_qid,
-      hasWhere: !!effectiveWhere,
+      hasWhere: !!finalWhere,
       selectCount: selectFields?.length || 0,
       enableFallback: !hasPersonalQuickbaseQuery
     });
 
     const out = await queryQuickbaseRecords({
       config: userQuickbaseConfig,
-      where: effectiveWhere || undefined,
+      where: finalWhere || undefined,
       limit: req?.query?.limit || 100,
       select: selectFields,
       allowEmptySelect: hasPersonalQuickbaseQuery && !reportMetadata,
