@@ -61,10 +61,43 @@
     };
   }
 
-  async function fetchMonitoringData() {
+  async function fetchMonitoringData(overrideParams) {
     const token = getToken();
     if (!token) {
       throw new Error('Quickbase auth token missing. Please login again.');
+    }
+
+    // Get user profile for QID settings
+    let qid = '';
+    let tableId = '';
+    let realm = '';
+
+    if (overrideParams && typeof overrideParams === 'object') {
+      qid = String(overrideParams.qid || '').trim();
+      tableId = String(overrideParams.tableId || '').trim();
+      realm = String(overrideParams.realm || '').trim();
+    }
+
+    // Fallback to stored profile if not provided
+    if (!qid || !tableId || !realm) {
+      try {
+        const me = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
+        if (me && window.Store && Store.getProfile) {
+          const profile = Store.getProfile(me.id);
+          if (profile) {
+            qid = qid || String(profile.qb_qid || profile.quickbase_qid || '').trim();
+            tableId = tableId || String(profile.qb_table_id || profile.quickbase_table_id || '').trim();
+            realm = realm || String(profile.qb_realm || profile.quickbase_realm || '').trim();
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Validate required params
+    if (!qid || !tableId || !realm) {
+      const missingErr = new Error('Quickbase settings not configured. Please set your QID, Table ID, and Realm in My Quickbase Settings.');
+      missingErr.code = 'quickbase_credentials_missing';
+      throw missingErr;
     }
 
     const headers = {
@@ -72,25 +105,43 @@
       authorization: 'Bearer ' + token
     };
 
-    const candidates = ['/api/quickbase/monitoring', '/functions/quickbase/monitoring'];
+    // Construct URL with query parameters
+    const queryParams = new URLSearchParams({
+      qid: qid,
+      tableId: tableId,
+      realm: realm
+    });
+
+    const candidates = [
+      '/api/quickbase/monitoring?' + queryParams.toString(),
+      '/functions/quickbase/monitoring?' + queryParams.toString()
+    ];
+
     let lastErr = null;
 
     for (const url of candidates) {
       try {
         const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
         const data = await res.json().catch(function(){ return {}; });
+
         if (!res.ok) {
           const message = data && data.message ? String(data.message) : ('Endpoint ' + url + ' failed with ' + res.status);
           lastErr = new Error(message);
           continue;
         }
+
         const safePayload = toSafePayload(data);
+
         if (safePayload.warning === 'quickbase_credentials_missing') {
           const missingCredsErr = new Error('Missing Quickbase Credentials: Token or Realm not found. Please verify your Profile Settings.');
           missingCredsErr.code = 'quickbase_credentials_missing';
           throw missingCredsErr;
         }
-        try { console.info('[Enterprise DB] Quickbase Payload mapped:', safePayload.rows); } catch (_) {}
+
+        try {
+          console.info('[Enterprise DB] Quickbase Payload (QID: ' + qid + '):', safePayload.rows);
+        } catch (_) {}
+
         return safePayload;
       } catch (e) {
         lastErr = e;

@@ -58,11 +58,29 @@ module.exports = async (req, res) => {
       || ''
     ).trim();
 
+    let qid = String(req?.query?.qid || req?.query?.qId || '').trim();
+    let tableId = String(req?.query?.tableId || req?.query?.table_id || '').trim();
+    let realm = String(req?.query?.realm || '').trim();
+
+    if (!qid || !tableId || !realm) {
+      qid = qid || profileQid;
+      tableId = tableId || profileTableId;
+      realm = realm || profileRealm;
+    }
+
+    if (!qid || !tableId || !realm) {
+      return sendJson(res, 400, {
+        ok: false,
+        warning: 'quickbase_credentials_missing',
+        message: 'Missing Quickbase configuration. Please configure your QID in My Quickbase Settings.'
+      });
+    }
+
     const userQuickbaseConfig = {
       qb_token: profileToken,
-      qb_realm: profileRealm,
-      qb_table_id: profileTableId,
-      qb_qid: profileQid,
+      qb_realm: realm,
+      qb_table_id: tableId,
+      qb_qid: qid,
       qb_report_link: profileLink
     };
 
@@ -116,7 +134,7 @@ module.exports = async (req, res) => {
       return fieldsByLowerLabel[String(label || '').toLowerCase()] || null;
     };
 
-    const hasPersonalQuickbaseQuery = !!String(userQuickbaseConfig.qb_qid || '').trim();
+    const hasPersonalQuickbaseQuery = !!String(qid || '').trim();
     const wantedFieldSelection = wantedLabels
       .map((label) => ({ label, id: resolveFieldId(label) }))
       .filter((x) => Number.isFinite(x.id));
@@ -148,6 +166,8 @@ module.exports = async (req, res) => {
     const excludeStatus = parseCsvOrArray(req?.query?.excludeStatus);
 
     const whereClauses = [];
+    whereClauses.push(`{3.EX.'${encodeQuickbaseLiteral(qid)}'}`);
+
     const effectiveTypes = typeFilter.length
       ? typeFilter
       : (hasPersonalQuickbaseQuery ? [] : defaultSettings.types);
