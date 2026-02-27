@@ -74,19 +74,21 @@ function normalizeRealmHostname(rawRealm, fallbackLink) {
 function queryIdVariants(rawQid, allowFallback) {
   const qid = String(rawQid || '').trim();
   if (!qid) return [''];
+  
+  // For QID-based queries, use ONLY the exact QID - no variants
+  if (!allowFallback) {
+    console.log('[Quickbase] Using exact QID (no variants):', qid);
+    return [qid];
+  }
+  
+  // Legacy fallback mode for non-QID queries
   const variants = [];
-
   variants.push(qid);
-
-  // Some Quickbase links expose report ids as negative (e.g. /report/-2021130)
-  // while records/query expects the positive numeric queryId.
+  
   if (/^-\d+$/.test(qid)) variants.push(qid.slice(1));
-
-  if (!allowFallback) return Array.from(new Set(variants));
-
-  // Fallback: if a report id is stale/empty, retry base table query.
   variants.push('');
-
+  
+  console.log('[Quickbase] Using QID variants (legacy mode):', variants);
   return Array.from(new Set(variants));
 }
 
@@ -166,6 +168,11 @@ async function queryQuickbaseRecords(opts = {}) {
     const body = Object.assign({}, baseBody);
     if (qidVariant) body.queryId = qidVariant;
 
+    console.log('[Quickbase] Trying QID variant:', qidVariant || '(base table)', {
+      hasWhere: !!body.where,
+      selectCount: body.select?.length || 0
+    });
+
     const response = await fetch('https://api.quickbase.com/v1/records/query', {
       method: 'POST',
       headers: {
@@ -181,6 +188,7 @@ async function queryQuickbaseRecords(opts = {}) {
     try { json = rawText ? JSON.parse(rawText) : {}; } catch (_) { json = {}; }
 
     if (!response.ok) {
+      console.error('[Quickbase] Variant failed:', qidVariant, '- Status:', response.status);
       lastFailure = {
         ok: false,
         status: response.status || 502,
@@ -191,6 +199,7 @@ async function queryQuickbaseRecords(opts = {}) {
     }
 
     records = Array.isArray(json.data) ? json.data : [];
+    console.log('[Quickbase] ✅ Variant success:', qidVariant || '(base)', '- Records:', records.length);
     if (records.length > 0 || qidVariant === variants[variants.length - 1]) {
       lastFailure = null;
       break;

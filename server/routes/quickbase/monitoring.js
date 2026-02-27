@@ -259,6 +259,13 @@ module.exports = async (req, res) => {
 
     console.log('[Quickbase] SELECT fields:', selectFields);
 
+    console.log('[Quickbase Monitoring] Query config:', {
+      qid: userQuickbaseConfig.qb_qid,
+      hasWhere: !!effectiveWhere,
+      selectCount: selectFields?.length || 0,
+      enableFallback: !hasPersonalQuickbaseQuery
+    });
+
     const out = await queryQuickbaseRecords({
       config: userQuickbaseConfig,
       where: effectiveWhere || undefined,
@@ -270,6 +277,12 @@ module.exports = async (req, res) => {
         { fieldId: endUserFieldId || resolveFieldId('Case #') || 3, order: 'ASC' },
         { fieldId: typeFieldId || resolveFieldId('Case #') || 3, order: 'ASC' }
       ]
+    });
+
+    console.log('[Quickbase Monitoring] Query result:', {
+      ok: out.ok,
+      recordCount: out.records?.length || 0,
+      expected: 70
     });
 
     if (!out.ok) {
