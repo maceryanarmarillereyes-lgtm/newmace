@@ -71,16 +71,18 @@ function normalizeRealmHostname(rawRealm, fallbackLink) {
   }
 }
 
-function queryIdVariants(rawQid) {
+function queryIdVariants(rawQid, allowFallback) {
   const qid = String(rawQid || '').trim();
-  const variants = [];
   if (!qid) return [''];
+  const variants = [];
 
   variants.push(qid);
 
   // Some Quickbase links expose report ids as negative (e.g. /report/-2021130)
   // while records/query expects the positive numeric queryId.
   if (/^-\d+$/.test(qid)) variants.push(qid.slice(1));
+
+  if (!allowFallback) return Array.from(new Set(variants));
 
   // Fallback: if a report id is stale/empty, retry base table query.
   variants.push('');
@@ -154,7 +156,7 @@ async function queryQuickbaseRecords(opts = {}) {
       .filter((entry) => Number.isFinite(entry.fieldId));
   }
 
-  const variants = queryIdVariants(cfg.qid);
+  const variants = queryIdVariants(cfg.qid, !!opts.enableQueryIdFallback);
   if (!variants.length) variants.push('');
 
   let records = [];
