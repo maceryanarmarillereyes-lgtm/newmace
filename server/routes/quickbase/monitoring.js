@@ -67,6 +67,21 @@ function normalizeProfileColumns(input) {
     .filter((n) => Number.isFinite(n));
 }
 
+
+function sortFieldsByProfileOrder(fields, profileColumnOrder) {
+  if (!Array.isArray(fields) || !fields.length) return [];
+  const order = Array.isArray(profileColumnOrder) ? profileColumnOrder.map((v) => Number(v)).filter((n) => Number.isFinite(n)) : [];
+  if (!order.length) return fields;
+  const orderIndex = new Map(order.map((fid, idx) => [String(fid), idx]));
+  return fields
+    .slice()
+    .sort((a, b) => {
+      const ai = orderIndex.has(String(a.id)) ? orderIndex.get(String(a.id)) : Number.MAX_SAFE_INTEGER;
+      const bi = orderIndex.has(String(b.id)) ? orderIndex.get(String(b.id)) : Number.MAX_SAFE_INTEGER;
+      if (ai !== bi) return ai - bi;
+      return String(a.label || '').localeCompare(String(b.label || ''));
+    });
+}
 function buildProfileFilterClauses(rawFilters) {
   if (!Array.isArray(rawFilters)) return [];
   const out = [];
@@ -300,8 +315,10 @@ module.exports = async (req, res) => {
           .map((f) => fieldsMetaById[String(f.id)] || { id: Number(f.id), label: String(f.label || '').trim() })
           .filter((f) => Number.isFinite(f.id) && String(f.label || '').trim());
 
+    const orderedEffectiveFields = sortFieldsByProfileOrder(effectiveFields, profile.qb_custom_columns);
+
     const columns = (Array.isArray(out.records) && out.records.length)
-      ? effectiveFields
+      ? orderedEffectiveFields
           .filter((f) => String(f.label).toLowerCase() !== 'case #' && Number(f.id) !== Number(caseIdFieldId))
           .map((f) => ({ id: String(f.id), label: String(f.label) }))
       : [];
@@ -312,8 +329,8 @@ module.exports = async (req, res) => {
       const mappedRow = (mappedSource[idx] && typeof mappedSource[idx] === 'object') ? mappedSource[idx] : {};
       const normalized = {};
       const fieldList = hasPersonalQuickbaseQuery
-        ? (effectiveFields.length ? effectiveFields.map((f) => String(f.id)) : dynamicFieldIds)
-        : effectiveFields.map((f) => String(f.id));
+        ? (orderedEffectiveFields.length ? orderedEffectiveFields.map((f) => String(f.id)) : dynamicFieldIds)
+        : orderedEffectiveFields.map((f) => String(f.id));
 
       fieldList.forEach((fid) => {
         const fieldId = String(fid);

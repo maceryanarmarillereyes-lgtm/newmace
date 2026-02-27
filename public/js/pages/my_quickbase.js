@@ -89,7 +89,8 @@
       tableId: String(profile.qb_table_id || profile.quickbase_table_id || parsedFromLink.tableId || '').trim(),
       customColumns: Array.isArray(profile.qb_custom_columns) ? profile.qb_custom_columns.map((v) => String(v)) : [],
       customFilters: normalizeFilters(profile.qb_custom_filters),
-      allAvailableFields: []
+      allAvailableFields: [],
+      uniqueValuesMap: Object.create(null)
     };
 
     root.innerHTML = `
@@ -140,6 +141,7 @@
             <section class="card pad">
               <div class="h3" style="margin-top:0;">2) Custom Columns</div>
               <div id="qbColumnGrid" class="grid cols-3" style="gap:8px;"></div>
+              <div id="qbSelectedColumnSummary" class="small muted" style="margin-top:10px;"></div>
             </section>
 
             <section class="card pad">
@@ -161,31 +163,79 @@
 
     function renderColumnGrid() {
       const grid = root.querySelector('#qbColumnGrid');
+      const summary = root.querySelector('#qbSelectedColumnSummary');
       if (!grid) return;
       if (!state.allAvailableFields.length) {
         grid.innerHTML = '<div class="small muted">Load data first to fetch available Quickbase fields.</div>';
+        if (summary) summary.textContent = 'Selected Columns: none';
         return;
       }
+
+      const selectedById = new Map();
+      state.customColumns.forEach((id, idx) => selectedById.set(String(id), idx + 1));
+
       grid.innerHTML = state.allAvailableFields.map((f) => {
-        const checked = state.customColumns.includes(String(f.id)) ? 'checked' : '';
-        return `<label class="row" style="gap:8px;align-items:flex-start;"><input type="checkbox" data-col-id="${esc(String(f.id))}" ${checked} /><span class="small">${esc(f.label)} <span class="muted">(#${esc(String(f.id))})</span></span></label>`;
+        const id = String(f.id);
+        const order = selectedById.get(id);
+        return `
+          <button type="button" data-col-id="${esc(id)}" class="qb-col-card" style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:10px;border-radius:12px;border:1px solid ${order ? 'rgba(56,189,248,.55)' : 'rgba(255,255,255,.14)'};background:${order ? 'linear-gradient(145deg, rgba(14,116,144,.45), rgba(30,41,59,.78))' : 'linear-gradient(145deg, rgba(255,255,255,.10), rgba(255,255,255,.04))'};color:inherit;cursor:pointer;text-align:left;">
+            <span class="small">${esc(f.label)} <span class="muted">(#${esc(id)})</span></span>
+            ${order ? `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:rgba(14,165,233,.22);border:1px solid rgba(56,189,248,.55);font-size:12px;font-weight:700;">${order}</span>` : ''}
+          </button>
+        `;
       }).join('');
 
-      grid.querySelectorAll('input[type="checkbox"]').forEach((el) => {
-        el.addEventListener('change', () => {
+      if (summary) {
+        if (!state.customColumns.length) {
+          summary.innerHTML = 'Selected Columns: <span class="muted">none</span>';
+        } else {
+          const byId = new Map(state.allAvailableFields.map((f) => [String(f.id), String(f.label || `Field #${f.id}`)]));
+          const items = state.customColumns
+            .map((id, idx) => `${idx + 1}. ${esc(byId.get(String(id)) || `Field #${id}`)}`)
+            .join(' · ');
+          summary.innerHTML = `Selected Columns (ordered): ${items}`;
+        }
+      }
+
+      grid.querySelectorAll('.qb-col-card').forEach((el) => {
+        el.addEventListener('click', () => {
           const id = String(el.getAttribute('data-col-id') || '').trim();
           if (!id) return;
-          if (el.checked) {
-            if (!state.customColumns.includes(id)) state.customColumns.push(id);
+          if (!state.customColumns.includes(id)) {
+            state.customColumns.push(id);
           } else {
             state.customColumns = state.customColumns.filter((v) => v !== id);
           }
+          renderColumnGrid();
         });
       });
     }
 
+    function getUniqueFieldValues(fieldId) {
+      const key = String(fieldId || '').trim();
+      if (!key) return [];
+      const out = state.uniqueValuesMap[key];
+      return Array.isArray(out) ? out : [];
+    }
+
     function filterRowTemplate(f, idx) {
       const fieldOptions = state.allAvailableFields.map((x) => `<option value="${esc(String(x.id))}" ${String(f.fieldId) === String(x.id) ? 'selected' : ''}>${esc(x.label)} (#${esc(String(x.id))})</option>`).join('');
+      const fieldValues = getUniqueFieldValues(f.fieldId);
+      const activeValue = String(f.value || '').trim();
+      const useSelect = fieldValues.length > 0;
+      const useCustomInput = useSelect && !!activeValue && !fieldValues.includes(activeValue);
+      const valueControl = useSelect
+        ? `
+          <div class="row" style="gap:6px;align-items:center;flex-wrap:wrap;">
+            <select class="input" data-f="valuePreset" style="min-width:220px;">
+              <option value="">Select Option</option>
+              ${fieldValues.map((val) => `<option value="${esc(val)}" ${activeValue === val ? 'selected' : ''}>${esc(val)}</option>`).join('')}
+              <option value="__custom__" ${useCustomInput ? 'selected' : ''}>Type custom...</option>
+            </select>
+            ${useCustomInput ? `<input class="input" data-f="valueCustom" value="${esc(activeValue)}" placeholder="Type custom value" style="min-width:220px;" />` : ''}
+          </div>
+        `
+        : `<input class="input" data-f="value" value="${esc(activeValue)}" placeholder="Filter value" style="min-width:220px;" />`;
       return `
         <div class="row" data-filter-idx="${idx}" style="gap:8px;align-items:center;flex-wrap:wrap;">
           <select class="input" data-f="fieldId" style="max-width:300px;"><option value="">Select field</option>${fieldOptions}</select>
@@ -194,7 +244,7 @@
             <option value="CT" ${f.operator === 'CT' ? 'selected' : ''}>Contains</option>
             <option value="XEX" ${f.operator === 'XEX' ? 'selected' : ''}>Not Equals</option>
           </select>
-          <input class="input" data-f="value" value="${esc(f.value)}" placeholder="Filter value" style="min-width:220px;" />
+          ${valueControl}
           <button class="btn" data-remove-filter="${idx}" type="button">Remove</button>
         </div>
       `;
@@ -220,13 +270,57 @@
       rows.querySelectorAll('[data-filter-idx]').forEach((row) => {
         const idx = Number(row.getAttribute('data-filter-idx'));
         row.querySelectorAll('[data-f]').forEach((input) => {
-          input.addEventListener('input', () => {
-            const key = String(input.getAttribute('data-f') || '');
+          const key = String(input.getAttribute('data-f') || '');
+          const eventName = input.tagName === 'SELECT' ? 'change' : 'input';
+          input.addEventListener(eventName, () => {
             if (!state.customFilters[idx]) return;
+            if (key === 'fieldId') {
+              state.customFilters[idx].fieldId = String(input.value || '').trim();
+              renderFilters();
+              return;
+            }
+            if (key === 'valuePreset') {
+              const chosen = String(input.value || '').trim();
+              if (chosen === '__custom__') {
+                state.customFilters[idx].value = '';
+              } else {
+                state.customFilters[idx].value = chosen;
+              }
+              renderFilters();
+              return;
+            }
+            if (key === 'valueCustom') {
+              state.customFilters[idx].value = String(input.value || '').trim();
+              return;
+            }
+            if (key === 'value') {
+              state.customFilters[idx].value = String(input.value || '').trim();
+              return;
+            }
             state.customFilters[idx][key] = String(input.value || '').trim();
           });
         });
       });
+    }
+
+    function buildUniqueValuesMap(records) {
+      const setsByField = Object.create(null);
+      (Array.isArray(records) ? records : []).forEach((row) => {
+        const fields = row && row.fields ? row.fields : {};
+        Object.keys(fields).forEach((fid) => {
+          const raw = fields[fid] && typeof fields[fid] === 'object' ? fields[fid].value : fields[fid];
+          const value = String(raw == null ? '' : raw).trim();
+          if (!value || value.length > 120) return;
+          if (!setsByField[fid]) setsByField[fid] = new Set();
+          setsByField[fid].add(value);
+        });
+      });
+
+      const normalized = Object.create(null);
+      Object.keys(setsByField).forEach((fid) => {
+        normalized[fid] = Array.from(setsByField[fid]).sort((a, b) => a.localeCompare(b));
+      });
+      state.uniqueValuesMap = normalized;
     }
 
     async function loadQuickbaseData() {
@@ -240,6 +334,7 @@
         }
         const data = await window.QuickbaseAdapter.fetchMonitoringData();
         state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
+        buildUniqueValuesMap(Array.isArray(data && data.records) ? data.records : []);
         renderColumnGrid();
         renderFilters();
         renderRecords(root, data || {});
@@ -275,12 +370,20 @@
       const qidInput = String((root.querySelector('#qbQid') || {}).value || '').trim();
       const tableIdInput = String((root.querySelector('#qbTableId') || {}).value || '').trim();
       const parsed = parseQuickbaseLink(reportLink);
+      const orderedColumns = [];
+      const seenCols = new Set();
+      (state.customColumns || []).forEach((id) => {
+        const cleaned = String(id || '').trim();
+        if (!cleaned || seenCols.has(cleaned)) return;
+        seenCols.add(cleaned);
+        orderedColumns.push(cleaned);
+      });
       const payload = {
         qb_report_link: reportLink,
         qb_qid: qidInput || parsed.qid,
         qb_realm: parsed.realm,
         qb_table_id: tableIdInput || parsed.tableId,
-        qb_custom_columns: Array.from(new Set((state.customColumns || []).map((v) => String(v).trim()).filter(Boolean))),
+        qb_custom_columns: orderedColumns,
         qb_custom_filters: normalizeFilters(state.customFilters)
       };
 
