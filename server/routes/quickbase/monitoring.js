@@ -61,6 +61,25 @@ function parseCsvOrArray(value) {
   return raw.split(',').map((v) => String(v || '').trim()).filter(Boolean);
 }
 
+
+function parseSearchFieldIds(value) {
+  const list = parseCsvOrArray(value)
+    .map((v) => Number(v))
+    .filter((n) => Number.isFinite(n));
+  return Array.from(new Set(list));
+}
+
+function buildSearchClause(searchTerm, fieldIds) {
+  const term = String(searchTerm || '').trim();
+  const ids = Array.isArray(fieldIds) ? fieldIds.filter((n) => Number.isFinite(n)) : [];
+  if (!term || !ids.length) return '';
+  const encoded = encodeQuickbaseLiteral(term);
+  const clauses = ids.map((fid) => `{${fid}.CT.'${encoded}'}`);
+  if (!clauses.length) return '';
+  if (clauses.length === 1) return clauses[0];
+  return `(${clauses.join(' OR ')})`;
+}
+
 function normalizeProfileColumns(input) {
   if (!Array.isArray(input)) return [];
   return input
@@ -239,6 +258,8 @@ module.exports = async (req, res) => {
     const assignedToFilter = parseCsvOrArray(req?.query?.assignedTo);
     const caseStatusFilter = parseCsvOrArray(req?.query?.caseStatus);
     const excludeStatus = parseCsvOrArray(req?.query?.excludeStatus);
+    const search = String(req?.query?.search || '').trim();
+    const requestedSearchFieldIds = parseSearchFieldIds(req?.query?.searchFields);
 
     const whereClauses = [];
 
@@ -266,7 +287,8 @@ module.exports = async (req, res) => {
 
     const routeWhere = String(req?.query?.where || '').trim();
     const manualWhere = whereClauses.length > 0 ? whereClauses.join(' AND ') : '';
-    const effectiveWhere = routeWhere || (manualWhere || null);
+    const routedWhere = [routeWhere, manualWhere].filter(Boolean).join(' AND ');
+    const effectiveWhere = routedWhere || null;
 
     let reportMetadata = null;
     if (hasPersonalQuickbaseQuery) {
@@ -276,6 +298,9 @@ module.exports = async (req, res) => {
     const selectFields = hasPersonalQuickbaseQuery && reportMetadata?.fields?.length
       ? (mappedProfileColumns.length ? mappedProfileColumns.map((f) => f.id) : reportMetadata.fields)
       : selectedFields.map((f) => f.id);
+
+    const searchableFieldIds = requestedSearchFieldIds.length ? requestedSearchFieldIds : selectFields;
+    const searchClause = buildSearchClause(search, searchableFieldIds);
 
     let finalWhere = effectiveWhere;
     if (hasPersonalQuickbaseQuery && reportMetadata?.filter) {
@@ -287,11 +312,14 @@ module.exports = async (req, res) => {
         : `(${profileFilterClauses.join(` ${profileFilterMatch === 'ANY' ? 'OR' : 'AND'} `)})`;
       finalWhere = [finalWhere, groupedProfileClause].filter(Boolean).join(' AND ');
     }
+    if (searchClause) {
+      finalWhere = [finalWhere, searchClause].filter(Boolean).join(' AND ');
+    }
 
     const out = await queryQuickbaseRecords({
       config: userQuickbaseConfig,
       where: finalWhere || undefined,
-      limit: req?.query?.limit || 100,
+      limit: req?.query?.limit || 500,
       select: selectFields,
       allowEmptySelect: hasPersonalQuickbaseQuery && !reportMetadata,
       enableQueryIdFallback: !hasPersonalQuickbaseQuery,
@@ -387,7 +415,9 @@ module.exports = async (req, res) => {
           caseStatus: caseStatusFilter,
           type: typeFilter,
           custom: profileFilterClauses,
-          customMatch: profileFilterMatch
+          customMatch: profileFilterMatch,
+          search,
+          searchFieldIds: searchableFieldIds
         }
       }
     });

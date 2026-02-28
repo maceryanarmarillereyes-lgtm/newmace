@@ -54,6 +54,12 @@
     return clauses.join(joiner);
   }
 
+  function appendParam(params, key, value) {
+    const clean = String(value == null ? '' : value).trim();
+    if (!clean) return;
+    params.set(key, clean);
+  }
+
   function getToken() {
     try {
       if (window.CloudAuth && typeof CloudAuth.accessToken === 'function') {
@@ -177,6 +183,14 @@
       tableId: tableId,
       realm: realm
     });
+
+    const extraWhere = buildQuickbaseWhere(overrideParams && overrideParams.customFilters, overrideParams && overrideParams.filterMatch);
+    appendParam(queryParams, 'where', (overrideParams && overrideParams.where) || extraWhere);
+    appendParam(queryParams, 'search', overrideParams && overrideParams.search);
+    appendParam(queryParams, 'searchFields', Array.isArray(overrideParams && overrideParams.searchFields)
+      ? (overrideParams.searchFields || []).map(function(v){ return String(v || '').trim(); }).filter(Boolean).join(',')
+      : '');
+    appendParam(queryParams, 'limit', overrideParams && overrideParams.limit);
 
     const candidates = [
       '/api/quickbase/monitoring?' + queryParams.toString(),
