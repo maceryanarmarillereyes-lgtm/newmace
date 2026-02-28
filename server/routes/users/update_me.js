@@ -336,7 +336,7 @@ module.exports = async (req, res) => {
 
     const db = {
       async query() {
-        const query = 'select=column_name&table_name=eq.users&column_name=eq.quickbase_settings&limit=1';
+        const query = 'select=column_name&table_name=eq.mums_profiles&column_name=eq.quickbase_settings&limit=1';
         const schemaOut = await serviceSelect('/rest/v1/information_schema.columns?' + query);
         return (schemaOut && schemaOut.ok && Array.isArray(schemaOut.json)) ? schemaOut.json : [];
       }
