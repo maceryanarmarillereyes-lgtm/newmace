@@ -1,5 +1,8 @@
 /* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
-const { getUserFromJwt, getProfileForUserId, serviceUpdate } = require('../../lib/supabase');
+const { getUserFromJwt, getProfileForUserId, serviceUpdate, serviceSelect } = require('../../lib/supabase');
+const { normalizeFilters } = require('../../lib/quickbase-utils');
+const { escapeQuickbaseValue } = require('../../lib/escape');
+const { ensureQuickbaseSettingsColumn } = require('../../startup/schema-check');
 
 function sendJson(res, statusCode, body) {
   res.statusCode = statusCode;
@@ -168,7 +171,38 @@ module.exports = async (req, res) => {
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'quickbase_settings')) {
-      const normalizedSettings = normalizeQuickbaseConfig(parseQuickbaseConfigInput(body.quickbase_settings));
+      let inputQuickbaseSettings = body.quickbase_settings;
+      if (typeof inputQuickbaseSettings === 'string') {
+        try {
+          inputQuickbaseSettings = inputQuickbaseSettings ? JSON.parse(inputQuickbaseSettings) : {};
+        } catch (_) {
+          return sendJson(res, 400, { error: 'invalid_payload', detail: 'quickbase_settings not valid JSON' });
+        }
+      }
+
+      if (!inputQuickbaseSettings || typeof inputQuickbaseSettings !== 'object' || Array.isArray(inputQuickbaseSettings)) {
+        return sendJson(res, 400, { error: 'invalid_payload', detail: 'quickbase_settings must be an object' });
+      }
+
+      if (Object.prototype.hasOwnProperty.call(inputQuickbaseSettings, 'filters')) {
+        if (!Array.isArray(inputQuickbaseSettings.filters)) {
+          return sendJson(res, 400, { error: 'invalid_payload', detail: 'quickbase_settings.filters must be an array' });
+        }
+        try {
+          const normalizedFilters = normalizeFilters(inputQuickbaseSettings.filters)
+            .map((filter) => ({
+              ...filter,
+              value: escapeQuickbaseValue(filter.value)
+            }));
+          inputQuickbaseSettings.filters = normalizedFilters;
+          inputQuickbaseSettings.qb_custom_filters = normalizedFilters;
+          console.info('[users.update] quickbase filter normalization applied', { count: normalizedFilters.length });
+        } catch (err) {
+          return sendJson(res, 400, { error: 'invalid_payload', detail: String(err && err.message ? err.message : err) });
+        }
+      }
+
+      const normalizedSettings = normalizeQuickbaseConfig(inputQuickbaseSettings);
       patch.quickbase_settings = normalizedSettings;
       patch.quickbase_config = normalizedSettings;
 
@@ -272,7 +306,34 @@ module.exports = async (req, res) => {
 
     if (!Object.keys(patch).length) return sendJson(res, 200, { ok: true, updated: false, profile: null });
 
-    let out = await serviceUpdate('mums_profiles', patch, { user_id: `eq.${authed.id}` });
+    let out;
+    const filtersCount = Array.isArray((patch.quickbase_settings || {}).customFilters)
+      ? patch.quickbase_settings.customFilters.length
+      : 0;
+
+    const db = {
+      async query() {
+        const query = 'select=column_name&table_name=eq.users&column_name=eq.quickbase_settings&limit=1';
+        const schemaOut = await serviceSelect('/rest/v1/information_schema.columns?' + query);
+        return (schemaOut && schemaOut.ok && Array.isArray(schemaOut.json)) ? schemaOut.json : [];
+      }
+    };
+
+    if (Object.prototype.hasOwnProperty.call(patch, 'quickbase_settings')) {
+      const hasQuickbaseSettingsColumn = await ensureQuickbaseSettingsColumn(db);
+      if (!hasQuickbaseSettingsColumn) {
+        console.warn('[users.update] quickbase_settings column missing; writing to quickbase_config fallback');
+        patch.quickbase_config = patch.quickbase_settings;
+        delete patch.quickbase_settings;
+      }
+    }
+
+    try {
+      out = await serviceUpdate('mums_profiles', patch, { user_id: `eq.${authed.id}` });
+    } catch (err) {
+      console.error('[users.update] DB_WRITE_FAILED', err);
+      return sendJson(res, 500, { error: 'update_failed', code: 'DB_WRITE_FAILED' });
+    }
 
     // Backward-compatible fallback:
     // If environment DB is missing qb_custom_* columns, retry update without those keys
@@ -299,9 +360,10 @@ module.exports = async (req, res) => {
           }
         }
       }
-      return sendJson(res, 500, { ok: false, error: 'update_failed', details: out.json || out.text });
+      console.error('[users.update] DB_WRITE_FAILED', out.json || out.text || out.status || 'unknown');
+      return sendJson(res, 500, { error: 'update_failed', code: 'DB_WRITE_FAILED' });
     }
-
+    console.info('[users.update] quickbase_settings saved', { userId: authed.id, filtersCount });
     return sendJson(res, 200, { ok: true, updated: true, patch });
   } catch (err) {
     return sendJson(res, 500, { ok: false, error: 'update_me_failed', message: String(err && err.message ? err.message : err) });
