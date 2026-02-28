@@ -127,13 +127,28 @@ function normalizeFilterMatch(raw) {
   return String(raw || '').trim().toUpperCase() === 'ANY' ? 'ANY' : 'ALL';
 }
 
+function parseQuickbaseSettings(raw) {
+  if (!raw) return {};
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  try {
+    const parsed = JSON.parse(String(raw));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
 module.exports = async (req, res) => {
   try {
     const auth = await requireAuthedUser(req);
     if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
     const profile = auth?.profile || {};
-    const profileQuickbaseConfig = (profile.quickbase_config && typeof profile.quickbase_config === 'object') ? profile.quickbase_config : {};
+    const profileQuickbaseSettings = parseQuickbaseSettings(profile.quickbase_settings);
+    const profileQuickbaseConfigRaw = parseQuickbaseSettings(profile.quickbase_config);
+    const profileQuickbaseConfig = Object.keys(profileQuickbaseSettings).length
+      ? profileQuickbaseSettings
+      : profileQuickbaseConfigRaw;
     const profileToken = String(profile.qb_token || profile.quickbase_token || profile.quickbase_user_token || '').trim();
     const profileLink = String(profileQuickbaseConfig.reportLink || profileQuickbaseConfig.qb_report_link || profile.qb_report_link || profile.quickbase_url || profile.quickbase_report_link || '').trim();
     const profileRealm = String(profileQuickbaseConfig.realm || profileQuickbaseConfig.qb_realm || profile.qb_realm || profile.quickbase_realm || '').trim();
