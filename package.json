@@ -7,7 +7,7 @@
   },
   "version": "1.0.0",
   "scripts": {
-    "vercel-build": "echo \"Static site deployment — no build step required\"",
+    "vercel-build": "echo \"Static site deployment \u2014 no build step required\"",
     "build": "npm run vercel-build",
     "start": "node -e \"console.log(\\\"Static site: no start script\\\")\"",
     "test:env": "node scripts/test-env.js",
@@ -19,5 +19,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
   }
 }
