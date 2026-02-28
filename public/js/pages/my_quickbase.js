@@ -712,25 +712,18 @@
             throw new Error('Quickbase adapter unavailable');
           }
           const activeCounter = state.activeCounterIndex >= 0 ? state.dashboardCounters[state.activeCounterIndex] : null;
+          const mergedFilters = normalizeFilters(state.customFilters);
           const counterFilter = counterToFilter(activeCounter);
-          const requestPayload = {
+          if (counterFilter) mergedFilters.push(counterFilter);
+          const searchFieldIds = normalizeFieldIds((state.currentPayload.columns || []).map((c) => c.id).concat(state.customColumns || []));
+          const data = await window.QuickbaseAdapter.fetchMonitoringData({
             bust: Date.now(),
+            customFilters: mergedFilters,
+            filterMatch: state.filterMatch,
+            search: state.searchTerm,
+            searchFields: searchFieldIds,
             limit: 500
-          };
-
-          if (counterFilter) {
-            requestPayload.customFilters = [counterFilter];
-            requestPayload.filterMatch = 'ALL';
-          }
-
-          const searchValue = String(state.searchTerm || '').trim();
-          if (searchValue) {
-            requestPayload.search = searchValue;
-            const searchFieldIds = normalizeFieldIds((state.currentPayload.columns || []).map((c) => c.id).concat(state.customColumns || []));
-            if (searchFieldIds.length) requestPayload.searchFields = searchFieldIds;
-          }
-
-          const data = await window.QuickbaseAdapter.fetchMonitoringData(requestPayload);
+          });
           state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
           renderColumnGrid();
           renderFilters();

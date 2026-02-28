@@ -186,16 +186,10 @@
 
     const extraWhere = buildQuickbaseWhere(overrideParams && overrideParams.customFilters, overrideParams && overrideParams.filterMatch);
     appendParam(queryParams, 'where', (overrideParams && overrideParams.where) || extraWhere);
-
-    const searchValue = String((overrideParams && overrideParams.search) || '').trim();
-    if (searchValue) {
-      appendParam(queryParams, 'search', searchValue);
-      const searchFields = Array.isArray(overrideParams && overrideParams.searchFields)
-        ? (overrideParams.searchFields || []).map(function(v){ return String(v || '').trim(); }).filter(Boolean)
-        : [];
-      if (searchFields.length) appendParam(queryParams, 'searchFields', searchFields.join(','));
-    }
-
+    appendParam(queryParams, 'search', overrideParams && overrideParams.search);
+    appendParam(queryParams, 'searchFields', Array.isArray(overrideParams && overrideParams.searchFields)
+      ? (overrideParams.searchFields || []).map(function(v){ return String(v || '').trim(); }).filter(Boolean).join(',')
+      : '');
     appendParam(queryParams, 'limit', overrideParams && overrideParams.limit);
 
     const candidates = [

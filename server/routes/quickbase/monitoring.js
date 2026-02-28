@@ -287,6 +287,8 @@ module.exports = async (req, res) => {
 
     const routeWhere = String(req?.query?.where || '').trim();
     const manualWhere = whereClauses.length > 0 ? whereClauses.join(' AND ') : '';
+    const routedWhere = [routeWhere, manualWhere].filter(Boolean).join(' AND ');
+    const effectiveWhere = routedWhere || null;
 
     let reportMetadata = null;
     if (hasPersonalQuickbaseQuery) {
@@ -298,18 +300,20 @@ module.exports = async (req, res) => {
       : selectedFields.map((f) => f.id);
 
     const searchableFieldIds = requestedSearchFieldIds.length ? requestedSearchFieldIds : selectFields;
-    const searchClause = search ? buildSearchClause(search, searchableFieldIds) : '';
+    const searchClause = buildSearchClause(search, searchableFieldIds);
 
-    const conditions = [];
-    if (hasPersonalQuickbaseQuery && reportMetadata?.filter) conditions.push(String(reportMetadata.filter).trim());
-    if (manualWhere) conditions.push(manualWhere);
-    if (routeWhere) conditions.push(routeWhere);
-
+    let finalWhere = effectiveWhere;
+    if (hasPersonalQuickbaseQuery && reportMetadata?.filter) {
+      finalWhere = reportMetadata.filter;
+    }
     if (profileFilterClauses.length) {
       const groupedProfileClause = profileFilterClauses.length === 1
         ? profileFilterClauses[0]
         : `(${profileFilterClauses.join(` ${profileFilterMatch === 'ANY' ? 'OR' : 'AND'} `)})`;
       if (groupedProfileClause) conditions.push(groupedProfileClause);
+    }
+    if (searchClause) {
+      finalWhere = [finalWhere, searchClause].filter(Boolean).join(' AND ');
     }
 
     if (searchClause) conditions.push(searchClause);
