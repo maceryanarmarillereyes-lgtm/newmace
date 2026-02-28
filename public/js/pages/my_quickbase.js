@@ -75,6 +75,43 @@
     return value === 'ANY' ? 'ANY' : 'ALL';
   }
 
+  function normalizeDashboardCounters(raw) {
+    let source = raw;
+    if (typeof source === 'string') {
+      try {
+        source = JSON.parse(source);
+      } catch (_) {
+        source = [];
+      }
+    }
+    if (!Array.isArray(source)) return [];
+    const allowedOperators = new Set(['EX', 'XEX', 'CT']);
+    const operatorMap = {
+      'IS EQUAL TO': 'EX',
+      '=': 'EX',
+      EX: 'EX',
+      'IS NOT EQUAL TO': 'XEX',
+      'IS NOT': 'XEX',
+      '!=': 'XEX',
+      XEX: 'XEX',
+      CONTAINS: 'CT',
+      CT: 'CT'
+    };
+    return source
+      .filter((item) => item && typeof item === 'object')
+      .map((item) => {
+        const opKey = String(item.operator || '').trim().toUpperCase();
+        const normalizedOperator = operatorMap[opKey] || opKey || 'EX';
+        return {
+          fieldId: String(item.fieldId ?? item.field_id ?? '').trim(),
+          operator: allowedOperators.has(normalizedOperator) ? normalizedOperator : 'EX',
+          value: String(item.value ?? '').trim(),
+          label: String(item.label ?? '').trim()
+        };
+      })
+      .filter((item) => item.fieldId);
+  }
+
 
   function parseQuickbaseSettings(raw) {
     if (!raw) return {};
@@ -98,7 +135,8 @@
         ? (cfg.customColumns || cfg.qb_custom_columns).map((v) => String(v))
         : [],
       customFilters: normalizeFilters(cfg.customFilters || cfg.qb_custom_filters),
-      filterMatch: normalizeFilterMatch(cfg.filterMatch || cfg.qb_filter_match)
+      filterMatch: normalizeFilterMatch(cfg.filterMatch || cfg.qb_filter_match),
+      dashboardCounters: normalizeDashboardCounters(cfg.dashboardCounters || cfg.dashboard_counters || cfg.qb_dashboard_counters)
     };
   }
 
@@ -115,8 +153,53 @@
       realm: dbConfig.realm || fallbackConfig.realm,
       customColumns: dbConfig.customColumns.length ? dbConfig.customColumns : fallbackConfig.customColumns,
       customFilters: dbConfig.customFilters.length ? dbConfig.customFilters : fallbackConfig.customFilters,
-      filterMatch: dbConfig.filterMatch || fallbackConfig.filterMatch || 'ALL'
+      filterMatch: dbConfig.filterMatch || fallbackConfig.filterMatch || 'ALL',
+      dashboardCounters: dbConfig.dashboardCounters.length ? dbConfig.dashboardCounters : fallbackConfig.dashboardCounters
     };
+  }
+
+
+  function renderDashboardCounters(root, records, settings) {
+    const host = root.querySelector('#qbDashboardCounters');
+    if (!host) return;
+    try {
+      const rows = Array.isArray(records) ? records : [];
+      const dashboardCounters = normalizeDashboardCounters(settings && settings.dashboard_counters);
+      if (!dashboardCounters.length) {
+        host.innerHTML = '';
+        return;
+      }
+      const iconByIndex = ['🧳', '📊', '👥', '⚠️', '📌', '✅'];
+      const widgets = dashboardCounters.map((counter, index) => {
+        const matcherValue = String(counter.value || '').toLowerCase();
+        const matchedRows = rows.filter((record) => {
+          const fields = record && record.fields ? record.fields : {};
+          const field = fields[String(counter.fieldId)] || null;
+          const sourceValue = String(field && field.value != null ? field.value : '').toLowerCase();
+          if (counter.operator === 'XEX') return sourceValue !== matcherValue;
+          if (counter.operator === 'CT') return sourceValue.includes(matcherValue);
+          return sourceValue === matcherValue;
+        });
+
+        const label = counter.label || 'N/A';
+        const operatorLabel = counter.operator === 'XEX' ? 'Is Not Equal To' : counter.operator === 'CT' ? 'Contains' : 'Is Equal To';
+        const summary = `${counter.fieldId || 'Field'} ${operatorLabel} ${counter.value || 'N/A'}`;
+        return `
+          <div style="background: rgba(30, 30, 30, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 16px 24px; min-width: 180px; display: flex; flex-direction: column; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.2s ease; gap:6px;">
+            <div class="small muted">${esc(label)}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+              <div style="font-size:40px;font-weight:800;line-height:1;">${esc(String(matchedRows.length))}</div>
+              <div style="font-size:28px;opacity:.9;">${iconByIndex[index % iconByIndex.length]}</div>
+            </div>
+            <div class="small muted" style="font-size:12px;">${esc(summary)}</div>
+          </div>
+        `;
+      }).join('');
+
+      host.innerHTML = widgets;
+    } catch (_) {
+      host.innerHTML = '';
+    }
   }
 
   function renderRecords(root, payload) {
@@ -162,6 +245,7 @@
       customColumns: Array.isArray(quickbaseConfig.customColumns) ? quickbaseConfig.customColumns.map((v) => String(v)) : [],
       customFilters: normalizeFilters(quickbaseConfig.customFilters),
       filterMatch: normalizeFilterMatch(quickbaseConfig.filterMatch || profile.qb_custom_filter_match),
+      dashboardCounters: normalizeDashboardCounters(quickbaseConfig.dashboardCounters || profile.qb_dashboard_counters),
       allAvailableFields: [],
       isSaving: false
     };
@@ -180,6 +264,8 @@
             </div>
           </div>
         </div>
+
+        <div id="qbDashboardCounters" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;"></div>
 
         <div class="card pad" style="margin-top:14px;">
           <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -244,6 +330,14 @@
                 </select>
               </div>
               <div id="qbFilterRows" style="display:grid;gap:8px;margin-top:10px;"></div>
+            </section>
+
+            <section class="card pad">
+              <div class="row" style="justify-content:space-between;align-items:center;">
+                <div class="h3" style="margin:0;">Dashboard Counter Filters (Self-Configure)</div>
+                <button class="btn primary" id="qbAddCounterBtn" type="button">+ Add New Counter Filter</button>
+              </div>
+              <div id="qbCounterRows" style="display:grid;gap:10px;margin-top:10px;"></div>
             </section>
 
             <div class="row" style="justify-content:flex-end;gap:8px;">
@@ -397,6 +491,61 @@
       }
     }
 
+
+    function counterRowTemplate(counter, idx) {
+      const fieldOptions = state.allAvailableFields
+        .map((x) => `<option value="${esc(String(x.id))}" ${String(counter.fieldId) === String(x.id) ? 'selected' : ''}>${esc(x.label)} (#${esc(String(x.id))})</option>`)
+        .join('');
+      return `
+        <div data-counter-idx="${idx}" style="display:grid;gap:8px;padding:10px;border-radius:12px;background:rgba(15,23,42,.35);border:1px solid rgba(255,255,255,.12);">
+          <div class="row" style="justify-content:space-between;align-items:center;">
+            <div class="small muted" style="font-weight:700;">Counter ${idx + 1}</div>
+            <button class="btn" data-remove-counter="${idx}" type="button" aria-label="Delete counter">🗑️</button>
+          </div>
+          <div class="grid cols-2" style="gap:8px;">
+            <label class="field"><div class="label">Target Field</div><select class="input" data-counter-f="fieldId"><option value="">Select field</option>${fieldOptions}</select></label>
+            <label class="field"><div class="label">Operator</div><select class="input" data-counter-f="operator">
+              <option value="EX" ${counter.operator === 'EX' ? 'selected' : ''}>Is Equal To</option>
+              <option value="XEX" ${counter.operator === 'XEX' ? 'selected' : ''}>Is Not Equal To</option>
+              <option value="CT" ${counter.operator === 'CT' ? 'selected' : ''}>Contains</option>
+            </select></label>
+          </div>
+          <label class="field"><div class="label">Value</div><input type="text" class="input" data-counter-f="value" value="${esc(counter.value || '')}" placeholder="e.g. Open" /></label>
+          <label class="field"><div class="label">Label</div><input type="text" class="input" data-counter-f="label" value="${esc(counter.label || '')}" placeholder="e.g. Open Cases" /></label>
+        </div>
+      `;
+    }
+
+    function renderCounterFilters() {
+      const rows = root.querySelector('#qbCounterRows');
+      if (!rows) return;
+      if (!state.dashboardCounters.length) {
+        rows.innerHTML = '<div class="small muted">No dashboard counter filters configured.</div>';
+      } else {
+        rows.innerHTML = state.dashboardCounters.map((counter, idx) => counterRowTemplate(counter, idx)).join('');
+      }
+
+      rows.querySelectorAll('[data-remove-counter]').forEach((btn) => {
+        btn.onclick = () => {
+          const idx = Number(btn.getAttribute('data-remove-counter'));
+          state.dashboardCounters = state.dashboardCounters.filter((_, i) => i !== idx);
+          renderCounterFilters();
+        };
+      });
+
+      rows.querySelectorAll('[data-counter-idx]').forEach((row) => {
+        const idx = Number(row.getAttribute('data-counter-idx'));
+        row.querySelectorAll('[data-counter-f]').forEach((input) => {
+          const key = String(input.getAttribute('data-counter-f') || '').trim();
+          const eventName = input.tagName === 'SELECT' ? 'change' : 'input';
+          input.addEventListener(eventName, () => {
+            if (!state.dashboardCounters[idx]) return;
+            state.dashboardCounters[idx][key] = String(input.value || '').trim();
+          });
+        });
+      });
+    }
+
     function bindColumnSearch() {
       const input = root.querySelector('#qbColumnSearch');
       if (!input || modalBindingsActive) return;
@@ -477,10 +626,12 @@
           renderColumnGrid();
           renderFilters();
           renderRecords(root, data || {});
+          renderDashboardCounters(root, data && data.records, { dashboard_counters: state.dashboardCounters });
           lastQuickbaseLoadAt = Date.now();
         } catch (err) {
           if (meta) meta.textContent = 'Check Connection';
           if (host) host.innerHTML = `<div class="small" style="padding:10px;color:#fecaca;">${esc(String(err && err.message || 'Unable to load Quickbase records'))}</div>`;
+          renderDashboardCounters(root, [], { dashboard_counters: [] });
         } finally {
           quickbaseLoadInFlight = null;
         }
@@ -519,6 +670,7 @@
     function openSettings() {
       renderColumnGrid();
       renderFilters();
+      renderCounterFilters();
       if (window.UI && UI.openModal) UI.openModal('qbSettingsModal');
       bindColumnSearch();
       bindFloatingDrag();
@@ -560,6 +712,10 @@
       state.customFilters.push({ fieldId: '', operator: 'EX', value: '' });
       renderFilters();
     };
+    root.querySelector('#qbAddCounterBtn').onclick = () => {
+      state.dashboardCounters.push({ fieldId: '', operator: 'EX', value: '', label: '' });
+      renderCounterFilters();
+    };
 
     const saveBtn = root.querySelector('#qbSaveSettingsBtn');
     const saveLock = root.querySelector('#qbSettingsSavingLock');
@@ -584,7 +740,8 @@
         tableId: tableIdInput || parsed.tableId,
         customColumns: orderedColumns,
         customFilters: normalizeFilters(state.customFilters),
-        filterMatch: normalizeFilterMatch(state.filterMatch)
+        filterMatch: normalizeFilterMatch(state.filterMatch),
+        dashboard_counters: JSON.stringify(normalizeDashboardCounters(state.dashboardCounters))
       };
 
       const payload = {
@@ -594,7 +751,8 @@
         qb_table_id: currentSettingsObject.tableId,
         qb_custom_columns: currentSettingsObject.customColumns,
         qb_custom_filters: currentSettingsObject.customFilters,
-        qb_filter_match: currentSettingsObject.filterMatch
+        qb_filter_match: currentSettingsObject.filterMatch,
+        qb_dashboard_counters: currentSettingsObject.dashboard_counters
       };
 
       payload.quickbase_config = currentSettingsObject;
