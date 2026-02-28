@@ -1,3 +1,6 @@
+🛑 SUPREME AI GUARDRAIL ACTIVE: You are STRICTLY FORBIDDEN from modifying existing UI/UX layouts, High Level Enterprise CSS, Monday.com-style themes, and core system logics without explicit clearance. If a requested feature overlaps with or risks altering these domains, you MUST STOP immediately.
+PROTOCOL: You MUST output a "RISK IMPACT REPORT" detailing the affected files and logic conflicts. End your response with "AWAITING CLEARANCE TO PROCEED FROM THUNTER BOY". Do not output code until cleared.
+
 # AGENTS.md
 
 This repository is intentionally designed as a **Dual-Platform Architecture**.

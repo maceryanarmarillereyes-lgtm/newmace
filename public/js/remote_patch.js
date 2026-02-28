@@ -1,3 +1,4 @@
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
 // Optional hotfix loader.
 // If REMOTE_PATCH_URL is set (via Vercel env vars), the app will load a small JS patch
 // without requiring a redeploy. Use for emergency bugfixes only.
