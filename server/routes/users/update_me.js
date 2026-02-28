@@ -48,6 +48,18 @@ function normalizeQuickbaseOperator(value) {
   return mapped[key] || key || 'EX';
 }
 
+
+function parseQuickbaseConfigInput(raw) {
+  if (!raw) return {};
+  if (typeof raw === 'object') return raw;
+  try {
+    const parsed = JSON.parse(String(raw));
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
 function normalizeQuickbaseConfig(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const customColumns = Array.isArray(src.customColumns || src.qb_custom_columns)
@@ -156,7 +168,7 @@ module.exports = async (req, res) => {
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'quickbase_settings')) {
-      const normalizedSettings = normalizeQuickbaseConfig(body.quickbase_settings);
+      const normalizedSettings = normalizeQuickbaseConfig(parseQuickbaseConfigInput(body.quickbase_settings));
       patch.quickbase_settings = normalizedSettings;
       patch.quickbase_config = normalizedSettings;
 
@@ -171,7 +183,7 @@ module.exports = async (req, res) => {
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'quickbase_config')) {
-      const normalizedConfig = normalizeQuickbaseConfig(body.quickbase_config);
+      const normalizedConfig = normalizeQuickbaseConfig(parseQuickbaseConfigInput(body.quickbase_config));
       patch.quickbase_config = normalizedConfig;
       patch.quickbase_settings = normalizedConfig;
 

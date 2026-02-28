@@ -75,6 +75,18 @@
     return value === 'ANY' ? 'ANY' : 'ALL';
   }
 
+
+  function parseQuickbaseSettings(raw) {
+    if (!raw) return {};
+    if (typeof raw === 'object') return raw;
+    try {
+      const parsed = JSON.parse(String(raw));
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
   function normalizeQuickbaseConfig(raw) {
     const cfg = raw && typeof raw === 'object' ? raw : {};
     return {
@@ -92,7 +104,9 @@
 
   function getProfileQuickbaseConfig(profile) {
     const p = profile && typeof profile === 'object' ? profile : {};
-    const dbConfig = normalizeQuickbaseConfig(p.quickbase_settings || p.quickbase_config);
+    const quickbaseSettings = parseQuickbaseSettings(p.quickbase_settings);
+    const quickbaseConfig = parseQuickbaseSettings(p.quickbase_config);
+    const dbConfig = normalizeQuickbaseConfig(Object.keys(quickbaseSettings).length ? quickbaseSettings : quickbaseConfig);
     const fallbackConfig = normalizeQuickbaseConfig(p);
     return {
       reportLink: dbConfig.reportLink || fallbackConfig.reportLink,

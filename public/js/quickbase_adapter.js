@@ -1,5 +1,59 @@
 /* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
 (function(){
+  function encodeQuickbaseLiteral(value) {
+    return String(value == null ? '' : value).replace(/'/g, "\\'");
+  }
+
+  function normalizeQuickbaseOperator(value) {
+    const key = String(value == null ? 'EX' : value).trim().toUpperCase();
+    const map = {
+      'IS EQUAL TO': 'EX',
+      'IS (EXACT)': 'EX',
+      EX: 'EX',
+      '=': 'EX',
+      'IS NOT': 'XEX',
+      'NOT EQUAL TO': 'XEX',
+      'IS NOT EQUAL TO': 'XEX',
+      XEX: 'XEX',
+      '!=': 'XEX',
+      '<>': 'XEX',
+      CONTAINS: 'CT',
+      CT: 'CT',
+      'DOES NOT CONTAIN': 'XCT',
+      XCT: 'XCT'
+    };
+    return map[key] || key || 'EX';
+  }
+
+  function parseQuickbaseSettings(raw) {
+    if (!raw) return {};
+    if (typeof raw === 'object') return raw;
+    try {
+      const parsed = JSON.parse(String(raw));
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function buildQuickbaseWhere(filters, matchMode) {
+    if (!Array.isArray(filters) || !filters.length) return '';
+    const clauses = filters
+      .filter(function(f){ return f && typeof f === 'object'; })
+      .map(function(f){
+        const fid = String(f.fieldId ?? f.field_id ?? f.fid ?? f.id ?? '').trim();
+        const value = String(f.value ?? '').trim();
+        const operator = normalizeQuickbaseOperator(f.operator);
+        if (!fid || !value) return '';
+        return `{'${fid}'.${operator}.'${encodeQuickbaseLiteral(value)}'}`;
+      })
+      .filter(Boolean);
+
+    if (!clauses.length) return '';
+    const joiner = String(matchMode || '').trim().toUpperCase() === 'ANY' ? ' OR ' : ' AND ';
+    return clauses.join(joiner);
+  }
+
   function getToken() {
     try {
       if (window.CloudAuth && typeof CloudAuth.accessToken === 'function') {
@@ -93,11 +147,10 @@
         if (me && window.Store && Store.getProfile) {
           const profile = Store.getProfile(me.id);
           if (profile) {
-            profileQuickbaseConfig = (profile.quickbase_settings && typeof profile.quickbase_settings === 'object')
-              ? profile.quickbase_settings
-              : ((profile.quickbase_config && typeof profile.quickbase_config === 'object')
-              ? profile.quickbase_config
-              : null);
+            profileQuickbaseConfig = parseQuickbaseSettings(profile.quickbase_settings);
+            if (!profileQuickbaseConfig || !Object.keys(profileQuickbaseConfig).length) {
+              profileQuickbaseConfig = parseQuickbaseSettings(profile.quickbase_config);
+            }
             qid = qid || String((profileQuickbaseConfig && (profileQuickbaseConfig.qid || profileQuickbaseConfig.qb_qid)) || profile.qb_qid || profile.quickbase_qid || '').trim();
             tableId = tableId || String((profileQuickbaseConfig && (profileQuickbaseConfig.tableId || profileQuickbaseConfig.qb_table_id)) || profile.qb_table_id || profile.quickbase_table_id || '').trim();
             realm = realm || String((profileQuickbaseConfig && (profileQuickbaseConfig.realm || profileQuickbaseConfig.qb_realm)) || profile.qb_realm || profile.quickbase_realm || '').trim();
@@ -119,11 +172,18 @@
     };
 
     // Construct URL with query parameters
+    const profileFilters = Array.isArray(profileQuickbaseConfig && (profileQuickbaseConfig.customFilters || profileQuickbaseConfig.qb_custom_filters))
+      ? (profileQuickbaseConfig.customFilters || profileQuickbaseConfig.qb_custom_filters)
+      : [];
+    const profileFilterMatch = String((profileQuickbaseConfig && (profileQuickbaseConfig.filterMatch || profileQuickbaseConfig.qb_filter_match)) || 'ALL').trim().toUpperCase();
+    const where = buildQuickbaseWhere(profileFilters, profileFilterMatch);
+
     const queryParams = new URLSearchParams({
       qid: qid,
       tableId: tableId,
       realm: realm
     });
+    if (where) queryParams.set('where', where);
 
     const candidates = [
       '/api/quickbase/monitoring?' + queryParams.toString(),
