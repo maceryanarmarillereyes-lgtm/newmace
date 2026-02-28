@@ -113,6 +113,40 @@ function readQuickbaseConfig(override) {
   return { realm, token, tableId, qid };
 }
 
+function normalizeQuickbaseCellValue(input) {
+  if (input == null) return '';
+  if (typeof input !== 'object') return input;
+
+  const objectValue = input;
+  const displayKeys = [
+    'displayValue',
+    'display',
+    'text',
+    'name',
+    'fullName',
+    'label',
+    'email',
+    'value'
+  ];
+
+  for (const key of displayKeys) {
+    if (!Object.prototype.hasOwnProperty.call(objectValue, key)) continue;
+    const candidate = normalizeQuickbaseCellValue(objectValue[key]);
+    if (candidate == null) continue;
+    if (typeof candidate === 'string' && !candidate.trim()) continue;
+    return candidate;
+  }
+
+  if (Array.isArray(objectValue)) {
+    const flattened = objectValue
+      .map((item) => normalizeQuickbaseCellValue(item))
+      .filter((item) => !(item == null || (typeof item === 'string' && !item.trim())));
+    return flattened.join(', ');
+  }
+
+  return '';
+}
+
 async function queryQuickbaseRecords(opts = {}) {
   const cfg = readQuickbaseConfig(opts.config);
   if (!cfg.realm || !cfg.token || !cfg.tableId) {
@@ -219,7 +253,8 @@ async function queryQuickbaseRecords(opts = {}) {
       const value = (raw && typeof raw === 'object' && Object.prototype.hasOwnProperty.call(raw, 'value'))
         ? raw.value
         : raw;
-      mapped[fid] = value == null ? '' : value;
+      const normalizedValue = normalizeQuickbaseCellValue(value);
+      mapped[fid] = normalizedValue == null ? '' : normalizedValue;
     });
     return mapped;
   });
@@ -267,5 +302,6 @@ async function listQuickbaseFields() {
 
 module.exports = {
   queryQuickbaseRecords,
-  listQuickbaseFields
+  listQuickbaseFields,
+  normalizeQuickbaseCellValue
 };

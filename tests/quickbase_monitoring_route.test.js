@@ -16,7 +16,8 @@ function loadRouteWithMocks(mocks) {
     if (request === '../../lib/quickbase') {
       return {
         listQuickbaseFields: mocks.listQuickbaseFields,
-        queryQuickbaseRecords: mocks.queryQuickbaseRecords
+        queryQuickbaseRecords: mocks.queryQuickbaseRecords,
+        normalizeQuickbaseCellValue: mocks.normalizeQuickbaseCellValue || ((v) => v)
       };
     }
     return originalLoad.call(this, request, parent, isMain);
@@ -73,6 +74,10 @@ async function run() {
         ]
       };
     },
+    normalizeQuickbaseCellValue(value) {
+      if (value && typeof value === 'object' && value.name) return value.name;
+      return value;
+    },
     async queryQuickbaseRecords(opts) {
       calls.push(opts);
       return {
@@ -83,7 +88,7 @@ async function run() {
             '7': { value: 'Woolworths' },
             '8': { value: 'Issue 1' },
             '9': { value: 'A - Active' },
-            '10': { value: 'Agent 1' },
+            '10': { value: { name: 'Agent 1', email: 'agent1@example.com' } },
             '11': { value: '2' },
             '12': { value: '5' },
             '13': { value: 'Graphical Screen Service' }
@@ -101,8 +106,8 @@ async function run() {
   assert.equal(calls.length, 1, 'queryQuickbaseRecords should be called once');
   const where = String(calls[0].where || '');
   assert.equal(Array.isArray(calls[0].select), true, 'select should be provided');
-  assert.equal(calls[0].select.length, 0, 'QID-backed query should allow dynamic report fields');
-  assert.equal(calls[0].allowEmptySelect, true, 'allowEmptySelect should be enabled for QID-backed query');
+  assert.equal(calls[0].select.length, 8, 'QID-backed query without report metadata should fallback to mapped selected fields');
+  assert.equal(calls[0].allowEmptySelect, true, 'allowEmptySelect should stay enabled for QID-backed query');
   assert.equal(calls[0].enableQueryIdFallback, false, 'QID-backed query must not fall back to table-wide query');
   assert.equal(typeof where, 'string');
   assert.equal(where.includes('Owner Email'), false, 'QID-backed query should not force owner email clause');
@@ -113,6 +118,7 @@ async function run() {
   assert.equal(payload.settings.fieldIds.type, 13);
   assert.equal(payload.records[0].qbRecordId, 'CASE-1');
   assert.equal(payload.records[0].fields['8'].value, 'Issue 1');
+  assert.equal(payload.records[0].fields['10'].value, 'Agent 1');
 
   console.log('quickbase monitoring route defaults test passed');
 }

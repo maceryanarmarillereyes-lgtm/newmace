@@ -1,6 +1,6 @@
 /* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
 const { sendJson, requireAuthedUser } = require('../tasks/_common');
-const { queryQuickbaseRecords, listQuickbaseFields } = require('../../lib/quickbase');
+const { queryQuickbaseRecords, listQuickbaseFields, normalizeQuickbaseCellValue } = require('../../lib/quickbase');
 
 async function getQuickbaseReportMetadata({ config, qid }) {
   const cfg = {
@@ -355,7 +355,8 @@ module.exports = async (req, res) => {
           ? nestedField.value
           : nestedField;
         const mappedValue = Object.prototype.hasOwnProperty.call(mappedRow, fieldId) ? mappedRow[fieldId] : nestedValue;
-        normalized[fieldId] = { value: mappedValue == null ? '' : mappedValue };
+        const normalizedValue = normalizeQuickbaseCellValue(mappedValue);
+        normalized[fieldId] = { value: normalizedValue == null ? '' : normalizedValue };
       });
 
       const mappedRecordId = Object.prototype.hasOwnProperty.call(mappedRow, String(caseIdFieldId)) ? mappedRow[String(caseIdFieldId)] : '';
