@@ -45,7 +45,7 @@
         const value = String(f.value ?? '').trim();
         const operator = normalizeQuickbaseOperator(f.operator);
         if (!fid || !value) return '';
-        return `{'${fid}'.${operator}.'${encodeQuickbaseLiteral(value)}'}`;
+        return `{${fid}.${operator}.'${encodeQuickbaseLiteral(value)}'}`;
       })
       .filter(Boolean);
 

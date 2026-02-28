@@ -310,11 +310,15 @@ module.exports = async (req, res) => {
       const groupedProfileClause = profileFilterClauses.length === 1
         ? profileFilterClauses[0]
         : `(${profileFilterClauses.join(` ${profileFilterMatch === 'ANY' ? 'OR' : 'AND'} `)})`;
-      finalWhere = [finalWhere, groupedProfileClause].filter(Boolean).join(' AND ');
+      if (groupedProfileClause) conditions.push(groupedProfileClause);
     }
     if (searchClause) {
       finalWhere = [finalWhere, searchClause].filter(Boolean).join(' AND ');
     }
+
+    if (searchClause) conditions.push(searchClause);
+
+    const finalWhere = conditions.filter(Boolean).join(' AND ') || null;
 
     const out = await queryQuickbaseRecords({
       config: userQuickbaseConfig,
