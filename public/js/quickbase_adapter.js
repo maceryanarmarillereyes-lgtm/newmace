@@ -45,13 +45,19 @@
         const value = String(f.value ?? '').trim();
         const operator = normalizeQuickbaseOperator(f.operator);
         if (!fid || !value) return '';
-        return `{'${fid}'.${operator}.'${encodeQuickbaseLiteral(value)}'}`;
+        return `{${fid}.${operator}.'${encodeQuickbaseLiteral(value)}'}`;
       })
       .filter(Boolean);
 
     if (!clauses.length) return '';
     const joiner = String(matchMode || '').trim().toUpperCase() === 'ANY' ? ' OR ' : ' AND ';
     return clauses.join(joiner);
+  }
+
+  function appendParam(params, key, value) {
+    const clean = String(value == null ? '' : value).trim();
+    if (!clean) return;
+    params.set(key, clean);
   }
 
   function getToken() {
@@ -177,6 +183,20 @@
       tableId: tableId,
       realm: realm
     });
+
+    const extraWhere = buildQuickbaseWhere(overrideParams && overrideParams.customFilters, overrideParams && overrideParams.filterMatch);
+    appendParam(queryParams, 'where', (overrideParams && overrideParams.where) || extraWhere);
+
+    const searchValue = String((overrideParams && overrideParams.search) || '').trim();
+    if (searchValue) {
+      appendParam(queryParams, 'search', searchValue);
+      const searchFields = Array.isArray(overrideParams && overrideParams.searchFields)
+        ? (overrideParams.searchFields || []).map(function(v){ return String(v || '').trim(); }).filter(Boolean)
+        : [];
+      if (searchFields.length) appendParam(queryParams, 'searchFields', searchFields.join(','));
+    }
+
+    appendParam(queryParams, 'limit', overrideParams && overrideParams.limit);
 
     const candidates = [
       '/api/quickbase/monitoring?' + queryParams.toString(),

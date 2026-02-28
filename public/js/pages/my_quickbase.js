@@ -131,6 +131,45 @@
     return palette[normalizeCounterColor(color)] || palette.default;
   }
 
+  function normalizeFieldIds(values) {
+    if (!Array.isArray(values)) return [];
+    const seen = new Set();
+    return values
+      .map((v) => String(v == null ? '' : v).trim())
+      .filter((v) => v && !seen.has(v) && seen.add(v));
+  }
+
+  function counterToFilter(counter) {
+    if (!counter || typeof counter !== 'object') return null;
+    const fieldId = String(counter.fieldId || '').trim();
+    const value = String(counter.value || '').trim();
+    const operator = String(counter.operator || 'EX').trim().toUpperCase();
+    if (!fieldId || !value) return null;
+    return { fieldId, operator, value };
+  }
+
+  function rowsToCsv(rows, columns) {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    const safeColumns = Array.isArray(columns) ? columns : [];
+    const headers = ['Case #'].concat(safeColumns.map((c) => String(c && c.label || c && c.id || 'Field')));
+    const escapeCsv = (value) => {
+      const text = String(value == null ? '' : value);
+      const escaped = text.replace(/"/g, '""');
+      if (/[,\n"]/g.test(escaped)) return `"${escaped}"`;
+      return escaped;
+    };
+    const body = safeRows.map((row) => {
+      const list = [String(row && row.qbRecordId || 'N/A')];
+      safeColumns.forEach((col) => {
+        const fid = String(col && col.id || '').trim();
+        const val = row && row.fields && row.fields[fid] ? row.fields[fid].value : '';
+        list.push(String(val == null ? '' : val));
+      });
+      return list.map(escapeCsv).join(',');
+    });
+    return [headers.map(escapeCsv).join(',')].concat(body).join('\n');
+  }
+
 
   function parseQuickbaseSettings(raw) {
     if (!raw) return {};
@@ -178,7 +217,7 @@
   }
 
 
-  function renderDashboardCounters(root, records, settings) {
+  function renderDashboardCounters(root, records, settings, state, onCounterToggle) {
     const host = root.querySelector('#qbDashboardCounters');
     if (!host) return;
     try {
@@ -188,7 +227,7 @@
         host.innerHTML = '';
         return;
       }
-      const widgets = dashboardCounters.map((counter) => {
+      const widgets = dashboardCounters.map((counter, widgetsIndex) => {
         const matcherValue = String(counter.value || '').toLowerCase();
         const matchedRows = rows.filter((record) => {
           const fields = record && record.fields ? record.fields : {};
@@ -201,7 +240,7 @@
 
         const label = counter.label || 'N/A';
         return `
-          <div class="qb-counter-widget" style="${getCounterGlassStyle(counter.color)}">
+          <div class="qb-counter-widget ${state && state.activeCounterIndex === widgetsIndex ? 'is-active' : ''}" data-counter-idx="${widgetsIndex}" style="${getCounterGlassStyle(counter.color)}">
             <div class="qb-counter-label">${esc(label)}</div>
             <div class="qb-counter-value">${esc(String(matchedRows.length))}</div>
           </div>
@@ -209,6 +248,11 @@
       }).join('');
 
       host.innerHTML = widgets;
+      host.querySelectorAll('[data-counter-idx]').forEach((el) => {
+        el.onclick = () => {
+          if (typeof onCounterToggle === 'function') onCounterToggle(Number(el.getAttribute('data-counter-idx')));
+        };
+      });
     } catch (_) {
       host.innerHTML = '';
     }
@@ -277,16 +321,24 @@
       filterMatch: normalizeFilterMatch(quickbaseConfig.filterMatch || profile.qb_custom_filter_match),
       dashboardCounters: normalizeDashboardCounters(quickbaseConfig.dashboardCounters || profile.qb_dashboard_counters),
       allAvailableFields: [],
-      isSaving: false
+      isSaving: false,
+      activeCounterIndex: -1,
+      searchTerm: '',
+      searchDebounceTimer: null,
+      currentPayload: { columns: [], records: [] }
     };
 
     root.innerHTML = `
       <div class="dashx qb-page-shell">
         <div class="qb-static-zone"><div class="card pad qb-header-card" style="backdrop-filter: blur(14px); background: linear-gradient(130deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.16);">
-          <div class="row" style="justify-content:space-between;align-items:center;gap:12px;">
+          <div class="row qb-header-row" style="justify-content:space-between;align-items:center;gap:12px;">
             <div>
               <h2 class="ux-h1 qb-title" style="margin:0;">My Quickbase</h2>
               <div class="small muted qb-subtitle">Enterprise monitoring dashboard for your personal Quickbase view.</div>
+            </div>
+            <div class="row qb-header-search-wrap" style="gap:8px;align-items:center;justify-content:center;flex:1;">
+              <input class="input qb-header-search" id="qbHeaderSearch" type="search" placeholder="Search across all Quickbase records..." />
+              <button class="btn" id="qbExportCsvBtn" type="button">Export CSV</button>
             </div>
             <div class="row" style="gap:8px;">
               <button class="btn" id="qbReloadBtn" type="button">Reload</button>
@@ -659,17 +711,40 @@
           if (!window.QuickbaseAdapter || typeof window.QuickbaseAdapter.fetchMonitoringData !== 'function') {
             throw new Error('Quickbase adapter unavailable');
           }
-          const data = await window.QuickbaseAdapter.fetchMonitoringData({ bust: Date.now() });
+          const activeCounter = state.activeCounterIndex >= 0 ? state.dashboardCounters[state.activeCounterIndex] : null;
+          const counterFilter = counterToFilter(activeCounter);
+          const requestPayload = {
+            bust: Date.now(),
+            limit: 500
+          };
+
+          if (counterFilter) {
+            requestPayload.customFilters = [counterFilter];
+            requestPayload.filterMatch = 'ALL';
+          }
+
+          const searchValue = String(state.searchTerm || '').trim();
+          if (searchValue) {
+            requestPayload.search = searchValue;
+            const searchFieldIds = normalizeFieldIds((state.currentPayload.columns || []).map((c) => c.id).concat(state.customColumns || []));
+            if (searchFieldIds.length) requestPayload.searchFields = searchFieldIds;
+          }
+
+          const data = await window.QuickbaseAdapter.fetchMonitoringData(requestPayload);
           state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
           renderColumnGrid();
           renderFilters();
+          state.currentPayload = { columns: Array.isArray(data && data.columns) ? data.columns : [], records: Array.isArray(data && data.records) ? data.records : [] };
           renderRecords(root, data || {});
-          renderDashboardCounters(root, data && data.records, { dashboard_counters: state.dashboardCounters });
+          renderDashboardCounters(root, state.currentPayload.records, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
+            state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
+            loadQuickbaseData({ silent: true });
+          });
           lastQuickbaseLoadAt = Date.now();
         } catch (err) {
           if (meta) meta.textContent = 'Check Connection';
           if (host) host.innerHTML = `<div class="small" style="padding:10px;color:#fecaca;">${esc(String(err && err.message || 'Unable to load Quickbase records'))}</div>`;
-          renderDashboardCounters(root, [], { dashboard_counters: [] });
+          renderDashboardCounters(root, [], { dashboard_counters: [] }, state);
         } finally {
           quickbaseLoadInFlight = null;
         }
@@ -699,6 +774,7 @@
         try { if (prevCleanup) prevCleanup(); } catch (_) {}
         try { cleanupModalBindings(); } catch (_) {}
         try { if (quickbaseRefreshTimer) clearInterval(quickbaseRefreshTimer); } catch (_) {}
+        try { if (state.searchDebounceTimer) clearTimeout(state.searchDebounceTimer); } catch (_) {}
         quickbaseRefreshTimer = null;
         document.removeEventListener('visibilitychange', onVisibilityChange);
         window.removeEventListener('focus', onVisibilityChange);
@@ -754,6 +830,37 @@
       state.dashboardCounters.push({ fieldId: '', operator: 'EX', value: '', label: '', color: 'default' });
       renderCounterFilters();
     };
+
+
+    const headerSearch = root.querySelector('#qbHeaderSearch');
+    if (headerSearch) {
+      headerSearch.oninput = () => {
+        const nextValue = String(headerSearch.value || '').trim();
+        state.searchTerm = nextValue;
+        if (state.searchDebounceTimer) clearTimeout(state.searchDebounceTimer);
+        state.searchDebounceTimer = setTimeout(() => {
+          loadQuickbaseData({ silent: true });
+        }, 500);
+      };
+    }
+
+    const exportBtn = root.querySelector('#qbExportCsvBtn');
+    if (exportBtn) {
+      exportBtn.onclick = () => {
+        const rows = state.currentPayload && Array.isArray(state.currentPayload.records) ? state.currentPayload.records : [];
+        const columns = state.currentPayload && Array.isArray(state.currentPayload.columns) ? state.currentPayload.columns : [];
+        const csv = rowsToCsv(rows, columns);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'my_quickbase_export.csv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      };
+    }
 
     const saveBtn = root.querySelector('#qbSaveSettingsBtn');
     const saveLock = root.querySelector('#qbSettingsSavingLock');
