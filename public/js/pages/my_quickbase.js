@@ -131,14 +131,6 @@
     return palette[normalizeCounterColor(color)] || palette.default;
   }
 
-  function normalizeFieldIds(values) {
-    if (!Array.isArray(values)) return [];
-    const seen = new Set();
-    return values
-      .map((v) => String(v == null ? '' : v).trim())
-      .filter((v) => v && !seen.has(v) && seen.add(v));
-  }
-
   function counterToFilter(counter) {
     if (!counter || typeof counter !== 'object') return null;
     const fieldId = String(counter.fieldId || '').trim();
@@ -304,6 +296,29 @@
     host.innerHTML = `<div class="qb-table-inner"><table class="qb-data-table"><thead><tr><th>Case #</th>${headers}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
 
+  function filterRecordsBySearch(payload, searchTerm) {
+    const source = payload && typeof payload === 'object' ? payload : {};
+    const columns = Array.isArray(source.columns) ? source.columns : [];
+    const records = Array.isArray(source.records) ? source.records : [];
+    const term = String(searchTerm || '').trim().toLowerCase();
+    if (!term) {
+      return { columns, records };
+    }
+
+    const filtered = records.filter((row) => {
+      const caseId = String(row && row.qbRecordId || '').toLowerCase();
+      if (caseId.includes(term)) return true;
+      return columns.some((col) => {
+        const fid = String(col && col.id || '').trim();
+        if (!fid) return false;
+        const cellValue = row && row.fields && row.fields[fid] ? row.fields[fid].value : '';
+        return String(cellValue == null ? '' : cellValue).toLowerCase().includes(term);
+      });
+    });
+
+    return { columns, records: filtered };
+  }
+
   window.Pages.my_quickbase = async function(root) {
     const AUTO_REFRESH_MS = 15000;
     const me = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
@@ -325,6 +340,7 @@
       activeCounterIndex: -1,
       searchTerm: '',
       searchDebounceTimer: null,
+      rawPayload: { columns: [], records: [] },
       currentPayload: { columns: [], records: [] }
     };
 
@@ -715,20 +731,18 @@
           const mergedFilters = normalizeFilters(state.customFilters);
           const counterFilter = counterToFilter(activeCounter);
           if (counterFilter) mergedFilters.push(counterFilter);
-          const searchFieldIds = normalizeFieldIds((state.currentPayload.columns || []).map((c) => c.id).concat(state.customColumns || []));
           const data = await window.QuickbaseAdapter.fetchMonitoringData({
             bust: Date.now(),
             customFilters: mergedFilters,
             filterMatch: state.filterMatch,
-            search: state.searchTerm,
-            searchFields: searchFieldIds,
             limit: 500
           });
           state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
           renderColumnGrid();
           renderFilters();
-          state.currentPayload = { columns: Array.isArray(data && data.columns) ? data.columns : [], records: Array.isArray(data && data.records) ? data.records : [] };
-          renderRecords(root, data || {});
+          state.rawPayload = { columns: Array.isArray(data && data.columns) ? data.columns : [], records: Array.isArray(data && data.records) ? data.records : [] };
+          state.currentPayload = filterRecordsBySearch(state.rawPayload, state.searchTerm);
+          renderRecords(root, state.currentPayload);
           renderDashboardCounters(root, state.currentPayload.records, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
             state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
             loadQuickbaseData({ silent: true });
@@ -832,7 +846,12 @@
         state.searchTerm = nextValue;
         if (state.searchDebounceTimer) clearTimeout(state.searchDebounceTimer);
         state.searchDebounceTimer = setTimeout(() => {
-          loadQuickbaseData({ silent: true });
+          state.currentPayload = filterRecordsBySearch(state.rawPayload, state.searchTerm);
+          renderRecords(root, state.currentPayload);
+          renderDashboardCounters(root, state.currentPayload.records, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
+            state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
+            loadQuickbaseData({ silent: true });
+          });
         }, 500);
       };
     }
