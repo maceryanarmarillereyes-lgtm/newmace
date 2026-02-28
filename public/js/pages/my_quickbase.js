@@ -741,12 +741,7 @@
           renderColumnGrid();
           renderFilters();
           state.rawPayload = { columns: Array.isArray(data && data.columns) ? data.columns : [], records: Array.isArray(data && data.records) ? data.records : [] };
-          state.currentPayload = filterRecordsBySearch(state.rawPayload, state.searchTerm);
-          renderRecords(root, state.currentPayload);
-          renderDashboardCounters(root, state.currentPayload.records, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
-            state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
-            loadQuickbaseData({ silent: true });
-          });
+          applySearchAndRender();
           lastQuickbaseLoadAt = Date.now();
         } catch (err) {
           if (meta) meta.textContent = 'Check Connection';
@@ -758,6 +753,22 @@
       })();
 
       return quickbaseLoadInFlight;
+    }
+
+    function applySearchAndRender() {
+      const normalizedSearch = String(state.searchTerm || '').trim();
+      state.searchTerm = normalizedSearch;
+      state.currentPayload = normalizedSearch
+        ? filterRecordsBySearch(state.rawPayload, normalizedSearch)
+        : {
+            columns: Array.isArray(state.rawPayload && state.rawPayload.columns) ? state.rawPayload.columns : [],
+            records: Array.isArray(state.rawPayload && state.rawPayload.records) ? state.rawPayload.records : []
+          };
+      renderRecords(root, state.currentPayload);
+      renderDashboardCounters(root, state.currentPayload.records, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
+        state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
+        loadQuickbaseData({ silent: true });
+      });
     }
 
     function setupAutoRefresh() {
@@ -841,17 +852,13 @@
 
     const headerSearch = root.querySelector('#qbHeaderSearch');
     if (headerSearch) {
+      state.searchTerm = String(headerSearch.value || '').trim();
       headerSearch.oninput = () => {
         const nextValue = String(headerSearch.value || '').trim();
         state.searchTerm = nextValue;
         if (state.searchDebounceTimer) clearTimeout(state.searchDebounceTimer);
         state.searchDebounceTimer = setTimeout(() => {
-          state.currentPayload = filterRecordsBySearch(state.rawPayload, state.searchTerm);
-          renderRecords(root, state.currentPayload);
-          renderDashboardCounters(root, state.currentPayload.records, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
-            state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
-            loadQuickbaseData({ silent: true });
-          });
+          applySearchAndRender();
         }, 500);
       };
     }
