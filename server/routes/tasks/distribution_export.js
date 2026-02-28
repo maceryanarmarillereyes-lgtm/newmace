@@ -1,3 +1,4 @@
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
 const { sendJson, requireAuthedUser, roleFlags, serviceSelect } = require('./_common');
 
 const OWNER_COLUMNS = ['created_by', 'created_by_user_id', 'owner_id', 'user_id'];
