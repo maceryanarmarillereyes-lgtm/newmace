@@ -39,12 +39,32 @@
   }
 
   function normalizeFilters(raw) {
+    const operatorMap = {
+      'IS EQUAL TO': 'EX',
+      'IS (EXACT)': 'EX',
+      EX: 'EX',
+      '=': 'EX',
+      'IS NOT': 'XEX',
+      'NOT EQUAL TO': 'XEX',
+      'IS NOT EQUAL TO': 'XEX',
+      XEX: 'XEX',
+      '!=': 'XEX',
+      '<>': 'XEX',
+      CONTAINS: 'CT',
+      CT: 'CT',
+      'DOES NOT CONTAIN': 'XCT',
+      XCT: 'XCT'
+    };
+    const toOperator = (value) => {
+      const key = String(value == null ? 'EX' : value).trim().toUpperCase();
+      return operatorMap[key] || key || 'EX';
+    };
     if (!Array.isArray(raw)) return [];
     return raw
       .filter((f) => f && typeof f === 'object')
       .map((f) => ({
         fieldId: String((f.fieldId ?? f.field_id ?? f.fid ?? f.id ?? '')).trim(),
-        operator: String((f.operator ?? 'EX')).trim().toUpperCase(),
+        operator: toOperator(f.operator),
         value: String((f.value ?? '')).trim()
       }))
       .filter((f) => f.fieldId && f.value);
@@ -72,7 +92,7 @@
 
   function getProfileQuickbaseConfig(profile) {
     const p = profile && typeof profile === 'object' ? profile : {};
-    const dbConfig = normalizeQuickbaseConfig(p.quickbase_config);
+    const dbConfig = normalizeQuickbaseConfig(p.quickbase_settings || p.quickbase_config);
     const fallbackConfig = normalizeQuickbaseConfig(p);
     return {
       reportLink: dbConfig.reportLink || fallbackConfig.reportLink,
@@ -157,6 +177,9 @@
 
       <div class="modal" id="qbSettingsModal" aria-hidden="true">
         <div class="panel" style="max-width:980px; width:min(980px,96vw); background: linear-gradient(140deg, rgba(23,35,67,.88), rgba(15,23,42,.82)); border:1px solid rgba(255,255,255,.18); backdrop-filter: blur(18px);">
+          <div id="qbSettingsSavingLock" style="display:none;position:absolute;inset:0;z-index:90;align-items:center;justify-content:center;background:rgba(2,6,23,.72);backdrop-filter:blur(3px);border-radius:16px;">
+            <div class="small" style="padding:10px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.25);background:rgba(15,23,42,.88);font-weight:700;letter-spacing:.02em;">Saving Quickbase settings…</div>
+          </div>
           <div class="head" style="position:sticky;top:0;background:transparent;">
             <div>
               <div class="h3" style="margin:0;">Quickbase Settings</div>
@@ -479,6 +502,7 @@
     };
 
     const saveBtn = root.querySelector('#qbSaveSettingsBtn');
+    const saveLock = root.querySelector('#qbSettingsSavingLock');
     saveBtn.onclick = async () => {
       if (!me) return;
       const reportLink = String((root.querySelector('#qbReportLink') || {}).value || '').trim();
@@ -512,10 +536,12 @@
         customFilters: payload.qb_custom_filters,
         filterMatch: payload.qb_filter_match
       };
+      payload.quickbase_settings = payload.quickbase_config;
 
       state.isSaving = true;
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
+      if (saveLock) saveLock.style.display = 'flex';
       try {
         if (!window.CloudUsers || typeof window.CloudUsers.updateMe !== 'function') {
           throw new Error('Cloud user API is unavailable. Please reload and try again.');
@@ -535,6 +561,7 @@
         state.isSaving = false;
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save Settings';
+        if (saveLock) saveLock.style.display = 'none';
       }
     };
 

@@ -27,6 +27,27 @@ function readBody(req) {
 }
 
 
+function normalizeQuickbaseOperator(value) {
+  const key = String(value == null ? 'EX' : value).trim().toUpperCase();
+  const mapped = {
+    'IS EQUAL TO': 'EX',
+    'IS (EXACT)': 'EX',
+    EX: 'EX',
+    '=': 'EX',
+    'IS NOT': 'XEX',
+    'NOT EQUAL TO': 'XEX',
+    'IS NOT EQUAL TO': 'XEX',
+    XEX: 'XEX',
+    '!=': 'XEX',
+    '<>': 'XEX',
+    CONTAINS: 'CT',
+    CT: 'CT',
+    'DOES NOT CONTAIN': 'XCT',
+    XCT: 'XCT'
+  };
+  return mapped[key] || key || 'EX';
+}
+
 function normalizeQuickbaseConfig(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const customColumns = Array.isArray(src.customColumns || src.qb_custom_columns)
@@ -40,7 +61,7 @@ function normalizeQuickbaseConfig(raw) {
         .filter((f) => f && typeof f === 'object')
         .map((f) => ({
           fieldId: String((f.fieldId ?? f.field_id ?? f.fid ?? f.id ?? '')).trim(),
-          operator: String((f.operator ?? 'EX')).trim().toUpperCase(),
+          operator: normalizeQuickbaseOperator(f.operator),
           value: String((f.value ?? '')).trim()
         }))
         .filter((f) => f.fieldId && f.value)
@@ -134,9 +155,25 @@ module.exports = async (req, res) => {
       patch.qb_custom_columns = normalized;
     }
 
+    if (Object.prototype.hasOwnProperty.call(body, 'quickbase_settings')) {
+      const normalizedSettings = normalizeQuickbaseConfig(body.quickbase_settings);
+      patch.quickbase_settings = normalizedSettings;
+      patch.quickbase_config = normalizedSettings;
+
+      // Keep legacy columns in sync for backward compatibility.
+      patch.qb_report_link = normalizedSettings.reportLink;
+      patch.qb_qid = normalizedSettings.qid;
+      patch.qb_realm = normalizedSettings.realm;
+      patch.qb_table_id = normalizedSettings.tableId;
+      patch.qb_custom_columns = normalizedSettings.customColumns;
+      patch.qb_custom_filters = normalizedSettings.customFilters;
+      patch.qb_filter_match = normalizedSettings.filterMatch;
+    }
+
     if (Object.prototype.hasOwnProperty.call(body, 'quickbase_config')) {
       const normalizedConfig = normalizeQuickbaseConfig(body.quickbase_config);
       patch.quickbase_config = normalizedConfig;
+      patch.quickbase_settings = normalizedConfig;
 
       // Keep legacy columns in sync for backward compatibility.
       patch.qb_report_link = normalizedConfig.reportLink;
@@ -159,7 +196,7 @@ module.exports = async (req, res) => {
         .filter((f) => f && typeof f === 'object')
         .map((f) => ({
           fieldId: String((f.fieldId ?? f.field_id ?? '')).trim(),
-          operator: String((f.operator ?? 'EX')).trim().toUpperCase(),
+          operator: normalizeQuickbaseOperator(f.operator),
           value: String((f.value ?? '')).trim()
         }))
         .filter((f) => f.fieldId && f.value)
@@ -230,12 +267,13 @@ module.exports = async (req, res) => {
     // so core Quickbase config (token/qid/table/realm/link) still saves successfully.
     if (!out.ok) {
       const detailBlob = JSON.stringify(out.json || out.text || '').toLowerCase();
-      const missingCustomCols = detailBlob.includes('qb_custom_columns') || detailBlob.includes('qb_custom_filters') || detailBlob.includes('quickbase_config');
+      const missingCustomCols = detailBlob.includes('qb_custom_columns') || detailBlob.includes('qb_custom_filters') || detailBlob.includes('quickbase_config') || detailBlob.includes('quickbase_settings');
       if (missingCustomCols) {
         const retryPatch = { ...patch };
         delete retryPatch.qb_custom_columns;
         delete retryPatch.qb_custom_filters;
         delete retryPatch.quickbase_config;
+        delete retryPatch.quickbase_settings;
         if (Object.keys(retryPatch).length > 0) {
           out = await serviceUpdate('mums_profiles', retryPatch, { user_id: `eq.${authed.id}` });
           if (out.ok) {
