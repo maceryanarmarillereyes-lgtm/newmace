@@ -75,6 +75,12 @@
     return value === 'ANY' ? 'ANY' : 'ALL';
   }
 
+  function normalizeCounterColor(value) {
+    const allowedColors = new Set(['default', 'blue', 'green', 'red', 'purple', 'orange']);
+    const normalized = String(value || 'default').trim().toLowerCase();
+    return allowedColors.has(normalized) ? normalized : 'default';
+  }
+
   function normalizeDashboardCounters(raw) {
     let source = raw;
     if (typeof source === 'string') {
@@ -106,10 +112,23 @@
           fieldId: String(item.fieldId ?? item.field_id ?? '').trim(),
           operator: allowedOperators.has(normalizedOperator) ? normalizedOperator : 'EX',
           value: String(item.value ?? '').trim(),
-          label: String(item.label ?? '').trim()
+          label: String(item.label ?? '').trim(),
+          color: normalizeCounterColor(item.color)
         };
       })
       .filter((item) => item.fieldId);
+  }
+
+  function getCounterGlassStyle(color) {
+    const palette = {
+      blue: 'background: rgba(33, 150, 243, 0.1); border: 1px solid rgba(33, 150, 243, 0.3); box-shadow: 0 4px 15px rgba(33, 150, 243, 0.1);',
+      green: 'background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); box-shadow: 0 4px 15px rgba(76, 175, 80, 0.1);',
+      red: 'background: rgba(244, 67, 54, 0.1); border: 1px solid rgba(244, 67, 54, 0.3); box-shadow: 0 4px 15px rgba(244, 67, 54, 0.1);',
+      purple: 'background: rgba(156, 39, 176, 0.1); border: 1px solid rgba(156, 39, 176, 0.3); box-shadow: 0 4px 15px rgba(156, 39, 176, 0.1);',
+      orange: 'background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); box-shadow: 0 4px 15px rgba(255, 152, 0, 0.1);',
+      default: 'background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 4px 15px rgba(255,255,255,0.05);'
+    };
+    return palette[normalizeCounterColor(color)] || palette.default;
   }
 
 
@@ -169,8 +188,7 @@
         host.innerHTML = '';
         return;
       }
-      const iconByIndex = ['🧳', '📊', '👥', '⚠️', '📌', '✅'];
-      const widgets = dashboardCounters.map((counter, index) => {
+      const widgets = dashboardCounters.map((counter) => {
         const matcherValue = String(counter.value || '').toLowerCase();
         const matchedRows = rows.filter((record) => {
           const fields = record && record.fields ? record.fields : {};
@@ -182,16 +200,10 @@
         });
 
         const label = counter.label || 'N/A';
-        const operatorLabel = counter.operator === 'XEX' ? 'Is Not Equal To' : counter.operator === 'CT' ? 'Contains' : 'Is Equal To';
-        const summary = `${counter.fieldId || 'Field'} ${operatorLabel} ${counter.value || 'N/A'}`;
         return `
-          <div style="background: rgba(30, 30, 30, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 16px 24px; min-width: 180px; display: flex; flex-direction: column; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.2s ease; gap:6px;">
-            <div class="small muted">${esc(label)}</div>
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-              <div style="font-size:40px;font-weight:800;line-height:1;">${esc(String(matchedRows.length))}</div>
-              <div style="font-size:28px;opacity:.9;">${iconByIndex[index % iconByIndex.length]}</div>
-            </div>
-            <div class="small muted" style="font-size:12px;">${esc(summary)}</div>
+          <div class="qb-counter-widget" style="${getCounterGlassStyle(counter.color)}">
+            <div class="qb-counter-label">${esc(label)}</div>
+            <div class="qb-counter-value">${esc(String(matchedRows.length))}</div>
           </div>
         `;
       }).join('');
@@ -217,17 +229,17 @@
     }
 
     meta.textContent = `${rows.length} record${rows.length === 1 ? '' : 's'} loaded`;
-    const headers = columns.map((c) => `<th style="text-align:left;padding:10px 8px;">${esc(c.label || c.id || 'Field')}</th>`).join('');
+    const headers = columns.map((c) => `<th>${esc(c.label || c.id || 'Field')}</th>`).join('');
     const body = rows.map((r) => {
       const cells = columns.map((c) => {
         const field = r && r.fields ? r.fields[String(c.id)] : null;
         const value = String(field && field.value != null ? field.value : 'N/A');
-        return `<td style="padding:8px;">${esc(value)}</td>`;
+        return `<td>${esc(value)}</td>`;
       }).join('');
-      return `<tr><td style="padding:8px;font-weight:700;">${esc(String(r && r.qbRecordId || 'N/A'))}</td>${cells}</tr>`;
+      return `<tr><td class="qb-case-id">${esc(String(r && r.qbRecordId || 'N/A'))}</td>${cells}</tr>`;
     }).join('');
 
-    host.innerHTML = `<div style="overflow:auto;"><table style="width:100%;min-width:760px;border-collapse:collapse;"><thead><tr><th style="text-align:left;padding:10px 8px;">Case #</th>${headers}</tr></thead><tbody>${body}</tbody></table></div>`;
+    host.innerHTML = `<div class="qb-table-inner"><table class="qb-data-table"><thead><tr><th>Case #</th>${headers}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
 
   window.Pages.my_quickbase = async function(root) {
@@ -251,12 +263,12 @@
     };
 
     root.innerHTML = `
-      <div class="dashx">
-        <div class="card pad" style="backdrop-filter: blur(14px); background: linear-gradient(130deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.16);">
+      <div class="dashx qb-page-shell">
+        <div class="qb-static-zone"><div class="card pad qb-header-card" style="backdrop-filter: blur(14px); background: linear-gradient(130deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.16);">
           <div class="row" style="justify-content:space-between;align-items:center;gap:12px;">
             <div>
-              <h2 class="ux-h1" style="margin:0;">My Quickbase</h2>
-              <div class="small muted">Enterprise monitoring dashboard for your personal Quickbase view.</div>
+              <h2 class="ux-h1 qb-title" style="margin:0;">My Quickbase</h2>
+              <div class="small muted qb-subtitle">Enterprise monitoring dashboard for your personal Quickbase view.</div>
             </div>
             <div class="row" style="gap:8px;">
               <button class="btn" id="qbReloadBtn" type="button">Reload</button>
@@ -265,14 +277,14 @@
           </div>
         </div>
 
-        <div id="qbDashboardCounters" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;"></div>
+        <div id="qbDashboardCounters" class="qb-dashboard-counters"></div></div>
 
-        <div class="card pad" style="margin-top:14px;">
+        <div class="card pad qb-table-card">
           <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
             <div class="h3" style="margin:0;">Quickbase Records</div>
             <div id="qbDataMeta" class="small muted">Loading…</div>
           </div>
-          <div id="qbDataBody"></div>
+          <div id="qbDataBody" class="qb-data-body"></div>
         </div>
       </div>
 
@@ -510,6 +522,14 @@
               <option value="CT" ${counter.operator === 'CT' ? 'selected' : ''}>Contains</option>
             </select></label>
           </div>
+          <label class="field"><div class="label">Glass Color</div><select class="input" data-counter-f="color">
+            <option value="default" ${normalizeCounterColor(counter.color) === 'default' ? 'selected' : ''}>Default (Dark)</option>
+            <option value="blue" ${normalizeCounterColor(counter.color) === 'blue' ? 'selected' : ''}>Blue</option>
+            <option value="green" ${normalizeCounterColor(counter.color) === 'green' ? 'selected' : ''}>Green</option>
+            <option value="red" ${normalizeCounterColor(counter.color) === 'red' ? 'selected' : ''}>Red</option>
+            <option value="purple" ${normalizeCounterColor(counter.color) === 'purple' ? 'selected' : ''}>Purple</option>
+            <option value="orange" ${normalizeCounterColor(counter.color) === 'orange' ? 'selected' : ''}>Orange</option>
+          </select></label>
           <label class="field"><div class="label">Value</div><input type="text" class="input" data-counter-f="value" value="${esc(counter.value || '')}" placeholder="e.g. Open" /></label>
           <label class="field"><div class="label">Label</div><input type="text" class="input" data-counter-f="label" value="${esc(counter.label || '')}" placeholder="e.g. Open Cases" /></label>
         </div>
@@ -713,7 +733,7 @@
       renderFilters();
     };
     root.querySelector('#qbAddCounterBtn').onclick = () => {
-      state.dashboardCounters.push({ fieldId: '', operator: 'EX', value: '', label: '' });
+      state.dashboardCounters.push({ fieldId: '', operator: 'EX', value: '', label: '', color: 'default' });
       renderCounterFilters();
     };
 

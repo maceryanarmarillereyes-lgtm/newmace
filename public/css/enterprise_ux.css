@@ -4887,3 +4887,55 @@ body.members-fullscreen-active .tooltip{
   color: #f4f4f5 !important;
   background-color: rgba(255,255,255,0.05) !important;
 }
+
+/* My Quickbase premium compact layout */
+.qb-page-shell{
+  height: calc(100vh - 60px);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  gap:10px;
+}
+.qb-static-zone{ flex-shrink:0; display:flex; flex-direction:column; gap:10px; }
+.qb-header-card{ padding:10px 14px; }
+.qb-title{ font-size:20px; line-height:1.1; }
+.qb-subtitle{ margin-top:2px; font-size:11px; }
+.qb-dashboard-counters{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap:10px;
+  flex-shrink:0;
+}
+.qb-counter-widget{
+  backdrop-filter: blur(12px);
+  border-radius: 12px;
+  padding: 14px;
+  min-height: 132px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  text-align:center;
+}
+.qb-counter-label{
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.14em;
+  color:rgba(203,213,225,.86);
+  margin-bottom:8px;
+}
+.qb-counter-value{ font-size:56px; font-weight:900; line-height:1; }
+.qb-table-card{ flex-grow:1; min-height:0; display:flex; flex-direction:column; }
+.qb-data-body{ flex-grow:1; min-height:0; overflow-y:auto; }
+.qb-table-inner{ overflow-x:auto; }
+.qb-data-table{ width:100%; min-width:760px; border-collapse:collapse; }
+.qb-data-table th,
+.qb-data-table td{ text-align:left; padding:8px; }
+.qb-data-table thead th{
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: var(--surface-color, #1e1e1e);
+  backdrop-filter: blur(10px);
+}
+.qb-case-id{ font-weight:700; }
