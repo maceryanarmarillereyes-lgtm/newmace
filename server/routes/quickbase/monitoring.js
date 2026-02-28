@@ -302,23 +302,27 @@ module.exports = async (req, res) => {
     const searchableFieldIds = requestedSearchFieldIds.length ? requestedSearchFieldIds : selectFields;
     const searchClause = buildSearchClause(search, searchableFieldIds);
 
-    let finalWhere = effectiveWhere;
+    const conditions = [];
+    // 1. Report Filters
     if (hasPersonalQuickbaseQuery && reportMetadata?.filter) {
-      finalWhere = reportMetadata.filter;
+      conditions.push(String(reportMetadata.filter).trim());
     }
-    if (profileFilterClauses.length) {
+    // 2. Manual/Route Overrides
+    if (typeof manualWhere !== 'undefined' && manualWhere) conditions.push(manualWhere);
+    if (typeof routeWhere !== 'undefined' && routeWhere) conditions.push(routeWhere);
+    // 3. Custom Counters / Profile Filters
+    if (typeof profileFilterClauses !== 'undefined' && profileFilterClauses.length > 0) {
       const groupedProfileClause = profileFilterClauses.length === 1
         ? profileFilterClauses[0]
         : `(${profileFilterClauses.join(` ${profileFilterMatch === 'ANY' ? 'OR' : 'AND'} `)})`;
       if (groupedProfileClause) conditions.push(groupedProfileClause);
     }
-    if (searchClause) {
-      finalWhere = [finalWhere, searchClause].filter(Boolean).join(' AND ');
+    // 4. Search Bar Logic
+    if (typeof searchClause !== 'undefined' && searchClause) {
+      conditions.push(searchClause);
     }
-
-    if (searchClause) conditions.push(searchClause);
-
-    finalWhere = conditions.filter(Boolean).join(' AND ') || null;
+    // 5. Clean Final Assembly
+    const finalWhere = conditions.filter(Boolean).join(' AND ') || null;
 
     const out = await queryQuickbaseRecords({
       config: userQuickbaseConfig,
