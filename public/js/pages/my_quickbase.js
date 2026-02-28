@@ -148,6 +148,7 @@
   }
 
   window.Pages.my_quickbase = async function(root) {
+    const AUTO_REFRESH_MS = 15000;
     const me = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
     let profile = (me && window.Store && Store.getProfile) ? (Store.getProfile(me.id) || {}) : {};
 
@@ -256,6 +257,9 @@
 
     const cleanupHandlers = [];
     let modalBindingsActive = false;
+    let quickbaseLoadInFlight = null;
+    let quickbaseRefreshTimer = null;
+    let lastQuickbaseLoadAt = 0;
 
     function renderSelectedFloatingPanel() {
       const panel = root.querySelector('#qbSelectedFloatingPanel');
@@ -450,24 +454,66 @@
       modalBindingsActive = false;
     }
 
-    async function loadQuickbaseData() {
+    async function loadQuickbaseData(options) {
+      const opts = options && typeof options === 'object' ? options : {};
+      const silent = !!opts.silent;
       const host = root.querySelector('#qbDataBody');
       const meta = root.querySelector('#qbDataMeta');
-      if (host) host.innerHTML = '<div class="small muted" style="padding:8px;">Loading Quickbase data...</div>';
-      if (meta) meta.textContent = 'Loading...';
-      try {
-        if (!window.QuickbaseAdapter || typeof window.QuickbaseAdapter.fetchMonitoringData !== 'function') {
-          throw new Error('Quickbase adapter unavailable');
-        }
-        const data = await window.QuickbaseAdapter.fetchMonitoringData();
-        state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
-        renderColumnGrid();
-        renderFilters();
-        renderRecords(root, data || {});
-      } catch (err) {
-        if (meta) meta.textContent = 'Check Connection';
-        if (host) host.innerHTML = `<div class="small" style="padding:10px;color:#fecaca;">${esc(String(err && err.message || 'Unable to load Quickbase records'))}</div>`;
+
+      if (quickbaseLoadInFlight) return quickbaseLoadInFlight;
+
+      if (!silent) {
+        if (host) host.innerHTML = '<div class="small muted" style="padding:8px;">Loading Quickbase data...</div>';
+        if (meta) meta.textContent = 'Loading...';
       }
+
+      quickbaseLoadInFlight = (async () => {
+        try {
+          if (!window.QuickbaseAdapter || typeof window.QuickbaseAdapter.fetchMonitoringData !== 'function') {
+            throw new Error('Quickbase adapter unavailable');
+          }
+          const data = await window.QuickbaseAdapter.fetchMonitoringData({ bust: Date.now() });
+          state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
+          renderColumnGrid();
+          renderFilters();
+          renderRecords(root, data || {});
+          lastQuickbaseLoadAt = Date.now();
+        } catch (err) {
+          if (meta) meta.textContent = 'Check Connection';
+          if (host) host.innerHTML = `<div class="small" style="padding:10px;color:#fecaca;">${esc(String(err && err.message || 'Unable to load Quickbase records'))}</div>`;
+        } finally {
+          quickbaseLoadInFlight = null;
+        }
+      })();
+
+      return quickbaseLoadInFlight;
+    }
+
+    function setupAutoRefresh() {
+      if (quickbaseRefreshTimer) clearInterval(quickbaseRefreshTimer);
+      quickbaseRefreshTimer = setInterval(() => {
+        if (document.hidden) return;
+        loadQuickbaseData({ silent: true });
+      }, AUTO_REFRESH_MS);
+
+      const onVisibilityChange = () => {
+        if (document.hidden) return;
+        const shouldRefresh = !lastQuickbaseLoadAt || (Date.now() - lastQuickbaseLoadAt) >= AUTO_REFRESH_MS;
+        if (shouldRefresh) loadQuickbaseData({ silent: true });
+      };
+
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      window.addEventListener('focus', onVisibilityChange);
+
+      const prevCleanup = root._cleanup;
+      root._cleanup = () => {
+        try { if (prevCleanup) prevCleanup(); } catch (_) {}
+        try { cleanupModalBindings(); } catch (_) {}
+        try { if (quickbaseRefreshTimer) clearInterval(quickbaseRefreshTimer); } catch (_) {}
+        quickbaseRefreshTimer = null;
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        window.removeEventListener('focus', onVisibilityChange);
+      };
     }
 
     function openSettings() {
@@ -592,5 +638,6 @@
 
     await refreshProfileFromCloud();
     await loadQuickbaseData();
+    setupAutoRefresh();
   };
 })();
