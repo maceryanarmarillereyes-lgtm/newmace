@@ -531,37 +531,48 @@
         seenCols.add(cleaned);
         orderedColumns.push(cleaned);
       });
-      const payload = {
-        qb_report_link: reportLink,
-        qb_qid: qidInput || parsed.qid,
-        qb_realm: parsed.realm,
-        qb_table_id: tableIdInput || parsed.tableId,
-        qb_custom_columns: orderedColumns,
-        qb_custom_filters: normalizeFilters(state.customFilters),
-        qb_filter_match: normalizeFilterMatch(state.filterMatch)
+      const currentSettingsObject = {
+        reportLink,
+        qid: qidInput || parsed.qid,
+        realm: parsed.realm,
+        tableId: tableIdInput || parsed.tableId,
+        customColumns: orderedColumns,
+        customFilters: normalizeFilters(state.customFilters),
+        filterMatch: normalizeFilterMatch(state.filterMatch)
       };
 
-      payload.quickbase_config = {
-        reportLink: payload.qb_report_link,
-        qid: payload.qb_qid,
-        realm: payload.qb_realm,
-        tableId: payload.qb_table_id,
-        customColumns: payload.qb_custom_columns,
-        customFilters: payload.qb_custom_filters,
-        filterMatch: payload.qb_filter_match
+      const payload = {
+        qb_report_link: reportLink,
+        qb_qid: currentSettingsObject.qid,
+        qb_realm: currentSettingsObject.realm,
+        qb_table_id: currentSettingsObject.tableId,
+        qb_custom_columns: currentSettingsObject.customColumns,
+        qb_custom_filters: currentSettingsObject.customFilters,
+        qb_filter_match: currentSettingsObject.filterMatch
       };
-      payload.quickbase_settings = payload.quickbase_config;
+
+      payload.quickbase_config = currentSettingsObject;
+      payload.quickbase_settings = currentSettingsObject;
 
       state.isSaving = true;
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
       if (saveLock) saveLock.style.display = 'flex';
       try {
-        if (!window.CloudUsers || typeof window.CloudUsers.updateMe !== 'function') {
-          throw new Error('Cloud user API is unavailable. Please reload and try again.');
-        }
-        const out = await window.CloudUsers.updateMe(payload);
-        if (!out.ok) throw new Error(out.message || 'Could not save Quickbase settings.');
+        const authToken = window.CloudAuth && typeof CloudAuth.accessToken === 'function' ? CloudAuth.accessToken() : '';
+        const res = await fetch('/api/users/update_me', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+          },
+          body: JSON.stringify({
+            ...payload,
+            quickbase_settings: currentSettingsObject
+          })
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.message || out.error || 'Could not save Quickbase settings.');
 
         if (window.Store && Store.setProfile) {
           Store.setProfile(me.id, Object.assign({}, payload, { updatedAt: Date.now() }));

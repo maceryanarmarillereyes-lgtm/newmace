@@ -106,6 +106,28 @@ function toBool(v){
   return undefined;
 }
 
+function createServiceSupabaseAdapter() {
+  return {
+    from(tableName) {
+      const mappedTable = tableName === 'profiles' ? 'mums_profiles' : tableName;
+      return {
+        update(updates) {
+          return {
+            async eq(column, value) {
+              const mappedColumn = mappedTable === 'mums_profiles' && column === 'id' ? 'user_id' : column;
+              const out = await serviceUpdate(mappedTable, updates || {}, { [mappedColumn]: `eq.${value}` });
+              return {
+                data: out && out.ok ? out.json : null,
+                error: out && out.ok ? null : (out.json || out.text || { message: 'unknown_update_error' })
+              };
+            }
+          };
+        }
+      };
+    }
+  };
+}
+
 // PATCH /api/users/update_me
 // Updates the authenticated user's profile (server-side, service key).
 module.exports = async (req, res) => {
@@ -119,6 +141,7 @@ module.exports = async (req, res) => {
     if (!authed) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
     const body = await readBody(req);
+    req.user = req.user || { id: authed.id };
     const patch = {};
 
     if (Object.prototype.hasOwnProperty.call(body, 'name')) {
@@ -328,8 +351,42 @@ module.exports = async (req, res) => {
       }
     }
 
+    const allowedFields = [
+      'name',
+      'duty',
+      'qb_token',
+      'qb_report_link',
+      'qb_qid',
+      'qb_realm',
+      'qb_table_id',
+      'qb_custom_columns',
+      'qb_custom_filters',
+      'qb_filter_match',
+      'quickbase_config',
+      'quickbase_settings',
+      'team_override',
+      'team_id'
+    ];
+    const updates = allowedFields.reduce((acc, key) => {
+      if (!Object.prototype.hasOwnProperty.call(patch, key)) return acc;
+      let value = patch[key];
+      if (key === 'quickbase_settings' && typeof value === 'string') {
+        try {
+          value = value ? JSON.parse(value) : {};
+        } catch (_) {
+          value = {};
+        }
+      }
+      acc[key] = value;
+      return acc;
+    }, {});
+
+    const supabase = createServiceSupabaseAdapter();
     try {
-      out = await serviceUpdate('mums_profiles', patch, { user_id: `eq.${authed.id}` });
+      out = await supabase.from('profiles').update(updates).eq('id', req.user.id);
+      if (out && out.error) {
+        console.error('Supabase Update Error:', out.error);
+      }
     } catch (err) {
       console.error('[users.update] DB_WRITE_FAILED', err);
       return sendJson(res, 500, { error: 'update_failed', code: 'DB_WRITE_FAILED' });
@@ -338,18 +395,18 @@ module.exports = async (req, res) => {
     // Backward-compatible fallback:
     // If environment DB is missing qb_custom_* columns, retry update without those keys
     // so core Quickbase config (token/qid/table/realm/link) still saves successfully.
-    if (!out.ok) {
-      const detailBlob = JSON.stringify(out.json || out.text || '').toLowerCase();
+    if (out && out.error) {
+      const detailBlob = JSON.stringify(out.error || '').toLowerCase();
       const missingCustomCols = detailBlob.includes('qb_custom_columns') || detailBlob.includes('qb_custom_filters') || detailBlob.includes('quickbase_config') || detailBlob.includes('quickbase_settings');
       if (missingCustomCols) {
-        const retryPatch = { ...patch };
+        const retryPatch = { ...updates };
         delete retryPatch.qb_custom_columns;
         delete retryPatch.qb_custom_filters;
         delete retryPatch.quickbase_config;
         delete retryPatch.quickbase_settings;
         if (Object.keys(retryPatch).length > 0) {
-          out = await serviceUpdate('mums_profiles', retryPatch, { user_id: `eq.${authed.id}` });
-          if (out.ok) {
+          const retryOut = await supabase.from('profiles').update(retryPatch).eq('id', req.user.id);
+          if (!retryOut.error) {
             return sendJson(res, 200, {
               ok: true,
               updated: true,
@@ -360,7 +417,7 @@ module.exports = async (req, res) => {
           }
         }
       }
-      console.error('[users.update] DB_WRITE_FAILED', out.json || out.text || out.status || 'unknown');
+      console.error('[users.update] DB_WRITE_FAILED', out.error || 'unknown');
       return sendJson(res, 500, { error: 'update_failed', code: 'DB_WRITE_FAILED' });
     }
     console.info('[users.update] quickbase_settings saved', { userId: authed.id, filtersCount });
