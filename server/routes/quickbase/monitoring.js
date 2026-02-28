@@ -1,6 +1,7 @@
 /* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
 const { sendJson, requireAuthedUser } = require('../tasks/_common');
 const { queryQuickbaseRecords, listQuickbaseFields, normalizeQuickbaseCellValue } = require('../../lib/quickbase');
+const { normalizeSettings } = require('../../lib/normalize_settings');
 
 async function getQuickbaseReportMetadata({ config, qid }) {
   const cfg = {
@@ -127,15 +128,12 @@ function normalizeFilterMatch(raw) {
   return String(raw || '').trim().toUpperCase() === 'ANY' ? 'ANY' : 'ALL';
 }
 
-function parseQuickbaseSettings(raw) {
-  if (!raw) return {};
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
-  try {
-    const parsed = JSON.parse(String(raw));
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch (_) {
-    return {};
+function parseQuickbaseSettings(raw, userId) {
+  const normalized = normalizeSettings(raw);
+  if (raw && typeof raw !== 'object' && !Object.keys(normalized).length) {
+    console.warn('normalizeSettings fallback', { userId, originalType: typeof raw });
   }
+  return normalized && typeof normalized === 'object' && !Array.isArray(normalized) ? normalized : {};
 }
 
 module.exports = async (req, res) => {
@@ -144,8 +142,8 @@ module.exports = async (req, res) => {
     if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
     const profile = auth?.profile || {};
-    const profileQuickbaseSettings = parseQuickbaseSettings(profile.quickbase_settings);
-    const profileQuickbaseConfigRaw = parseQuickbaseSettings(profile.quickbase_config);
+    const profileQuickbaseSettings = parseQuickbaseSettings(profile.quickbase_settings, auth.id);
+    const profileQuickbaseConfigRaw = parseQuickbaseSettings(profile.quickbase_config, auth.id);
     const profileQuickbaseConfig = Object.keys(profileQuickbaseSettings).length
       ? profileQuickbaseSettings
       : profileQuickbaseConfigRaw;
