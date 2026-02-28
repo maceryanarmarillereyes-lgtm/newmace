@@ -172,18 +172,11 @@
     };
 
     // Construct URL with query parameters
-    const profileFilters = Array.isArray(profileQuickbaseConfig && (profileQuickbaseConfig.customFilters || profileQuickbaseConfig.qb_custom_filters))
-      ? (profileQuickbaseConfig.customFilters || profileQuickbaseConfig.qb_custom_filters)
-      : [];
-    const profileFilterMatch = String((profileQuickbaseConfig && (profileQuickbaseConfig.filterMatch || profileQuickbaseConfig.qb_filter_match)) || 'ALL').trim().toUpperCase();
-    const where = buildQuickbaseWhere(profileFilters, profileFilterMatch);
-
     const queryParams = new URLSearchParams({
       qid: qid,
       tableId: tableId,
       realm: realm
     });
-    if (where) queryParams.set('where', where);
 
     const candidates = [
       '/api/quickbase/monitoring?' + queryParams.toString(),
