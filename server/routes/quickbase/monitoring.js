@@ -318,7 +318,7 @@ module.exports = async (req, res) => {
 
     if (searchClause) conditions.push(searchClause);
 
-    const finalWhere = conditions.filter(Boolean).join(' AND ') || null;
+    finalWhere = conditions.filter(Boolean).join(' AND ') || null;
 
     const out = await queryQuickbaseRecords({
       config: userQuickbaseConfig,
