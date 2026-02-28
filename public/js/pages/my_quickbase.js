@@ -229,11 +229,29 @@
     }
 
     meta.textContent = `${rows.length} record${rows.length === 1 ? '' : 's'} loaded`;
+    const toDurationLabel = (value) => {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric < 0) return String(value == null ? 'N/A' : value);
+      const hours = numeric / (1000 * 60 * 60);
+      if (hours < 24) {
+        const roundedHours = Math.max(1, Math.round(hours));
+        return `${roundedHours} hr${roundedHours === 1 ? '' : 's'}`;
+      }
+      const days = Math.floor(hours / 24);
+      const remainingHours = Math.round(hours - (days * 24));
+      if (remainingHours <= 0) return `${days} day${days === 1 ? '' : 's'}`;
+      return `${days} day${days === 1 ? '' : 's'} ${remainingHours} hr${remainingHours === 1 ? '' : 's'}`;
+    };
+
     const headers = columns.map((c) => `<th>${esc(c.label || c.id || 'Field')}</th>`).join('');
     const body = rows.map((r) => {
       const cells = columns.map((c) => {
         const field = r && r.fields ? r.fields[String(c.id)] : null;
-        const value = String(field && field.value != null ? field.value : 'N/A');
+        const rawValue = field && field.value != null ? field.value : 'N/A';
+        const normalizedLabel = String(c && c.label || '').trim().toLowerCase();
+        const value = (normalizedLabel === 'last update days' || normalizedLabel === 'age')
+          ? toDurationLabel(rawValue)
+          : String(rawValue);
         return `<td>${esc(value)}</td>`;
       }).join('');
       return `<tr><td class="qb-case-id">${esc(String(r && r.qbRecordId || 'N/A'))}</td>${cells}</tr>`;
