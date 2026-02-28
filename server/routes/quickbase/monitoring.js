@@ -91,7 +91,7 @@ function buildProfileFilterClauses(rawFilters) {
     const fieldId = Number(f.fieldId ?? f.field_id ?? f.fid ?? f.id);
     const value = String(f.value ?? '').trim();
     const opRaw = String(f.operator ?? 'EX').trim().toUpperCase();
-    const operator = ['EX', 'XEX', 'CT'].includes(opRaw) ? opRaw : 'EX';
+    const operator = ['EX', 'XEX', 'CT', 'XCT', 'SW', 'XSW', 'BF', 'AF', 'IR', 'XIR', 'TV', 'XTV', 'LT', 'LTE', 'GT', 'GTE'].includes(opRaw) ? opRaw : 'EX';
     if (!Number.isFinite(fieldId) || !value) return;
     if (!groupedByField.has(fieldId)) groupedByField.set(fieldId, []);
     groupedByField.get(fieldId).push(`{${fieldId}.${operator}.'${encodeQuickbaseLiteral(value)}'}`);
@@ -114,11 +114,12 @@ module.exports = async (req, res) => {
     if (!auth) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
     const profile = auth?.profile || {};
+    const profileQuickbaseConfig = (profile.quickbase_config && typeof profile.quickbase_config === 'object') ? profile.quickbase_config : {};
     const profileToken = String(profile.qb_token || profile.quickbase_token || profile.quickbase_user_token || '').trim();
-    const profileLink = String(profile.qb_report_link || profile.quickbase_url || profile.quickbase_report_link || '').trim();
-    const profileRealm = String(profile.qb_realm || profile.quickbase_realm || '').trim();
-    const profileQid = String(profile.qb_qid || profile.quickbase_qid || '').trim();
-    const profileTableId = String(profile.qb_table_id || profile.quickbase_table_id || '').trim();
+    const profileLink = String(profileQuickbaseConfig.reportLink || profileQuickbaseConfig.qb_report_link || profile.qb_report_link || profile.quickbase_url || profile.quickbase_report_link || '').trim();
+    const profileRealm = String(profileQuickbaseConfig.realm || profileQuickbaseConfig.qb_realm || profile.qb_realm || profile.quickbase_realm || '').trim();
+    const profileQid = String(profileQuickbaseConfig.qid || profileQuickbaseConfig.qb_qid || profile.qb_qid || profile.quickbase_qid || '').trim();
+    const profileTableId = String(profileQuickbaseConfig.tableId || profileQuickbaseConfig.qb_table_id || profile.qb_table_id || profile.quickbase_table_id || '').trim();
 
     let qid = String(req?.query?.qid || req?.query?.qId || '').trim();
     let tableId = String(req?.query?.tableId || req?.query?.table_id || '').trim();
@@ -201,7 +202,7 @@ module.exports = async (req, res) => {
     ];
 
     const hasPersonalQuickbaseQuery = !!String(qid || '').trim();
-    const profileCustomColumns = normalizeProfileColumns(profile.qb_custom_columns);
+    const profileCustomColumns = normalizeProfileColumns(profileQuickbaseConfig.customColumns || profileQuickbaseConfig.qb_custom_columns || profile.qb_custom_columns);
     const mappedProfileColumns = profileCustomColumns
       .map((id) => {
         const found = allAvailableFields.find((f) => Number(f.id) === Number(id));
@@ -260,8 +261,8 @@ module.exports = async (req, res) => {
       });
     }
 
-    const profileFilterClauses = buildProfileFilterClauses(profile.qb_custom_filters);
-    const profileFilterMatch = normalizeFilterMatch(profile.qb_filter_match || profile.qb_custom_filter_match);
+    const profileFilterClauses = buildProfileFilterClauses(profileQuickbaseConfig.customFilters || profileQuickbaseConfig.qb_custom_filters || profile.qb_custom_filters);
+    const profileFilterMatch = normalizeFilterMatch(profileQuickbaseConfig.filterMatch || profileQuickbaseConfig.qb_filter_match || profile.qb_filter_match || profile.qb_custom_filter_match);
 
     const routeWhere = String(req?.query?.where || '').trim();
     const manualWhere = whereClauses.length > 0 ? whereClauses.join(' AND ') : '';
@@ -330,7 +331,7 @@ module.exports = async (req, res) => {
           .map((f) => fieldsMetaById[String(f.id)] || { id: Number(f.id), label: String(f.label || '').trim() })
           .filter((f) => Number.isFinite(f.id) && String(f.label || '').trim());
 
-    const orderedEffectiveFields = sortFieldsByProfileOrder(effectiveFields, profile.qb_custom_columns);
+    const orderedEffectiveFields = sortFieldsByProfileOrder(effectiveFields, profileQuickbaseConfig.customColumns || profileQuickbaseConfig.qb_custom_columns || profile.qb_custom_columns);
 
     const columns = (Array.isArray(out.records) && out.records.length)
       ? orderedEffectiveFields

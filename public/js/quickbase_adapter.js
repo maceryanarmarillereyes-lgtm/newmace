@@ -78,6 +78,7 @@
     let qid = '';
     let tableId = '';
     let realm = '';
+    let profileQuickbaseConfig = null;
 
     if (overrideParams && typeof overrideParams === 'object') {
       qid = String(overrideParams.qid || '').trim();
@@ -92,9 +93,12 @@
         if (me && window.Store && Store.getProfile) {
           const profile = Store.getProfile(me.id);
           if (profile) {
-            qid = qid || String(profile.qb_qid || profile.quickbase_qid || '').trim();
-            tableId = tableId || String(profile.qb_table_id || profile.quickbase_table_id || '').trim();
-            realm = realm || String(profile.qb_realm || profile.quickbase_realm || '').trim();
+            profileQuickbaseConfig = (profile.quickbase_config && typeof profile.quickbase_config === 'object')
+              ? profile.quickbase_config
+              : null;
+            qid = qid || String((profileQuickbaseConfig && (profileQuickbaseConfig.qid || profileQuickbaseConfig.qb_qid)) || profile.qb_qid || profile.quickbase_qid || '').trim();
+            tableId = tableId || String((profileQuickbaseConfig && (profileQuickbaseConfig.tableId || profileQuickbaseConfig.qb_table_id)) || profile.qb_table_id || profile.quickbase_table_id || '').trim();
+            realm = realm || String((profileQuickbaseConfig && (profileQuickbaseConfig.realm || profileQuickbaseConfig.qb_realm)) || profile.qb_realm || profile.quickbase_realm || '').trim();
           }
         }
       } catch (_) {}
