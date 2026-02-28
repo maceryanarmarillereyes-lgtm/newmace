@@ -55,6 +55,36 @@
     return value === 'ANY' ? 'ANY' : 'ALL';
   }
 
+  function normalizeQuickbaseConfig(raw) {
+    const cfg = raw && typeof raw === 'object' ? raw : {};
+    return {
+      reportLink: String(cfg.reportLink || cfg.qb_report_link || '').trim(),
+      qid: String(cfg.qid || cfg.qb_qid || '').trim(),
+      tableId: String(cfg.tableId || cfg.qb_table_id || '').trim(),
+      realm: String(cfg.realm || cfg.qb_realm || '').trim(),
+      customColumns: Array.isArray(cfg.customColumns || cfg.qb_custom_columns)
+        ? (cfg.customColumns || cfg.qb_custom_columns).map((v) => String(v))
+        : [],
+      customFilters: normalizeFilters(cfg.customFilters || cfg.qb_custom_filters),
+      filterMatch: normalizeFilterMatch(cfg.filterMatch || cfg.qb_filter_match)
+    };
+  }
+
+  function getProfileQuickbaseConfig(profile) {
+    const p = profile && typeof profile === 'object' ? profile : {};
+    const dbConfig = normalizeQuickbaseConfig(p.quickbase_config);
+    const fallbackConfig = normalizeQuickbaseConfig(p);
+    return {
+      reportLink: dbConfig.reportLink || fallbackConfig.reportLink,
+      qid: dbConfig.qid || fallbackConfig.qid,
+      tableId: dbConfig.tableId || fallbackConfig.tableId,
+      realm: dbConfig.realm || fallbackConfig.realm,
+      customColumns: dbConfig.customColumns.length ? dbConfig.customColumns : fallbackConfig.customColumns,
+      customFilters: dbConfig.customFilters.length ? dbConfig.customFilters : fallbackConfig.customFilters,
+      filterMatch: dbConfig.filterMatch || fallbackConfig.filterMatch || 'ALL'
+    };
+  }
+
   function renderRecords(root, payload) {
     const host = root.querySelector('#qbDataBody');
     const meta = root.querySelector('#qbDataMeta');
@@ -85,18 +115,20 @@
 
   window.Pages.my_quickbase = async function(root) {
     const me = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
-    const profile = (me && window.Store && Store.getProfile) ? (Store.getProfile(me.id) || {}) : {};
+    let profile = (me && window.Store && Store.getProfile) ? (Store.getProfile(me.id) || {}) : {};
 
-    const initialLink = String(profile.qb_report_link || profile.quickbase_url || '').trim();
+    const quickbaseConfig = getProfileQuickbaseConfig(profile);
+    const initialLink = String(quickbaseConfig.reportLink || profile.quickbase_url || '').trim();
     const parsedFromLink = parseQuickbaseLink(initialLink);
     const state = {
       reportLink: initialLink,
-      qid: String(profile.qb_qid || profile.quickbase_qid || parsedFromLink.qid || '').trim(),
-      tableId: String(profile.qb_table_id || profile.quickbase_table_id || parsedFromLink.tableId || '').trim(),
-      customColumns: Array.isArray(profile.qb_custom_columns) ? profile.qb_custom_columns.map((v) => String(v)) : [],
-      customFilters: normalizeFilters(profile.qb_custom_filters),
-      filterMatch: normalizeFilterMatch(profile.qb_filter_match || profile.qb_custom_filter_match),
-      allAvailableFields: []
+      qid: String(quickbaseConfig.qid || profile.quickbase_qid || parsedFromLink.qid || '').trim(),
+      tableId: String(quickbaseConfig.tableId || profile.quickbase_table_id || parsedFromLink.tableId || '').trim(),
+      customColumns: Array.isArray(quickbaseConfig.customColumns) ? quickbaseConfig.customColumns.map((v) => String(v)) : [],
+      customFilters: normalizeFilters(quickbaseConfig.customFilters),
+      filterMatch: normalizeFilterMatch(quickbaseConfig.filterMatch || profile.qb_custom_filter_match),
+      allAvailableFields: [],
+      isSaving: false
     };
 
     root.innerHTML = `
@@ -265,6 +297,13 @@
             <option value="EX" ${f.operator === 'EX' ? 'selected' : ''}>Is (Exact)</option>
             <option value="XEX" ${f.operator === 'XEX' ? 'selected' : ''}>Is Not</option>
             <option value="CT" ${f.operator === 'CT' ? 'selected' : ''}>Contains</option>
+            <option value="XCT" ${f.operator === 'XCT' ? 'selected' : ''}>Does Not Contain</option>
+            <option value="SW" ${f.operator === 'SW' ? 'selected' : ''}>Starts With</option>
+            <option value="XSW" ${f.operator === 'XSW' ? 'selected' : ''}>Does Not Start With</option>
+            <option value="BF" ${f.operator === 'BF' ? 'selected' : ''}>Before</option>
+            <option value="AF" ${f.operator === 'AF' ? 'selected' : ''}>After</option>
+            <option value="IR" ${f.operator === 'IR' ? 'selected' : ''}>In Range</option>
+            <option value="XIR" ${f.operator === 'XIR' ? 'selected' : ''}>Not In Range</option>
           </select>
           <input type="text" class="input" data-f="value" value="${esc(activeValue)}" placeholder="Filter value" style="min-width:220px;" />
           <button class="btn" data-remove-filter="${idx}" type="button">Remove</button>
@@ -404,14 +443,33 @@
     }
 
     function closeSettings() {
+      if (state.isSaving) return;
       cleanupModalBindings();
       if (window.UI && UI.closeModal) UI.closeModal('qbSettingsModal');
+    }
+
+    async function refreshProfileFromCloud() {
+      if (!me || !window.CloudUsers || typeof window.CloudUsers.me !== 'function') return;
+      try {
+        const out = await window.CloudUsers.me();
+        const cloudProfile = out && out.ok && out.profile && typeof out.profile === 'object' ? out.profile : null;
+        if (!cloudProfile) return;
+        profile = cloudProfile;
+        if (window.Store && typeof Store.setProfile === 'function') {
+          Store.setProfile(me.id, Object.assign({}, cloudProfile, { updatedAt: Date.now() }));
+        }
+      } catch (_) {}
     }
 
     root.querySelector('#qbOpenSettingsBtn').onclick = openSettings;
     root.querySelector('#qbCloseSettingsBtn').onclick = closeSettings;
     root.querySelector('#qbCancelSettingsBtn').onclick = closeSettings;
     root.querySelector('#qbSettingsModal').addEventListener('mousedown', (event) => {
+      if (state.isSaving) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (event.target && event.target.id === 'qbSettingsModal') cleanupModalBindings();
     });
     root.querySelector('#qbReloadBtn').onclick = () => loadQuickbaseData();
@@ -445,6 +503,17 @@
         qb_filter_match: normalizeFilterMatch(state.filterMatch)
       };
 
+      payload.quickbase_config = {
+        reportLink: payload.qb_report_link,
+        qid: payload.qb_qid,
+        realm: payload.qb_realm,
+        tableId: payload.qb_table_id,
+        customColumns: payload.qb_custom_columns,
+        customFilters: payload.qb_custom_filters,
+        filterMatch: payload.qb_filter_match
+      };
+
+      state.isSaving = true;
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
       try {
@@ -463,11 +532,13 @@
       } catch (err) {
         if (window.UI && UI.toast) UI.toast('Failed to save settings: ' + String(err && err.message || err), 'error');
       } finally {
+        state.isSaving = false;
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save Settings';
       }
     };
 
+    await refreshProfileFromCloud();
     await loadQuickbaseData();
   };
 })();

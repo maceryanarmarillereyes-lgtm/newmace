@@ -26,6 +26,41 @@ function readBody(req) {
   });
 }
 
+
+function normalizeQuickbaseConfig(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const customColumns = Array.isArray(src.customColumns || src.qb_custom_columns)
+    ? (src.customColumns || src.qb_custom_columns)
+        .map((v) => String(v == null ? '' : v).trim())
+        .filter(Boolean)
+        .slice(0, 200)
+    : [];
+  const customFilters = Array.isArray(src.customFilters || src.qb_custom_filters)
+    ? (src.customFilters || src.qb_custom_filters)
+        .filter((f) => f && typeof f === 'object')
+        .map((f) => ({
+          fieldId: String((f.fieldId ?? f.field_id ?? f.fid ?? f.id ?? '')).trim(),
+          operator: String((f.operator ?? 'EX')).trim().toUpperCase(),
+          value: String((f.value ?? '')).trim()
+        }))
+        .filter((f) => f.fieldId && f.value)
+        .slice(0, 200)
+    : [];
+
+  const filterMatchRaw = String(src.filterMatch || src.qb_filter_match || '').trim().toUpperCase();
+  const filterMatch = filterMatchRaw === 'ANY' ? 'ANY' : 'ALL';
+
+  return {
+    reportLink: String(src.reportLink || src.qb_report_link || '').trim(),
+    qid: String(src.qid || src.qb_qid || '').trim(),
+    realm: String(src.realm || src.qb_realm || '').trim().toLowerCase(),
+    tableId: String(src.tableId || src.qb_table_id || '').trim(),
+    customColumns,
+    customFilters,
+    filterMatch
+  };
+}
+
 function toBool(v){
   if (v === true || v === false) return v;
   const s = String(v ?? '').trim().toLowerCase();
@@ -98,6 +133,26 @@ module.exports = async (req, res) => {
         .slice(0, 200);
       patch.qb_custom_columns = normalized;
     }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'quickbase_config')) {
+      const normalizedConfig = normalizeQuickbaseConfig(body.quickbase_config);
+      patch.quickbase_config = normalizedConfig;
+
+      // Keep legacy columns in sync for backward compatibility.
+      patch.qb_report_link = normalizedConfig.reportLink;
+      patch.qb_qid = normalizedConfig.qid;
+      patch.qb_realm = normalizedConfig.realm;
+      patch.qb_table_id = normalizedConfig.tableId;
+      patch.qb_custom_columns = normalizedConfig.customColumns;
+      patch.qb_custom_filters = normalizedConfig.customFilters;
+      patch.qb_filter_match = normalizedConfig.filterMatch;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'qb_filter_match')) {
+      const match = String(body.qb_filter_match || '').trim().toUpperCase();
+      patch.qb_filter_match = match === 'ANY' ? 'ANY' : 'ALL';
+    }
+
     if (Object.prototype.hasOwnProperty.call(body, 'qb_custom_filters')) {
       const filters = Array.isArray(body.qb_custom_filters) ? body.qb_custom_filters : [];
       const normalized = filters
@@ -175,11 +230,12 @@ module.exports = async (req, res) => {
     // so core Quickbase config (token/qid/table/realm/link) still saves successfully.
     if (!out.ok) {
       const detailBlob = JSON.stringify(out.json || out.text || '').toLowerCase();
-      const missingCustomCols = detailBlob.includes('qb_custom_columns') || detailBlob.includes('qb_custom_filters');
+      const missingCustomCols = detailBlob.includes('qb_custom_columns') || detailBlob.includes('qb_custom_filters') || detailBlob.includes('quickbase_config');
       if (missingCustomCols) {
         const retryPatch = { ...patch };
         delete retryPatch.qb_custom_columns;
         delete retryPatch.qb_custom_filters;
+        delete retryPatch.quickbase_config;
         if (Object.keys(retryPatch).length > 0) {
           out = await serviceUpdate('mums_profiles', retryPatch, { user_id: `eq.${authed.id}` });
           if (out.ok) {
@@ -187,8 +243,8 @@ module.exports = async (req, res) => {
               ok: true,
               updated: true,
               patch: retryPatch,
-              warning: 'qb_custom_columns_missing_in_db',
-              message: 'Saved core Quickbase settings. Run latest migrations to enable custom columns/filters persistence.'
+              warning: 'quickbase_columns_or_config_missing_in_db',
+              message: 'Saved core Quickbase settings. Run latest migrations to enable custom columns/filters/config persistence.'
             });
           }
         }
