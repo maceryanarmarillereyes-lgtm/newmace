@@ -36,6 +36,11 @@
     }
   }
 
+
+  function hasOwnKeys(obj) {
+    return !!obj && typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length > 0;
+  }
+
   function buildQuickbaseWhere(filters, matchMode) {
     if (!Array.isArray(filters) || !filters.length) return '';
     const clauses = filters
@@ -165,6 +170,12 @@
       } catch (_) {}
     }
 
+
+    const normalizedSettings = parseQuickbaseSettings(profileQuickbaseConfig);
+    const normalizedSearch = String((overrideParams && overrideParams.search) || '').trim();
+    const hasCustomFilters = Array.isArray(overrideParams && overrideParams.customFilters) && (overrideParams.customFilters || []).length > 0;
+    const shouldUseDefaultReport = !hasOwnKeys(normalizedSettings) && !normalizedSearch && !hasCustomFilters;
+
     // Validate required params
     if (!qid || !tableId || !realm) {
       const missingErr = new Error('Quickbase settings not configured. Please set your QID, Table ID, and Realm in My Quickbase Settings.');
@@ -184,9 +195,9 @@
       realm: realm
     });
 
-    const extraWhere = buildQuickbaseWhere(overrideParams && overrideParams.customFilters, overrideParams && overrideParams.filterMatch);
+    const extraWhere = shouldUseDefaultReport ? '' : buildQuickbaseWhere(overrideParams && overrideParams.customFilters, overrideParams && overrideParams.filterMatch);
     appendParam(queryParams, 'where', (overrideParams && overrideParams.where) || extraWhere);
-    appendParam(queryParams, 'search', overrideParams && overrideParams.search);
+    appendParam(queryParams, 'search', normalizedSearch);
     appendParam(queryParams, 'searchFields', Array.isArray(overrideParams && overrideParams.searchFields)
       ? (overrideParams.searchFields || []).map(function(v){ return String(v || '').trim(); }).filter(Boolean).join(',')
       : '');

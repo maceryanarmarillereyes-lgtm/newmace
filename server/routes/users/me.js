@@ -2,6 +2,7 @@
 const DEFAULT_BOOTSTRAP_EMAIL = 'supermace@mums.local';
 
 const { getUserFromJwt, getProfileForUserId, serviceInsert, serviceUpdate } = require('../../lib/supabase');
+const { normalizeSettings } = require('../../lib/normalize_settings');
 
 function sendJson(res, statusCode, body) {
   res.statusCode = statusCode;
@@ -125,6 +126,12 @@ module.exports = async (req, res) => {
     } catch (_) {}
 
 
+    const originalSettings = profile ? profile.settings : undefined;
+    const normalizedSettings = normalizeSettings(originalSettings);
+    if (originalSettings && typeof originalSettings !== 'object' && !Object.keys(normalizedSettings).length) {
+      console.warn('normalizeSettings fallback', { userId: authed.id, originalType: typeof originalSettings });
+    }
+
     const role = String(profile && profile.role ? profile.role : '').toUpperCase();
     const teamIdRaw = (profile && (profile.team_id === null || profile.team_id === undefined)) ? '' : String(profile.team_id || '').trim();
     let teamOverride = !!(profile && (profile.team_override ?? profile.teamOverride ?? false));
@@ -132,7 +139,15 @@ module.exports = async (req, res) => {
       teamOverride = !!teamIdRaw;
     }
     // Attach for frontend convenience (email may be persisted in profiles; auth email remains source of truth).
-    try{ profile = Object.assign({}, profile, { email, teamOverride, team_override: teamOverride }); }catch(_){ }
+    try {
+      profile = Object.assign({}, profile, {
+        settingsRaw: originalSettings ?? null,
+        settings: normalizedSettings,
+        email,
+        teamOverride,
+        team_override: teamOverride
+      });
+    } catch (_) {}
 
     return sendJson(res, 200, { ok: true, email, teamOverride, profile, created, updated });
   } catch (err) {

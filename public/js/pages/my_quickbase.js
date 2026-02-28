@@ -250,7 +250,7 @@
     }
   }
 
-  function renderRecords(root, payload) {
+  function renderRecords(root, payload, options) {
     const host = root.querySelector('#qbDataBody');
     const meta = root.querySelector('#qbDataMeta');
     if (!host || !meta) return;
@@ -259,8 +259,10 @@
     const rows = Array.isArray(payload && payload.records) ? payload.records : [];
 
     if (!columns.length || !rows.length) {
+      const opts = options && typeof options === 'object' ? options : {};
+      const emptyBySearch = !!opts.userInitiatedSearch;
       meta.textContent = 'No Quickbase Records Found';
-      host.innerHTML = '<div class="card pad"><div class="small muted">No records loaded. Open ⚙️ Settings to configure report, columns, and filters.</div></div>';
+      host.innerHTML = `<div class="card pad"><div class="small muted">${emptyBySearch ? 'No records match your filters.' : 'No records loaded. Open ⚙️ Settings to configure report, columns, and filters.'}</div></div>`;
       return;
     }
 
@@ -296,6 +298,11 @@
     host.innerHTML = `<div class="qb-table-inner"><table class="qb-data-table"><thead><tr><th>Case #</th>${headers}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
 
+
+  function shouldApplyInitialFilters(searchInput) {
+    return String(searchInput || '').trim().length > 0;
+  }
+
   function filterRecordsBySearch(payload, searchTerm) {
     const source = payload && typeof payload === 'object' ? payload : {};
     const columns = Array.isArray(source.columns) ? source.columns : [];
@@ -317,6 +324,10 @@
     });
 
     return { columns, records: filtered };
+  }
+
+  if (window.__MUMS_TEST_HOOKS__) {
+    window.__MUMS_TEST_HOOKS__.myQuickbase = { shouldApplyInitialFilters };
   }
 
   window.Pages.my_quickbase = async function(root) {
@@ -341,7 +352,10 @@
       searchTerm: '',
       searchDebounceTimer: null,
       rawPayload: { columns: [], records: [] },
-      currentPayload: { columns: [], records: [] }
+      currentPayload: { columns: [], records: [] },
+      hasUserSearched: false,
+      didInitialDefaultRender: false,
+      isDefaultReportMode: false
     };
 
     root.innerHTML = `
@@ -714,6 +728,7 @@
       const silent = !!opts.silent;
       const host = root.querySelector('#qbDataBody');
       const meta = root.querySelector('#qbDataMeta');
+      const reloadBtn = root.querySelector('#qbReloadBtn');
 
       if (quickbaseLoadInFlight) return quickbaseLoadInFlight;
 
@@ -723,24 +738,28 @@
       }
 
       quickbaseLoadInFlight = (async () => {
+        if (reloadBtn) reloadBtn.disabled = true;
         try {
           if (!window.QuickbaseAdapter || typeof window.QuickbaseAdapter.fetchMonitoringData !== 'function') {
             throw new Error('Quickbase adapter unavailable');
           }
           const activeCounter = state.activeCounterIndex >= 0 ? state.dashboardCounters[state.activeCounterIndex] : null;
-          const mergedFilters = normalizeFilters(state.customFilters);
+          const shouldApplyFilters = opts.applyFilters === true || !!state.hasUserSearched || state.activeCounterIndex >= 0;
+          const mergedFilters = shouldApplyFilters ? normalizeFilters(state.customFilters) : [];
           const counterFilter = counterToFilter(activeCounter);
           if (counterFilter) mergedFilters.push(counterFilter);
           const data = await window.QuickbaseAdapter.fetchMonitoringData({
             bust: Date.now(),
             customFilters: mergedFilters,
             filterMatch: state.filterMatch,
+            search: state.hasUserSearched ? state.searchTerm : '',
             limit: 500
           });
           state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
           renderColumnGrid();
           renderFilters();
           state.rawPayload = { columns: Array.isArray(data && data.columns) ? data.columns : [], records: Array.isArray(data && data.records) ? data.records : [] };
+          state.isDefaultReportMode = !shouldApplyFilters && !String(state.searchTerm || '').trim();
           applySearchAndRender();
           lastQuickbaseLoadAt = Date.now();
         } catch (err) {
@@ -749,6 +768,7 @@
           renderDashboardCounters(root, [], { dashboard_counters: [] }, state);
         } finally {
           quickbaseLoadInFlight = null;
+          if (reloadBtn) reloadBtn.disabled = false;
         }
       })();
 
@@ -764,7 +784,7 @@
             columns: Array.isArray(state.rawPayload && state.rawPayload.columns) ? state.rawPayload.columns : [],
             records: Array.isArray(state.rawPayload && state.rawPayload.records) ? state.rawPayload.records : []
           };
-      renderRecords(root, state.currentPayload);
+      renderRecords(root, state.currentPayload, { userInitiatedSearch: !!state.hasUserSearched && !!normalizedSearch.length });
       renderDashboardCounters(root, state.currentPayload.records, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
         state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
         loadQuickbaseData({ silent: true });
@@ -815,6 +835,13 @@
       if (window.UI && UI.closeModal) UI.closeModal('qbSettingsModal');
     }
 
+    async function renderDefaultReport() {
+      state.didInitialDefaultRender = true;
+      state.hasUserSearched = false;
+      state.searchTerm = '';
+      return loadQuickbaseData({ applyFilters: false });
+    }
+
     async function refreshProfileFromCloud() {
       if (!me || !window.CloudUsers || typeof window.CloudUsers.me !== 'function') return;
       try {
@@ -839,7 +866,7 @@
       }
       if (event.target && event.target.id === 'qbSettingsModal') cleanupModalBindings();
     });
-    root.querySelector('#qbReloadBtn').onclick = () => loadQuickbaseData();
+    root.querySelector('#qbReloadBtn').onclick = () => loadQuickbaseData({ applyFilters: true });
     root.querySelector('#qbAddFilterBtn').onclick = () => {
       state.customFilters.push({ fieldId: '', operator: 'EX', value: '' });
       renderFilters();
@@ -856,9 +883,11 @@
       headerSearch.oninput = () => {
         const nextValue = String(headerSearch.value || '').trim();
         state.searchTerm = nextValue;
+        state.hasUserSearched = nextValue.length > 0;
         if (state.searchDebounceTimer) clearTimeout(state.searchDebounceTimer);
         state.searchDebounceTimer = setTimeout(() => {
           applySearchAndRender();
+          if (state.hasUserSearched) loadQuickbaseData({ silent: true, applyFilters: true });
         }, 500);
       };
     }
@@ -959,7 +988,14 @@
     };
 
     await refreshProfileFromCloud();
-    await loadQuickbaseData();
+    const searchInput = document.querySelector('#quickbase-search')?.value || root.querySelector('#qbHeaderSearch')?.value || '';
+    if (shouldApplyInitialFilters(searchInput)) {
+      state.searchTerm = String(searchInput).trim();
+      state.hasUserSearched = true;
+      await loadQuickbaseData({ applyFilters: true });
+    } else {
+      await renderDefaultReport();
+    }
     setupAutoRefresh();
   };
 })();
