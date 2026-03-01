@@ -201,7 +201,9 @@
     appendParam(queryParams, 'searchFields', Array.isArray(overrideParams && overrideParams.searchFields)
       ? (overrideParams.searchFields || []).map(function(v){ return String(v || '').trim(); }).filter(Boolean).join(',')
       : '');
-    appendParam(queryParams, 'limit', overrideParams && overrideParams.limit);
+    const requestedLimit = Number((overrideParams && overrideParams.limit) || 100);
+    const safeLimit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(200, requestedLimit)) : 100;
+    appendParam(queryParams, 'limit', String(safeLimit));
 
     const candidates = [
       '/api/quickbase/monitoring?' + queryParams.toString(),
