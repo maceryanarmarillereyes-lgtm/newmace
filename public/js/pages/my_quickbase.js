@@ -508,6 +508,21 @@
     let quickbaseLoadInFlight = null;
     let quickbaseRefreshTimer = null;
     let lastQuickbaseLoadAt = 0;
+    let lastQuickbasePayloadHash = '';
+
+    function buildPayloadHash(payload) {
+      try {
+        return JSON.stringify(payload || {});
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function shouldSkipRefresh(nextHash, silent) {
+      if (!silent) return false;
+      if (!nextHash || !lastQuickbasePayloadHash) return false;
+      return nextHash === lastQuickbasePayloadHash;
+    }
 
     function renderSelectedFloatingPanel() {
       const panel = root.querySelector('#qbSelectedFloatingPanel');
@@ -775,6 +790,11 @@
 
       if (quickbaseLoadInFlight) return quickbaseLoadInFlight;
 
+      if (silent && lastQuickbaseLoadAt && (Date.now() - lastQuickbaseLoadAt) < 10000) {
+        console.info('[Cache Hit] Skipping refresh - data loaded less than 10s ago');
+        return Promise.resolve();
+      }
+
       if (!silent) {
         if (host) host.innerHTML = '<div class="small muted" style="padding:8px;">Loading Quickbase data...</div>';
         if (meta) meta.textContent = 'Loading...';
@@ -800,12 +820,24 @@
           renderFilters();
           const incomingColumns = Array.isArray(data && data.columns) ? data.columns : [];
           const incomingRecords = Array.isArray(data && data.records) ? data.records : [];
+          const nextPayloadHash = buildPayloadHash({
+            columns: incomingColumns,
+            records: incomingRecords,
+            customFilters: mergedFilters,
+            filterMatch: state.filterMatch
+          });
+          if (shouldSkipRefresh(nextPayloadHash, silent)) {
+            lastQuickbaseLoadAt = Date.now();
+            console.info('[Cache Hit] Skipping render - payload unchanged');
+            return;
+          }
           state.baseRecords = incomingRecords.slice();
           state.rawPayload = { columns: incomingColumns, records: state.baseRecords.slice() };
           state.isDefaultReportMode = !shouldApplyFilters && !String(state.searchTerm || '').trim();
           applySearchAndRender();
           lastQuickbaseLoadAt = Date.now();
-          console.info(`[Speed Guard] Data loaded in ${Date.now() - startedAt}ms`);
+          lastQuickbasePayloadHash = nextPayloadHash;
+          console.info(`[Load Speed] Data loaded in ${Date.now() - startedAt}ms`);
         } catch (err) {
           if (meta) meta.textContent = 'Check Connection';
           if (host) host.innerHTML = `<div class="small" style="padding:10px;color:#fecaca;">${esc(String(err && err.message || 'Unable to load Quickbase records'))}</div>`;
@@ -1006,7 +1038,7 @@
       }
       const normalizedDashboardCounters = normalizeDashboardCounters(dashboardCountersFromDom);
 
-      const currentSettingsObject = {
+      const unifiedSettings = {
         reportLink,
         qid: qidInput || parsed.qid,
         realm: parsed.realm,
@@ -1014,27 +1046,27 @@
         customColumns: orderedColumns,
         customFilters: normalizeFilters(state.customFilters),
         filterMatch: normalizeFilterMatch(state.filterMatch),
-        dashboard_counters: normalizedDashboardCounters
+        dashboardCounters: normalizedDashboardCounters
       };
 
       const payload = {
         qb_report_link: reportLink,
-        qb_qid: currentSettingsObject.qid,
-        qb_realm: currentSettingsObject.realm,
-        qb_table_id: currentSettingsObject.tableId,
-        qb_custom_columns: currentSettingsObject.customColumns,
-        qb_custom_filters: currentSettingsObject.customFilters,
-        qb_filter_match: currentSettingsObject.filterMatch,
-        qb_dashboard_counters: JSON.stringify(currentSettingsObject.dashboard_counters)
+        qb_qid: unifiedSettings.qid,
+        qb_realm: unifiedSettings.realm,
+        qb_table_id: unifiedSettings.tableId,
+        qb_custom_columns: unifiedSettings.customColumns,
+        qb_custom_filters: unifiedSettings.customFilters,
+        qb_filter_match: unifiedSettings.filterMatch,
+        qb_dashboard_counters: normalizedDashboardCounters,
+        quickbase_settings: unifiedSettings,
+        quickbase_config: unifiedSettings
       };
-
-      payload.quickbase_config = currentSettingsObject;
-      payload.quickbase_settings = currentSettingsObject;
 
       state.isSaving = true;
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
       if (saveLock) saveLock.style.display = 'flex';
+      console.info('[Counter Sync] Saving to cloud:', normalizedDashboardCounters);
       try {
         const authToken = window.CloudAuth && typeof CloudAuth.accessToken === 'function' ? CloudAuth.accessToken() : '';
         const res = await fetch('/api/users/update_me', {
@@ -1043,25 +1075,29 @@
             'Content-Type': 'application/json',
             ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
           },
-          body: JSON.stringify({
-            ...payload,
-            quickbase_settings: currentSettingsObject
-          })
+          body: JSON.stringify(payload)
         });
         const out = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(out.message || out.error || 'Could not save Quickbase settings.');
 
         state.dashboardCounters = normalizedDashboardCounters;
+        state.reportLink = reportLink;
+        state.qid = unifiedSettings.qid;
+        state.tableId = unifiedSettings.tableId;
+        state.customColumns = orderedColumns;
+        state.customFilters = unifiedSettings.customFilters;
+        state.filterMatch = unifiedSettings.filterMatch;
         renderCounterFilters();
-        console.info('[Sync Guard] Saved counters to cloud', normalizedDashboardCounters);
+        console.info('[Counter Sync] ✅ Saved successfully. Counters:', normalizedDashboardCounters.length);
 
         if (window.Store && Store.setProfile) {
-          Store.setProfile(me.id, Object.assign({}, payload, { updatedAt: Date.now() }));
+          Store.setProfile(me.id, Object.assign({}, profile, unifiedSettings, { updatedAt: Date.now() }));
         }
         if (window.UI && UI.toast) UI.toast('Quickbase settings saved successfully!');
         closeSettings();
-        await loadQuickbaseData();
+        await loadQuickbaseData({ applyFilters: true });
       } catch (err) {
+        console.error('[Counter Sync] ❌ Save failed:', err);
         if (window.UI && UI.toast) UI.toast('Failed to save settings: ' + String(err && err.message || err), 'error');
       } finally {
         state.isSaving = false;
@@ -1072,18 +1108,17 @@
     };
 
     const searchInput = document.querySelector('#quickbase-search')?.value || root.querySelector('#qbHeaderSearch')?.value || '';
+
+    console.info('[Load Speed] Starting profile refresh...');
+    await refreshProfileFromCloud();
+    console.info('[Counter Sync] Profile refreshed. Counters in state:', state.dashboardCounters.length);
+
     if (shouldApplyInitialFilters(searchInput, state.customFilters)) {
       state.searchTerm = String(searchInput).trim();
       state.hasUserSearched = true;
-      await Promise.all([
-        refreshProfileFromCloud(),
-        loadQuickbaseData({ applyFilters: true })
-      ]);
+      await loadQuickbaseData({ applyFilters: true });
     } else {
-      await Promise.all([
-        refreshProfileFromCloud(),
-        renderDefaultReport()
-      ]);
+      await renderDefaultReport();
     }
     setupAutoRefresh();
   };
