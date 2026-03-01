@@ -67,6 +67,9 @@
   let offlinePullTimer = null;
   let reconnectBackoffMs = 1200;
   let lastAuthToken = '';
+  let userExplicitlyLoggedOut = false;
+  let bootStarted = false;
+  let bootCompleted = false;
 
   // Realtime subscription generation guard (prevents CONNECTED/OFFLINE flicker on reconnect)
   let connectSeq = 0;
@@ -466,9 +469,14 @@ function applyRemoteKey(key, value){
 
   function scheduleReconnect(reason){
     try {
+      if (userExplicitlyLoggedOut) {
+        console.log('[Realtime Guard] Reconnect skipped: explicit logout');
+        return;
+      }
       if (reconnectTimer) return;
       const delay = Math.min(12000, reconnectBackoffMs);
       reconnectBackoffMs = Math.min(12000, Math.round(reconnectBackoffMs * 1.6));
+      console.log('[Realtime Guard] Reconnect scheduled', { reason: reason || '', delay });
       dispatchStatus('connecting', `Reconnecting… ${reason ? '('+reason+')' : ''}`);
       reconnectTimer = setTimeout(async ()=>{
   try{ if(window.EnvRuntime && typeof EnvRuntime.ready==='function'){ await Promise.race([EnvRuntime.ready(), new Promise(res=>setTimeout(res, 2500))]); } }catch(e){ (window.MUMS_DEBUG||{}).warn && MUMS_DEBUG.warn('realtime.env_wait_failed',{e:String(e)}); }
@@ -490,6 +498,7 @@ function applyRemoteKey(key, value){
       const token = String(CloudAuth.accessToken() || '');
       if (!token) return false;
       lastAuthToken = token;
+      console.log('[Realtime Guard] Preparing realtime subscribe', { hasToken: !!token });
       if (!window.__MUMS_SB_CLIENT) {
         window.__MUMS_SB_CLIENT = window.supabase.createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
           auth: { persistSession: false, autoRefreshToken: false, storage: SUPABASE_STORAGE },
@@ -548,10 +557,16 @@ function applyRemoteKey(key, value){
         .subscribe((status) => {
           // Ignore status events from older channels after a reconnect.
           if (seq !== activeSeq) return;
+          console.log('[Realtime Guard] Channel status', { status });
           if (status === 'SUBSCRIBED') {
             cloudOkAt = Date.now();
             reconnectBackoffMs = 1200;
             dispatchStatus('realtime', 'Supabase Realtime connected');
+            try {
+              window.dispatchEvent(new CustomEvent('mums:syncstatus', {
+                detail: { mode: 'realtime', syncMode: 'realtime', detail: 'Supabase Realtime connected', lastOkAt: cloudOkAt }
+              }));
+            } catch(_) {}
             // Flush queued local changes before reconciling.
             try {
               flushQueue('subscribed').then(()=>{ try { pullOnce(); } catch(_) {} });
@@ -571,9 +586,19 @@ function applyRemoteKey(key, value){
               }, intervalMs);
             } catch (_) {}
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            try {
+              window.dispatchEvent(new CustomEvent('mums:syncstatus', {
+                detail: { mode: 'offline', syncMode: 'offline', error: status, detail: String(status || 'CHANNEL_ERROR') }
+              }));
+            } catch(_) {}
             // Treat transient channel errors as reconnecting (yellow), not offline (red), to avoid UI flicker.
             scheduleReconnect(status);
           } else if (status === 'CLOSED') {
+            try {
+              window.dispatchEvent(new CustomEvent('mums:syncstatus', {
+                detail: { mode: 'offline', syncMode: 'offline', error: 'CLOSED', detail: 'CLOSED' }
+              }));
+            } catch(_) {}
             // CLOSED is commonly emitted when we intentionally unsubscribe during reconnect/token rotation.
             scheduleReconnect('closed');
           }
@@ -600,6 +625,10 @@ function applyRemoteKey(key, value){
 
   function connectCloudMandatory(){
     try {
+      if (userExplicitlyLoggedOut) {
+        dispatchStatus('offline', 'Logged out');
+        return;
+      }
       // Invalidate any in-flight callbacks from a previous channel (unsubscribe emits CLOSED).
       activeSeq = ++connectSeq;
 
@@ -611,6 +640,7 @@ function applyRemoteKey(key, value){
       }
 
       if (!(CloudAuth.accessToken && CloudAuth.accessToken())) {
+        console.log('[Realtime Guard] connect skipped: no CloudAuth token');
         dispatchStatus('offline', 'Not authenticated');
         return;
       }
@@ -620,6 +650,7 @@ function applyRemoteKey(key, value){
       // Attempt Supabase Realtime (mandatory).
       const ok = trySupabaseRealtimeMandatory();
       if (!ok) {
+        console.log('[Realtime Guard] subscribe init failed (env/auth missing)');
         dispatchStatus('offline', 'Realtime init failed (env/auth missing)');
         scheduleReconnect('init-failed');
       }
@@ -712,7 +743,74 @@ function applyRemoteKey(key, value){
   }
 
   // Connect after DOM and env are ready
+  async function hasSupabaseSession(){
+    try {
+      if (!(window.supabase && window.__MUMS_SB_CLIENT && window.__MUMS_SB_CLIENT.auth && typeof window.__MUMS_SB_CLIENT.auth.getSession === 'function')) return false;
+      const out = await window.__MUMS_SB_CLIENT.auth.getSession();
+      const session = out && out.data ? out.data.session : null;
+      return !!(session && session.access_token);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function waitForAuthStateSignal(maxMs){
+    return new Promise((resolve)=>{
+      let done = false;
+      let timer = null;
+      let unsub = null;
+      function finish(v){
+        if (done) return;
+        done = true;
+        try { if (timer) clearTimeout(timer); } catch(_) {}
+        try { if (typeof unsub === 'function') unsub(); else if (unsub && typeof unsub.unsubscribe === 'function') unsub.unsubscribe(); } catch(_) {}
+        resolve(!!v);
+      }
+
+      timer = setTimeout(()=>finish(false), Math.max(0, Number(maxMs || 0)));
+
+      try {
+        window.addEventListener('mums:session_hydrated', function onHydrated(){
+          try { window.removeEventListener('mums:session_hydrated', onHydrated); } catch(_) {}
+          finish(true);
+        }, { once: true });
+      } catch(_) {}
+
+      try {
+        const auth = window.__MUMS_SB_CLIENT && window.__MUMS_SB_CLIENT.auth;
+        if (auth && typeof auth.onAuthStateChange === 'function') {
+          const out = auth.onAuthStateChange((_event, session)=>{
+            if (session && session.access_token) finish(true);
+          });
+          unsub = out && out.data ? out.data.subscription : null;
+        }
+      } catch(_) {}
+    });
+  }
+
+  async function waitForRealtimeAuthReady(maxMs){
+    const deadline = Date.now() + Math.max(0, Number(maxMs || 0));
+    while (Date.now() < deadline) {
+      if (userExplicitlyLoggedOut) return false;
+      try {
+        const tokenReady = !!(window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled() && CloudAuth.accessToken && CloudAuth.accessToken());
+        if (tokenReady) {
+          const sbSession = await hasSupabaseSession();
+          if (sbSession || !window.__MUMS_SB_CLIENT) {
+            return true;
+          }
+        }
+      } catch (_) {}
+      await new Promise((res)=>setTimeout(res, 150));
+    }
+
+    // Last chance: wait for explicit auth-state/session signal.
+    return waitForAuthStateSignal(1200);
+  }
+
   async function boot(){
+    if (bootStarted) return;
+    bootStarted = true;
     try {
       connectRelay();
 
@@ -731,16 +829,11 @@ function applyRemoteKey(key, value){
         }
       } catch (_) {}
 
-      const waitUntil = Date.now() + 2200;
-      while (Date.now() < waitUntil) {
-        try {
-          if (window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled() && CloudAuth.accessToken && CloudAuth.accessToken()) break;
-        } catch (_) {}
-        await new Promise((res)=>setTimeout(res, 150));
-      }
+      const ready = await waitForRealtimeAuthReady(4200);
+      console.log('[Realtime Guard] Auth readiness', { ready });
 
       // Connect once we have a token.
-      if (window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled() && CloudAuth.accessToken && CloudAuth.accessToken()) {
+      if (ready && window.CloudAuth && CloudAuth.isEnabled && CloudAuth.isEnabled() && CloudAuth.accessToken && CloudAuth.accessToken()) {
         connectCloudMandatory();
       } else {
         dispatchStatus('offline', 'Login required');
@@ -753,10 +846,12 @@ function applyRemoteKey(key, value){
         // e.detail = { type: 'login'|'logout' }
         const t = (e && e.detail && e.detail.type) ? String(e.detail.type) : '';
         if (t === 'logout') {
+          userExplicitlyLoggedOut = true;
           stopCloud();
           dispatchStatus('offline', 'Logged out');
           return;
         }
+        userExplicitlyLoggedOut = false;
         connectCloudMandatory();
         ensureOfflinePull();
       });
@@ -767,17 +862,28 @@ function applyRemoteKey(key, value){
         try {
           const t = (e && e.detail && e.detail.token) ? String(e.detail.token) : '';
           if (!t || t === lastAuthToken) return;
+          userExplicitlyLoggedOut = false;
           lastAuthToken = t;
           // Reconnect to ensure both HTTP headers and WS auth are updated.
           connectCloudMandatory();
           ensureOfflinePull();
         } catch (_) {}
       });
+      bootCompleted = true;
     } catch (_) {}
   }
 
+  function initRealtimeSync(){
+    if (bootCompleted || bootStarted) return;
+    setTimeout(()=>{ try { boot(); } catch(_) {} }, 400);
+  }
+
   // Delay boot to allow Store/Auth to initialize.
-  setTimeout(()=>{ try { boot(); } catch(_) {} }, 400);
+  initRealtimeSync();
+
+  try {
+    window.addEventListener('mums:session_hydrated', ()=>{ try{ initRealtimeSync(); }catch(_){} }, { once: true });
+  } catch(_) {}
 
   window.Realtime = {
     onLocalWrite: schedulePush,
@@ -791,6 +897,7 @@ function applyRemoteKey(key, value){
       } catch(_) { return []; }
     },
     flushQueue: (trigger)=>flushQueue(trigger||'manual'),
-    forceReconnect: ()=>{ try{ connectCloudMandatory(); }catch(_){ } }
+    forceReconnect: ()=>{ try{ userExplicitlyLoggedOut = false; connectCloudMandatory(); }catch(_){ } },
+    init: ()=>{ try{ initRealtimeSync(); }catch(_){ } }
   };
 })();

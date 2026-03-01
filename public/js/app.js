@@ -3713,6 +3713,13 @@ async function boot(){
     const user = await Auth.requireUser();
     if(!user) return;
 
+    // Realtime Guard: initialize realtime only after auth has been resolved.
+    try{
+      if(window.Realtime && typeof window.Realtime.init === 'function'){
+        window.Realtime.init();
+      }
+    }catch(_){ }
+
     const roleUpper = String(user.role||'').trim().toUpperCase().replace(/\s+/g,'_');
     const isSA = roleUpper === String((Config && Config.ROLES ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN'));
     const isSU = roleUpper === 'SUPER_USER';
