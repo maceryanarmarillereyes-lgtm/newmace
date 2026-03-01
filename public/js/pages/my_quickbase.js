@@ -886,6 +886,16 @@
         const cloudProfile = out && out.ok && out.profile && typeof out.profile === 'object' ? out.profile : null;
         if (!cloudProfile) return;
         profile = cloudProfile;
+        const cloudQuickbaseConfig = getProfileQuickbaseConfig(cloudProfile);
+        state.reportLink = String(cloudQuickbaseConfig.reportLink || '').trim();
+        state.qid = String(cloudQuickbaseConfig.qid || '').trim();
+        state.tableId = String(cloudQuickbaseConfig.tableId || '').trim();
+        state.customColumns = Array.isArray(cloudQuickbaseConfig.customColumns)
+          ? cloudQuickbaseConfig.customColumns.map((value) => String(value || '').trim()).filter(Boolean)
+          : [];
+        state.customFilters = normalizeFilters(cloudQuickbaseConfig.customFilters);
+        state.filterMatch = normalizeFilterMatch(cloudQuickbaseConfig.filterMatch);
+        state.dashboardCounters = normalizeDashboardCounters(cloudQuickbaseConfig.dashboardCounters);
         if (window.Store && typeof Store.setProfile === 'function') {
           Store.setProfile(me.id, Object.assign({}, cloudProfile, { updatedAt: Date.now() }));
         }
