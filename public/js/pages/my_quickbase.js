@@ -326,8 +326,35 @@
     return { columns, records: filtered };
   }
 
+  function filterRecordsByCounter(payload, counter) {
+    const source = payload && typeof payload === 'object' ? payload : {};
+    const columns = Array.isArray(source.columns) ? source.columns : [];
+    const records = Array.isArray(source.records) ? source.records : [];
+    const activeFilter = counterToFilter(counter);
+    if (!activeFilter) return { columns, records };
+
+    const targetFieldId = String(activeFilter.fieldId || '').trim();
+    const matcherValue = String(activeFilter.value || '').toLowerCase();
+    const op = String(activeFilter.operator || 'EX').toUpperCase();
+
+    const filtered = records.filter((record) => {
+      const fields = record && record.fields ? record.fields : {};
+      const field = fields[targetFieldId] || null;
+      const sourceValue = String(field && field.value != null ? field.value : '').toLowerCase();
+      if (op === 'XEX') return sourceValue !== matcherValue;
+      if (op === 'CT') return sourceValue.includes(matcherValue);
+      return sourceValue === matcherValue;
+    });
+
+    return { columns, records: filtered };
+  }
+
   if (window.__MUMS_TEST_HOOKS__) {
-    window.__MUMS_TEST_HOOKS__.myQuickbase = { shouldApplyInitialFilters };
+    window.__MUMS_TEST_HOOKS__.myQuickbase = {
+      shouldApplyInitialFilters,
+      filterRecordsBySearch,
+      filterRecordsByCounter
+    };
   }
 
   window.Pages.my_quickbase = async function(root) {
@@ -743,16 +770,13 @@
           if (!window.QuickbaseAdapter || typeof window.QuickbaseAdapter.fetchMonitoringData !== 'function') {
             throw new Error('Quickbase adapter unavailable');
           }
-          const activeCounter = state.activeCounterIndex >= 0 ? state.dashboardCounters[state.activeCounterIndex] : null;
-          const shouldApplyFilters = opts.applyFilters === true || !!state.hasUserSearched || state.activeCounterIndex >= 0;
+          const shouldApplyFilters = opts.applyFilters === true || state.activeCounterIndex >= 0;
           const mergedFilters = shouldApplyFilters ? normalizeFilters(state.customFilters) : [];
-          const counterFilter = counterToFilter(activeCounter);
-          if (counterFilter) mergedFilters.push(counterFilter);
           const data = await window.QuickbaseAdapter.fetchMonitoringData({
             bust: Date.now(),
             customFilters: mergedFilters,
             filterMatch: state.filterMatch,
-            search: state.hasUserSearched ? state.searchTerm : '',
+            search: '',
             limit: 500
           });
           state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
@@ -777,17 +801,20 @@
 
     function applySearchAndRender() {
       const normalizedSearch = String(state.searchTerm || '').trim();
+      const activeCounter = state.activeCounterIndex >= 0 ? state.dashboardCounters[state.activeCounterIndex] : null;
       state.searchTerm = normalizedSearch;
+      const basePayload = {
+        columns: Array.isArray(state.rawPayload && state.rawPayload.columns) ? state.rawPayload.columns : [],
+        records: Array.isArray(state.rawPayload && state.rawPayload.records) ? state.rawPayload.records : []
+      };
+      const counterFilteredPayload = filterRecordsByCounter(basePayload, activeCounter);
       state.currentPayload = normalizedSearch
-        ? filterRecordsBySearch(state.rawPayload, normalizedSearch)
-        : {
-            columns: Array.isArray(state.rawPayload && state.rawPayload.columns) ? state.rawPayload.columns : [],
-            records: Array.isArray(state.rawPayload && state.rawPayload.records) ? state.rawPayload.records : []
-          };
+        ? filterRecordsBySearch(counterFilteredPayload, normalizedSearch)
+        : counterFilteredPayload;
       renderRecords(root, state.currentPayload, { userInitiatedSearch: !!state.hasUserSearched && !!normalizedSearch.length });
       renderDashboardCounters(root, state.currentPayload.records, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
         state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
-        loadQuickbaseData({ silent: true });
+        applySearchAndRender();
       });
     }
 
@@ -887,7 +914,6 @@
         if (state.searchDebounceTimer) clearTimeout(state.searchDebounceTimer);
         state.searchDebounceTimer = setTimeout(() => {
           applySearchAndRender();
-          if (state.hasUserSearched) loadQuickbaseData({ silent: true, applyFilters: true });
         }, 500);
       };
     }
