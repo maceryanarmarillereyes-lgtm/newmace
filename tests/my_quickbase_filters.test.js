@@ -21,6 +21,14 @@ vm.runInContext(source, sandbox);
 const hooks = sandbox.window.__MUMS_TEST_HOOKS__.myQuickbase;
 assert.ok(hooks && typeof hooks.filterRecordsBySearch === 'function', 'should expose search filter helper');
 assert.ok(hooks && typeof hooks.filterRecordsByCounter === 'function', 'should expose counter filter helper');
+assert.ok(hooks && typeof hooks.shouldApplyServerFilters === 'function', 'should expose server filter toggle helper');
+
+
+const serverFilterByUserAction = hooks.shouldApplyServerFilters({ applyFilters: true });
+assert.equal(serverFilterByUserAction, true, 'server filters should only apply when explicitly requested');
+
+const serverFilterByCounterOnly = hooks.shouldApplyServerFilters({ applyFilters: false, activeCounterIndex: 2 });
+assert.equal(serverFilterByCounterOnly, false, 'counter-only selection must stay client-side to avoid server-side empty resets');
 
 const payload = {
   columns: [

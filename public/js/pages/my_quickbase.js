@@ -349,11 +349,17 @@
     return { columns, records: filtered };
   }
 
+  function shouldApplyServerFilters(options) {
+    const opts = options && typeof options === 'object' ? options : {};
+    return opts.applyFilters === true;
+  }
+
   if (window.__MUMS_TEST_HOOKS__) {
     window.__MUMS_TEST_HOOKS__.myQuickbase = {
       shouldApplyInitialFilters,
       filterRecordsBySearch,
-      filterRecordsByCounter
+      filterRecordsByCounter,
+      shouldApplyServerFilters
     };
   }
 
@@ -771,7 +777,7 @@
           if (!window.QuickbaseAdapter || typeof window.QuickbaseAdapter.fetchMonitoringData !== 'function') {
             throw new Error('Quickbase adapter unavailable');
           }
-          const shouldApplyFilters = opts.applyFilters === true || state.activeCounterIndex >= 0;
+          const shouldApplyFilters = shouldApplyServerFilters(opts);
           const mergedFilters = shouldApplyFilters ? normalizeFilters(state.customFilters) : [];
           const data = await window.QuickbaseAdapter.fetchMonitoringData({
             bust: Date.now(),
