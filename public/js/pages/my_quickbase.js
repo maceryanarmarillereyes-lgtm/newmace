@@ -299,8 +299,10 @@
   }
 
 
-  function shouldApplyInitialFilters(searchInput) {
-    return String(searchInput || '').trim().length > 0;
+  function shouldApplyInitialFilters(searchInput, customFilters) {
+    const hasSearch = String(searchInput || '').trim().length > 0;
+    if (hasSearch) return true;
+    return normalizeFilters(customFilters).length > 0;
   }
 
   function filterRecordsBySearch(payload, searchTerm) {
@@ -1035,7 +1037,7 @@
 
     await refreshProfileFromCloud();
     const searchInput = document.querySelector('#quickbase-search')?.value || root.querySelector('#qbHeaderSearch')?.value || '';
-    if (shouldApplyInitialFilters(searchInput)) {
+    if (shouldApplyInitialFilters(searchInput, state.customFilters)) {
       state.searchTerm = String(searchInput).trim();
       state.hasUserSearched = true;
       await loadQuickbaseData({ applyFilters: true });

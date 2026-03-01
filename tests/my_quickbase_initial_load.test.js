@@ -20,8 +20,9 @@ vm.runInContext(source, sandbox);
 
 const hooks = sandbox.window.__MUMS_TEST_HOOKS__.myQuickbase;
 assert.ok(hooks && typeof hooks.shouldApplyInitialFilters === 'function', 'should expose initial-load helper');
-assert.strictEqual(hooks.shouldApplyInitialFilters(''), false, 'empty search should render default report');
-assert.strictEqual(hooks.shouldApplyInitialFilters('   '), false, 'whitespace-only search should render default report');
+assert.strictEqual(hooks.shouldApplyInitialFilters(''), false, 'empty search without filters should render default report');
+assert.strictEqual(hooks.shouldApplyInitialFilters('   '), false, 'whitespace-only search without filters should render default report');
+assert.strictEqual(hooks.shouldApplyInitialFilters('', [{ fieldId: '49', operator: 'EX', value: 'Open' }]), true, 'saved filters should apply on initial load');
 assert.strictEqual(hooks.shouldApplyInitialFilters('abc'), true, 'non-empty search should apply filters');
 
 console.log('my_quickbase initial load helper test passed');
