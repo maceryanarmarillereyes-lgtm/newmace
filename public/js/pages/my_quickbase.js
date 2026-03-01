@@ -378,6 +378,7 @@
       activeCounterIndex: -1,
       searchTerm: '',
       searchDebounceTimer: null,
+      baseRecords: [],
       rawPayload: { columns: [], records: [] },
       currentPayload: { columns: [], records: [] },
       hasUserSearched: false,
@@ -782,7 +783,10 @@
           state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
           renderColumnGrid();
           renderFilters();
-          state.rawPayload = { columns: Array.isArray(data && data.columns) ? data.columns : [], records: Array.isArray(data && data.records) ? data.records : [] };
+          const incomingColumns = Array.isArray(data && data.columns) ? data.columns : [];
+          const incomingRecords = Array.isArray(data && data.records) ? data.records : [];
+          state.baseRecords = incomingRecords.slice();
+          state.rawPayload = { columns: incomingColumns, records: state.baseRecords.slice() };
           state.isDefaultReportMode = !shouldApplyFilters && !String(state.searchTerm || '').trim();
           applySearchAndRender();
           lastQuickbaseLoadAt = Date.now();
@@ -805,14 +809,14 @@
       state.searchTerm = normalizedSearch;
       const basePayload = {
         columns: Array.isArray(state.rawPayload && state.rawPayload.columns) ? state.rawPayload.columns : [],
-        records: Array.isArray(state.rawPayload && state.rawPayload.records) ? state.rawPayload.records : []
+        records: Array.isArray(state.baseRecords) ? state.baseRecords : []
       };
       const counterFilteredPayload = filterRecordsByCounter(basePayload, activeCounter);
       state.currentPayload = normalizedSearch
         ? filterRecordsBySearch(counterFilteredPayload, normalizedSearch)
         : counterFilteredPayload;
       renderRecords(root, state.currentPayload, { userInitiatedSearch: !!state.hasUserSearched && !!normalizedSearch.length });
-      renderDashboardCounters(root, state.currentPayload.records, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
+      renderDashboardCounters(root, state.baseRecords, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
         state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
         applySearchAndRender();
       });
