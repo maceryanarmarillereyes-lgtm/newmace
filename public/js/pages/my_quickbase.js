@@ -367,8 +367,10 @@
 
   window.Pages.my_quickbase = async function(root) {
     const AUTO_REFRESH_MS = 15000;
+    const INITIAL_FETCH_LIMIT = 100;
     const me = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
     let profile = (me && window.Store && Store.getProfile) ? (Store.getProfile(me.id) || {}) : {};
+    const storedQuickbaseSettings = parseQuickbaseSettings(profile && profile.quickbase_settings);
 
     const quickbaseConfig = getProfileQuickbaseConfig(profile);
     const initialLink = String(quickbaseConfig.reportLink || profile.quickbase_url || '').trim();
@@ -393,6 +395,10 @@
       didInitialDefaultRender: false,
       isDefaultReportMode: false
     };
+
+    if (storedQuickbaseSettings && Object.prototype.hasOwnProperty.call(storedQuickbaseSettings, 'dashboard_counters')) {
+      state.dashboardCounters = normalizeDashboardCounters(storedQuickbaseSettings.dashboard_counters || []);
+    }
 
     root.innerHTML = `
       <div class="dashx qb-page-shell">
@@ -762,6 +768,7 @@
     async function loadQuickbaseData(options) {
       const opts = options && typeof options === 'object' ? options : {};
       const silent = !!opts.silent;
+      const startedAt = Date.now();
       const host = root.querySelector('#qbDataBody');
       const meta = root.querySelector('#qbDataMeta');
       const reloadBtn = root.querySelector('#qbReloadBtn');
@@ -786,7 +793,7 @@
             customFilters: mergedFilters,
             filterMatch: state.filterMatch,
             search: '',
-            limit: 500
+            limit: INITIAL_FETCH_LIMIT
           });
           state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
           renderColumnGrid();
@@ -798,6 +805,7 @@
           state.isDefaultReportMode = !shouldApplyFilters && !String(state.searchTerm || '').trim();
           applySearchAndRender();
           lastQuickbaseLoadAt = Date.now();
+          console.info(`[Speed Guard] Data loaded in ${Date.now() - startedAt}ms`);
         } catch (err) {
           if (meta) meta.textContent = 'Check Connection';
           if (host) host.innerHTML = `<div class="small" style="padding:10px;color:#fecaca;">${esc(String(err && err.message || 'Unable to load Quickbase records'))}</div>`;
@@ -897,7 +905,12 @@
           : [];
         state.customFilters = normalizeFilters(cloudQuickbaseConfig.customFilters);
         state.filterMatch = normalizeFilterMatch(cloudQuickbaseConfig.filterMatch);
-        state.dashboardCounters = normalizeDashboardCounters(cloudQuickbaseConfig.dashboardCounters);
+        const cloudSettings = parseQuickbaseSettings(cloudProfile.quickbase_settings);
+        state.dashboardCounters = normalizeDashboardCounters(
+          cloudSettings && Object.prototype.hasOwnProperty.call(cloudSettings, 'dashboard_counters')
+            ? cloudSettings.dashboard_counters
+            : cloudQuickbaseConfig.dashboardCounters
+        );
         if (window.Store && typeof Store.setProfile === 'function') {
           Store.setProfile(me.id, Object.assign({}, cloudProfile, { updatedAt: Date.now() }));
         }
@@ -974,6 +987,25 @@
         seenCols.add(cleaned);
         orderedColumns.push(cleaned);
       });
+      const counterRowsHost = root.querySelector('#qbCounterRows');
+      const dashboardCountersFromDom = [];
+      if (counterRowsHost) {
+        counterRowsHost.querySelectorAll('[data-counter-idx]').forEach((row) => {
+          const getField = (key) => {
+            const el = row.querySelector(`[data-counter-f="${key}"]`);
+            return String(el && el.value != null ? el.value : '').trim();
+          };
+          dashboardCountersFromDom.push({
+            fieldId: getField('fieldId'),
+            operator: getField('operator') || 'EX',
+            value: getField('value'),
+            label: getField('label'),
+            color: normalizeCounterColor(getField('color'))
+          });
+        });
+      }
+      const normalizedDashboardCounters = normalizeDashboardCounters(dashboardCountersFromDom);
+
       const currentSettingsObject = {
         reportLink,
         qid: qidInput || parsed.qid,
@@ -982,7 +1014,7 @@
         customColumns: orderedColumns,
         customFilters: normalizeFilters(state.customFilters),
         filterMatch: normalizeFilterMatch(state.filterMatch),
-        dashboard_counters: JSON.stringify(normalizeDashboardCounters(state.dashboardCounters))
+        dashboard_counters: normalizedDashboardCounters
       };
 
       const payload = {
@@ -993,7 +1025,7 @@
         qb_custom_columns: currentSettingsObject.customColumns,
         qb_custom_filters: currentSettingsObject.customFilters,
         qb_filter_match: currentSettingsObject.filterMatch,
-        qb_dashboard_counters: currentSettingsObject.dashboard_counters
+        qb_dashboard_counters: JSON.stringify(currentSettingsObject.dashboard_counters)
       };
 
       payload.quickbase_config = currentSettingsObject;
@@ -1019,6 +1051,10 @@
         const out = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(out.message || out.error || 'Could not save Quickbase settings.');
 
+        state.dashboardCounters = normalizedDashboardCounters;
+        renderCounterFilters();
+        console.info('[Sync Guard] Saved counters to cloud', normalizedDashboardCounters);
+
         if (window.Store && Store.setProfile) {
           Store.setProfile(me.id, Object.assign({}, payload, { updatedAt: Date.now() }));
         }
@@ -1035,14 +1071,19 @@
       }
     };
 
-    await refreshProfileFromCloud();
     const searchInput = document.querySelector('#quickbase-search')?.value || root.querySelector('#qbHeaderSearch')?.value || '';
     if (shouldApplyInitialFilters(searchInput, state.customFilters)) {
       state.searchTerm = String(searchInput).trim();
       state.hasUserSearched = true;
-      await loadQuickbaseData({ applyFilters: true });
+      await Promise.all([
+        refreshProfileFromCloud(),
+        loadQuickbaseData({ applyFilters: true })
+      ]);
     } else {
-      await renderDefaultReport();
+      await Promise.all([
+        refreshProfileFromCloud(),
+        renderDefaultReport()
+      ]);
     }
     setupAutoRefresh();
   };
