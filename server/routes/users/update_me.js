@@ -420,11 +420,20 @@ module.exports = async (req, res) => {
     // so core Quickbase config (token/qid/table/realm/link) still saves successfully.
     if (out && out.error) {
       const detailBlob = JSON.stringify(out.error || '').toLowerCase();
-      const missingCustomCols = detailBlob.includes('qb_custom_columns') || detailBlob.includes('qb_custom_filters') || detailBlob.includes('quickbase_config') || detailBlob.includes('quickbase_settings');
-      if (missingCustomCols) {
+      const missingOptionalQuickbaseCols = [
+        'qb_custom_columns',
+        'qb_custom_filters',
+        'qb_filter_match',
+        'qb_dashboard_counters',
+        'quickbase_config',
+        'quickbase_settings'
+      ].some((columnName) => detailBlob.includes(columnName));
+      if (missingOptionalQuickbaseCols) {
         const retryPatch = { ...updates };
         delete retryPatch.qb_custom_columns;
         delete retryPatch.qb_custom_filters;
+        delete retryPatch.qb_filter_match;
+        delete retryPatch.qb_dashboard_counters;
         delete retryPatch.quickbase_config;
         delete retryPatch.quickbase_settings;
         if (Object.keys(retryPatch).length > 0) {
