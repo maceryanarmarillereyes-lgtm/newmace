@@ -65,6 +65,12 @@
     params.set(key, clean);
   }
 
+  function normalizeMonitoringLimit(rawLimit) {
+    const parsed = Number(rawLimit);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 100;
+    return Math.min(100, Math.floor(parsed));
+  }
+
   function getToken() {
     try {
       if (window.CloudAuth && typeof CloudAuth.accessToken === 'function') {
@@ -201,7 +207,7 @@
     appendParam(queryParams, 'searchFields', Array.isArray(overrideParams && overrideParams.searchFields)
       ? (overrideParams.searchFields || []).map(function(v){ return String(v || '').trim(); }).filter(Boolean).join(',')
       : '');
-    appendParam(queryParams, 'limit', overrideParams && overrideParams.limit);
+    appendParam(queryParams, 'limit', normalizeMonitoringLimit(overrideParams && overrideParams.limit));
 
     const candidates = [
       '/api/quickbase/monitoring?' + queryParams.toString(),
