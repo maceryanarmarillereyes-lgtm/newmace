@@ -174,6 +174,57 @@
     }
   }
 
+  function generateUUID() {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    } catch (_) {}
+    return `qb-tab-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  }
+
+  function buildDefaultTab(source, defaults) {
+    const src = source && typeof source === 'object' ? source : {};
+    const base = defaults && typeof defaults === 'object' ? defaults : {};
+    return {
+      id: String(src.id || generateUUID()),
+      tabName: String(src.tabName || src.name || base.tabName || 'Main Report').trim() || 'Main Report',
+      reportLink: String(src.reportLink || src.qb_report_link || base.reportLink || '').trim(),
+      qid: String(src.qid || src.qb_qid || base.qid || '').trim(),
+      tableId: String(src.tableId || src.qb_table_id || base.tableId || '').trim(),
+      dashboard_counters: normalizeDashboardCounters(src.dashboard_counters || src.dashboardCounters || base.dashboard_counters),
+      customColumns: Array.isArray(src.customColumns || src.qb_custom_columns || base.customColumns)
+        ? (src.customColumns || src.qb_custom_columns || base.customColumns).map((v) => String(v))
+        : [],
+      customFilters: normalizeFilters(src.customFilters || src.qb_custom_filters || base.customFilters),
+      filterMatch: normalizeFilterMatch(src.filterMatch || src.qb_filter_match || base.filterMatch)
+    };
+  }
+
+  function normalizeQuickbaseSettingsWithTabs(rawSettings, fallbackConfig) {
+    const flat = normalizeQuickbaseConfig(fallbackConfig);
+    const settings = parseQuickbaseSettings(rawSettings);
+    if (Array.isArray(settings.tabs) && settings.tabs.length) {
+      const tabs = settings.tabs.map((tab, idx) => buildDefaultTab(tab, { tabName: idx === 0 ? 'Main Report' : `Report ${idx + 1}` }));
+      const maxIndex = tabs.length - 1;
+      const activeTabIndex = Math.min(Math.max(Number(settings.activeTabIndex || 0), 0), maxIndex);
+      return { activeTabIndex, tabs };
+    }
+    return {
+      activeTabIndex: 0,
+      tabs: [
+        buildDefaultTab(settings, {
+          tabName: 'Main Report',
+          reportLink: flat.reportLink,
+          qid: flat.qid,
+          tableId: flat.tableId,
+          customColumns: flat.customColumns,
+          customFilters: flat.customFilters,
+          filterMatch: flat.filterMatch,
+          dashboard_counters: flat.dashboardCounters
+        })
+      ]
+    };
+  }
+
   function normalizeQuickbaseConfig(raw) {
     const cfg = raw && typeof raw === 'object' ? raw : {};
     return {
@@ -379,16 +430,23 @@
     profile = (me && window.Store && Store.getProfile) ? (Store.getProfile(me.id) || {}) : {};
 
     const quickbaseConfig = getProfileQuickbaseConfig(profile);
-    const initialLink = String(quickbaseConfig.reportLink || profile.quickbase_url || '').trim();
+    const quickbaseSettings = normalizeQuickbaseSettingsWithTabs(profile.quickbase_settings, quickbaseConfig);
+    const initialTab = quickbaseSettings.tabs[quickbaseSettings.activeTabIndex] || quickbaseSettings.tabs[0] || buildDefaultTab();
+    const initialLink = String(initialTab.reportLink || quickbaseConfig.reportLink || profile.quickbase_url || '').trim();
     const parsedFromLink = parseQuickbaseLink(initialLink);
     const state = {
+      quickbaseSettings,
+      activeTabIndex: quickbaseSettings.activeTabIndex,
+      tabName: String(initialTab.tabName || 'Main Report').trim(),
       reportLink: initialLink,
-      qid: String(quickbaseConfig.qid || profile.quickbase_qid || parsedFromLink.qid || '').trim(),
-      tableId: String(quickbaseConfig.tableId || profile.quickbase_table_id || parsedFromLink.tableId || '').trim(),
-      customColumns: Array.isArray(quickbaseConfig.customColumns) ? quickbaseConfig.customColumns.map((v) => String(v)) : [],
-      customFilters: normalizeFilters(quickbaseConfig.customFilters),
-      filterMatch: normalizeFilterMatch(quickbaseConfig.filterMatch || profile.qb_custom_filter_match),
-      dashboardCounters: normalizeDashboardCounters(quickbaseConfig.dashboardCounters || profile.qb_dashboard_counters),
+      qid: String(initialTab.qid || quickbaseConfig.qid || profile.quickbase_qid || parsedFromLink.qid || '').trim(),
+      tableId: String(initialTab.tableId || quickbaseConfig.tableId || profile.quickbase_table_id || parsedFromLink.tableId || '').trim(),
+      customColumns: Array.isArray(initialTab.customColumns) ? initialTab.customColumns.map((v) => String(v)) : [],
+      customFilters: normalizeFilters(initialTab.customFilters),
+      filterMatch: normalizeFilterMatch(initialTab.filterMatch || quickbaseConfig.filterMatch || profile.qb_custom_filter_match),
+      dashboardCounters: normalizeDashboardCounters(initialTab.dashboard_counters || quickbaseConfig.dashboardCounters || profile.qb_dashboard_counters),
+      searchByTab: {},
+      userSearchedByTab: {},
       allAvailableFields: [],
       isSaving: false,
       activeCounterIndex: -1,
@@ -402,6 +460,140 @@
       isDefaultReportMode: false
     };
 
+    var cleanupHandlers = [];
+    var modalBindingsActive = false;
+    var quickbaseLoadInFlight = null;
+    var quickbaseRefreshTimer = null;
+    var lastQuickbaseLoadAt = 0;
+
+    function getActiveTab() {
+      const tabs = Array.isArray(state.quickbaseSettings && state.quickbaseSettings.tabs) ? state.quickbaseSettings.tabs : [];
+      if (!tabs.length) {
+        state.quickbaseSettings = { activeTabIndex: 0, tabs: [buildDefaultTab()] };
+      }
+      const safeTabs = state.quickbaseSettings.tabs;
+      const safeIndex = Math.min(Math.max(Number(state.activeTabIndex || 0), 0), safeTabs.length - 1);
+      state.activeTabIndex = safeIndex;
+      state.quickbaseSettings.activeTabIndex = safeIndex;
+      return safeTabs[safeIndex];
+    }
+
+    function getActiveTabKey() {
+      const activeTab = getActiveTab();
+      return String(activeTab.id || state.activeTabIndex);
+    }
+
+    function getActiveSearchTerm() {
+      if (!state.quickbaseSettings || !state.quickbaseSettings.tabs || !state.quickbaseSettings.tabs[state.activeTabIndex]) return '';
+      if (!state.searchByTab || typeof state.searchByTab !== 'object') state.searchByTab = {};
+      return String(state.searchByTab[getActiveTabKey()] || '').trim();
+    }
+
+    function setActiveSearchTerm(value) {
+      if (!state.quickbaseSettings || !state.quickbaseSettings.tabs || !state.quickbaseSettings.tabs[state.activeTabIndex]) return;
+      if (!state.searchByTab || typeof state.searchByTab !== 'object') state.searchByTab = {};
+      state.searchByTab[getActiveTabKey()] = String(value || '').trim();
+    }
+
+    function getActiveUserSearched() {
+      if (!state.quickbaseSettings || !state.quickbaseSettings.tabs || !state.quickbaseSettings.tabs[state.activeTabIndex]) return false;
+      if (!state.userSearchedByTab || typeof state.userSearchedByTab !== 'object') state.userSearchedByTab = {};
+      return !!state.userSearchedByTab[getActiveTabKey()];
+    }
+
+    function setActiveUserSearched(value) {
+      if (!state.quickbaseSettings || !state.quickbaseSettings.tabs || !state.quickbaseSettings.tabs[state.activeTabIndex]) return;
+      if (!state.userSearchedByTab || typeof state.userSearchedByTab !== 'object') state.userSearchedByTab = {};
+      state.userSearchedByTab[getActiveTabKey()] = !!value;
+    }
+
+    function syncStateFromActiveTab() {
+      const activeTab = getActiveTab();
+      const parsed = parseQuickbaseLink(activeTab.reportLink);
+      state.tabName = String(activeTab.tabName || 'Main Report').trim() || 'Main Report';
+      state.reportLink = String(activeTab.reportLink || '').trim();
+      state.qid = String(activeTab.qid || parsed.qid || '').trim();
+      state.tableId = String(activeTab.tableId || parsed.tableId || '').trim();
+      state.customColumns = Array.isArray(activeTab.customColumns) ? activeTab.customColumns.map((v) => String(v)) : [];
+      state.customFilters = normalizeFilters(activeTab.customFilters);
+      state.filterMatch = normalizeFilterMatch(activeTab.filterMatch);
+      state.dashboardCounters = normalizeDashboardCounters(activeTab.dashboard_counters);
+      state.activeCounterIndex = -1;
+      const headerSearch = root.querySelector('#qbHeaderSearch');
+      if (headerSearch) headerSearch.value = getActiveSearchTerm();
+      const instanceTitle = root.querySelector('#qbInstanceTitle');
+      if (instanceTitle) instanceTitle.textContent = state.tabName || 'Main Report';
+    }
+
+    function syncActiveTabFromState() {
+      const activeTab = getActiveTab();
+      activeTab.tabName = String(state.tabName || 'Main Report').trim() || 'Main Report';
+      activeTab.reportLink = String(state.reportLink || '').trim();
+      activeTab.qid = String(state.qid || '').trim();
+      activeTab.tableId = String(state.tableId || '').trim();
+      activeTab.customColumns = Array.isArray(state.customColumns) ? state.customColumns.map((v) => String(v)) : [];
+      activeTab.customFilters = normalizeFilters(state.customFilters);
+      activeTab.filterMatch = normalizeFilterMatch(state.filterMatch);
+      activeTab.dashboard_counters = normalizeDashboardCounters(state.dashboardCounters);
+      state.quickbaseSettings.activeTabIndex = state.activeTabIndex;
+    }
+
+    function renderTabBar() {
+      const tabBar = root.querySelector('#qbTabBar');
+      if (!tabBar) return;
+      const tabs = state.quickbaseSettings.tabs || [];
+      tabBar.innerHTML = tabs.map((tab, idx) => `
+        <button type="button" data-tab-idx="${idx}" style="padding:8px 16px;border-radius:8px;background:${idx === state.activeTabIndex ? 'rgba(33, 150, 243, 0.2)' : 'rgba(255,255,255,0.05)'};border:1px solid ${idx === state.activeTabIndex ? '#2196F3' : 'rgba(255,255,255,0.1)'};cursor:pointer;color:${idx === state.activeTabIndex ? '#fff' : '#888'};transition:0.2s;white-space:nowrap;">${esc(tab.tabName || `Report ${idx + 1}`)}</button>
+      `).join('') + '<button type="button" id="qbAddTabBtn" style="padding:8px 16px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;color:#888;transition:0.2s;white-space:nowrap;">+ Add Tab</button>';
+    }
+
+    async function persistQuickbaseSettings() {
+      if (!me) return;
+      syncActiveTabFromState();
+      const activeTab = getActiveTab();
+      const parsed = parseQuickbaseLink(activeTab.reportLink);
+      const activeSettingsObject = {
+        reportLink: activeTab.reportLink,
+        qid: activeTab.qid || parsed.qid,
+        realm: parsed.realm,
+        tableId: activeTab.tableId || parsed.tableId,
+        customColumns: activeTab.customColumns,
+        customFilters: activeTab.customFilters,
+        filterMatch: activeTab.filterMatch,
+        dashboardCounters: normalizeDashboardCounters(activeTab.dashboard_counters)
+      };
+      const payload = {
+        qb_report_link: activeSettingsObject.reportLink,
+        qb_qid: activeSettingsObject.qid,
+        qb_realm: activeSettingsObject.realm,
+        qb_table_id: activeSettingsObject.tableId,
+        qb_custom_columns: activeSettingsObject.customColumns,
+        qb_custom_filters: activeSettingsObject.customFilters,
+        qb_filter_match: activeSettingsObject.filterMatch,
+        qb_dashboard_counters: activeSettingsObject.dashboardCounters,
+        quickbase_config: activeSettingsObject,
+        quickbase_settings: {
+          activeTabIndex: state.activeTabIndex,
+          tabs: state.quickbaseSettings.tabs
+        }
+      };
+      const authToken = window.CloudAuth && typeof CloudAuth.accessToken === 'function' ? CloudAuth.accessToken() : '';
+      const res = await fetch('/api/users/update_me', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.message || out.error || 'Could not save Quickbase settings.');
+      if (window.Store && Store.setProfile) {
+        Store.setProfile(me.id, Object.assign({}, payload, { updatedAt: Date.now() }));
+      }
+    }
+
+
     root.innerHTML = `
       <div class="dashx qb-page-shell">
         <div class="qb-static-zone"><div class="card pad qb-header-card" style="backdrop-filter: blur(14px); background: linear-gradient(130deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.16);">
@@ -410,8 +602,19 @@
               <h2 class="ux-h1 qb-title" style="margin:0;">My Quickbase</h2>
               <div class="small muted qb-subtitle">Enterprise monitoring dashboard for your personal Quickbase view.</div>
             </div>
+          </div>
+        </div>
+
+        <div id="qbTabBar" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:1rem;scrollbar-width:none;"></div>
+
+        <div class="card pad" style="margin-bottom:12px;backdrop-filter: blur(14px); background: linear-gradient(130deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.16);">
+          <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div>
+              <div class="h3" id="qbInstanceTitle" style="margin:0;">${esc(state.tabName || 'Main Report')}</div>
+              <div class="small muted">Active tab instance dashboard</div>
+            </div>
             <div class="row qb-header-search-wrap" style="gap:8px;align-items:center;justify-content:center;flex:1;">
-              <input class="input qb-header-search" id="qbHeaderSearch" type="search" placeholder="Search across all Quickbase records..." />
+              <input class="input qb-header-search" id="qbHeaderSearch" type="search" placeholder="Search across active tab records..." />
               <button class="btn" id="qbExportCsvBtn" type="button">Export CSV</button>
             </div>
             <div class="row" style="gap:8px;">
@@ -448,6 +651,8 @@
             <section class="card pad">
               <div class="h3" style="margin-top:0;">1) Report Config</div>
               <div style="display:grid;gap:10px;">
+                <label class="field"><div class="label">Tab Name</div><input class="input" id="qbTabName" value="${esc(state.tabName)}" placeholder="Daily Distribution" /></label>
+                <label class="field"><div class="label">Base Report QID</div><input class="input" id="qbTabBaseQid" value="${esc(state.qid)}" placeholder="-2021117" /></label>
                 <label class="field"><div class="label">Report Link</div><input class="input" id="qbReportLink" value="${esc(state.reportLink)}" placeholder="https://<realm>.quickbase.com/db/<tableid>?a=q&qid=..." /></label>
                 <div class="grid cols-2" style="gap:10px;">
                   <label class="field"><div class="label">QID</div><input class="input" id="qbQid" value="${esc(state.qid)}" placeholder="-2021117" /></label>
@@ -504,12 +709,6 @@
         </div>
       </div>
     `;
-
-    const cleanupHandlers = [];
-    let modalBindingsActive = false;
-    let quickbaseLoadInFlight = null;
-    let quickbaseRefreshTimer = null;
-    let lastQuickbaseLoadAt = 0;
 
     function renderSelectedFloatingPanel() {
       const panel = root.querySelector('#qbSelectedFloatingPanel');
@@ -789,8 +988,10 @@
           }
           const shouldApplyFilters = shouldApplyServerFilters(opts);
           const mergedFilters = shouldApplyFilters ? normalizeFilters(state.customFilters) : [];
+          const activeQid = String(state.qid || '').trim();
           const data = await window.QuickbaseAdapter.fetchMonitoringData({
             bust: Date.now(),
+            qid: activeQid,
             customFilters: mergedFilters,
             filterMatch: state.filterMatch,
             search: '',
@@ -803,7 +1004,7 @@
           const incomingRecords = Array.isArray(data && data.records) ? data.records : [];
           state.baseRecords = incomingRecords.slice();
           state.rawPayload = { columns: incomingColumns, records: state.baseRecords.slice() };
-          state.isDefaultReportMode = !shouldApplyFilters && !String(state.searchTerm || '').trim();
+          state.isDefaultReportMode = !shouldApplyFilters && !getActiveSearchTerm();
           applySearchAndRender();
           lastQuickbaseLoadAt = Date.now();
         } catch (err) {
@@ -820,7 +1021,7 @@
     }
 
     function applySearchAndRender() {
-      const normalizedSearch = String(state.searchTerm || '').trim();
+      const normalizedSearch = getActiveSearchTerm();
       const activeCounter = state.activeCounterIndex >= 0 ? state.dashboardCounters[state.activeCounterIndex] : null;
       state.searchTerm = normalizedSearch;
       const basePayload = {
@@ -831,7 +1032,7 @@
       state.currentPayload = normalizedSearch
         ? filterRecordsBySearch(counterFilteredPayload, normalizedSearch)
         : counterFilteredPayload;
-      renderRecords(root, state.currentPayload, { userInitiatedSearch: !!state.hasUserSearched && !!normalizedSearch.length });
+      renderRecords(root, state.currentPayload, { userInitiatedSearch: !!getActiveUserSearched() && !!normalizedSearch.length });
       renderDashboardCounters(root, state.baseRecords, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
         state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
         applySearchAndRender();
@@ -884,7 +1085,8 @@
 
     async function renderDefaultReport() {
       state.didInitialDefaultRender = true;
-      state.hasUserSearched = false;
+      setActiveUserSearched(false);
+      setActiveSearchTerm('');
       state.searchTerm = '';
       return loadQuickbaseData({ applyFilters: false });
     }
@@ -901,6 +1103,36 @@
       if (event.target && event.target.id === 'qbSettingsModal') cleanupModalBindings();
     });
     root.querySelector('#qbReloadBtn').onclick = () => loadQuickbaseData({ applyFilters: true });
+    root.querySelector('#qbTabBar').onclick = async (event) => {
+      const target = event.target;
+      if (!target || !(target instanceof HTMLElement)) return;
+      if (target.id === 'qbAddTabBtn') {
+        state.quickbaseSettings.tabs.push(buildDefaultTab({ tabName: `Report ${state.quickbaseSettings.tabs.length + 1}` }));
+        state.activeTabIndex = state.quickbaseSettings.tabs.length - 1;
+        syncStateFromActiveTab();
+        renderTabBar();
+        renderColumnGrid();
+        renderFilters();
+        renderCounterFilters();
+        try {
+          await persistQuickbaseSettings();
+          await loadQuickbaseData({ applyFilters: false });
+          if (window.UI && UI.toast) UI.toast('New tab added and synced.');
+        } catch (err) {
+          if (window.UI && UI.toast) UI.toast('Failed to add tab: ' + String(err && err.message || err), 'error');
+        }
+        return;
+      }
+      const idx = Number(target.getAttribute('data-tab-idx'));
+      if (!Number.isFinite(idx) || idx === state.activeTabIndex) return;
+      state.activeTabIndex = idx;
+      syncStateFromActiveTab();
+      renderTabBar();
+      renderColumnGrid();
+      renderFilters();
+      renderCounterFilters();
+      await loadQuickbaseData({ applyFilters: false });
+    };
     root.querySelector('#qbAddFilterBtn').onclick = () => {
       state.customFilters.push({ fieldId: '', operator: 'EX', value: '' });
       renderFilters();
@@ -913,9 +1145,12 @@
 
     const headerSearch = root.querySelector('#qbHeaderSearch');
     if (headerSearch) {
-      state.searchTerm = String(headerSearch.value || '').trim();
+      headerSearch.value = getActiveSearchTerm();
+      state.searchTerm = getActiveSearchTerm();
       headerSearch.oninput = () => {
         const nextValue = String(headerSearch.value || '').trim();
+        setActiveSearchTerm(nextValue);
+        setActiveUserSearched(nextValue.length > 0);
         state.searchTerm = nextValue;
         state.hasUserSearched = nextValue.length > 0;
         if (state.searchDebounceTimer) clearTimeout(state.searchDebounceTimer);
@@ -947,6 +1182,8 @@
     const saveLock = root.querySelector('#qbSettingsSavingLock');
     saveBtn.onclick = async () => {
       if (!me) return;
+      const tabNameInput = String((root.querySelector('#qbTabName') || {}).value || '').trim();
+      const tabBaseQidInput = String((root.querySelector('#qbTabBaseQid') || {}).value || '').trim();
       const reportLink = String((root.querySelector('#qbReportLink') || {}).value || '').trim();
       const qidInput = String((root.querySelector('#qbQid') || {}).value || '').trim();
       const tableIdInput = String((root.querySelector('#qbTableId') || {}).value || '').trim();
@@ -960,8 +1197,9 @@
         orderedColumns.push(cleaned);
       });
       const currentSettingsObject = {
+        tabName: tabNameInput || state.tabName || 'Main Report',
         reportLink,
-        qid: qidInput || parsed.qid,
+        qid: tabBaseQidInput || qidInput || parsed.qid,
         realm: parsed.realm,
         tableId: tableIdInput || parsed.tableId,
         customColumns: orderedColumns,
@@ -982,7 +1220,19 @@
       };
 
       payload.quickbase_config = currentSettingsObject;
-      payload.quickbase_settings = currentSettingsObject;
+      state.tabName = currentSettingsObject.tabName;
+      state.reportLink = currentSettingsObject.reportLink;
+      state.qid = currentSettingsObject.qid;
+      state.tableId = currentSettingsObject.tableId;
+      state.customColumns = currentSettingsObject.customColumns;
+      state.customFilters = currentSettingsObject.customFilters;
+      state.filterMatch = currentSettingsObject.filterMatch;
+      state.dashboardCounters = currentSettingsObject.dashboardCounters;
+      syncActiveTabFromState();
+      payload.quickbase_settings = {
+        activeTabIndex: state.activeTabIndex,
+        tabs: state.quickbaseSettings.tabs
+      };
 
       state.isSaving = true;
       saveBtn.disabled = true;
@@ -998,7 +1248,7 @@
           },
           body: JSON.stringify({
             ...payload,
-            quickbase_settings: currentSettingsObject
+            quickbase_settings: payload.quickbase_settings
           })
         });
         const out = await res.json().catch(() => ({}));
@@ -1007,6 +1257,7 @@
         if (window.Store && Store.setProfile) {
           Store.setProfile(me.id, Object.assign({}, payload, { updatedAt: Date.now() }));
         }
+        renderTabBar();
         if (window.UI && UI.toast) UI.toast('Quickbase settings saved successfully!');
         closeSettings();
         await loadQuickbaseData();
@@ -1021,7 +1272,11 @@
     };
 
     const searchInput = document.querySelector('#quickbase-search')?.value || root.querySelector('#qbHeaderSearch')?.value || '';
+    syncStateFromActiveTab();
+    renderTabBar();
     if (shouldApplyInitialFilters(searchInput)) {
+      setActiveSearchTerm(String(searchInput).trim());
+      setActiveUserSearched(true);
       state.searchTerm = String(searchInput).trim();
       state.hasUserSearched = true;
       await loadQuickbaseData({ applyFilters: true });
