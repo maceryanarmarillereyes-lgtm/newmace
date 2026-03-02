@@ -22,14 +22,22 @@
     if (!value) return out;
     try {
       const urlObj = new URL(value);
-      out.realm = String(urlObj.hostname || '').trim();
-      out.qid = String(urlObj.searchParams.get('qid') || '').trim();
+      const host = String(urlObj.hostname || '').trim().toLowerCase();
+      const realmMatch = host.match(/^([a-z0-9-]+)\.quickbase\.com$/i);
+      out.realm = realmMatch && realmMatch[1] ? String(realmMatch[1]).trim() : host;
+      const qidParam = String(urlObj.searchParams.get('qid') || '').trim();
+      const qidMatch = qidParam.match(/-?\d+/);
+      out.qid = qidMatch && qidMatch[0] ? qidMatch[0] : '';
     } catch (_) {}
     const dbMatch = value.match(/\/db\/([a-zA-Z0-9]+)/i);
     if (dbMatch && dbMatch[1]) out.tableId = String(dbMatch[1]).trim();
     if (!out.tableId) {
       const tableMatch = value.match(/\/table\/([a-zA-Z0-9]+)/i);
       if (tableMatch && tableMatch[1]) out.tableId = String(tableMatch[1]).trim();
+    }
+    if (!out.qid) {
+      const qidParamMatch = value.match(/[?&]qid=(-?\d+)/i);
+      if (qidParamMatch && qidParamMatch[1]) out.qid = String(qidParamMatch[1]).trim();
     }
     if (!out.qid) {
       const reportMatch = value.match(/\/report\/(-?\d+)/i);
@@ -1219,6 +1227,54 @@
       });
     }
 
+    function bindReportLinkAutoExtract() {
+      const reportLinkEl = root.querySelector('#qbReportLink');
+      const tableIdEl = root.querySelector('#qbTableId');
+      const qidEl = root.querySelector('#qbQid');
+      const tabBaseQidEl = root.querySelector('#qbTabBaseQid');
+      if (!reportLinkEl || !tableIdEl || !qidEl || !tabBaseQidEl || modalBindingsActive) return;
+
+      let lastAutoFillToastAt = 0;
+      const applyAutoExtract = () => {
+        const parsed = parseQuickbaseLink(reportLinkEl.value);
+        let didAutoFill = false;
+        if (parsed.tableId && String(tableIdEl.value || '').trim() !== parsed.tableId) {
+          tableIdEl.value = parsed.tableId;
+          state.tableId = parsed.tableId;
+          didAutoFill = true;
+        }
+        if (parsed.qid) {
+          if (String(qidEl.value || '').trim() !== parsed.qid) {
+            qidEl.value = parsed.qid;
+            didAutoFill = true;
+          }
+          if (String(tabBaseQidEl.value || '').trim() !== parsed.qid) {
+            tabBaseQidEl.value = parsed.qid;
+            didAutoFill = true;
+          }
+          state.qid = parsed.qid;
+        }
+        if (parsed.realm) state.realm = parsed.realm;
+        if (didAutoFill) {
+          state.reportLink = String(reportLinkEl.value || '').trim();
+          syncActiveTabFromState();
+          queuePersistQuickbaseSettings();
+          if (window.UI && UI.toast && (Date.now() - lastAutoFillToastAt) > 1200) {
+            UI.toast('Auto-filled from Link');
+            lastAutoFillToastAt = Date.now();
+          }
+        }
+      };
+
+      const onPaste = () => setTimeout(applyAutoExtract, 0);
+      reportLinkEl.addEventListener('input', applyAutoExtract);
+      reportLinkEl.addEventListener('paste', onPaste);
+      cleanupHandlers.push(() => {
+        reportLinkEl.removeEventListener('input', applyAutoExtract);
+        reportLinkEl.removeEventListener('paste', onPaste);
+      });
+    }
+
     function cleanupModalBindings() {
       while (cleanupHandlers.length) {
         const fn = cleanupHandlers.pop();
@@ -1427,6 +1483,7 @@
       if (window.UI && UI.openModal) UI.openModal('qbSettingsModal');
       bindColumnSearch();
       bindFloatingDrag();
+      bindReportLinkAutoExtract();
       modalBindingsActive = true;
     }
 
