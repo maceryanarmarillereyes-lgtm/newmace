@@ -86,6 +86,20 @@ function normalizeQuickbaseConfig(raw) {
   const filterMatchRaw = String(src.filterMatch || src.qb_filter_match || '').trim().toUpperCase();
   const filterMatch = filterMatchRaw === 'ANY' ? 'ANY' : 'ALL';
 
+  const dashboardCounters = Array.isArray(src.dashboardCounters || src.dashboard_counters || src.qb_dashboard_counters)
+    ? (src.dashboardCounters || src.dashboard_counters || src.qb_dashboard_counters)
+        .filter((item) => item && typeof item === 'object')
+        .map((item) => ({
+          fieldId: String(item.fieldId ?? item.field_id ?? '').trim(),
+          operator: normalizeQuickbaseOperator(item.operator),
+          value: String(item.value ?? '').trim(),
+          label: String(item.label ?? '').trim(),
+          color: String(item.color ?? 'default').trim().toLowerCase() || 'default'
+        }))
+        .filter((item) => item.fieldId)
+        .slice(0, 100)
+    : [];
+
   return {
     reportLink: String(src.reportLink || src.qb_report_link || '').trim(),
     qid: String(src.qid || src.qb_qid || '').trim(),
@@ -93,7 +107,8 @@ function normalizeQuickbaseConfig(raw) {
     tableId: String(src.tableId || src.qb_table_id || '').trim(),
     customColumns,
     customFilters,
-    filterMatch
+    filterMatch,
+    dashboardCounters
   };
 }
 
@@ -237,6 +252,7 @@ module.exports = async (req, res) => {
       patch.qb_custom_columns = normalizedSettings.customColumns;
       patch.qb_custom_filters = normalizedSettings.customFilters;
       patch.qb_filter_match = normalizedSettings.filterMatch;
+      patch.qb_dashboard_counters = normalizedSettings.dashboardCounters;
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'quickbase_config')) {
@@ -252,11 +268,17 @@ module.exports = async (req, res) => {
       patch.qb_custom_columns = normalizedConfig.customColumns;
       patch.qb_custom_filters = normalizedConfig.customFilters;
       patch.qb_filter_match = normalizedConfig.filterMatch;
+      patch.qb_dashboard_counters = normalizedConfig.dashboardCounters;
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'qb_filter_match')) {
       const match = String(body.qb_filter_match || '').trim().toUpperCase();
       patch.qb_filter_match = match === 'ANY' ? 'ANY' : 'ALL';
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'qb_dashboard_counters')) {
+      const normalized = normalizeQuickbaseConfig({ dashboardCounters: body.qb_dashboard_counters }).dashboardCounters;
+      patch.qb_dashboard_counters = normalized;
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'qb_custom_filters')) {
@@ -362,6 +384,7 @@ module.exports = async (req, res) => {
       'qb_custom_columns',
       'qb_custom_filters',
       'qb_filter_match',
+      'qb_dashboard_counters',
       'quickbase_config',
       'quickbase_settings',
       'team_override',
@@ -397,11 +420,20 @@ module.exports = async (req, res) => {
     // so core Quickbase config (token/qid/table/realm/link) still saves successfully.
     if (out && out.error) {
       const detailBlob = JSON.stringify(out.error || '').toLowerCase();
-      const missingCustomCols = detailBlob.includes('qb_custom_columns') || detailBlob.includes('qb_custom_filters') || detailBlob.includes('quickbase_config') || detailBlob.includes('quickbase_settings');
-      if (missingCustomCols) {
+      const missingOptionalQuickbaseCols = [
+        'qb_custom_columns',
+        'qb_custom_filters',
+        'qb_filter_match',
+        'qb_dashboard_counters',
+        'quickbase_config',
+        'quickbase_settings'
+      ].some((columnName) => detailBlob.includes(columnName));
+      if (missingOptionalQuickbaseCols) {
         const retryPatch = { ...updates };
         delete retryPatch.qb_custom_columns;
         delete retryPatch.qb_custom_filters;
+        delete retryPatch.qb_filter_match;
+        delete retryPatch.qb_dashboard_counters;
         delete retryPatch.quickbase_config;
         delete retryPatch.quickbase_settings;
         if (Object.keys(retryPatch).length > 0) {
