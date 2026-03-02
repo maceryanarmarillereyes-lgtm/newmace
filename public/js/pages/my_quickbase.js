@@ -194,18 +194,12 @@
     const p = profile && typeof profile === 'object' ? profile : {};
     const quickbaseSettings = parseQuickbaseSettings(p.quickbase_settings);
     const quickbaseConfig = parseQuickbaseSettings(p.quickbase_config);
-    const dbConfig = normalizeQuickbaseConfig(Object.keys(quickbaseSettings).length ? quickbaseSettings : quickbaseConfig);
-    const fallbackConfig = normalizeQuickbaseConfig(p);
-    return {
-      reportLink: dbConfig.reportLink || fallbackConfig.reportLink,
-      qid: dbConfig.qid || fallbackConfig.qid,
-      tableId: dbConfig.tableId || fallbackConfig.tableId,
-      realm: dbConfig.realm || fallbackConfig.realm,
-      customColumns: dbConfig.customColumns.length ? dbConfig.customColumns : fallbackConfig.customColumns,
-      customFilters: dbConfig.customFilters.length ? dbConfig.customFilters : fallbackConfig.customFilters,
-      filterMatch: dbConfig.filterMatch || fallbackConfig.filterMatch || 'ALL',
-      dashboardCounters: dbConfig.dashboardCounters.length ? dbConfig.dashboardCounters : fallbackConfig.dashboardCounters
-    };
+    const source = Object.keys(quickbaseSettings).length
+      ? quickbaseSettings
+      : Object.keys(quickbaseConfig).length
+        ? quickbaseConfig
+        : normalizeQuickbaseConfig(p);
+    return normalizeQuickbaseConfig(source);
   }
 
 
@@ -367,6 +361,22 @@
     const AUTO_REFRESH_MS = 15000;
     const me = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
     let profile = (me && window.Store && Store.getProfile) ? (Store.getProfile(me.id) || {}) : {};
+
+    async function refreshProfileFromCloud() {
+      if (!me || !window.CloudUsers || typeof window.CloudUsers.me !== 'function') return;
+      try {
+        const out = await window.CloudUsers.me();
+        const cloudProfile = out && out.ok && out.profile && typeof out.profile === 'object' ? out.profile : null;
+        if (!cloudProfile) return;
+        profile = cloudProfile;
+        if (window.Store && typeof Store.setProfile === 'function') {
+          Store.setProfile(me.id, Object.assign({}, cloudProfile, { updatedAt: Date.now() }));
+        }
+      } catch (_) {}
+    }
+
+    await refreshProfileFromCloud();
+    profile = (me && window.Store && Store.getProfile) ? (Store.getProfile(me.id) || {}) : {};
 
     const quickbaseConfig = getProfileQuickbaseConfig(profile);
     const initialLink = String(quickbaseConfig.reportLink || profile.quickbase_url || '').trim();
@@ -879,19 +889,6 @@
       return loadQuickbaseData({ applyFilters: false });
     }
 
-    async function refreshProfileFromCloud() {
-      if (!me || !window.CloudUsers || typeof window.CloudUsers.me !== 'function') return;
-      try {
-        const out = await window.CloudUsers.me();
-        const cloudProfile = out && out.ok && out.profile && typeof out.profile === 'object' ? out.profile : null;
-        if (!cloudProfile) return;
-        profile = cloudProfile;
-        if (window.Store && typeof Store.setProfile === 'function') {
-          Store.setProfile(me.id, Object.assign({}, cloudProfile, { updatedAt: Date.now() }));
-        }
-      } catch (_) {}
-    }
-
     root.querySelector('#qbOpenSettingsBtn').onclick = openSettings;
     root.querySelector('#qbCloseSettingsBtn').onclick = closeSettings;
     root.querySelector('#qbCancelSettingsBtn').onclick = closeSettings;
@@ -970,7 +967,7 @@
         customColumns: orderedColumns,
         customFilters: normalizeFilters(state.customFilters),
         filterMatch: normalizeFilterMatch(state.filterMatch),
-        dashboard_counters: JSON.stringify(normalizeDashboardCounters(state.dashboardCounters))
+        dashboardCounters: normalizeDashboardCounters(state.dashboardCounters)
       };
 
       const payload = {
@@ -981,7 +978,7 @@
         qb_custom_columns: currentSettingsObject.customColumns,
         qb_custom_filters: currentSettingsObject.customFilters,
         qb_filter_match: currentSettingsObject.filterMatch,
-        qb_dashboard_counters: currentSettingsObject.dashboard_counters
+        qb_dashboard_counters: currentSettingsObject.dashboardCounters
       };
 
       payload.quickbase_config = currentSettingsObject;
@@ -1023,7 +1020,6 @@
       }
     };
 
-    await refreshProfileFromCloud();
     const searchInput = document.querySelector('#quickbase-search')?.value || root.querySelector('#qbHeaderSearch')?.value || '';
     if (shouldApplyInitialFilters(searchInput)) {
       state.searchTerm = String(searchInput).trim();
