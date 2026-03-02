@@ -262,6 +262,35 @@
     };
   }
 
+  function getQuickbaseSettingsLocalKey(userId) {
+    const safeUserId = String(userId || 'anonymous').trim() || 'anonymous';
+    return `mums_my_quickbase_settings:${safeUserId}`;
+  }
+
+  function readQuickbaseSettingsLocal(userId) {
+    try {
+      if (!window.localStorage) return null;
+      const raw = localStorage.getItem(getQuickbaseSettingsLocalKey(userId));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const settings = parsed && typeof parsed === 'object' && parsed.settings ? parsed.settings : parsed;
+      return normalizeQuickbaseSettingsWithTabs(settings, {});
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function writeQuickbaseSettingsLocal(userId, settings) {
+    try {
+      if (!window.localStorage) return;
+      const payload = {
+        savedAt: Date.now(),
+        settings: normalizeQuickbaseSettingsWithTabs(settings, {})
+      };
+      localStorage.setItem(getQuickbaseSettingsLocalKey(userId), JSON.stringify(payload));
+    } catch (_) {}
+  }
+
   function getProfileQuickbaseConfig(profile) {
     const p = profile && typeof profile === 'object' ? profile : {};
     const quickbaseSettings = parseQuickbaseSettings(p.quickbase_settings);
@@ -447,12 +476,15 @@
       shouldApplyInitialFilters,
       filterRecordsBySearch,
       filterRecordsByCounter,
-      shouldApplyServerFilters
+      shouldApplyServerFilters,
+      getQuickbaseSettingsLocalKey,
+      readQuickbaseSettingsLocal,
+      writeQuickbaseSettingsLocal
     };
   }
 
   window.Pages.my_quickbase = async function(root) {
-    const AUTO_REFRESH_MS = 15000;
+    const AUTO_REFRESH_MS = 5000;
     const me = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
     let profile = (me && window.Store && Store.getProfile) ? (Store.getProfile(me.id) || {}) : {};
 
@@ -478,7 +510,11 @@
       profileWithCloudFallback.quickbase_settings = cloudMe.quickbase_settings;
     }
     const quickbaseConfig = getProfileQuickbaseConfig(profileWithCloudFallback);
-    const quickbaseSettings = normalizeQuickbaseSettingsWithTabs(profileWithCloudFallback.quickbase_settings, quickbaseConfig);
+    const localQuickbaseSettings = readQuickbaseSettingsLocal(me && me.id);
+    const backendQuickbaseSettings = normalizeQuickbaseSettingsWithTabs(profileWithCloudFallback.quickbase_settings, quickbaseConfig);
+    const hasBackendTabs = Array.isArray(backendQuickbaseSettings.tabs)
+      && backendQuickbaseSettings.tabs.some((tab) => String(tab.reportLink || tab.qid || tab.tableId || '').trim());
+    const quickbaseSettings = hasBackendTabs ? backendQuickbaseSettings : (localQuickbaseSettings || backendQuickbaseSettings);
     const initialTab = quickbaseSettings.tabs[quickbaseSettings.activeTabIndex] || quickbaseSettings.tabs[0] || buildDefaultTab();
     const initialLink = String(initialTab.reportLink || quickbaseConfig.reportLink || profile.quickbase_url || '').trim();
     const parsedFromLink = parseQuickbaseLink(initialLink);
@@ -514,6 +550,7 @@
     let quickbaseLoadInFlight = null;
     let quickbaseRefreshTimer = null;
     let lastQuickbaseLoadAt = 0;
+    let autosaveTimer = null;
 
     const QUICKBASE_CACHE_TTL_MS = 2 * 60 * 1000;
     const QUICKBASE_BACKGROUND_LIMIT = 500;
@@ -742,6 +779,7 @@
         quickbase_config: activeSettingsObject,
         quickbase_settings: JSON.stringify(serializedQuickbaseSettings)
       };
+      writeQuickbaseSettingsLocal(me.id, serializedQuickbaseSettings);
       const authToken = window.CloudAuth && typeof CloudAuth.accessToken === 'function' ? CloudAuth.accessToken() : '';
       const res = await fetch('/api/users/update_me', {
         method: 'PATCH',
@@ -756,6 +794,17 @@
       if (window.Store && Store.setProfile) {
         Store.setProfile(me.id, Object.assign({}, payload, { updatedAt: Date.now() }));
       }
+      writeQuickbaseSettingsLocal(me.id, serializedQuickbaseSettings);
+    }
+
+    function queuePersistQuickbaseSettings() {
+      if (!me) return;
+      if (autosaveTimer) clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(async () => {
+        try {
+          await persistQuickbaseSettings();
+        } catch (_) {}
+      }, 700);
     }
 
 
@@ -940,6 +989,8 @@
           } else {
             state.customColumns = state.customColumns.filter((v) => v !== id);
           }
+          syncActiveTabFromState();
+          queuePersistQuickbaseSettings();
           renderColumnGrid();
         });
       });
@@ -982,6 +1033,8 @@
         btn.onclick = () => {
           const idx = Number(btn.getAttribute('data-remove-filter'));
           state.customFilters = state.customFilters.filter((_, i) => i !== idx);
+          syncActiveTabFromState();
+          queuePersistQuickbaseSettings();
           renderFilters();
         };
       });
@@ -995,13 +1048,19 @@
             if (!state.customFilters[idx]) return;
             if (key === 'fieldId') {
               state.customFilters[idx].fieldId = String(input.value || '').trim();
+              syncActiveTabFromState();
+              queuePersistQuickbaseSettings();
               return;
             }
             if (key === 'value') {
               state.customFilters[idx].value = String(input.value || '').trim();
+              syncActiveTabFromState();
+              queuePersistQuickbaseSettings();
               return;
             }
             state.customFilters[idx][key] = String(input.value || '').trim();
+            syncActiveTabFromState();
+            queuePersistQuickbaseSettings();
           });
         });
       });
@@ -1010,6 +1069,8 @@
       if (match) {
         match.onchange = () => {
           state.filterMatch = normalizeFilterMatch(match.value);
+          syncActiveTabFromState();
+          queuePersistQuickbaseSettings();
         };
       }
     }
@@ -1060,6 +1121,8 @@
         btn.onclick = () => {
           const idx = Number(btn.getAttribute('data-remove-counter'));
           state.dashboardCounters = state.dashboardCounters.filter((_, i) => i !== idx);
+          syncActiveTabFromState();
+          queuePersistQuickbaseSettings();
           renderCounterFilters();
         };
       });
@@ -1072,6 +1135,8 @@
           input.addEventListener(eventName, () => {
             if (!state.dashboardCounters[idx]) return;
             state.dashboardCounters[idx][key] = String(input.value || '').trim();
+            syncActiveTabFromState();
+            queuePersistQuickbaseSettings();
           });
         });
       });
@@ -1306,6 +1371,7 @@
         try { cleanupModalBindings(); } catch (_) {}
         try { if (quickbaseRefreshTimer) clearInterval(quickbaseRefreshTimer); } catch (_) {}
         try { if (state.searchDebounceTimer) clearTimeout(state.searchDebounceTimer); } catch (_) {}
+        try { if (autosaveTimer) clearTimeout(autosaveTimer); } catch (_) {}
         quickbaseRefreshTimer = null;
         document.removeEventListener('visibilitychange', onVisibilityChange);
         window.removeEventListener('focus', onVisibilityChange);
@@ -1356,6 +1422,7 @@
         state.quickbaseSettings.tabs.push(buildDefaultTab({ tabName: `Report ${state.quickbaseSettings.tabs.length + 1}` }));
         state.activeTabIndex = state.quickbaseSettings.tabs.length - 1;
         syncStateFromActiveTab();
+        queuePersistQuickbaseSettings();
         renderTabBar();
         renderColumnGrid();
         renderFilters();
@@ -1374,6 +1441,7 @@
       captureSettingsDraftFromInputs();
       state.activeTabIndex = idx;
       syncStateFromActiveTab();
+      queuePersistQuickbaseSettings();
       renderTabBar();
       renderColumnGrid();
       renderFilters();
@@ -1382,10 +1450,14 @@
     };
     root.querySelector('#qbAddFilterBtn').onclick = () => {
       state.customFilters.push({ fieldId: '', operator: 'EX', value: '' });
+      syncActiveTabFromState();
+      queuePersistQuickbaseSettings();
       renderFilters();
     };
     root.querySelector('#qbAddCounterBtn').onclick = () => {
       state.dashboardCounters.push({ fieldId: '', operator: 'EX', value: '', label: '', color: 'default' });
+      syncActiveTabFromState();
+      queuePersistQuickbaseSettings();
       renderCounterFilters();
     };
 
