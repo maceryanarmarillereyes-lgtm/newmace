@@ -323,7 +323,9 @@ module.exports = async (req, res) => {
     if (Object.prototype.hasOwnProperty.call(body, 'quickbase_config')) {
       const normalizedConfig = normalizeQuickbaseConfig(parseQuickbaseConfigInput(body.quickbase_config));
       patch.quickbase_config = normalizedConfig;
-      patch.quickbase_settings = normalizedConfig;
+      if (!Object.prototype.hasOwnProperty.call(body, 'quickbase_settings')) {
+        patch.quickbase_settings = normalizedConfig;
+      }
 
       // Keep legacy columns in sync for backward compatibility.
       patch.qb_report_link = normalizedConfig.reportLink;
