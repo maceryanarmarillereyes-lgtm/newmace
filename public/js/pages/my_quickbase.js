@@ -429,8 +429,10 @@
     await refreshProfileFromCloud();
     profile = (me && window.Store && Store.getProfile) ? (Store.getProfile(me.id) || {}) : {};
 
-    const quickbaseConfig = getProfileQuickbaseConfig(profile);
-    const quickbaseSettings = normalizeQuickbaseSettingsWithTabs(profile.quickbase_settings, quickbaseConfig);
+    const cloudMe = window.me && typeof window.me === 'object' ? window.me : {};
+    const profileWithCloudFallback = Object.assign({}, cloudMe, profile);
+    const quickbaseConfig = getProfileQuickbaseConfig(profileWithCloudFallback);
+    const quickbaseSettings = normalizeQuickbaseSettingsWithTabs(profileWithCloudFallback.quickbase_settings, quickbaseConfig);
     const initialTab = quickbaseSettings.tabs[quickbaseSettings.activeTabIndex] || quickbaseSettings.tabs[0] || buildDefaultTab();
     const initialLink = String(initialTab.reportLink || quickbaseConfig.reportLink || profile.quickbase_url || '').trim();
     const parsedFromLink = parseQuickbaseLink(initialLink);
@@ -536,6 +538,7 @@
       state.quickbaseSettings.activeTabIndex = state.activeTabIndex;
     }
 
+
     function captureSettingsDraftFromInputs() {
       const tabNameEl = root.querySelector('#qbTabName');
       const reportLinkEl = root.querySelector('#qbReportLink');
@@ -555,6 +558,20 @@
       state.tableId = resolvedTableId;
       state.filterMatch = normalizeFilterMatch(String(filterMatchEl && filterMatchEl.value || state.filterMatch || 'ALL'));
       syncActiveTabFromState();
+    }
+
+    function scrapeModalCounterInputs() {
+      const rows = Array.from(root.querySelectorAll('#qbCounterRows [data-counter-idx]'));
+      return rows
+        .map((row) => {
+          const fieldId = String((row.querySelector('[data-counter-f="fieldId"]') || {}).value || '').trim();
+          const operator = String((row.querySelector('[data-counter-f="operator"]') || {}).value || 'EX').trim().toUpperCase();
+          const value = String((row.querySelector('[data-counter-f="value"]') || {}).value || '').trim();
+          const label = String((row.querySelector('[data-counter-f="label"]') || {}).value || '').trim();
+          const color = String((row.querySelector('[data-counter-f="color"]') || {}).value || 'default').trim().toLowerCase();
+          return { fieldId, operator, value, label, color };
+        })
+        .filter((counter) => counter.fieldId && counter.value);
     }
 
     function renderTabBar() {
@@ -581,6 +598,10 @@
         filterMatch: activeTab.filterMatch,
         dashboardCounters: normalizeDashboardCounters(activeTab.dashboard_counters)
       };
+      const serializedQuickbaseSettings = {
+        activeTabIndex: state.activeTabIndex,
+        tabs: Array.isArray(state.quickbaseSettings.tabs) ? state.quickbaseSettings.tabs : []
+      };
       const payload = {
         qb_report_link: activeSettingsObject.reportLink,
         qb_qid: activeSettingsObject.qid,
@@ -591,10 +612,7 @@
         qb_filter_match: activeSettingsObject.filterMatch,
         qb_dashboard_counters: activeSettingsObject.dashboardCounters,
         quickbase_config: activeSettingsObject,
-        quickbase_settings: {
-          activeTabIndex: state.activeTabIndex,
-          tabs: state.quickbaseSettings.tabs
-        }
+        quickbase_settings: JSON.stringify(serializedQuickbaseSettings)
       };
       const authToken = window.CloudAuth && typeof CloudAuth.accessToken === 'function' ? CloudAuth.accessToken() : '';
       const res = await fetch('/api/users/update_me', {
@@ -1010,14 +1028,23 @@
           }
           const shouldApplyFilters = shouldApplyServerFilters(opts);
           const mergedFilters = shouldApplyFilters ? normalizeFilters(state.customFilters) : [];
-          const activeQid = String(state.qid || '').trim();
-          const data = await window.QuickbaseAdapter.fetchMonitoringData({
+          const activeTab = getActiveTab();
+          const activeQid = String(activeTab.qid || state.qid || '').trim();
+          const hasExplicitLoadMore = Number(opts.offset || 0) >= 100;
+          const hasActiveSearch = !!String(getActiveSearchTerm() || '').trim();
+          const requestLimit = typeof opts.limit === 'number'
+            ? opts.limit
+            : (hasActiveSearch || hasExplicitLoadMore ? 500 : 100);
+          const requestPayload = {
             bust: Date.now(),
-            qid: activeQid,
+            limit: requestLimit,
+            qid: activeQid || ''
+          };
+          const data = await window.QuickbaseAdapter.fetchMonitoringData({
+            ...requestPayload,
             customFilters: mergedFilters,
             filterMatch: state.filterMatch,
-            search: '',
-            limit: 500
+            search: ''
           });
           state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
           renderColumnGrid();
@@ -1206,81 +1233,34 @@
     const saveLock = root.querySelector('#qbSettingsSavingLock');
     saveBtn.onclick = async () => {
       if (!me) return;
+      const activeTab = getActiveTab();
       const tabNameInput = String((root.querySelector('#qbTabName') || {}).value || '').trim();
       const tabBaseQidInput = String((root.querySelector('#qbTabBaseQid') || {}).value || '').trim();
       const reportLink = String((root.querySelector('#qbReportLink') || {}).value || '').trim();
       const qidInput = String((root.querySelector('#qbQid') || {}).value || '').trim();
       const tableIdInput = String((root.querySelector('#qbTableId') || {}).value || '').trim();
       const parsed = parseQuickbaseLink(reportLink);
-      const orderedColumns = [];
-      const seenCols = new Set();
-      (state.customColumns || []).forEach((id) => {
-        const cleaned = String(id || '').trim();
-        if (!cleaned || seenCols.has(cleaned)) return;
-        seenCols.add(cleaned);
-        orderedColumns.push(cleaned);
-      });
-      const currentSettingsObject = {
-        tabName: tabNameInput || state.tabName || 'Main Report',
-        reportLink,
-        qid: tabBaseQidInput || qidInput || parsed.qid,
-        realm: parsed.realm,
-        tableId: tableIdInput || parsed.tableId,
-        customColumns: orderedColumns,
-        customFilters: normalizeFilters(state.customFilters),
-        filterMatch: normalizeFilterMatch(state.filterMatch),
-        dashboardCounters: normalizeDashboardCounters(state.dashboardCounters)
-      };
+      const scrapedCounters = normalizeDashboardCounters(scrapeModalCounterInputs());
 
-      const payload = {
-        qb_report_link: reportLink,
-        qb_qid: currentSettingsObject.qid,
-        qb_realm: currentSettingsObject.realm,
-        qb_table_id: currentSettingsObject.tableId,
-        qb_custom_columns: currentSettingsObject.customColumns,
-        qb_custom_filters: currentSettingsObject.customFilters,
-        qb_filter_match: currentSettingsObject.filterMatch,
-        qb_dashboard_counters: currentSettingsObject.dashboardCounters
-      };
+      activeTab.tabName = tabNameInput || activeTab.tabName || 'Main Report';
+      activeTab.reportLink = reportLink;
+      activeTab.qid = tabBaseQidInput || qidInput || parsed.qid || '';
+      activeTab.tableId = tableIdInput || parsed.tableId || activeTab.tableId || '';
+      activeTab.dashboard_counters = scrapedCounters;
 
-      payload.quickbase_config = currentSettingsObject;
-      state.tabName = currentSettingsObject.tabName;
-      state.reportLink = currentSettingsObject.reportLink;
-      state.qid = currentSettingsObject.qid;
-      state.tableId = currentSettingsObject.tableId;
-      state.customColumns = currentSettingsObject.customColumns;
-      state.customFilters = currentSettingsObject.customFilters;
-      state.filterMatch = currentSettingsObject.filterMatch;
-      state.dashboardCounters = currentSettingsObject.dashboardCounters;
+      state.tabName = activeTab.tabName;
+      state.reportLink = activeTab.reportLink;
+      state.qid = activeTab.qid;
+      state.tableId = activeTab.tableId;
+      state.dashboardCounters = scrapedCounters;
       syncActiveTabFromState();
-      payload.quickbase_settings = {
-        activeTabIndex: state.activeTabIndex,
-        tabs: state.quickbaseSettings.tabs
-      };
 
       state.isSaving = true;
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
       if (saveLock) saveLock.style.display = 'flex';
       try {
-        const authToken = window.CloudAuth && typeof CloudAuth.accessToken === 'function' ? CloudAuth.accessToken() : '';
-        const res = await fetch('/api/users/update_me', {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
-          },
-          body: JSON.stringify({
-            ...payload,
-            quickbase_settings: payload.quickbase_settings
-          })
-        });
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(out.message || out.error || 'Could not save Quickbase settings.');
-
-        if (window.Store && Store.setProfile) {
-          Store.setProfile(me.id, Object.assign({}, payload, { updatedAt: Date.now() }));
-        }
+        await persistQuickbaseSettings();
         renderTabBar();
         if (window.UI && UI.toast) UI.toast('Quickbase settings saved successfully!');
         closeSettings();
