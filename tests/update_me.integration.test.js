@@ -106,62 +106,9 @@ async function testFallbackColumnMissing() {
   assert.ok(calls[0].quickbase_config);
 }
 
-async function testFallbackMissingDashboardCounterColumns() {
-  const calls = [];
-  const route = loadRoute({
-    supabaseMocks: {
-      getUserFromJwt: async () => ({ id: 'u-3' }),
-      getProfileForUserId: async () => ({ user_id: 'u-3', role: 'MEMBER' }),
-      serviceSelect: async () => ({ ok: true, json: [{ column_name: 'quickbase_settings' }] }),
-      serviceUpdate: async (_table, patch) => {
-        calls.push(patch);
-        if (calls.length === 1) {
-          return {
-            ok: false,
-            json: {
-              message: 'column "qb_dashboard_counters" of relation "mums_profiles" does not exist'
-            }
-          };
-        }
-        return { ok: true, json: [patch] };
-      }
-    },
-    schemaMocks: {
-      ensureQuickbaseSettingsColumn: async () => true
-    }
-  });
-
-  const req = {
-    method: 'PATCH',
-    headers: { authorization: 'Bearer token' },
-    body: {
-      quickbase_settings: {
-        qid: '9',
-        tableId: 'tbl123',
-        realm: 'acme.quickbase.com',
-        dashboardCounters: [{ fieldId: '7', operator: 'EX', value: 'Open', label: 'Open', color: 'blue' }]
-      }
-    }
-  };
-  const res = makeRes();
-
-  await route(req, res);
-  const payload = JSON.parse(res.body);
-
-  assert.equal(res.statusCode, 200);
-  assert.equal(payload.ok, true);
-  assert.equal(payload.warning, 'quickbase_columns_or_config_missing_in_db');
-  assert.equal(calls.length, 2);
-  assert.equal(typeof calls[1].qb_dashboard_counters, 'undefined');
-  assert.equal(typeof calls[1].qb_filter_match, 'undefined');
-  assert.equal(calls[1].qb_qid, '9');
-  assert.equal(calls[1].qb_table_id, 'tbl123');
-}
-
 async function run() {
   await testNormalizeAndEscape();
   await testFallbackColumnMissing();
-  await testFallbackMissingDashboardCounterColumns();
   console.log('update_me integration tests passed');
 }
 

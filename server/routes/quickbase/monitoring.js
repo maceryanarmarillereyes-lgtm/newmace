@@ -3,27 +3,6 @@ const { sendJson, requireAuthedUser } = require('../tasks/_common');
 const { queryQuickbaseRecords, listQuickbaseFields, normalizeQuickbaseCellValue } = require('../../lib/quickbase');
 const { normalizeSettings } = require('../../lib/normalize_settings');
 
-
-const REPORT_METADATA_CACHE_MS = 60 * 1000;
-const reportMetadataCache = new Map();
-
-function getReportCacheKey(config, qid) {
-  return `${String(config && config.qb_realm || '').trim().toLowerCase()}::${String(config && config.qb_table_id || '').trim()}::${String(qid || '').trim()}`;
-}
-
-async function getCachedQuickbaseReportMetadata({ config, qid }) {
-  const cacheKey = getReportCacheKey(config, qid);
-  const now = Date.now();
-  const cached = reportMetadataCache.get(cacheKey);
-  if (cached && (now - cached.fetchedAt) < REPORT_METADATA_CACHE_MS) {
-    return cached.value;
-  }
-
-  const value = await getQuickbaseReportMetadata({ config, qid });
-  reportMetadataCache.set(cacheKey, { value, fetchedAt: now });
-  return value;
-}
-
 async function getQuickbaseReportMetadata({ config, qid }) {
   const cfg = {
     qb_token: config.qb_token,
@@ -326,7 +305,7 @@ module.exports = async (req, res) => {
 
     let reportMetadata = null;
     if (hasPersonalQuickbaseQuery) {
-      reportMetadata = await getCachedQuickbaseReportMetadata({ config: userQuickbaseConfig, qid });
+      reportMetadata = await getQuickbaseReportMetadata({ config: userQuickbaseConfig, qid });
     }
 
     const selectFields = hasPersonalQuickbaseQuery && reportMetadata?.fields?.length
