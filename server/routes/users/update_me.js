@@ -125,6 +125,57 @@ function normalizeQuickbaseConfig(raw) {
   };
 }
 
+function normalizeQuickbaseSettingsPayload(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const hasTabs = Array.isArray(src.tabs);
+  if (!hasTabs) return normalizeQuickbaseConfig(src);
+
+  const tabs = src.tabs
+    .filter((tab) => tab && typeof tab === 'object')
+    .map((tab) => {
+      const normalizedTab = normalizeQuickbaseConfig(tab);
+      return {
+        id: String(tab.id || '').trim(),
+        tabName: String(tab.tabName || tab.name || '').trim() || 'Main Report',
+        reportLink: normalizedTab.reportLink,
+        qid: normalizedTab.qid,
+        tableId: normalizedTab.tableId,
+        customColumns: normalizedTab.customColumns,
+        customFilters: normalizedTab.customFilters,
+        filterMatch: normalizedTab.filterMatch,
+        dashboard_counters: normalizedTab.dashboardCounters
+      };
+    })
+    .slice(0, 25);
+
+  const safeTabs = tabs.length ? tabs : [{
+    id: '',
+    tabName: 'Main Report',
+    reportLink: '',
+    qid: '',
+    tableId: '',
+    customColumns: [],
+    customFilters: [],
+    filterMatch: 'ALL',
+    dashboard_counters: []
+  }];
+  const maxIndex = safeTabs.length - 1;
+  const activeTabIndex = Math.min(Math.max(Number(src.activeTabIndex || 0), 0), maxIndex);
+  return {
+    activeTabIndex,
+    tabs: safeTabs
+  };
+}
+
+function getLegacyQuickbaseConfigFromSettings(settings) {
+  const normalizedSettings = settings && typeof settings === 'object' ? settings : {};
+  if (!Array.isArray(normalizedSettings.tabs)) return normalizeQuickbaseConfig(normalizedSettings);
+  const tabs = normalizedSettings.tabs;
+  if (!tabs.length) return normalizeQuickbaseConfig({});
+  const activeTabIndex = Math.min(Math.max(Number(normalizedSettings.activeTabIndex || 0), 0), tabs.length - 1);
+  return normalizeQuickbaseConfig(tabs[activeTabIndex] || tabs[0]);
+}
+
 function toBool(v){
   if (v === true || v === false) return v;
   const s = String(v ?? '').trim().toLowerCase();
@@ -253,19 +304,20 @@ module.exports = async (req, res) => {
         }
       }
 
-      const normalizedSettings = normalizeQuickbaseConfig(inputQuickbaseSettings);
+      const normalizedSettings = normalizeQuickbaseSettingsPayload(inputQuickbaseSettings);
+      const legacyConfig = getLegacyQuickbaseConfigFromSettings(normalizedSettings);
       patch.quickbase_settings = normalizedSettings;
-      patch.quickbase_config = normalizedSettings;
+      patch.quickbase_config = legacyConfig;
 
       // Keep legacy columns in sync for backward compatibility.
-      patch.qb_report_link = normalizedSettings.reportLink;
-      patch.qb_qid = normalizedSettings.qid;
-      patch.qb_realm = normalizedSettings.realm;
-      patch.qb_table_id = normalizedSettings.tableId;
-      patch.qb_custom_columns = normalizedSettings.customColumns;
-      patch.qb_custom_filters = normalizedSettings.customFilters;
-      patch.qb_filter_match = normalizedSettings.filterMatch;
-      patch.qb_dashboard_counters = normalizedSettings.dashboardCounters;
+      patch.qb_report_link = legacyConfig.reportLink;
+      patch.qb_qid = legacyConfig.qid;
+      patch.qb_realm = legacyConfig.realm;
+      patch.qb_table_id = legacyConfig.tableId;
+      patch.qb_custom_columns = legacyConfig.customColumns;
+      patch.qb_custom_filters = legacyConfig.customFilters;
+      patch.qb_filter_match = legacyConfig.filterMatch;
+      patch.qb_dashboard_counters = legacyConfig.dashboardCounters;
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'quickbase_config')) {
@@ -375,8 +427,9 @@ module.exports = async (req, res) => {
     if (!Object.keys(patch).length) return sendJson(res, 200, { ok: true, updated: false, profile: null });
 
     let out;
-    const filtersCount = Array.isArray((patch.quickbase_settings || {}).customFilters)
-      ? patch.quickbase_settings.customFilters.length
+    const quickbaseSettingsFilters = getLegacyQuickbaseConfigFromSettings(patch.quickbase_settings || {});
+    const filtersCount = Array.isArray(quickbaseSettingsFilters.customFilters)
+      ? quickbaseSettingsFilters.customFilters.length
       : 0;
 
     const db = {
