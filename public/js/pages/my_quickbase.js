@@ -904,11 +904,11 @@
               <div class="h3" style="margin-top:0;">1) Report Config</div>
               <div style="display:grid;gap:10px;">
                 <label class="field"><div class="label">Tab Name</div><input class="input" id="qbTabName" value="${esc(state.tabName)}" placeholder="Daily Distribution" /></label>
-                <label class="field"><div class="label">Base Report QID</div><input class="input" id="qbTabBaseQid" value="${esc(state.qid)}" placeholder="-2021117" /></label>
                 <label class="field"><div class="label">Report Link</div><input class="input" id="qbReportLink" value="${esc(state.reportLink)}" placeholder="https://<realm>.quickbase.com/db/<tableid>?a=q&qid=..." /></label>
+                <label class="field"><div class="label">Base Report QID</div><input class="input" id="qbTabBaseQid" value="${esc(state.qid)}" placeholder="-2021117" readonly style="background:rgba(148,163,184,.14);color:rgba(226,232,240,.78);cursor:not-allowed;" /></label>
                 <div class="grid cols-2" style="gap:10px;">
-                  <label class="field"><div class="label">QID</div><input class="input" id="qbQid" value="${esc(state.qid)}" placeholder="-2021117" /></label>
-                  <label class="field"><div class="label">Table ID</div><input class="input" id="qbTableId" value="${esc(state.tableId)}" placeholder="bq7m2ab12" /></label>
+                  <label class="field"><div class="label">QID</div><input class="input" id="qbQid" value="${esc(state.qid)}" placeholder="-2021117" readonly style="background:rgba(148,163,184,.14);color:rgba(226,232,240,.78);cursor:not-allowed;" /></label>
+                  <label class="field"><div class="label">Table ID</div><input class="input" id="qbTableId" value="${esc(state.tableId)}" placeholder="bq7m2ab12" readonly style="background:rgba(148,163,184,.14);color:rgba(226,232,240,.78);cursor:not-allowed;" /></label>
                 </div>
               </div>
             </section>
