@@ -466,8 +466,19 @@
               <h2 class="ux-h1 qb-title" style="margin:0;">My Quickbase</h2>
               <div class="small muted qb-subtitle">Enterprise monitoring dashboard for your personal Quickbase view.</div>
             </div>
+          </div>
+        </div>
+
+        <div id="qbTabBar" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:1rem;scrollbar-width:none;"></div>
+
+        <div class="card pad" style="margin-bottom:12px;backdrop-filter: blur(14px); background: linear-gradient(130deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.16);">
+          <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div>
+              <div class="h3" id="qbInstanceTitle" style="margin:0;">${esc(state.tabName || 'Main Report')}</div>
+              <div class="small muted">Active tab instance dashboard</div>
+            </div>
             <div class="row qb-header-search-wrap" style="gap:8px;align-items:center;justify-content:center;flex:1;">
-              <input class="input qb-header-search" id="qbHeaderSearch" type="search" placeholder="Search across all Quickbase records..." />
+              <input class="input qb-header-search" id="qbHeaderSearch" type="search" placeholder="Search across active tab records..." />
               <button class="btn" id="qbExportCsvBtn" type="button">Export CSV</button>
             </div>
             <div class="row" style="gap:8px;">
@@ -959,7 +970,7 @@
           const incomingRecords = Array.isArray(data && data.records) ? data.records : [];
           state.baseRecords = incomingRecords.slice();
           state.rawPayload = { columns: incomingColumns, records: state.baseRecords.slice() };
-          state.isDefaultReportMode = !shouldApplyFilters && !String(state.searchTerm || '').trim();
+          state.isDefaultReportMode = !shouldApplyFilters && !getActiveSearchTerm();
           applySearchAndRender();
           lastQuickbaseLoadAt = Date.now();
         } catch (err) {
@@ -976,7 +987,7 @@
     }
 
     function applySearchAndRender() {
-      const normalizedSearch = String(state.searchTerm || '').trim();
+      const normalizedSearch = getActiveSearchTerm();
       const activeCounter = state.activeCounterIndex >= 0 ? state.dashboardCounters[state.activeCounterIndex] : null;
       state.searchTerm = normalizedSearch;
       const basePayload = {
@@ -987,7 +998,7 @@
       state.currentPayload = normalizedSearch
         ? filterRecordsBySearch(counterFilteredPayload, normalizedSearch)
         : counterFilteredPayload;
-      renderRecords(root, state.currentPayload, { userInitiatedSearch: !!state.hasUserSearched && !!normalizedSearch.length });
+      renderRecords(root, state.currentPayload, { userInitiatedSearch: !!getActiveUserSearched() && !!normalizedSearch.length });
       renderDashboardCounters(root, state.baseRecords, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
         state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
         applySearchAndRender();
@@ -1040,7 +1051,8 @@
 
     async function renderDefaultReport() {
       state.didInitialDefaultRender = true;
-      state.hasUserSearched = false;
+      setActiveUserSearched(false);
+      setActiveSearchTerm('');
       state.searchTerm = '';
       return loadQuickbaseData({ applyFilters: false });
     }
@@ -1099,9 +1111,12 @@
 
     const headerSearch = root.querySelector('#qbHeaderSearch');
     if (headerSearch) {
-      state.searchTerm = String(headerSearch.value || '').trim();
+      headerSearch.value = getActiveSearchTerm();
+      state.searchTerm = getActiveSearchTerm();
       headerSearch.oninput = () => {
         const nextValue = String(headerSearch.value || '').trim();
+        setActiveSearchTerm(nextValue);
+        setActiveUserSearched(nextValue.length > 0);
         state.searchTerm = nextValue;
         state.hasUserSearched = nextValue.length > 0;
         if (state.searchDebounceTimer) clearTimeout(state.searchDebounceTimer);
@@ -1226,6 +1241,8 @@
     syncStateFromActiveTab();
     renderTabBar();
     if (shouldApplyInitialFilters(searchInput)) {
+      setActiveSearchTerm(String(searchInput).trim());
+      setActiveUserSearched(true);
       state.searchTerm = String(searchInput).trim();
       state.hasUserSearched = true;
       await loadQuickbaseData({ applyFilters: true });
