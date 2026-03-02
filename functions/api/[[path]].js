@@ -1,3 +1,4 @@
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
 // Cloudflare Pages Functions catch-all router for /api/*.
 //
 // Keeps behavior in sync with Vercel's /api/handler.js routing, while allowing
@@ -89,7 +90,9 @@ async function getRoutes(env) {
     'tasks/workload_matrix': unwrapCjs(await import('../../server/routes/tasks/workload_matrix.js')),
     'tasks/members': unwrapCjs(await import('../../server/routes/tasks/members.js')),
     'tasks/monitoring': unwrapCjs(await import('../../server/routes/tasks/monitoring.js')),
-    'tasks/reassign_pending': unwrapCjs(await import('../../server/routes/tasks/reassign_pending.js'))
+    'tasks/reassign_pending': unwrapCjs(await import('../../server/routes/tasks/reassign_pending.js')),
+
+    'quickbase/monitoring': unwrapCjs(await import('../../server/routes/quickbase/monitoring.js'))
   };
 
   return ROUTES;

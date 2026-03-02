@@ -1,3 +1,4 @@
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
 (function(){
   const Config = {
     // Single source of truth for build label used by login + app.
@@ -114,7 +115,7 @@ THEMES: [
 
       {
         id: 'my_record',
-        label: 'My Record',
+        label: 'My Records',
         icon: '🗂️',
         perm: 'view_my_record',
         children: [
@@ -122,6 +123,7 @@ THEMES: [
           { id: 'my_schedule', label: 'My Schedule', icon: '📅', perm: 'view_my_record' },
           { id: 'my_case', label: 'My Case', icon: '📨', perm: 'view_my_record' },
           { id: 'my_task', label: 'My Task', icon: '✅', perm: 'view_my_record' },
+          { id: 'my_quickbase', label: 'My Quickbase', icon: 'database' },
         ]
       },
 

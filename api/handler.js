@@ -1,3 +1,4 @@
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
 // Single-function API router for Vercel Hobby plan.
 //
 // Vercel Hobby limits the number of Serverless Functions. This project previously
@@ -76,6 +77,8 @@ const ROUTES = {
   'tasks/monitoring': require('../server/routes/tasks/monitoring'),
   'tasks/reassign_pending': require('../server/routes/tasks/reassign_pending'),
   'tasks/distribution_export': require('../server/routes/tasks/distribution_export'),
+
+  'quickbase/monitoring': require('../server/routes/quickbase/monitoring'),
 };
 
 const DYNAMIC_ROUTES = [

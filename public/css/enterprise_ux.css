@@ -1,3 +1,4 @@
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
 /* MUMS Enterprise UX Kit (Dashboard + My Schedule)
    - CSS Grid + Flex hybrid
    - Responsive + accessibility-focused
@@ -4885,4 +4886,69 @@ body.members-fullscreen-active .tooltip{
 .members-page .member-actions select {
   color: #f4f4f5 !important;
   background-color: rgba(255,255,255,0.05) !important;
+}
+
+/* My Quickbase premium compact layout */
+.qb-page-shell{
+  height: calc(100vh - 60px);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  gap:10px;
+}
+.qb-static-zone{ flex-shrink:0; display:flex; flex-direction:column; gap:10px; }
+.qb-header-card{ padding:10px 14px; }
+.qb-title{ font-size:20px; line-height:1.1; }
+.qb-subtitle{ margin-top:2px; font-size:11px; }
+.qb-dashboard-counters{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap:10px;
+  flex-shrink:0;
+}
+.qb-counter-widget{
+  backdrop-filter: blur(12px);
+  border-radius: 12px;
+  padding: 14px;
+  min-height: 132px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  text-align:center;
+}
+.qb-counter-label{
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.14em;
+  color:rgba(203,213,225,.86);
+  margin-bottom:8px;
+}
+.qb-counter-value{ font-size:56px; font-weight:900; line-height:1; }
+.qb-table-card{ flex-grow:1; min-height:0; display:flex; flex-direction:column; }
+.qb-data-body{ flex-grow:1; min-height:0; overflow:hidden; position:relative; }
+.qb-table-inner{ max-height:100%; overflow:auto; }
+.qb-data-table{ width:100%; min-width:760px; border-collapse:collapse; }
+.qb-data-table th,
+.qb-data-table td{ text-align:left; padding:8px; }
+.qb-data-table thead th{
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: var(--surface-color, #1e1e1e);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 1px 0 rgba(148,163,184,.25);
+}
+.qb-case-id{ font-weight:700; }
+
+.qb-header-row{ width:100%; }
+.qb-header-search-wrap{ max-width:560px; margin:0 auto; }
+.qb-header-search{ width:min(420px, 100%); height:36px; }
+.qb-counter-widget{ cursor:pointer; transition:transform .2s ease, opacity .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.qb-counter-widget:hover{ transform:translateY(-1px); opacity:.96; }
+.qb-counter-widget.is-active{ border-color:rgba(148,163,184,.75) !important; box-shadow:0 0 0 1px rgba(255,255,255,.22), 0 12px 28px rgba(15,23,42,.42) !important; }
+@media (max-width: 980px){
+  .qb-header-row{ flex-wrap:wrap; }
+  .qb-header-search-wrap{ order:3; width:100%; max-width:none; }
+  .qb-header-search{ width:100%; }
 }

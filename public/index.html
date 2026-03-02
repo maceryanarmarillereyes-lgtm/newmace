@@ -74,12 +74,7 @@
       <!-- Timezone is shown inside the compact profile card to maximize nav space -->
       <nav class="nav" id="nav"></nav>
 
-      <div class="side-logs" id="sideLogs">
-        <div class="side-logs-head">
-          <div class="side-logs-title">Recent Activity</div>
-          <span class="small muted" id="sideLogsHint"></span>
-        </div>
-        <div class="side-logs-list" id="sideLogsList"></div>
+      <div class="side-logs side-logs-minimal" id="sideLogs">
         <button class="btn ghost side-logs-viewall" id="sideLogsViewAll" type="button">View All Activity</button>
       </div>
     </aside>
@@ -478,6 +473,11 @@
                 <option value="minimal">Minimal compact</option>
               </select>
             </label>
+            <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:14px 0" />
+            <div class="h3" style="margin:0 0 8px">Quickbase Integration</div>
+            <label class="small">Quickbase User Token (Secured)
+              <input class="input" type="password" id="profileQbToken" placeholder="Enter your personal QB Token" />
+            </label>
             <div class="row" style="justify-content:flex-end;gap:10px;margin-top:10px">
               <button class="btn" type="button" data-close="profileModal">Cancel</button>
               <button class="btn primary" id="profileSave" type="button">Save Changes</button>
@@ -708,6 +708,7 @@
   <script src="/js/components/coverageMeter.js?v=p1-516"></script>
   <script src="/js/components/memberRow.js?v=p1-516"></script>
   <script src="/js/components/graph_panel.js?v=p1-516"></script>
+  <script src="/js/quickbase_adapter.js?v=p1-516"></script>
 
   <!-- Pages -->
   <script src="/js/pages/dashboard.js?v=p1-516"></script>
@@ -725,6 +726,7 @@
   <script src="/js/pages/my_schedule.js?v=p1-516"></script>
   <script src="/js/pages/my_case.js?v=p1-516"></script>
   <script src="/js/pages/my_task.js?v=p1-516"></script>
+  <script src="/js/pages/my_quickbase.js?v=p1-516"></script>
   <script src="/js/pages/commands.js?v=p1-516"></script>
   <script src="/js/pages/privileges.js?v=p1-516"></script>
   <script src="/js/pages/gmt_overview.js?v=p1-516"></script>

@@ -1,3 +1,4 @@
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
 (function(){
   // Left sidebar Activity Logs widget
   // - Keeps content inside the overlay background
@@ -55,9 +56,10 @@
         const listEl = UI.el('#sideLogsList');
         const hintEl = UI.el('#sideLogsHint');
         const viewAllBtn = UI.el('#sideLogsViewAll');
-        if(!listEl || !hintEl) return;
 
         if(viewAllBtn) viewAllBtn.onclick = ()=>{ window.location.hash = '#logs'; };
+
+        if(!listEl || !hintEl) return;
 
         const logs = Store.getLogs().filter(l=>canSeeLog(this._lastUser, l)).slice(0,6);
         hintEl.textContent = logs.length ? `Updated ${logs.length} item${logs.length>1?'s':''}` : 'No activity';

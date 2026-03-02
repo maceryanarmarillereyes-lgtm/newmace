@@ -1,3 +1,4 @@
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
 // ===== CODE UNTOUCHABLES =====
 // Save button must disable immediately (dataset.busy=1).
 // Cooldown UI must auto re-enable after retry window.

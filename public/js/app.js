@@ -1,3 +1,4 @@
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
 /* File: public/js/app.js */
 
 (function(){
@@ -1693,14 +1694,20 @@ function updateClocksPreviewTimes(){
       return map[id] || 'dashboard';
     };
 
+    function canAccessNavItem(n){
+      const id = String(n && n.id || '').trim();
+      if(id === 'my_quickbase') return true;
+      return !!Config.can(user, n.perm);
+    }
+
     function renderItem(n, depth){
-      if(!Config.can(user, n.perm)) return '';
       const padVal = (12 + depth*12);
       const pad = `style="padding-left:${padVal}px"`;
       const hasKids = Array.isArray(n.children) && n.children.length;
       const depthClass = depth > 0 ? ' nav-subitem' : '';
 
       if(!hasKids){
+        if(!canAccessNavItem(n)) return '';
         const href = (n && n.route) ? String(n.route) : (`/${n.id}`);
         return `<a class="nav-item depth-${depth}${depthClass}" href="${href}" data-page="${n.id}" data-label="${UI.esc(n.label)}" ${pad} title="${UI.esc(n.label)}">
           <span class="nav-ico" data-ico="${iconFor(n.id)}" aria-hidden="true"></span>
@@ -1715,6 +1722,7 @@ function updateClocksPreviewTimes(){
         .map(k => renderItem(k, depth+1))
         .filter(Boolean)
         .join('');
+      if(!canAccessNavItem(n) && !kidsHtml) return '';
       if(!kidsHtml) return '';
 
       const special = n.id === 'my_record' ? ' is-record-group' : '';
@@ -2064,6 +2072,7 @@ function updateClocksPreviewTimes(){
     const emailEl = UI.el('#profileEmail');
     const roleEl = UI.el('#profileRole');
     const teamEl = UI.el('#profileTeam');
+    const qbTokenEl = UI.el('#profileQbToken');
 
     let teamSel = UI.el('#profileTeamSelect');
     if(isSuperAdmin0){
@@ -2119,6 +2128,7 @@ function updateClocksPreviewTimes(){
     }
     if(roleEl) roleEl.value = user.role||'';
     if(teamEl) teamEl.value = (teamForLabel && teamForLabel.label) ? teamForLabel.label : '';
+    if(qbTokenEl) qbTokenEl.value = String(prof.qb_token || '');
 
     try{
       if(isSuperAdmin0 && teamSel){
@@ -2158,6 +2168,10 @@ function updateClocksPreviewTimes(){
             }
 
             if(emailEl && p.email) emailEl.value = p.email;
+            if(qbTokenEl && p.qb_token !== undefined && p.qb_token !== null){
+              qbTokenEl.value = String(p.qb_token || '');
+              try{ Store.setProfile(user.id, { qb_token: String(p.qb_token || ''), updatedAt: Date.now() }); }catch(_){ }
+            }
             if(isSuperAdmin0 && teamSel){
               const roleUp = String(p.role || user.role || '').toUpperCase();
               const isSuperRole = (roleUp === 'SUPER_ADMIN' || roleUp === 'SUPER_USER');
@@ -2230,6 +2244,7 @@ function updateClocksPreviewTimes(){
 
     UI.el('#profileSave').onclick = async ()=>{
       const name = String((nameEl && nameEl.value) || '').trim();
+      const qbToken = String((qbTokenEl && qbTokenEl.value) || '').trim();
 
       let teamIdSel = '';
       let teamOverrideSel = false;
@@ -2241,7 +2256,7 @@ function updateClocksPreviewTimes(){
       }catch(_){ }
 
       if(cloudProfileEnabled()){
-        const payload = { name: name || (user.name||user.username) };
+        const payload = { name: name || (user.name||user.username), qb_token: qbToken };
         if(isSuperAdmin0){
           payload.team_id = teamOverrideSel ? teamIdSel : null;
           payload.team_override = !!teamOverrideSel;
@@ -2262,6 +2277,7 @@ function updateClocksPreviewTimes(){
         localPatch.teamId = teamOverrideSel ? teamIdSel : '';
       }
       Store.updateUser(user.id, localPatch);
+      try{ Store.setProfile(user.id, { qb_token: qbToken, updatedAt: Date.now() }); }catch(_){ }
 
       if(layoutSel){
         localStorage.setItem('mums_profile_layout', String(layoutSel.value||'card'));
@@ -2308,10 +2324,12 @@ function updateClocksPreviewTimes(){
     const list = UI.el('#sideLogsList');
     const hint = UI.el('#sideLogsHint');
     const viewAllBtn = UI.el('#sideLogsViewAll');
-    if(!box || !list) return;
+    if(!box) return;
 
     const openLogs = ()=>{ window.location.hash = '#logs'; };
     if(viewAllBtn) viewAllBtn.onclick = openLogs;
+
+    if(!list || !hint) return;
 
     const logs = Store.getLogs().filter(l=>canSeeLog(user,l)).slice(0,6);
     if(hint) hint.textContent = logs.length ? `Updated ${logs.length} item${logs.length>1?'s':''}` : 'No activity';
@@ -3694,6 +3712,13 @@ async function boot(){
 
     const user = await Auth.requireUser();
     if(!user) return;
+
+    // Realtime Guard: initialize realtime only after auth has been resolved.
+    try{
+      if(window.Realtime && typeof window.Realtime.init === 'function'){
+        window.Realtime.init();
+      }
+    }catch(_){ }
 
     const roleUpper = String(user.role||'').trim().toUpperCase().replace(/\s+/g,'_');
     const isSA = roleUpper === String((Config && Config.ROLES ? Config.ROLES.SUPER_ADMIN : 'SUPER_ADMIN'));

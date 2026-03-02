@@ -102,12 +102,21 @@ commit;
 -- =========================================================================
 DO $$ 
 BEGIN
+    -- Idempotent policy reset (safe to rerun)
     DROP POLICY IF EXISTS "Elevated Read Distributions" ON public.task_distributions;
-    CREATE POLICY "Allow All Authed to Read Distributions" ON public.task_distributions 
+    DROP POLICY IF EXISTS "Allow All Authed to Read Distributions" ON public.task_distributions;
+    CREATE POLICY "Allow All Authed to Read Distributions" ON public.task_distributions
     FOR SELECT USING (auth.role() = 'authenticated');
-DROP POLICY IF EXISTS "Elevated Read Task Items" ON public.task_items;
-CREATE POLICY "Allow All Authed to Read Task Items" ON public.task_items 
-FOR SELECT USING (auth.role() = 'authenticated');
+
+    DROP POLICY IF EXISTS "Elevated Read Task Items" ON public.task_items;
+    DROP POLICY IF EXISTS "Allow All Authed to Read Task Items" ON public.task_items;
+    CREATE POLICY "Allow All Authed to Read Task Items" ON public.task_items
+    FOR SELECT USING (auth.role() = 'authenticated');
 END $$;
+
+-- Quickbase personalization columns (safe to rerun)
+ALTER TABLE public.mums_profiles
+  ADD COLUMN IF NOT EXISTS qb_custom_columns jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS qb_custom_filters jsonb NOT NULL DEFAULT '[]'::jsonb;
 
 NOTIFY pgrst, 'reload schema';

@@ -1,3 +1,4 @@
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
 /*
 ===============================================================================
 SYSTEM PROMPT INSTRUCTION / AI CONTRACT — STRICT DESIGN TOKEN ARCHITECTURE
@@ -1018,6 +1019,8 @@ body[data-mode="light"] .sp-photo{background:rgba(15,23,42,.04)}
 
 /* Sidebar activity logs (anchored to bottom so nav gets maximum room) */
 .side-logs{margin-top:auto;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+.side-logs.side-logs-minimal{padding-top:14px}
+.side-logs.side-logs-minimal .side-logs-viewall{width:100%}
 .side-logs-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .side-logs-list{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:hidden}
 .logline{display:flex;gap:8px;align-items:baseline;font-size:12px;color:var(--muted);line-height:1.2}

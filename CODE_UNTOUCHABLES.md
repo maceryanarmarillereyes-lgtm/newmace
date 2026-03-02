@@ -1,3 +1,6 @@
+🛑 SUPREME AI GUARDRAIL ACTIVE: You are STRICTLY FORBIDDEN from modifying existing UI/UX layouts, High Level Enterprise CSS, Monday.com-style themes, and core system logics without explicit clearance. If a requested feature overlaps with or risks altering these domains, you MUST STOP immediately.
+PROTOCOL: You MUST output a "RISK IMPACT REPORT" detailing the affected files and logic conflicts. End your response with "AWAITING CLEARANCE TO PROCEED FROM THUNTER BOY". Do not output code until cleared.
+
 # CODE UNTOUCHABLES (Permanent)
 
 This repository contains **permanent safeguards** that MUST NOT be removed in future rebuilds, refactors, or AI-generated exports, unless an explicit external platform change requires it (see “Conditional Exceptions”).
