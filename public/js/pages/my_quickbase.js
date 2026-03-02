@@ -184,12 +184,15 @@
   function buildDefaultTab(source, defaults) {
     const src = source && typeof source === 'object' ? source : {};
     const base = defaults && typeof defaults === 'object' ? defaults : {};
+    const reportLink = String(src.reportLink || src.qb_report_link || base.reportLink || '').trim();
+    const parsed = parseQuickbaseLink(reportLink);
     return {
       id: String(src.id || generateUUID()),
       tabName: String(src.tabName || src.name || base.tabName || 'Main Report').trim() || 'Main Report',
-      reportLink: String(src.reportLink || src.qb_report_link || base.reportLink || '').trim(),
+      reportLink,
       qid: String(src.qid || src.qb_qid || base.qid || '').trim(),
       tableId: String(src.tableId || src.qb_table_id || base.tableId || '').trim(),
+      realm: String(src.realm || src.qb_realm || base.realm || parsed.realm || '').trim(),
       dashboard_counters: normalizeDashboardCounters(src.dashboard_counters || src.dashboardCounters || base.dashboard_counters),
       customColumns: Array.isArray(src.customColumns || src.qb_custom_columns || base.customColumns)
         ? (src.customColumns || src.qb_custom_columns || base.customColumns).map((v) => String(v))
@@ -479,7 +482,8 @@
       shouldApplyServerFilters,
       getQuickbaseSettingsLocalKey,
       readQuickbaseSettingsLocal,
-      writeQuickbaseSettingsLocal
+      writeQuickbaseSettingsLocal,
+      normalizeQuickbaseSettingsWithTabs
     };
   }
 
@@ -516,19 +520,20 @@
       && backendQuickbaseSettings.tabs.some((tab) => String(tab.reportLink || tab.qid || tab.tableId || '').trim());
     const quickbaseSettings = hasBackendTabs ? backendQuickbaseSettings : (localQuickbaseSettings || backendQuickbaseSettings);
     const initialTab = quickbaseSettings.tabs[quickbaseSettings.activeTabIndex] || quickbaseSettings.tabs[0] || buildDefaultTab();
-    const initialLink = String(initialTab.reportLink || quickbaseConfig.reportLink || profile.quickbase_url || '').trim();
+    const initialLink = String(initialTab.reportLink || '').trim();
     const parsedFromLink = parseQuickbaseLink(initialLink);
     const state = {
       quickbaseSettings,
       activeTabIndex: quickbaseSettings.activeTabIndex,
       tabName: String(initialTab.tabName || 'Main Report').trim(),
       reportLink: initialLink,
-      qid: String(initialTab.qid || quickbaseConfig.qid || profile.quickbase_qid || parsedFromLink.qid || '').trim(),
-      tableId: String(initialTab.tableId || quickbaseConfig.tableId || profile.quickbase_table_id || parsedFromLink.tableId || '').trim(),
+      qid: String(initialTab.qid || parsedFromLink.qid || '').trim(),
+      tableId: String(initialTab.tableId || parsedFromLink.tableId || '').trim(),
+      realm: String(initialTab.realm || parsedFromLink.realm || '').trim(),
       customColumns: Array.isArray(initialTab.customColumns) ? initialTab.customColumns.map((v) => String(v)) : [],
       customFilters: normalizeFilters(initialTab.customFilters),
-      filterMatch: normalizeFilterMatch(initialTab.filterMatch || quickbaseConfig.filterMatch || profile.qb_custom_filter_match),
-      dashboardCounters: normalizeDashboardCounters(initialTab.dashboard_counters || quickbaseConfig.dashboardCounters || profile.qb_dashboard_counters),
+      filterMatch: normalizeFilterMatch(initialTab.filterMatch),
+      dashboardCounters: normalizeDashboardCounters(initialTab.dashboard_counters),
       allAvailableFields: [],
       isSaving: false,
       activeCounterIndex: -1,
@@ -652,6 +657,7 @@
       state.reportLink = String(activeTab.reportLink || '').trim();
       state.qid = String(activeTab.qid || parsed.qid || '').trim();
       state.tableId = String(activeTab.tableId || parsed.tableId || '').trim();
+      state.realm = String(activeTab.realm || parsed.realm || '').trim();
       state.customColumns = Array.isArray(activeTab.customColumns) ? activeTab.customColumns.map((v) => String(v)) : [];
       state.customFilters = normalizeFilters(activeTab.customFilters);
       state.filterMatch = normalizeFilterMatch(activeTab.filterMatch);
@@ -669,6 +675,7 @@
       activeTab.reportLink = String(state.reportLink || '').trim();
       activeTab.qid = String(state.qid || '').trim();
       activeTab.tableId = String(state.tableId || '').trim();
+      activeTab.realm = String(state.realm || '').trim();
       activeTab.customColumns = Array.isArray(state.customColumns) ? state.customColumns.map((v) => String(v)) : [];
       activeTab.customFilters = normalizeFilters(state.customFilters);
       activeTab.filterMatch = normalizeFilterMatch(state.filterMatch);
@@ -689,11 +696,13 @@
       const parsed = parseQuickbaseLink(reportLink);
       const resolvedQid = String(tabBaseQidEl && tabBaseQidEl.value || qidEl && qidEl.value || parsed.qid || state.qid || '').trim();
       const resolvedTableId = String(tableIdEl && tableIdEl.value || parsed.tableId || state.tableId || '').trim();
+      const resolvedRealm = String(parsed.realm || state.realm || '').trim();
 
       state.tabName = String(tabNameEl && tabNameEl.value || state.tabName || 'Main Report').trim() || 'Main Report';
       state.reportLink = reportLink;
       state.qid = resolvedQid;
       state.tableId = resolvedTableId;
+      state.realm = resolvedRealm;
       state.filterMatch = normalizeFilterMatch(String(filterMatchEl && filterMatchEl.value || state.filterMatch || 'ALL'));
       syncActiveTabFromState();
     }
@@ -734,13 +743,15 @@
       activeTab.tabName = tabNameInput || activeTab.tabName || 'Main Report';
       activeTab.reportLink = reportLink;
       activeTab.qid = tabBaseQidInput || qidInput || parsed.qid || '';
-      activeTab.tableId = tableIdInput || parsed.tableId || activeTab.tableId || '';
+      activeTab.tableId = tableIdInput || parsed.tableId || '';
+      activeTab.realm = parsed.realm || '';
       activeTab.dashboard_counters = scrapedCounters;
 
       state.tabName = activeTab.tabName;
       state.reportLink = activeTab.reportLink;
       state.qid = activeTab.qid;
       state.tableId = activeTab.tableId;
+      state.realm = activeTab.realm;
       state.dashboardCounters = scrapedCounters;
       syncActiveTabFromState();
     }
@@ -754,7 +765,7 @@
       const activeSettingsObject = {
         reportLink: activeTab.reportLink,
         qid: activeTab.qid || parsed.qid,
-        realm: parsed.realm,
+        realm: activeTab.realm || parsed.realm,
         tableId: activeTab.tableId || parsed.tableId,
         customColumns: activeTab.customColumns,
         customFilters: activeTab.customFilters,
@@ -1254,8 +1265,21 @@
           const requestPayload = {
             bust: Date.now(),
             limit: requestLimit,
-            qid: activeQid || ''
+            qid: activeQid || '',
+            tableId: String(activeTab.tableId || state.tableId || '').trim(),
+            realm: String(activeTab.realm || state.realm || '').trim()
           };
+          if (!requestPayload.qid || !requestPayload.tableId || !requestPayload.realm) {
+            state.allAvailableFields = [];
+            state.baseRecords = [];
+            state.rawPayload = { columns: [], records: [] };
+            state.currentPayload = { columns: [], records: [] };
+            renderColumnGrid();
+            renderFilters();
+            applySearchAndRender();
+            lastQuickbaseLoadAt = Date.now();
+            return;
+          }
           const data = await window.QuickbaseAdapter.fetchMonitoringData({
             ...requestPayload,
             customFilters: mergedFilters,
