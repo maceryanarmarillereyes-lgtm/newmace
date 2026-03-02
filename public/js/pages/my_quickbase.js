@@ -555,7 +555,8 @@
       isDefaultReportMode: false,
       currentPage: 1,
       pageSize: 100,
-      qbCache: {}
+      qbCache: {},
+      settingsModalView: 'report-config'
     };
 
     const cleanupHandlers = [];
@@ -755,6 +756,25 @@
       `).join('') + '<button type="button" id="qbAddTabBtn" title="Add New Tab" aria-label="Add New Tab" style="padding:8px 12px;min-width:38px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;color:#888;transition:0.2s;white-space:nowrap;font-size:18px;line-height:1;">+</button>';
     }
 
+    function setSettingsModalView(viewKey) {
+      const allowedViews = new Set(['report-config', 'custom-columns', 'filter-config', 'dashboard-counters']);
+      const nextView = allowedViews.has(String(viewKey || '').trim()) ? String(viewKey).trim() : 'report-config';
+      state.settingsModalView = nextView;
+
+      root.querySelectorAll('[data-qb-settings-view]').forEach((section) => {
+        const sectionView = String(section.getAttribute('data-qb-settings-view') || '').trim();
+        section.style.display = sectionView === nextView ? 'block' : 'none';
+      });
+
+      root.querySelectorAll('[data-qb-settings-tab]').forEach((btn) => {
+        const tabView = String(btn.getAttribute('data-qb-settings-tab') || '').trim();
+        const isActive = tabView === nextView;
+        btn.style.color = isActive ? '#fff' : 'rgba(226,232,240,0.78)';
+        btn.style.borderBottom = isActive ? '2px solid #2196F3' : '2px solid transparent';
+        btn.style.background = 'transparent';
+      });
+    }
+
     function scrapeModalSettingsIntoActiveTab() {
       const activeTab = getActiveTab();
       const tabNameInput = String((root.querySelector('#qbTabName') || {}).value || '').trim();
@@ -899,8 +919,14 @@
             </div>
             <button class="btn" id="qbCloseSettingsBtn" type="button">✕</button>
           </div>
-          <div class="body" style="max-height:70vh;overflow:auto;display:grid;gap:16px;">
-            <section class="card pad">
+          <div class="qb-settings-tabs" style="display:flex;gap:4px;border-bottom:1px solid rgba(255,255,255,0.1);margin-bottom:16px;overflow-x:auto;padding:0 4px;">
+            <button type="button" data-qb-settings-tab="report-config" style="background:transparent;border:0;border-bottom:2px solid #2196F3;color:#fff;padding:10px 12px;cursor:pointer;transition:all .2s ease;white-space:nowrap;">Report Config</button>
+            <button type="button" data-qb-settings-tab="custom-columns" style="background:transparent;border:0;border-bottom:2px solid transparent;color:rgba(226,232,240,0.78);padding:10px 12px;cursor:pointer;transition:all .2s ease;white-space:nowrap;">Custom Columns</button>
+            <button type="button" data-qb-settings-tab="filter-config" style="background:transparent;border:0;border-bottom:2px solid transparent;color:rgba(226,232,240,0.78);padding:10px 12px;cursor:pointer;transition:all .2s ease;white-space:nowrap;">Filter Config</button>
+            <button type="button" data-qb-settings-tab="dashboard-counters" style="background:transparent;border:0;border-bottom:2px solid transparent;color:rgba(226,232,240,0.78);padding:10px 12px;cursor:pointer;transition:all .2s ease;white-space:nowrap;">Dashboard Counters</button>
+          </div>
+          <div class="body" style="max-height:60vh;overflow:auto;display:grid;gap:16px;padding-bottom:6px;">
+            <section class="card pad" data-qb-settings-view="report-config">
               <div class="h3" style="margin-top:0;">1) Report Config</div>
               <div style="display:grid;gap:10px;">
                 <label class="field"><div class="label">Tab Name</div><input class="input" id="qbTabName" value="${esc(state.tabName)}" placeholder="Daily Distribution" /></label>
@@ -913,7 +939,7 @@
               </div>
             </section>
 
-            <section class="card pad">
+            <section class="card pad" data-qb-settings-view="custom-columns" style="display:none;">
               <div class="h3" style="margin-top:0;">2) Custom Columns</div>
               <label class="field" style="margin-bottom:10px;">
                 <div class="label">Search Columns</div>
@@ -930,7 +956,7 @@
               </div>
             </section>
 
-            <section class="card pad">
+            <section class="card pad" data-qb-settings-view="filter-config" style="display:none;">
               <div class="row" style="justify-content:space-between;align-items:center;">
                 <div class="h3" style="margin:0;">3) Filter Config</div>
                 <button class="btn" id="qbAddFilterBtn" type="button">+ Add Filter</button>
@@ -945,18 +971,17 @@
               <div id="qbFilterRows" style="display:grid;gap:8px;margin-top:10px;"></div>
             </section>
 
-            <section class="card pad">
+            <section class="card pad" data-qb-settings-view="dashboard-counters" style="display:none;">
               <div class="row" style="justify-content:space-between;align-items:center;">
                 <div class="h3" style="margin:0;">Dashboard Counter Filters (Self-Configure)</div>
                 <button class="btn primary" id="qbAddCounterBtn" type="button">+ Add New Counter Filter</button>
               </div>
               <div id="qbCounterRows" style="display:grid;gap:10px;margin-top:10px;"></div>
             </section>
-
-            <div class="row" style="justify-content:flex-end;gap:8px;">
-              <button class="btn" id="qbCancelSettingsBtn" type="button">Cancel</button>
-              <button class="btn primary" id="qbSaveSettingsBtn" type="button">Save Settings</button>
-            </div>
+          </div>
+          <div class="row" style="justify-content:flex-end;gap:8px;position:sticky;bottom:0;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);background:linear-gradient(180deg, rgba(15,23,42,0.2), rgba(15,23,42,0.92));">
+            <button class="btn" id="qbCancelSettingsBtn" type="button">Cancel</button>
+            <button class="btn primary" id="qbSaveSettingsBtn" type="button">Save Settings</button>
           </div>
         </div>
       </div>
@@ -1480,6 +1505,7 @@
       renderColumnGrid();
       renderFilters();
       renderCounterFilters();
+      setSettingsModalView('report-config');
       if (window.UI && UI.openModal) UI.openModal('qbSettingsModal');
       bindColumnSearch();
       bindFloatingDrag();
@@ -1513,6 +1539,15 @@
       if (event.target && event.target.id === 'qbSettingsModal') cleanupModalBindings();
     });
     root.querySelector('#qbReloadBtn').onclick = () => loadQuickbaseData({ applyFilters: true });
+    root.querySelector('#qbSettingsModal').addEventListener('click', (event) => {
+      const target = event.target;
+      if (!target || !(target instanceof HTMLElement)) return;
+      const tabBtn = target.closest('[data-qb-settings-tab]');
+      if (!tabBtn) return;
+      const nextView = String(tabBtn.getAttribute('data-qb-settings-tab') || '').trim();
+      if (!nextView) return;
+      setSettingsModalView(nextView);
+    });
     root.querySelector('#qbTabBar').onclick = async (event) => {
       const target = event.target;
       if (!target || !(target instanceof HTMLElement)) return;
