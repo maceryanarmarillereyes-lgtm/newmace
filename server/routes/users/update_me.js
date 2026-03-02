@@ -443,13 +443,14 @@ module.exports = async (req, res) => {
     // so core Quickbase config (token/qid/table/realm/link) still saves successfully.
     if (out && out.error) {
       const detailBlob = JSON.stringify(out.error || '').toLowerCase();
-      const missingCustomCols = detailBlob.includes('qb_custom_columns') || detailBlob.includes('qb_custom_filters') || detailBlob.includes('quickbase_config') || detailBlob.includes('quickbase_settings');
+      const missingCustomCols = detailBlob.includes('qb_custom_columns') || detailBlob.includes('qb_custom_filters') || detailBlob.includes('qb_dashboard_counters') || detailBlob.includes('quickbase_config') || detailBlob.includes('quickbase_settings');
       if (missingCustomCols) {
         const retryPatch = { ...updates };
         delete retryPatch.qb_custom_columns;
         delete retryPatch.qb_custom_filters;
         delete retryPatch.quickbase_config;
         delete retryPatch.quickbase_settings;
+        delete retryPatch.qb_dashboard_counters;
         if (Object.keys(retryPatch).length > 0) {
           const retryOut = await supabase.from('profiles').update(retryPatch).eq('id', req.user.id);
           if (!retryOut.error) {
