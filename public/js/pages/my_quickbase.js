@@ -669,6 +669,23 @@
       if (instanceTitle) instanceTitle.textContent = state.tabName || 'Main Report';
     }
 
+    function syncSettingsInputsFromState() {
+      const tabNameEl = root.querySelector('#qbTabName');
+      if (tabNameEl) tabNameEl.value = String(state.tabName || 'Main Report');
+
+      const reportLinkEl = root.querySelector('#qbReportLink');
+      if (reportLinkEl) reportLinkEl.value = String(state.reportLink || '');
+
+      const qidEl = root.querySelector('#qbQid');
+      if (qidEl) qidEl.value = String(state.qid || '');
+
+      const tableIdEl = root.querySelector('#qbTableId');
+      if (tableIdEl) tableIdEl.value = String(state.tableId || '');
+
+      const filterMatchEl = root.querySelector('#qbFilterMatch');
+      if (filterMatchEl) filterMatchEl.value = normalizeFilterMatch(state.filterMatch);
+    }
+
     function syncActiveTabFromState() {
       const activeTab = getActiveTab();
       activeTab.tabName = String(state.tabName || 'Main Report').trim() || 'Main Report';
@@ -1403,6 +1420,7 @@
     }
 
     function openSettings() {
+      syncSettingsInputsFromState();
       renderColumnGrid();
       renderFilters();
       renderCounterFilters();
@@ -1446,6 +1464,7 @@
         state.quickbaseSettings.tabs.push(buildDefaultTab({ tabName: `Report ${state.quickbaseSettings.tabs.length + 1}` }));
         state.activeTabIndex = state.quickbaseSettings.tabs.length - 1;
         syncStateFromActiveTab();
+        syncSettingsInputsFromState();
         queuePersistQuickbaseSettings();
         renderTabBar();
         renderColumnGrid();
@@ -1465,6 +1484,7 @@
       captureSettingsDraftFromInputs();
       state.activeTabIndex = idx;
       syncStateFromActiveTab();
+      syncSettingsInputsFromState();
       queuePersistQuickbaseSettings();
       renderTabBar();
       renderColumnGrid();
