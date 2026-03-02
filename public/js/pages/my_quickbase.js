@@ -536,6 +536,27 @@
       state.quickbaseSettings.activeTabIndex = state.activeTabIndex;
     }
 
+    function captureSettingsDraftFromInputs() {
+      const tabNameEl = root.querySelector('#qbTabName');
+      const reportLinkEl = root.querySelector('#qbReportLink');
+      const tabBaseQidEl = root.querySelector('#qbTabBaseQid');
+      const qidEl = root.querySelector('#qbQid');
+      const tableIdEl = root.querySelector('#qbTableId');
+      const filterMatchEl = root.querySelector('#qbFilterMatch');
+
+      const reportLink = String(reportLinkEl && reportLinkEl.value || state.reportLink || '').trim();
+      const parsed = parseQuickbaseLink(reportLink);
+      const resolvedQid = String(tabBaseQidEl && tabBaseQidEl.value || qidEl && qidEl.value || parsed.qid || state.qid || '').trim();
+      const resolvedTableId = String(tableIdEl && tableIdEl.value || parsed.tableId || state.tableId || '').trim();
+
+      state.tabName = String(tabNameEl && tabNameEl.value || state.tabName || 'Main Report').trim() || 'Main Report';
+      state.reportLink = reportLink;
+      state.qid = resolvedQid;
+      state.tableId = resolvedTableId;
+      state.filterMatch = normalizeFilterMatch(String(filterMatchEl && filterMatchEl.value || state.filterMatch || 'ALL'));
+      syncActiveTabFromState();
+    }
+
     function renderTabBar() {
       const tabBar = root.querySelector('#qbTabBar');
       if (!tabBar) return;
@@ -1108,6 +1129,7 @@
       const target = event.target;
       if (!target || !(target instanceof HTMLElement)) return;
       if (target.id === 'qbAddTabBtn') {
+        captureSettingsDraftFromInputs();
         state.quickbaseSettings.tabs.push(buildDefaultTab({ tabName: `Report ${state.quickbaseSettings.tabs.length + 1}` }));
         state.activeTabIndex = state.quickbaseSettings.tabs.length - 1;
         syncStateFromActiveTab();
@@ -1126,6 +1148,7 @@
       }
       const idx = Number(target.getAttribute('data-tab-idx'));
       if (!Number.isFinite(idx) || idx === state.activeTabIndex) return;
+      captureSettingsDraftFromInputs();
       state.activeTabIndex = idx;
       syncStateFromActiveTab();
       renderTabBar();
