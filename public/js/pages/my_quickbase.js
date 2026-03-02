@@ -201,13 +201,34 @@
 
   function normalizeQuickbaseSettingsWithTabs(rawSettings, fallbackConfig) {
     const flat = normalizeQuickbaseConfig(fallbackConfig);
-    const settings = parseQuickbaseSettings(rawSettings);
-    if (Array.isArray(settings.tabs) && settings.tabs.length) {
-      const tabs = settings.tabs.map((tab, idx) => buildDefaultTab(tab, { tabName: idx === 0 ? 'Main Report' : `Report ${idx + 1}` }));
-      const maxIndex = tabs.length - 1;
-      const activeTabIndex = Math.min(Math.max(Number(settings.activeTabIndex || 0), 0), maxIndex);
-      return { activeTabIndex, tabs };
+    const rawMissing = rawSettings == null;
+    let parseFailed = false;
+    let settings = {};
+    if (!rawMissing && typeof rawSettings === 'string') {
+      try {
+        const parsed = JSON.parse(String(rawSettings));
+        settings = parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (_) {
+        parseFailed = true;
+      }
+    } else {
+      settings = parseQuickbaseSettings(rawSettings);
     }
+
+    // FIX: [Issue 1] - Preserve tab-based settings when serialized quickbase_settings has a tabs array.
+    if (!parseFailed && Array.isArray(settings.tabs)) {
+      const tabs = settings.tabs.map((tab, idx) => buildDefaultTab(tab, { tabName: idx === 0 ? 'Main Report' : `Report ${idx + 1}` }));
+      // FIX: [Issue 1] - Defensive default when tabs array exists but is empty.
+      const safeTabs = tabs.length ? tabs : [buildDefaultTab(settings, { tabName: 'Main Report' })];
+      const maxIndex = safeTabs.length - 1;
+      const activeTabIndex = Math.min(Math.max(Number(settings.activeTabIndex || 0), 0), maxIndex);
+      return { activeTabIndex, tabs: safeTabs };
+    }
+
+    if (!rawMissing && parseFailed) {
+      return { activeTabIndex: 0, tabs: [buildDefaultTab({}, { tabName: 'Main Report' })] };
+    }
+
     return {
       activeTabIndex: 0,
       tabs: [
@@ -302,16 +323,21 @@
 
     const columns = Array.isArray(payload && payload.columns) ? payload.columns : [];
     const rows = Array.isArray(payload && payload.records) ? payload.records : [];
+    const opts = options && typeof options === 'object' ? options : {};
 
     if (!columns.length || !rows.length) {
-      const opts = options && typeof options === 'object' ? options : {};
       const emptyBySearch = !!opts.userInitiatedSearch;
       meta.textContent = 'No Quickbase Records Found';
       host.innerHTML = `<div class="card pad"><div class="small muted">${emptyBySearch ? 'No records match your filters.' : 'No records loaded. Open ⚙️ Settings to configure report, columns, and filters.'}</div></div>`;
       return;
     }
 
-    meta.textContent = `${rows.length} record${rows.length === 1 ? '' : 's'} loaded`;
+    const pageSize = Number(opts.pageSize || 100);
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+    const activePage = Math.min(Math.max(Number(opts.page || 1), 1), totalPages);
+    // FIX: [Issue 2] - Pagination for large record sets to avoid DOM-heavy render blocking.
+    const visibleRows = rows.slice((activePage - 1) * pageSize, activePage * pageSize);
+    meta.innerHTML = `${rows.length} record${rows.length === 1 ? '' : 's'} loaded${rows.length > pageSize ? ` • Page ${activePage}/${totalPages}` : ''}`;
     const toDurationLabel = (value) => {
       const numeric = Number(value);
       if (!Number.isFinite(numeric) || numeric < 0) return String(value == null ? 'N/A' : value);
@@ -327,7 +353,7 @@
     };
 
     const headers = columns.map((c) => `<th>${esc(c.label || c.id || 'Field')}</th>`).join('');
-    const body = rows.map((r) => {
+    const body = visibleRows.map((r) => {
       const cells = columns.map((c) => {
         const field = r && r.fields ? r.fields[String(c.id)] : null;
         const rawValue = field && field.value != null ? field.value : 'N/A';
@@ -341,6 +367,23 @@
     }).join('');
 
     host.innerHTML = `<div class="qb-table-inner"><table class="qb-data-table"><thead><tr><th>Case #</th>${headers}</tr></thead><tbody>${body}</tbody></table></div>`;
+    if (rows.length > pageSize && typeof opts.onPageChange === 'function') {
+      const pager = document.createElement('div');
+      pager.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px;';
+      pager.innerHTML = `
+        <button type="button" class="btn" data-page-nav="prev" ${activePage <= 1 ? 'disabled' : ''}>Prev</button>
+        <span class="small muted">Page ${activePage} of ${totalPages}</span>
+        <button type="button" class="btn" data-page-nav="next" ${activePage >= totalPages ? 'disabled' : ''}>Next</button>
+      `;
+      host.appendChild(pager);
+      pager.querySelectorAll('[data-page-nav]').forEach((btn) => {
+        btn.onclick = () => {
+          const direction = btn.getAttribute('data-page-nav');
+          const nextPage = direction === 'next' ? activePage + 1 : activePage - 1;
+          opts.onPageChange(nextPage);
+        };
+      });
+    }
   }
 
 
@@ -457,7 +500,10 @@
       currentPayload: { columns: [], records: [] },
       hasUserSearched: false,
       didInitialDefaultRender: false,
-      isDefaultReportMode: false
+      isDefaultReportMode: false,
+      currentPage: 1,
+      pageSize: 100,
+      qbCache: {}
     };
 
     const cleanupHandlers = [];
@@ -465,6 +511,59 @@
     let quickbaseLoadInFlight = null;
     let quickbaseRefreshTimer = null;
     let lastQuickbaseLoadAt = 0;
+
+    const QUICKBASE_CACHE_TTL_MS = 2 * 60 * 1000;
+    const QUICKBASE_INITIAL_LIMIT = 50;
+    const QUICKBASE_BACKGROUND_LIMIT = 500;
+
+    function getQuickbaseCacheKey({ tableId, qid, filters, filterMatch }) {
+      const hashBase = JSON.stringify({ tableId, qid, filters, filterMatch });
+      return `qb_cache:${hashBase}`;
+    }
+
+    function readQuickbaseCache(cacheKey) {
+      const now = Date.now();
+      const memoryEntry = state.qbCache[cacheKey];
+      if (memoryEntry && (now - memoryEntry.savedAt) < QUICKBASE_CACHE_TTL_MS) return memoryEntry.payload;
+      try {
+        const raw = sessionStorage.getItem(cacheKey);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || (now - Number(parsed.savedAt || 0)) >= QUICKBASE_CACHE_TTL_MS) {
+          sessionStorage.removeItem(cacheKey);
+          return null;
+        }
+        state.qbCache[cacheKey] = parsed;
+        return parsed.payload || null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function writeQuickbaseCache(cacheKey, payload) {
+      const entry = { savedAt: Date.now(), payload };
+      state.qbCache[cacheKey] = entry;
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify(entry));
+      } catch (_) {}
+    }
+
+    function mergeRecordsById(existingRecords, incomingRecords) {
+      const merged = [];
+      const seen = new Set();
+      (Array.isArray(existingRecords) ? existingRecords : []).concat(Array.isArray(incomingRecords) ? incomingRecords : []).forEach((record) => {
+        const id = String(record && record.qbRecordId || '');
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        merged.push(record);
+      });
+      return merged;
+    }
+
+    // FIX: [Issue 1] - Ensure active tab state is immediately aligned after profile load.
+    state.activeTabIndex = quickbaseSettings.activeTabIndex;
+    state.quickbaseSettings.activeTabIndex = quickbaseSettings.activeTabIndex;
+    syncStateFromActiveTab();
 
     function getActiveTab() {
       const tabs = Array.isArray(state.quickbaseSettings && state.quickbaseSettings.tabs) ? state.quickbaseSettings.tabs : [];
@@ -1022,6 +1121,7 @@
 
       quickbaseLoadInFlight = (async () => {
         if (reloadBtn) reloadBtn.disabled = true;
+        const startedAt = performance.now();
         try {
           if (!window.QuickbaseAdapter || typeof window.QuickbaseAdapter.fetchMonitoringData !== 'function') {
             throw new Error('Quickbase adapter unavailable');
@@ -1034,7 +1134,32 @@
           const hasActiveSearch = !!String(getActiveSearchTerm() || '').trim();
           const requestLimit = typeof opts.limit === 'number'
             ? opts.limit
-            : (hasActiveSearch || hasExplicitLoadMore ? 500 : 100);
+            // FIX: [Issue 2] - Faster first paint with smaller initial payload.
+            : (hasActiveSearch || hasExplicitLoadMore ? QUICKBASE_BACKGROUND_LIMIT : QUICKBASE_INITIAL_LIMIT);
+          const cacheKey = getQuickbaseCacheKey({
+            tableId: state.tableId,
+            qid: activeQid || '',
+            filters: mergedFilters,
+            filterMatch: state.filterMatch
+          });
+          // FIX: [Issue 2] - Reuse cache if fetched within 2 minutes.
+          const cachedPayload = readQuickbaseCache(cacheKey);
+          if (cachedPayload) {
+            state.allAvailableFields = Array.isArray(cachedPayload.allAvailableFields) ? cachedPayload.allAvailableFields : [];
+            state.baseRecords = Array.isArray(cachedPayload.records) ? cachedPayload.records.slice() : [];
+            state.rawPayload = {
+              columns: Array.isArray(cachedPayload.columns) ? cachedPayload.columns : [],
+              records: state.baseRecords.slice()
+            };
+            renderColumnGrid();
+            renderFilters();
+            state.currentPage = 1;
+            state.isDefaultReportMode = !shouldApplyFilters && !getActiveSearchTerm();
+            applySearchAndRender();
+            lastQuickbaseLoadAt = Date.now();
+            console.info(`[Quickbase] cache hit (${state.baseRecords.length} records) in ${Math.round(performance.now() - startedAt)}ms`);
+            return;
+          }
           const requestPayload = {
             bust: Date.now(),
             limit: requestLimit,
@@ -1054,8 +1179,41 @@
           state.baseRecords = incomingRecords.slice();
           state.rawPayload = { columns: incomingColumns, records: state.baseRecords.slice() };
           state.isDefaultReportMode = !shouldApplyFilters && !getActiveSearchTerm();
+          state.currentPage = 1;
           applySearchAndRender();
+          writeQuickbaseCache(cacheKey, {
+            columns: incomingColumns,
+            records: state.baseRecords.slice(),
+            allAvailableFields: state.allAvailableFields
+          });
+          // FIX: [Issue 2] - Progressive background fetch for full dataset.
+          if (requestLimit < QUICKBASE_BACKGROUND_LIMIT && !hasExplicitLoadMore && !hasActiveSearch) {
+            setTimeout(async () => {
+              try {
+                const bgData = await window.QuickbaseAdapter.fetchMonitoringData({
+                  ...requestPayload,
+                  bust: Date.now(),
+                  limit: QUICKBASE_BACKGROUND_LIMIT,
+                  customFilters: mergedFilters,
+                  filterMatch: state.filterMatch,
+                  search: ''
+                });
+                const bgRecords = Array.isArray(bgData && bgData.records) ? bgData.records : [];
+                if (!bgRecords.length) return;
+                state.baseRecords = mergeRecordsById(state.baseRecords, bgRecords);
+                state.rawPayload = { columns: incomingColumns, records: state.baseRecords.slice() };
+                writeQuickbaseCache(cacheKey, {
+                  columns: incomingColumns,
+                  records: state.baseRecords.slice(),
+                  allAvailableFields: state.allAvailableFields
+                });
+                applySearchAndRender();
+                console.info(`[Quickbase] progressive load merged ${bgRecords.length} records`);
+              } catch (_) {}
+            }, 0);
+          }
           lastQuickbaseLoadAt = Date.now();
+          console.info(`[Quickbase] loaded ${state.baseRecords.length} records in ${Math.round(performance.now() - startedAt)}ms`);
         } catch (err) {
           if (meta) meta.textContent = 'Check Connection';
           if (host) host.innerHTML = `<div class="small" style="padding:10px;color:#fecaca;">${esc(String(err && err.message || 'Unable to load Quickbase records'))}</div>`;
@@ -1081,9 +1239,21 @@
       state.currentPayload = normalizedSearch
         ? filterRecordsBySearch(counterFilteredPayload, normalizedSearch)
         : counterFilteredPayload;
-      renderRecords(root, state.currentPayload, { userInitiatedSearch: !!getActiveUserSearched() && !!normalizedSearch.length });
+      const totalRows = Array.isArray(state.currentPayload.records) ? state.currentPayload.records.length : 0;
+      const maxPage = Math.max(1, Math.ceil(totalRows / state.pageSize));
+      state.currentPage = Math.min(Math.max(state.currentPage, 1), maxPage);
+      renderRecords(root, state.currentPayload, {
+        userInitiatedSearch: !!getActiveUserSearched() && !!normalizedSearch.length,
+        page: state.currentPage,
+        pageSize: state.pageSize,
+        onPageChange: (nextPage) => {
+          state.currentPage = nextPage;
+          applySearchAndRender();
+        }
+      });
       renderDashboardCounters(root, state.baseRecords, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
         state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
+        state.currentPage = 1;
         applySearchAndRender();
       });
     }
