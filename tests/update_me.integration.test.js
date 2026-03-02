@@ -106,9 +106,53 @@ async function testFallbackColumnMissing() {
   assert.ok(calls[0].quickbase_config);
 }
 
+async function testQuickbaseSettingsTabsArePreserved() {
+  const calls = [];
+  const route = loadRoute({
+    supabaseMocks: {
+      getUserFromJwt: async () => ({ id: 'u-3' }),
+      getProfileForUserId: async () => ({ user_id: 'u-3', role: 'MEMBER' }),
+      serviceSelect: async () => ({ ok: true, json: [{ column_name: 'quickbase_settings' }] }),
+      serviceUpdate: async (_table, patch) => {
+        calls.push(patch);
+        return { ok: true, json: [patch] };
+      }
+    },
+    schemaMocks: {
+      ensureQuickbaseSettingsColumn: async () => true
+    }
+  });
+
+  const req = {
+    method: 'PATCH',
+    headers: { authorization: 'Bearer token' },
+    body: {
+      quickbase_settings: {
+        activeTabIndex: 1,
+        tabs: [
+          { id: 't-1', tabName: 'Main', reportLink: 'https://sample.quickbase.com/db/aaa?a=q&qid=1', qid: '1', customFilters: [{ fieldId: '6', operator: 'EX', value: 'A' }] },
+          { id: 't-2', tabName: 'Second', reportLink: 'https://sample.quickbase.com/db/bbb?a=q&qid=2', qid: '2', customFilters: [{ fieldId: '7', operator: 'Contains', value: "Kid's" }] }
+        ]
+      }
+    }
+  };
+  const res = makeRes();
+
+  await route(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(Array.isArray(calls[0].quickbase_settings.tabs), true);
+  assert.equal(calls[0].quickbase_settings.tabs.length, 2);
+  assert.equal(calls[0].quickbase_settings.activeTabIndex, 1);
+  assert.equal(calls[0].quickbase_settings.tabs[1].customFilters[0].value, "Kid's");
+  assert.equal(calls[0].qb_qid, '2');
+}
+
 async function run() {
   await testNormalizeAndEscape();
   await testFallbackColumnMissing();
+  await testQuickbaseSettingsTabsArePreserved();
   console.log('update_me integration tests passed');
 }
 

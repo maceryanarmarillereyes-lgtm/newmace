@@ -563,7 +563,7 @@
       const tabs = state.quickbaseSettings.tabs || [];
       tabBar.innerHTML = tabs.map((tab, idx) => `
         <button type="button" data-tab-idx="${idx}" style="padding:8px 16px;border-radius:8px;background:${idx === state.activeTabIndex ? 'rgba(33, 150, 243, 0.2)' : 'rgba(255,255,255,0.05)'};border:1px solid ${idx === state.activeTabIndex ? '#2196F3' : 'rgba(255,255,255,0.1)'};cursor:pointer;color:${idx === state.activeTabIndex ? '#fff' : '#888'};transition:0.2s;white-space:nowrap;">${esc(tab.tabName || `Report ${idx + 1}`)}</button>
-      `).join('') + '<button type="button" id="qbAddTabBtn" style="padding:8px 16px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;color:#888;transition:0.2s;white-space:nowrap;">+ Add Tab</button>';
+      `).join('') + '<button type="button" id="qbAddTabBtn" title="Add New Tab" aria-label="Add New Tab" style="padding:8px 12px;min-width:38px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;color:#888;transition:0.2s;white-space:nowrap;font-size:18px;line-height:1;">+</button>';
     }
 
     async function persistQuickbaseSettings() {
