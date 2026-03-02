@@ -322,6 +322,11 @@ try {
                   if (me && me.ok && me.profile) {
                     const p = me.profile;
                     const uid = p.user_id || p.id || sbUser.id;
+                    if (window.Store && typeof Store.setProfile === 'function' && uid) {
+                      try {
+                        Store.setProfile(uid, Object.assign({}, p, { updatedAt: Date.now() }));
+                      } catch (_) {}
+                    }
                     if (window.Store && typeof Store.getUsers === 'function' && typeof Store.saveUsers === 'function') {
                       const users = Array.isArray(Store.getUsers()) ? Store.getUsers() : [];
                       const next = users.slice();
