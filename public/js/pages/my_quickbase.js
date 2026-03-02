@@ -474,6 +474,9 @@
 
     const cloudMe = window.me && typeof window.me === 'object' ? window.me : {};
     const profileWithCloudFallback = Object.assign({}, cloudMe, profile);
+    if (cloudMe && Object.prototype.hasOwnProperty.call(cloudMe, 'quickbase_settings')) {
+      profileWithCloudFallback.quickbase_settings = cloudMe.quickbase_settings;
+    }
     const quickbaseConfig = getProfileQuickbaseConfig(profileWithCloudFallback);
     const quickbaseSettings = normalizeQuickbaseSettingsWithTabs(profileWithCloudFallback.quickbase_settings, quickbaseConfig);
     const initialTab = quickbaseSettings.tabs[quickbaseSettings.activeTabIndex] || quickbaseSettings.tabs[0] || buildDefaultTab();
@@ -513,7 +516,6 @@
     let lastQuickbaseLoadAt = 0;
 
     const QUICKBASE_CACHE_TTL_MS = 2 * 60 * 1000;
-    const QUICKBASE_INITIAL_LIMIT = 50;
     const QUICKBASE_BACKGROUND_LIMIT = 500;
 
     function getQuickbaseCacheKey({ tableId, qid, filters, filterMatch }) {
@@ -682,8 +684,33 @@
       `).join('') + '<button type="button" id="qbAddTabBtn" title="Add New Tab" aria-label="Add New Tab" style="padding:8px 12px;min-width:38px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;color:#888;transition:0.2s;white-space:nowrap;font-size:18px;line-height:1;">+</button>';
     }
 
+    function scrapeModalSettingsIntoActiveTab() {
+      const activeTab = getActiveTab();
+      const tabNameInput = String((root.querySelector('#qbTabName') || {}).value || '').trim();
+      const tabBaseQidInput = String((root.querySelector('#qbTabBaseQid') || {}).value || '').trim();
+      const reportLink = String((root.querySelector('#qbReportLink') || {}).value || '').trim();
+      const qidInput = String((root.querySelector('#qbQid') || {}).value || '').trim();
+      const tableIdInput = String((root.querySelector('#qbTableId') || {}).value || '').trim();
+      const parsed = parseQuickbaseLink(reportLink);
+      const scrapedCounters = normalizeDashboardCounters(scrapeModalCounterInputs());
+
+      activeTab.tabName = tabNameInput || activeTab.tabName || 'Main Report';
+      activeTab.reportLink = reportLink;
+      activeTab.qid = tabBaseQidInput || qidInput || parsed.qid || '';
+      activeTab.tableId = tableIdInput || parsed.tableId || activeTab.tableId || '';
+      activeTab.dashboard_counters = scrapedCounters;
+
+      state.tabName = activeTab.tabName;
+      state.reportLink = activeTab.reportLink;
+      state.qid = activeTab.qid;
+      state.tableId = activeTab.tableId;
+      state.dashboardCounters = scrapedCounters;
+      syncActiveTabFromState();
+    }
+
     async function persistQuickbaseSettings() {
       if (!me) return;
+      scrapeModalSettingsIntoActiveTab();
       syncActiveTabFromState();
       const activeTab = getActiveTab();
       const parsed = parseQuickbaseLink(activeTab.reportLink);
@@ -699,7 +726,9 @@
       };
       const serializedQuickbaseSettings = {
         activeTabIndex: state.activeTabIndex,
-        tabs: Array.isArray(state.quickbaseSettings.tabs) ? state.quickbaseSettings.tabs : []
+        tabs: Array.isArray(state.quickbaseSettings.tabs)
+          ? state.quickbaseSettings.tabs.map((tab) => buildDefaultTab(tab))
+          : []
       };
       const payload = {
         qb_report_link: activeSettingsObject.reportLink,
@@ -1132,10 +1161,7 @@
           const activeQid = String(activeTab.qid || state.qid || '').trim();
           const hasExplicitLoadMore = Number(opts.offset || 0) >= 100;
           const hasActiveSearch = !!String(getActiveSearchTerm() || '').trim();
-          const requestLimit = typeof opts.limit === 'number'
-            ? opts.limit
-            // FIX: [Issue 2] - Faster first paint with smaller initial payload.
-            : (hasActiveSearch || hasExplicitLoadMore ? QUICKBASE_BACKGROUND_LIMIT : QUICKBASE_INITIAL_LIMIT);
+          const requestLimit = 100;
           const cacheKey = getQuickbaseCacheKey({
             tableId: state.tableId,
             qid: activeQid || '',
@@ -1403,27 +1429,7 @@
     const saveLock = root.querySelector('#qbSettingsSavingLock');
     saveBtn.onclick = async () => {
       if (!me) return;
-      const activeTab = getActiveTab();
-      const tabNameInput = String((root.querySelector('#qbTabName') || {}).value || '').trim();
-      const tabBaseQidInput = String((root.querySelector('#qbTabBaseQid') || {}).value || '').trim();
-      const reportLink = String((root.querySelector('#qbReportLink') || {}).value || '').trim();
-      const qidInput = String((root.querySelector('#qbQid') || {}).value || '').trim();
-      const tableIdInput = String((root.querySelector('#qbTableId') || {}).value || '').trim();
-      const parsed = parseQuickbaseLink(reportLink);
-      const scrapedCounters = normalizeDashboardCounters(scrapeModalCounterInputs());
-
-      activeTab.tabName = tabNameInput || activeTab.tabName || 'Main Report';
-      activeTab.reportLink = reportLink;
-      activeTab.qid = tabBaseQidInput || qidInput || parsed.qid || '';
-      activeTab.tableId = tableIdInput || parsed.tableId || activeTab.tableId || '';
-      activeTab.dashboard_counters = scrapedCounters;
-
-      state.tabName = activeTab.tabName;
-      state.reportLink = activeTab.reportLink;
-      state.qid = activeTab.qid;
-      state.tableId = activeTab.tableId;
-      state.dashboardCounters = scrapedCounters;
-      syncActiveTabFromState();
+      scrapeModalSettingsIntoActiveTab();
 
       state.isSaving = true;
       saveBtn.disabled = true;
