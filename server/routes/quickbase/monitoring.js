@@ -3,7 +3,29 @@ const { sendJson, requireAuthedUser } = require('../tasks/_common');
 const { queryQuickbaseRecords, listQuickbaseFields, normalizeQuickbaseCellValue } = require('../../lib/quickbase');
 const { normalizeSettings } = require('../../lib/normalize_settings');
 
+const FIELDS_CACHE_TTL_MS = 60 * 1000;
+const REPORT_META_CACHE_TTL_MS = 30 * 1000;
+const fieldsCache = new Map();
+const reportMetaCache = new Map();
+
+function readCache(cache, key, ttlMs) {
+  const hit = cache.get(key);
+  if (!hit) return null;
+  if ((Date.now() - hit.at) > ttlMs) {
+    cache.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+function writeCache(cache, key, value) {
+  cache.set(key, { at: Date.now(), value });
+}
+
 async function getQuickbaseReportMetadata({ config, qid }) {
+  const cacheKey = [config.qb_realm, config.qb_table_id, qid].join('|');
+  const cached = readCache(reportMetaCache, cacheKey, REPORT_META_CACHE_TTL_MS);
+  if (cached) return cached;
   const cfg = {
     qb_token: config.qb_token,
     qb_realm: config.qb_realm,
@@ -29,11 +51,13 @@ async function getQuickbaseReportMetadata({ config, qid }) {
       .map((f) => Number(f))
       .filter((id) => Number.isFinite(id));
 
-    return {
+    const payload = {
       fields: columnFieldIds,
       filter: json.query?.filter || '',
       sortBy: json.query?.sortBy || []
     };
+    writeCache(reportMetaCache, cacheKey, payload);
+    return payload;
   } catch (_) {
     return null;
   }
@@ -193,7 +217,12 @@ module.exports = async (req, res) => {
       });
     }
 
-    const fieldMapOut = await listQuickbaseFields({ config: userQuickbaseConfig });
+    const fieldCacheKey = [userQuickbaseConfig.qb_realm, userQuickbaseConfig.qb_table_id].join('|');
+    let fieldMapOut = readCache(fieldsCache, fieldCacheKey, FIELDS_CACHE_TTL_MS);
+    if (!fieldMapOut) {
+      fieldMapOut = await listQuickbaseFields({ config: userQuickbaseConfig });
+      if (fieldMapOut && fieldMapOut.ok) writeCache(fieldsCache, fieldCacheKey, fieldMapOut);
+    }
     if (!fieldMapOut.ok) {
       return sendJson(res, fieldMapOut.status || 500, {
         ok: false,
