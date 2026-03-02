@@ -445,8 +445,6 @@
       customFilters: normalizeFilters(initialTab.customFilters),
       filterMatch: normalizeFilterMatch(initialTab.filterMatch || quickbaseConfig.filterMatch || profile.qb_custom_filter_match),
       dashboardCounters: normalizeDashboardCounters(initialTab.dashboard_counters || quickbaseConfig.dashboardCounters || profile.qb_dashboard_counters),
-      searchByTab: {},
-      userSearchedByTab: {},
       allAvailableFields: [],
       isSaving: false,
       activeCounterIndex: -1,
@@ -489,6 +487,8 @@
             </div>
           </div>
         </div>
+
+        <div id="qbTabBar" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:1rem;scrollbar-width:none;"></div>
 
         <div id="qbDashboardCounters" class="qb-dashboard-counters"></div></div>
 
@@ -594,35 +594,6 @@
       return safeTabs[safeIndex];
     }
 
-    function getActiveTabKey() {
-      const activeTab = getActiveTab();
-      return String(activeTab.id || state.activeTabIndex);
-    }
-
-    function getActiveSearchTerm() {
-      if (!state.quickbaseSettings || !state.quickbaseSettings.tabs || !state.quickbaseSettings.tabs[state.activeTabIndex]) return '';
-      if (!state.searchByTab || typeof state.searchByTab !== 'object') state.searchByTab = {};
-      return String(state.searchByTab[getActiveTabKey()] || '').trim();
-    }
-
-    function setActiveSearchTerm(value) {
-      if (!state.quickbaseSettings || !state.quickbaseSettings.tabs || !state.quickbaseSettings.tabs[state.activeTabIndex]) return;
-      if (!state.searchByTab || typeof state.searchByTab !== 'object') state.searchByTab = {};
-      state.searchByTab[getActiveTabKey()] = String(value || '').trim();
-    }
-
-    function getActiveUserSearched() {
-      if (!state.quickbaseSettings || !state.quickbaseSettings.tabs || !state.quickbaseSettings.tabs[state.activeTabIndex]) return false;
-      if (!state.userSearchedByTab || typeof state.userSearchedByTab !== 'object') state.userSearchedByTab = {};
-      return !!state.userSearchedByTab[getActiveTabKey()];
-    }
-
-    function setActiveUserSearched(value) {
-      if (!state.quickbaseSettings || !state.quickbaseSettings.tabs || !state.quickbaseSettings.tabs[state.activeTabIndex]) return;
-      if (!state.userSearchedByTab || typeof state.userSearchedByTab !== 'object') state.userSearchedByTab = {};
-      state.userSearchedByTab[getActiveTabKey()] = !!value;
-    }
-
     function syncStateFromActiveTab() {
       const activeTab = getActiveTab();
       const parsed = parseQuickbaseLink(activeTab.reportLink);
@@ -635,10 +606,6 @@
       state.filterMatch = normalizeFilterMatch(activeTab.filterMatch);
       state.dashboardCounters = normalizeDashboardCounters(activeTab.dashboard_counters);
       state.activeCounterIndex = -1;
-      const headerSearch = root.querySelector('#qbHeaderSearch');
-      if (headerSearch) headerSearch.value = getActiveSearchTerm();
-      const instanceTitle = root.querySelector('#qbInstanceTitle');
-      if (instanceTitle) instanceTitle.textContent = state.tabName || 'Main Report';
     }
 
     function syncActiveTabFromState() {
