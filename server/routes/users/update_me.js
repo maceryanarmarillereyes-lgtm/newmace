@@ -86,6 +86,33 @@ function normalizeQuickbaseConfig(raw) {
   const filterMatchRaw = String(src.filterMatch || src.qb_filter_match || '').trim().toUpperCase();
   const filterMatch = filterMatchRaw === 'ANY' ? 'ANY' : 'ALL';
 
+  let dashboardCounters = [];
+  if (Array.isArray(src.dashboardCounters) || typeof src.dashboardCounters === 'string') {
+    try {
+      dashboardCounters = Array.isArray(src.dashboardCounters)
+        ? src.dashboardCounters
+        : JSON.parse(src.dashboardCounters || '[]');
+    } catch (_) {
+      dashboardCounters = [];
+    }
+  } else if (Array.isArray(src.dashboard_counters) || typeof src.dashboard_counters === 'string') {
+    try {
+      dashboardCounters = Array.isArray(src.dashboard_counters)
+        ? src.dashboard_counters
+        : JSON.parse(src.dashboard_counters || '[]');
+    } catch (_) {
+      dashboardCounters = [];
+    }
+  } else if (Array.isArray(src.qb_dashboard_counters) || typeof src.qb_dashboard_counters === 'string') {
+    try {
+      dashboardCounters = Array.isArray(src.qb_dashboard_counters)
+        ? src.qb_dashboard_counters
+        : JSON.parse(src.qb_dashboard_counters || '[]');
+    } catch (_) {
+      dashboardCounters = [];
+    }
+  }
+
   return {
     reportLink: String(src.reportLink || src.qb_report_link || '').trim(),
     qid: String(src.qid || src.qb_qid || '').trim(),
@@ -93,7 +120,8 @@ function normalizeQuickbaseConfig(raw) {
     tableId: String(src.tableId || src.qb_table_id || '').trim(),
     customColumns,
     customFilters,
-    filterMatch
+    filterMatch,
+    dashboardCounters
   };
 }
 
@@ -237,6 +265,7 @@ module.exports = async (req, res) => {
       patch.qb_custom_columns = normalizedSettings.customColumns;
       patch.qb_custom_filters = normalizedSettings.customFilters;
       patch.qb_filter_match = normalizedSettings.filterMatch;
+      patch.qb_dashboard_counters = normalizedSettings.dashboardCounters;
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'quickbase_config')) {
@@ -252,6 +281,7 @@ module.exports = async (req, res) => {
       patch.qb_custom_columns = normalizedConfig.customColumns;
       patch.qb_custom_filters = normalizedConfig.customFilters;
       patch.qb_filter_match = normalizedConfig.filterMatch;
+      patch.qb_dashboard_counters = normalizedConfig.dashboardCounters;
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'qb_filter_match')) {
@@ -271,6 +301,21 @@ module.exports = async (req, res) => {
         .filter((f) => f.fieldId && f.value)
         .slice(0, 200);
       patch.qb_custom_filters = normalized;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'qb_dashboard_counters')) {
+      const source = body.qb_dashboard_counters;
+      if (Array.isArray(source)) {
+        patch.qb_dashboard_counters = source;
+      } else if (typeof source === 'string') {
+        try {
+          patch.qb_dashboard_counters = JSON.parse(source || '[]');
+        } catch (_) {
+          patch.qb_dashboard_counters = [];
+        }
+      } else {
+        patch.qb_dashboard_counters = [];
+      }
     }
     const prof = await getProfileForUserId(authed.id);
     if (!prof) return sendJson(res, 404, { ok: false, error: 'profile_missing', message: 'Profile not found. Call /api/users/me first.' });
@@ -362,6 +407,7 @@ module.exports = async (req, res) => {
       'qb_custom_columns',
       'qb_custom_filters',
       'qb_filter_match',
+      'qb_dashboard_counters',
       'quickbase_config',
       'quickbase_settings',
       'team_override',
