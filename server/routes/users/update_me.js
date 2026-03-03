@@ -136,6 +136,32 @@ function normalizeQuickbaseConfig(raw) {
   };
 }
 
+
+function parseQuickbaseIdentifiersFromLink(linkRaw) {
+  const link = String(linkRaw || '').trim();
+  if (!link) return { qid: '', tableId: '' };
+
+  let qid = '';
+  let tableId = '';
+  try {
+    const parsed = new URL(link);
+    qid = String(parsed.searchParams.get('qid') || '').trim();
+    if (!qid) {
+      const reportMatch = String(parsed.pathname || '').match(/\/report\/(-?\d+)/i);
+      if (reportMatch && reportMatch[1]) qid = String(reportMatch[1]).trim();
+    }
+  } catch (_) {}
+
+  const dbMatch = link.match(/\/db\/([a-zA-Z0-9]+)/i);
+  if (dbMatch && dbMatch[1]) tableId = String(dbMatch[1]).trim();
+  if (!tableId) {
+    const tableMatch = link.match(/\/table\/([a-zA-Z0-9]+)/i);
+    if (tableMatch && tableMatch[1]) tableId = String(tableMatch[1]).trim();
+  }
+
+  return { qid, tableId };
+}
+
 function normalizeQuickbaseSettingsPayload(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const hasTabs = Array.isArray(src.tabs);
@@ -145,18 +171,24 @@ function normalizeQuickbaseSettingsPayload(raw) {
     .filter((tab) => tab && typeof tab === 'object')
     .map((tab) => {
       const normalizedTab = normalizeQuickbaseConfig(tab);
+      const parsed = parseQuickbaseIdentifiersFromLink(normalizedTab.reportLink);
+      const reportLink = String(normalizedTab.reportLink || '').trim();
+      const qid = String(normalizedTab.qid || parsed.qid || '').trim();
+      const tableId = String(normalizedTab.tableId || parsed.tableId || '').trim();
+      if (reportLink && (!qid || !tableId)) return null;
       return {
         id: String(tab.id || '').trim(),
         tabName: String(tab.tabName || tab.name || '').trim() || 'Main Report',
-        reportLink: normalizedTab.reportLink,
-        qid: normalizedTab.qid,
-        tableId: normalizedTab.tableId,
+        reportLink,
+        qid,
+        tableId,
         customColumns: deepClone(normalizedTab.customColumns || []),
         customFilters: deepClone(normalizedTab.customFilters || []),
         filterMatch: normalizedTab.filterMatch,
         dashboard_counters: deepClone(normalizedTab.dashboardCounters || [])
       };
     })
+    .filter(Boolean)
     .slice(0, 25);
 
   const safeTabs = tabs.length ? tabs : [{
