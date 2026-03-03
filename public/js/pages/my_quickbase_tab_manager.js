@@ -151,6 +151,19 @@
       saveLocalFallback();
     },
 
+
+
+    async deleteTab(tabId) {
+      const safeTabId = String(tabId || '').trim();
+      if (!safeTabId) return;
+      tabs.delete(safeTabId);
+      const userId = encodeURIComponent(safeUserId(currentUserId));
+      await apiRequest(`/quickbase_tabs/${encodeURIComponent(safeTabId)}?user_id=${userId}`, {
+        method: 'DELETE'
+      });
+      saveLocalFallback();
+    },
+
     async loadTabs() {
       const userId = encodeURIComponent(safeUserId(currentUserId));
       const out = await apiRequest(`/quickbase_tabs?user_id=${userId}`, { method: 'GET' });
