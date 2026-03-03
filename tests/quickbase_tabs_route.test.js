@@ -10,7 +10,8 @@ function loadRouteWithMocks(mocks) {
       return {
         sendJson: mocks.sendJson,
         serviceSelect: mocks.serviceSelect,
-        serviceUpsert: mocks.serviceUpsert
+        serviceUpsert: mocks.serviceUpsert,
+        serviceFetch: mocks.serviceFetch
       };
     }
     return originalLoad.call(this, request, parent, isMain);
@@ -48,6 +49,19 @@ async function run() {
       const rows = Array.from(table.values()).filter((r) => r.user_id === userId && (!tabId || r.tab_id === tabId));
       return { ok: true, json: rows };
     },
+
+    async serviceFetch(path, opts) {
+      const method = String(opts && opts.method || 'GET').toUpperCase();
+      if (method !== 'DELETE') return { ok: false, json: { error: 'unsupported_method' } };
+      const query = String(path).split('?')[1] || '';
+      const userMatch = String(query).match(/user_id=eq\.([^&]+)/);
+      const tabMatch = String(query).match(/tab_id=eq\.([^&]+)/);
+      const userId = userMatch ? decodeURIComponent(userMatch[1]) : '';
+      const tabId = tabMatch ? decodeURIComponent(tabMatch[1]) : '';
+      table.delete(`${userId}:${tabId}`);
+      return { ok: true, json: [] };
+    },
+
     async serviceUpsert(_name, rows) {
       rows.forEach((row) => {
         table.set(`${row.user_id}:${row.tab_id}`, {
@@ -76,6 +90,18 @@ async function run() {
   const byTab = Object.fromEntries(payload.rows.map((r) => [r.tab_id, r]));
   assert.strictEqual(byTab['tab-a'].settings_json.qid, '101');
   assert.strictEqual(byTab['tab-b'].settings_json.qid, '202');
+
+  const delReq = { method: 'DELETE', query: { user_id: 'u1', tab_id: 'tab-a' } };
+  const delRes = makeRes();
+  await route(delReq, delRes, {});
+  const delPayload = JSON.parse(delRes.body || '{}');
+  assert.strictEqual(delPayload.ok, true);
+
+  const postDeleteListRes = makeRes();
+  await route(listReq, postDeleteListRes, {});
+  const postDeletePayload = JSON.parse(postDeleteListRes.body || '{}');
+  assert.strictEqual(postDeletePayload.rows.length, 1);
+  assert.strictEqual(postDeletePayload.rows[0].tab_id, 'tab-b');
 
   console.log('quickbase tabs route isolation test passed');
 }

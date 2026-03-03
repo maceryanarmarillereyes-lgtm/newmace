@@ -172,7 +172,7 @@ async function queryQuickbaseRecords(opts = {}) {
     from: cfg.tableId,
     select,
     options: {
-      top: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50,
+      top: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 1000) : 100,
       skip: 0
     }
   };

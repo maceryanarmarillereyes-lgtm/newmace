@@ -1575,6 +1575,7 @@
     async function loadQuickbaseData(options) {
       const opts = options && typeof options === 'object' ? options : {};
       const silent = !!opts.silent;
+      const forceRefresh = !!opts.forceRefresh;
       const host = root.querySelector('#qbDataBody');
       const meta = root.querySelector('#qbDataMeta');
       const reloadBtn = root.querySelector('#qbReloadBtn');
@@ -1607,7 +1608,7 @@
             filterMatch: state.filterMatch
           });
           // FIX: [Issue 2] - Reuse cache if fetched within 2 minutes.
-          const cachedPayload = readQuickbaseCache(cacheKey);
+          const cachedPayload = forceRefresh ? null : readQuickbaseCache(cacheKey);
           if (cachedPayload) {
             state.allAvailableFields = Array.isArray(cachedPayload.allAvailableFields) ? cachedPayload.allAvailableFields : [];
             state.baseRecords = Array.isArray(cachedPayload.records) ? cachedPayload.records.slice() : [];
@@ -1797,6 +1798,40 @@
       if (window.UI && UI.closeModal) UI.closeModal('qbSettingsModal');
     }
 
+    async function deleteTabAtIndex(tabIndex) {
+      const tabs = Array.isArray(state.quickbaseSettings && state.quickbaseSettings.tabs) ? state.quickbaseSettings.tabs : [];
+      if (tabs.length <= 1) {
+        if (window.UI && UI.toast) UI.toast('At least one tab must remain.', 'error');
+        return;
+      }
+      const idx = Number(tabIndex);
+      if (!Number.isFinite(idx) || idx < 0 || idx >= tabs.length) return;
+      const target = tabs[idx] || {};
+      const targetTabId = String(target.id || '').trim();
+      if (!targetTabId) return;
+
+      try {
+        if (tabManager) await tabManager.deleteTab(targetTabId);
+        delete state.quickbaseSettings.settingsByTabId[targetTabId];
+        state.quickbaseSettings.tabs = tabs.filter((_, i) => i !== idx);
+        const nextLen = state.quickbaseSettings.tabs.length;
+        state.activeTabIndex = Math.min(Math.max(state.activeTabIndex === idx ? idx - 1 : state.activeTabIndex, 0), Math.max(0, nextLen - 1));
+        state.quickbaseSettings.activeTabIndex = state.activeTabIndex;
+        syncStateFromActiveTab();
+        syncSettingsInputsFromState();
+        queuePersistQuickbaseSettings();
+        await persistQuickbaseSettings();
+        renderTabBar();
+        renderColumnGrid();
+        renderFilters();
+        renderCounterFilters();
+        await loadQuickbaseData({ applyFilters: false, forceRefresh: true });
+        if (window.UI && UI.toast) UI.toast('Tab deleted successfully.');
+      } catch (err) {
+        if (window.UI && UI.toast) UI.toast('Failed to delete tab: ' + String(err && err.message || err), 'error');
+      }
+    }
+
     async function renderDefaultReport() {
       state.didInitialDefaultRender = true;
       setActiveUserSearched(false);
@@ -1826,6 +1861,22 @@
       if (!nextView) return;
       setSettingsModalView(nextView);
     });
+    root.querySelector('#qbTabBar').oncontextmenu = async (event) => {
+      const target = event.target;
+      if (!target || !(target instanceof HTMLElement)) return;
+      const tabBtn = target.closest('[data-tab-idx]');
+      if (!tabBtn) return;
+      event.preventDefault();
+      const idx = Number(tabBtn.getAttribute('data-tab-idx'));
+      if (!Number.isFinite(idx)) return;
+      const tabs = Array.isArray(state.quickbaseSettings && state.quickbaseSettings.tabs) ? state.quickbaseSettings.tabs : [];
+      const tab = tabs[idx] || {};
+      const label = String(tab.tabName || `Report ${idx + 1}`);
+      const confirmed = window.confirm(`Delete tab "${label}"? This cannot be undone.`);
+      if (!confirmed) return;
+      await deleteTabAtIndex(idx);
+    };
+
     root.querySelector('#qbTabBar').onclick = async (event) => {
       const target = event.target;
       if (!target || !(target instanceof HTMLElement)) return;
@@ -2024,7 +2075,7 @@
         renderTabBar();
         if (window.UI && UI.toast) UI.toast('Quickbase settings saved successfully!');
         closeSettings();
-        await loadQuickbaseData();
+        await loadQuickbaseData({ forceRefresh: true });
       } catch (err) {
         if (window.UI && UI.toast) UI.toast('Failed to save settings: ' + String(err && err.message || err), 'error');
       } finally {
