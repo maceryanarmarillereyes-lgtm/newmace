@@ -19,6 +19,13 @@
   let currentUserId = '';
   let apiBaseUrl = '/api';
 
+  function authHeader() {
+    const jwt = root.CloudAuth && typeof root.CloudAuth.accessToken === 'function'
+      ? root.CloudAuth.accessToken()
+      : '';
+    return jwt ? { Authorization: `Bearer ${jwt}` } : {};
+  }
+
   function cloneDeep(value) {
     // Deep clone is required so each tab gets isolated objects and no shared references leak across tabs.
     if (typeof root.structuredClone === 'function') return root.structuredClone(value);
@@ -75,7 +82,9 @@
 
   async function apiRequest(path, options) {
     const base = String(apiBaseUrl || '/api').replace(/\/$/, '');
-    const response = await root.fetch(`${base}${path}`, options);
+    const opts = Object.assign({}, options || {});
+    opts.headers = Object.assign({}, opts.headers || {}, authHeader());
+    const response = await root.fetch(`${base}${path}`, opts);
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       const err = new Error(body.message || body.error || 'quickbase_tab_manager_api_failed');
