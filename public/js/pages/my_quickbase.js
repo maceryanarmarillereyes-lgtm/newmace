@@ -614,6 +614,9 @@
   window.Pages.my_quickbase = async function(root) {
     const AUTO_REFRESH_MS = 5000;
     const me = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
+    const tabManager = (window.TabManager && typeof window.TabManager.init === 'function')
+      ? window.TabManager.init({ userId: me && me.id, apiBaseUrl: '/api' })
+      : null;
     let profile = (me && window.Store && Store.getProfile) ? (Store.getProfile(me.id) || {}) : {};
 
     async function refreshProfileFromCloud() {
@@ -682,6 +685,21 @@
       qbCache: {},
       settingsModalView: 'report-config'
     };
+
+    function syncTabManagerFromState(tabId) {
+      if (!tabManager) return;
+      const safeTabId = String(tabId || '').trim();
+      if (!safeTabId) return;
+      const tabMeta = Array.isArray(state.quickbaseSettings.tabs)
+        ? state.quickbaseSettings.tabs.find((tab) => String(tab && tab.id || '').trim() === safeTabId)
+        : null;
+      const tabSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[safeTabId]
+        ? state.quickbaseSettings.settingsByTabId[safeTabId]
+        : createDefaultSettings({}, {});
+      tabManager.updateTabLocal(safeTabId, Object.assign({}, tabSettings, {
+        tabName: String(tabMeta && tabMeta.tabName || tabSettings.tabName || 'New Tab').trim()
+      }));
+    }
 
     const cleanupHandlers = [];
     let modalBindingsActive = false;
@@ -1767,13 +1785,19 @@
       if (!target || !(target instanceof HTMLElement)) return;
       if (target.id === 'qbAddTabBtn') {
         captureSettingsDraftFromInputs();
-        const newTab = createTabMeta({}, { tabName: 'New Report' });
+        const tabName = 'New Tab';
+        const managedTabId = tabManager ? tabManager.createTab({ tabName }) : '';
+        const newTab = createTabMeta({ id: managedTabId || generateUUID(), tabName }, { tabName });
         const newTabId = String(newTab.id || '').trim();
         state.quickbaseSettings.tabs.push(newTab);
         state.quickbaseSettings.settingsByTabId = Object.assign({}, state.quickbaseSettings.settingsByTabId || {}, {
           [newTabId]: deepClone(createDefaultSettings({}, {}), createDefaultSettings({}, {}))
         });
         state.activeTabIndex = state.quickbaseSettings.tabs.length - 1;
+        if (tabManager) {
+          tabManager.clearNewTabFields();
+          syncTabManagerFromState(newTabId);
+        }
         state.modalDraft = deepClone(Object.assign({}, newTab, state.quickbaseSettings.settingsByTabId[newTabId]), buildDefaultTab());
         syncStateFromActiveTab();
         syncSettingsInputsFromState();
@@ -1797,6 +1821,17 @@
       state.activeTabIndex = idx;
       state.modalDraft = deepClone(getActiveTab(), buildDefaultTab());
       syncStateFromActiveTab();
+      if (tabManager) {
+        const activeTabId = String(getActiveTabId() || '').trim();
+        if (activeTabId) {
+          const cloned = tabManager.getTab(activeTabId);
+          const settings = deepClone(cloned.settings || {}, {});
+          state.tabName = String(settings.tabName || state.tabName || 'Main Report').trim() || 'Main Report';
+          state.reportLink = String(settings.reportLink || state.reportLink || '').trim();
+          state.qid = String(settings.qid || state.qid || '').trim();
+          state.tableId = String(settings.tableId || state.tableId || '').trim();
+        }
+      }
       syncSettingsInputsFromState();
       queuePersistQuickbaseSettings();
       renderTabBar();
@@ -1867,6 +1902,17 @@
       try {
         const validation = validateQuickbaseTabSettings(getActiveTab());
         if (!validation.ok) throw new Error(validation.message);
+        const activeTabId = String(getActiveTabId() || '').trim();
+        if (tabManager && activeTabId) {
+          tabManager.updateTabLocal(activeTabId, {
+            tabName: String(state.tabName || 'Main Report').trim() || 'Main Report',
+            reportLink: String(state.reportLink || '').trim(),
+            baseReportQid: String(state.qid || '').trim(),
+            qid: String(state.qid || '').trim(),
+            tableId: String(state.tableId || '').trim()
+          });
+          await tabManager.saveTab(activeTabId);
+        }
         await persistQuickbaseSettings();
         renderTabBar();
         if (window.UI && UI.toast) UI.toast('Quickbase settings saved successfully!');

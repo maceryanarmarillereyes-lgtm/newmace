@@ -79,6 +79,8 @@ const ROUTES = {
   'tasks/distribution_export': require('../server/routes/tasks/distribution_export'),
 
   'quickbase/monitoring': require('../server/routes/quickbase/monitoring'),
+  'quickbase_tabs': require('../server/routes/quickbase_tabs'),
+  'quickbase_tabs/upsert': require('../server/routes/quickbase_tabs'),
 };
 
 const DYNAMIC_ROUTES = [
@@ -86,6 +88,11 @@ const DYNAMIC_ROUTES = [
     pattern: /^member\/([^/]+)\/schedule$/,
     handler: ROUTES['member/schedule'],
     paramMap: (m) => ({ memberId: decodeURIComponent(m[1] || '') })
+  },
+  {
+    pattern: /^quickbase_tabs\/([^/]+)$/,
+    handler: ROUTES['quickbase_tabs'],
+    paramMap: (m) => ({ tab_id: decodeURIComponent(m[1] || '') })
   }
 ];
 
