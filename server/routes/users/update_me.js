@@ -482,12 +482,17 @@ module.exports = async (req, res) => {
     const updates = allowedFields.reduce((acc, key) => {
       if (!Object.prototype.hasOwnProperty.call(patch, key)) return acc;
       let value = patch[key];
-      if (key === 'quickbase_settings' && typeof value === 'string') {
-        try {
-          value = value ? JSON.parse(value) : {};
-        } catch (_) {
-          value = {};
+      if (key === 'quickbase_settings') {
+        if (typeof value === 'string') {
+          try {
+            value = value ? JSON.parse(value) : {};
+          } catch (_) {
+            value = {};
+          }
         }
+        value = (value && typeof value === 'object' && !Array.isArray(value))
+          ? deepClone(value)
+          : {};
       }
       acc[key] = value;
       return acc;
