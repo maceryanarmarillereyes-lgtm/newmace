@@ -866,18 +866,10 @@
 
     root.innerHTML = `
       <div class="dashx qb-page-shell">
-        <div class="qb-static-zone"><div class="card pad qb-header-card" style="backdrop-filter: blur(14px); background: linear-gradient(130deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.16);">
-          <div class="row qb-header-row" style="justify-content:space-between;align-items:center;gap:12px;">
-            <div>
-              <h2 class="ux-h1 qb-title" style="margin:0;">My Quickbase</h2>
-              <div class="small muted qb-subtitle">Enterprise monitoring dashboard for your personal Quickbase view.</div>
-            </div>
-          </div>
-        </div>
+        <div class="qb-static-zone">
+        <div id="qbTabBar" style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0;padding:0;"></div>
 
-        <div id="qbTabBar" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:1rem;scrollbar-width:none;"></div>
-
-        <div class="card pad" style="margin-bottom:12px;backdrop-filter: blur(14px); background: linear-gradient(130deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.16);">
+        <div class="card pad" style="margin-top:0;padding-top:0;margin-bottom:12px;backdrop-filter: blur(14px); background: linear-gradient(130deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.16);">
           <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
             <div>
               <div class="h3" id="qbInstanceTitle" style="margin:0;">${esc(state.tabName || 'Main Report')}</div>
@@ -894,9 +886,8 @@
           </div>
         </div>
 
-        <div id="qbTabBar" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:1rem;scrollbar-width:none;"></div>
-
-        <div id="qbDashboardCounters" class="qb-dashboard-counters"></div></div>
+        <div style="margin-top:15px;">
+          <div id="qbDashboardCounters" class="qb-dashboard-counters"></div>
 
         <div class="card pad qb-table-card">
           <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -905,6 +896,8 @@
           </div>
           <div id="qbDataBody" class="qb-data-body"></div>
         </div>
+      </div>
+      </div>
       </div>
 
       <div class="modal" id="qbSettingsModal" aria-hidden="true">
