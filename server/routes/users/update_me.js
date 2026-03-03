@@ -516,27 +516,37 @@ module.exports = async (req, res) => {
     }
 
     // Backward-compatible fallback:
-    // If environment DB is missing qb_custom_* columns, retry update without those keys
-    // so core Quickbase config (token/qid/table/realm/link) still saves successfully.
+    // If environment DB is missing some legacy Quickbase columns, retry update
+    // by removing only the missing keys so quickbase_settings can still persist.
     if (out && out.error) {
       const detailBlob = JSON.stringify(out.error || '').toLowerCase();
-      const missingCustomCols = detailBlob.includes('qb_custom_columns') || detailBlob.includes('qb_custom_filters') || detailBlob.includes('qb_dashboard_counters') || detailBlob.includes('quickbase_config') || detailBlob.includes('quickbase_settings');
-      if (missingCustomCols) {
+      const columnToPatchKey = {
+        qb_custom_columns: 'qb_custom_columns',
+        qb_custom_filters: 'qb_custom_filters',
+        qb_dashboard_counters: 'qb_dashboard_counters',
+        quickbase_config: 'quickbase_config',
+        quickbase_settings: 'quickbase_settings'
+      };
+      const missingPatchKeys = Object.keys(columnToPatchKey)
+        .filter((column) => detailBlob.includes(column))
+        .map((column) => columnToPatchKey[column]);
+
+      if (missingPatchKeys.length) {
         const retryPatch = { ...updates };
-        delete retryPatch.qb_custom_columns;
-        delete retryPatch.qb_custom_filters;
-        delete retryPatch.quickbase_config;
-        delete retryPatch.quickbase_settings;
-        delete retryPatch.qb_dashboard_counters;
+        missingPatchKeys.forEach((key) => { delete retryPatch[key]; });
+
         if (Object.keys(retryPatch).length > 0) {
           const retryOut = await supabase.from('profiles').update(retryPatch).eq('id', req.user.id);
           if (!retryOut.error) {
+            const retainedSettings = Object.prototype.hasOwnProperty.call(retryPatch, 'quickbase_settings');
             return sendJson(res, 200, {
               ok: true,
               updated: true,
               patch: retryPatch,
               warning: 'quickbase_columns_or_config_missing_in_db',
-              message: 'Saved core Quickbase settings. Run latest migrations to enable custom columns/filters/config persistence.'
+              message: retainedSettings
+                ? 'Saved Quickbase settings. Some legacy columns are missing; run latest migrations to restore full backward compatibility.'
+                : 'Saved core Quickbase settings. Run latest migrations to enable full custom settings persistence.'
             });
           }
         }
