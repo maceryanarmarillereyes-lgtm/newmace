@@ -16,34 +16,60 @@
       .replace(/'/g, '&#039;');
   }
 
-  function parseQuickbaseLink(link) {
-    const out = { realm: '', tableId: '', qid: '' };
-    const value = String(link || '').trim();
-    if (!value) return out;
+  function parseQuickbaseReportUrl(url) {
+    const value = String(url || '').trim();
+    if (!value) return null;
+
+    let host = '';
+    let pathname = '';
+    let qid = '';
+
     try {
       const urlObj = new URL(value);
-      const host = String(urlObj.hostname || '').trim().toLowerCase();
-      const realmMatch = host.match(/^([a-z0-9-]+)\.quickbase\.com$/i);
-      out.realm = realmMatch && realmMatch[1] ? String(realmMatch[1]).trim() : host;
+      host = String(urlObj.hostname || '').trim().toLowerCase();
+      pathname = String(urlObj.pathname || '').trim();
       const qidParam = String(urlObj.searchParams.get('qid') || '').trim();
       const qidMatch = qidParam.match(/-?\d+/);
-      out.qid = qidMatch && qidMatch[0] ? qidMatch[0] : '';
-    } catch (_) {}
-    const dbMatch = value.match(/\/db\/([a-zA-Z0-9]+)/i);
-    if (dbMatch && dbMatch[1]) out.tableId = String(dbMatch[1]).trim();
-    if (!out.tableId) {
-      const tableMatch = value.match(/\/table\/([a-zA-Z0-9]+)/i);
-      if (tableMatch && tableMatch[1]) out.tableId = String(tableMatch[1]).trim();
-    }
-    if (!out.qid) {
+      qid = qidMatch && qidMatch[0] ? qidMatch[0] : '';
+    } catch (_) {
+      const hostMatch = value.match(/^https?:\/\/([^/?#]+)/i);
+      host = String(hostMatch && hostMatch[1] || '').trim().toLowerCase();
+      const pathMatch = value.match(/^https?:\/\/[^/?#]+([^?#]*)/i);
+      pathname = String(pathMatch && pathMatch[1] || '').trim();
       const qidParamMatch = value.match(/[?&]qid=(-?\d+)/i);
-      if (qidParamMatch && qidParamMatch[1]) out.qid = String(qidParamMatch[1]).trim();
+      qid = String(qidParamMatch && qidParamMatch[1] || '').trim();
     }
-    if (!out.qid) {
-      const reportMatch = value.match(/\/report\/(-?\d+)/i);
-      if (reportMatch && reportMatch[1]) out.qid = String(reportMatch[1]).trim();
-    }
-    return out;
+
+    if (!host || !/\.quickbase\.com$/i.test(host)) return null;
+
+    const appMatch = pathname.match(/\/app\/([a-zA-Z0-9]+)/i);
+    const tableMatch = pathname.match(/\/table\/([a-zA-Z0-9]+)/i);
+    const dbMatch = pathname.match(/\/db\/([a-zA-Z0-9]+)/i);
+    const reportMatch = pathname.match(/\/report\/(-?\d+)/i);
+
+    if (!qid && reportMatch && reportMatch[1]) qid = String(reportMatch[1]).trim();
+    const tableId = String((tableMatch && tableMatch[1]) || (dbMatch && dbMatch[1]) || '').trim();
+    const appId = String(appMatch && appMatch[1] || '').trim();
+    const realmMatch = host.match(/^([a-z0-9-]+)\.quickbase\.com$/i);
+    const realm = String(realmMatch && realmMatch[1] || '').trim();
+
+    if (!qid && !tableId && !appId) return null;
+    return {
+      appId,
+      tableId,
+      qid,
+      realm
+    };
+  }
+
+  function parseQuickbaseLink(link) {
+    const parsed = parseQuickbaseReportUrl(link);
+    if (!parsed) return { realm: '', tableId: '', qid: '' };
+    return {
+      realm: String(parsed.realm || '').trim(),
+      tableId: String(parsed.tableId || '').trim(),
+      qid: String(parsed.qid || '').trim()
+    };
   }
 
   function normalizeFilters(raw) {
@@ -570,7 +596,8 @@
       readQuickbaseSettingsLocal,
       writeQuickbaseSettingsLocal,
       normalizeQuickbaseSettingsWithTabs,
-      createDefaultSettings
+      createDefaultSettings,
+      parseQuickbaseReportUrl
     };
   }
 
@@ -1365,6 +1392,31 @@
       });
     }
 
+    function validateReportLinkAndQid() {
+      const reportLinkEl = root.querySelector('#qbReportLink');
+      const qidEl = root.querySelector('#qbQid');
+      const tabBaseQidEl = root.querySelector('#qbTabBaseQid');
+      if (!reportLinkEl || !qidEl || !tabBaseQidEl) return { ok: true };
+
+      const parsed = parseQuickbaseReportUrl(reportLinkEl.value);
+      const expectedQid = String(parsed && parsed.qid || '').trim();
+      const qidValue = String(qidEl.value || '').trim();
+      const baseQidValue = String(tabBaseQidEl.value || '').trim();
+
+      qidEl.setCustomValidity('');
+      tabBaseQidEl.setCustomValidity('');
+      if (!expectedQid) return { ok: true };
+
+      const mismatchQid = !!qidValue && qidValue !== expectedQid;
+      const mismatchBaseQid = !!baseQidValue && baseQidValue !== expectedQid;
+      if (!mismatchQid && !mismatchBaseQid) return { ok: true };
+
+      const message = `QID must match the qid in Report Link URL (expected: ${expectedQid}).`;
+      if (mismatchQid) qidEl.setCustomValidity(message);
+      if (mismatchBaseQid) tabBaseQidEl.setCustomValidity(message);
+      return { ok: false, message };
+    }
+
     function bindReportLinkAutoExtract() {
       const reportLinkEl = root.querySelector('#qbReportLink');
       const tableIdEl = root.querySelector('#qbTableId');
@@ -1374,14 +1426,16 @@
 
       let lastAutoFillToastAt = 0;
       const applyAutoExtract = () => {
-        const parsed = parseQuickbaseLink(reportLinkEl.value);
+        const reportLink = String(reportLinkEl.value || '').trim();
+        const parsed = parseQuickbaseReportUrl(reportLink);
         let didAutoFill = false;
-        if (parsed.tableId && String(tableIdEl.value || '').trim() !== parsed.tableId) {
+
+        if (parsed && parsed.tableId && String(tableIdEl.value || '').trim() !== parsed.tableId) {
           tableIdEl.value = parsed.tableId;
           state.tableId = parsed.tableId;
           didAutoFill = true;
         }
-        if (parsed.qid) {
+        if (parsed && parsed.qid) {
           if (String(qidEl.value || '').trim() !== parsed.qid) {
             qidEl.value = parsed.qid;
             didAutoFill = true;
@@ -1392,9 +1446,12 @@
           }
           state.qid = parsed.qid;
         }
-        if (parsed.realm) state.realm = parsed.realm;
+        if (parsed && parsed.realm) state.realm = parsed.realm;
+
+        state.reportLink = reportLink;
+        validateReportLinkAndQid();
+
         if (didAutoFill) {
-          state.reportLink = String(reportLinkEl.value || '').trim();
           syncActiveTabFromState();
           queuePersistQuickbaseSettings();
           if (window.UI && UI.toast && (Date.now() - lastAutoFillToastAt) > 1200) {
@@ -1405,11 +1462,17 @@
       };
 
       const onPaste = () => setTimeout(applyAutoExtract, 0);
-      reportLinkEl.addEventListener('input', applyAutoExtract);
+      reportLinkEl.addEventListener('blur', applyAutoExtract);
+      reportLinkEl.addEventListener('change', applyAutoExtract);
       reportLinkEl.addEventListener('paste', onPaste);
+      qidEl.addEventListener('input', validateReportLinkAndQid);
+      tabBaseQidEl.addEventListener('input', validateReportLinkAndQid);
       cleanupHandlers.push(() => {
-        reportLinkEl.removeEventListener('input', applyAutoExtract);
+        reportLinkEl.removeEventListener('blur', applyAutoExtract);
+        reportLinkEl.removeEventListener('change', applyAutoExtract);
         reportLinkEl.removeEventListener('paste', onPaste);
+        qidEl.removeEventListener('input', validateReportLinkAndQid);
+        tabBaseQidEl.removeEventListener('input', validateReportLinkAndQid);
       });
     }
 
@@ -1758,6 +1821,16 @@
     const saveLock = root.querySelector('#qbSettingsSavingLock');
     saveBtn.onclick = async () => {
       if (!me) return;
+      const validation = validateReportLinkAndQid();
+      if (!validation.ok) {
+        const qidEl = root.querySelector('#qbQid');
+        const tabBaseQidEl = root.querySelector('#qbTabBaseQid');
+        if (tabBaseQidEl && typeof tabBaseQidEl.reportValidity === 'function') tabBaseQidEl.reportValidity();
+        if (qidEl && typeof qidEl.reportValidity === 'function') qidEl.reportValidity();
+        if (window.UI && UI.toast) UI.toast(validation.message || 'QID mismatch with Report Link.', 'error');
+        return;
+      }
+
       scrapeModalSettingsIntoActiveTab();
 
       state.isSaving = true;
