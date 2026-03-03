@@ -189,6 +189,14 @@
     return `qb-tab-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
   }
 
+  function deepClone(value, fallback) {
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   function buildDefaultTab(source, defaults) {
     const src = source && typeof source === 'object' ? source : {};
     const base = defaults && typeof defaults === 'object' ? defaults : {};
@@ -533,6 +541,7 @@
     const state = {
       quickbaseSettings,
       activeTabIndex: quickbaseSettings.activeTabIndex,
+      modalDraft: null,
       tabName: String(initialTab.tabName || 'Main Report').trim(),
       reportLink: initialLink,
       qid: String(initialTab.qid || parsedFromLink.qid || '').trim(),
@@ -660,7 +669,7 @@
     }
 
     function syncStateFromActiveTab() {
-      const activeTab = getActiveTab();
+      const activeTab = buildDefaultTab(deepClone(getActiveTab(), {}));
       const parsed = parseQuickbaseLink(activeTab.reportLink);
       state.tabName = String(activeTab.tabName || 'Main Report').trim() || 'Main Report';
       state.reportLink = String(activeTab.reportLink || '').trim();
@@ -696,17 +705,22 @@
     }
 
     function syncActiveTabFromState() {
-      const activeTab = getActiveTab();
-      activeTab.tabName = String(state.tabName || 'Main Report').trim() || 'Main Report';
-      activeTab.reportLink = String(state.reportLink || '').trim();
-      activeTab.qid = String(state.qid || '').trim();
-      activeTab.tableId = String(state.tableId || '').trim();
-      activeTab.realm = String(state.realm || '').trim();
-      activeTab.customColumns = Array.isArray(state.customColumns) ? state.customColumns.map((v) => String(v)) : [];
-      activeTab.customFilters = normalizeFilters(state.customFilters);
-      activeTab.filterMatch = normalizeFilterMatch(state.filterMatch);
-      activeTab.dashboard_counters = normalizeDashboardCounters(state.dashboardCounters);
+      getActiveTab();
+      const nextTab = buildDefaultTab({
+        id: String(state.modalDraft && state.modalDraft.id || state.quickbaseSettings.tabs[state.activeTabIndex] && state.quickbaseSettings.tabs[state.activeTabIndex].id || ''),
+        tabName: String(state.tabName || 'Main Report').trim() || 'Main Report',
+        reportLink: String(state.reportLink || '').trim(),
+        qid: String(state.qid || '').trim(),
+        tableId: String(state.tableId || '').trim(),
+        realm: String(state.realm || '').trim(),
+        customColumns: Array.isArray(state.customColumns) ? state.customColumns.map((v) => String(v)) : [],
+        customFilters: normalizeFilters(state.customFilters),
+        filterMatch: normalizeFilterMatch(state.filterMatch),
+        dashboard_counters: normalizeDashboardCounters(state.dashboardCounters)
+      });
+      state.quickbaseSettings.tabs[state.activeTabIndex] = deepClone(nextTab, buildDefaultTab());
       state.quickbaseSettings.activeTabIndex = state.activeTabIndex;
+      state.modalDraft = deepClone(nextTab, buildDefaultTab());
     }
 
 
@@ -1494,6 +1508,7 @@
     }
 
     function openSettings() {
+      state.modalDraft = deepClone(getActiveTab(), buildDefaultTab());
       syncSettingsInputsFromState();
       renderColumnGrid();
       renderFilters();
@@ -1546,8 +1561,9 @@
       if (!target || !(target instanceof HTMLElement)) return;
       if (target.id === 'qbAddTabBtn') {
         captureSettingsDraftFromInputs();
-        state.quickbaseSettings.tabs.push(buildDefaultTab({ tabName: `Report ${state.quickbaseSettings.tabs.length + 1}` }));
+        state.quickbaseSettings.tabs.push(buildDefaultTab({}, { tabName: 'New Report' }));
         state.activeTabIndex = state.quickbaseSettings.tabs.length - 1;
+        state.modalDraft = deepClone(state.quickbaseSettings.tabs[state.activeTabIndex], buildDefaultTab());
         syncStateFromActiveTab();
         syncSettingsInputsFromState();
         queuePersistQuickbaseSettings();
@@ -1568,6 +1584,7 @@
       if (!Number.isFinite(idx) || idx === state.activeTabIndex) return;
       captureSettingsDraftFromInputs();
       state.activeTabIndex = idx;
+      state.modalDraft = deepClone(state.quickbaseSettings.tabs[idx], buildDefaultTab());
       syncStateFromActiveTab();
       syncSettingsInputsFromState();
       queuePersistQuickbaseSettings();
