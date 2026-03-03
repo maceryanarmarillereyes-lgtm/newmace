@@ -658,8 +658,15 @@
       profileWithCloudFallback.quickbase_settings = cloudMe.quickbase_settings;
     }
     const quickbaseConfig = getProfileQuickbaseConfig(profileWithCloudFallback);
+    const windowMeQuickbaseSettingsRaw = cloudMe && Object.prototype.hasOwnProperty.call(cloudMe, 'quickbase_settings')
+      ? cloudMe.quickbase_settings
+      : null;
+    const parsedWindowMeQuickbaseSettings = parseQuickbaseSettings(windowMeQuickbaseSettingsRaw);
+    const hasWindowMeTabs = Array.isArray(parsedWindowMeQuickbaseSettings && parsedWindowMeQuickbaseSettings.tabs)
+      && parsedWindowMeQuickbaseSettings.tabs.length > 0;
     const localQuickbaseSettings = readQuickbaseSettingsLocal(me && me.id);
     const backendQuickbaseSettings = normalizeQuickbaseSettingsWithTabs(profileWithCloudFallback.quickbase_settings, quickbaseConfig);
+    const windowMeQuickbaseSettings = normalizeQuickbaseSettingsWithTabs(windowMeQuickbaseSettingsRaw, quickbaseConfig);
     const hasBackendTabs = Array.isArray(backendQuickbaseSettings.tabs)
       && backendQuickbaseSettings.tabs.some((tab) => {
         const tabId = String(tab && tab.id || '').trim();
@@ -667,7 +674,9 @@
         const fallback = tab && (tab.reportLink || tab.qid || tab.tableId);
         return !!String((tabSettings && (tabSettings.reportLink || tabSettings.qid || tabSettings.tableId)) || fallback || '').trim();
       });
-    const quickbaseSettings = hasBackendTabs ? backendQuickbaseSettings : (localQuickbaseSettings || backendQuickbaseSettings);
+    const quickbaseSettings = hasWindowMeTabs
+      ? deepClone(windowMeQuickbaseSettings)
+      : (hasBackendTabs ? backendQuickbaseSettings : (localQuickbaseSettings || backendQuickbaseSettings));
     const initialTabMeta = quickbaseSettings.tabs[quickbaseSettings.activeTabIndex] || quickbaseSettings.tabs[0] || createTabMeta({}, { tabName: 'Main Report' });
     const initialTabId = String(initialTabMeta.id || '').trim();
     const initialTabSettings = createDefaultSettings((quickbaseSettings.settingsByTabId && quickbaseSettings.settingsByTabId[initialTabId]) || {}, {});
@@ -1094,6 +1103,24 @@
       syncActiveTabFromState();
     }
 
+    function scrapeModalTabSnapshot() {
+      const tabName = String((root.querySelector('#qbTabName') || {}).value || '').trim() || 'Main Report';
+      const reportLink = String((root.querySelector('#qbReportLink') || {}).value || '').trim();
+      const baseQid = String((root.querySelector('#qbTabBaseQid') || {}).value || '').trim();
+      const qid = String((root.querySelector('#qbQid') || {}).value || '').trim();
+      const tableId = String((root.querySelector('#qbTableId') || {}).value || '').trim();
+      const parsed = parseQuickbaseLink(reportLink);
+      const hasReportLink = !!reportLink;
+      return {
+        tabName,
+        reportLink,
+        qid: hasReportLink ? (baseQid || qid || parsed.qid || '') : '',
+        tableId: hasReportLink ? (tableId || parsed.tableId || '') : '',
+        realm: hasReportLink ? (parsed.realm || '') : '',
+        dashboard_counters: normalizeDashboardCounters(scrapeModalCounterInputs())
+      };
+    }
+
     async function persistQuickbaseSettings() {
       if (!me) return;
       scrapeModalSettingsIntoActiveTab();
@@ -1121,7 +1148,10 @@
         qb_filter_match: activeSettingsObject.filterMatch,
         qb_dashboard_counters: activeSettingsObject.dashboardCounters,
         quickbase_config: activeSettingsObject,
-        quickbase_settings: JSON.stringify(serializedQuickbaseSettings)
+        quickbase_settings: {
+          activeTabIndex: state.activeTabIndex,
+          tabs: serializedQuickbaseSettings.tabs
+        }
       };
       writeQuickbaseSettingsLocal(me.id, serializedQuickbaseSettings);
       const authToken = window.CloudAuth && typeof CloudAuth.accessToken === 'function' ? CloudAuth.accessToken() : '';
@@ -1135,6 +1165,7 @@
       });
       const out = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(out.message || out.error || 'Could not save Quickbase settings.');
+      console.log('[Cloud Sync] Multi-Tab Settings Saved');
       if (window.Store && Store.setProfile) {
         Store.setProfile(me.id, Object.assign({}, payload, { updatedAt: Date.now() }));
       }
@@ -2023,7 +2054,26 @@
     const saveLock = root.querySelector('#qbSettingsSavingLock');
     saveBtn.onclick = async () => {
       if (!me) return;
-      scrapeModalSettingsIntoActiveTab();
+      const tabSnapshot = scrapeModalTabSnapshot();
+      const activeIdx = Number(state.activeTabIndex || 0);
+      if (Array.isArray(state.quickbaseSettings.tabs) && state.quickbaseSettings.tabs[activeIdx]) {
+        state.quickbaseSettings.tabs[activeIdx] = deepClone({
+          ...state.quickbaseSettings.tabs[activeIdx],
+          ...tabSnapshot
+        });
+      }
+      const activeTabId = String(getActiveTabId() || '').trim();
+      if (activeTabId) {
+        state.quickbaseSettings.settingsByTabId = state.quickbaseSettings.settingsByTabId || {};
+        state.quickbaseSettings.settingsByTabId[activeTabId] = createDefaultSettings(tabSnapshot, {});
+      }
+      state.tabName = tabSnapshot.tabName;
+      state.reportLink = tabSnapshot.reportLink;
+      state.qid = tabSnapshot.qid;
+      state.tableId = tabSnapshot.tableId;
+      state.realm = tabSnapshot.realm;
+      state.dashboardCounters = normalizeDashboardCounters(tabSnapshot.dashboard_counters);
+      syncActiveTabFromState();
 
       state.isSaving = true;
       saveBtn.disabled = true;
@@ -2032,8 +2082,8 @@
       try {
         const validation = validateQuickbaseTabSettings(getActiveTab());
         if (!validation.ok) throw new Error(validation.message);
-        const activeTabId = String(getActiveTabId() || '').trim();
-        const targetTabId = String(state.settingsEditingTabId || activeTabId || '').trim();
+        const nextActiveTabId = String(getActiveTabId() || '').trim();
+        const targetTabId = String(state.settingsEditingTabId || nextActiveTabId || '').trim();
         const pendingTabSettings = {
           tabName: deepClone(state.tabName) || '',
           reportLink: deepClone(state.reportLink) || '',
