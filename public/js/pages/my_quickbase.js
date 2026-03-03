@@ -355,6 +355,29 @@
     };
   }
 
+  function hasUsableQuickbaseSettings(rawSettings) {
+    const parsed = parseQuickbaseSettings(rawSettings);
+    if (Array.isArray(parsed && parsed.tabs) && parsed.tabs.length > 0) return true;
+    const cfg = normalizeQuickbaseConfig(parsed);
+    return Boolean(
+      String(cfg.reportLink || '').trim() ||
+      String(cfg.qid || '').trim() ||
+      String(cfg.tableId || '').trim() ||
+      (Array.isArray(cfg.customColumns) && cfg.customColumns.length) ||
+      (Array.isArray(cfg.customFilters) && cfg.customFilters.length) ||
+      (Array.isArray(cfg.dashboardCounters) && cfg.dashboardCounters.length)
+    );
+  }
+
+  function chooseInitialQuickbaseSettingsSource(options) {
+    const opts = options && typeof options === 'object' ? options : {};
+    const hasBackendTabs = hasPersistedQuickbaseTabs(opts.backendQuickbaseSettings);
+    const hasWindowMeTabs = hasPersistedQuickbaseTabs(opts.windowMeQuickbaseSettings);
+    if (hasBackendTabs) return deepClone(opts.backendQuickbaseSettings);
+    if (hasWindowMeTabs) return deepClone(opts.windowMeQuickbaseSettings);
+    return deepClone(opts.localQuickbaseSettings || opts.backendQuickbaseSettings);
+  }
+
   function getQuickbaseSettingsLocalKey(userId) {
     const safeUserId = String(userId || 'anonymous').trim() || 'anonymous';
     return `mums_my_quickbase_settings:${safeUserId}`;
@@ -645,7 +668,9 @@
       normalizeQuickbaseSettingsWithTabs,
       createDefaultSettings,
       parseQuickbaseReportUrl,
-      hasPersistedQuickbaseTabs
+      hasPersistedQuickbaseTabs,
+      hasUsableQuickbaseSettings,
+      chooseInitialQuickbaseSettingsSource
     };
   }
 
@@ -675,7 +700,11 @@
 
     const cloudMe = window.me && typeof window.me === 'object' ? window.me : {};
     const profileWithCloudFallback = Object.assign({}, cloudMe, profile);
-    if (cloudMe && Object.prototype.hasOwnProperty.call(cloudMe, 'quickbase_settings')) {
+    if (
+      cloudMe
+      && Object.prototype.hasOwnProperty.call(cloudMe, 'quickbase_settings')
+      && hasUsableQuickbaseSettings(cloudMe.quickbase_settings)
+    ) {
       profileWithCloudFallback.quickbase_settings = cloudMe.quickbase_settings;
     }
     const quickbaseConfig = getProfileQuickbaseConfig(profileWithCloudFallback);
@@ -683,15 +712,14 @@
       ? cloudMe.quickbase_settings
       : null;
     const parsedWindowMeQuickbaseSettings = parseQuickbaseSettings(windowMeQuickbaseSettingsRaw);
-    const hasWindowMeTabs = Array.isArray(parsedWindowMeQuickbaseSettings && parsedWindowMeQuickbaseSettings.tabs)
-      && parsedWindowMeQuickbaseSettings.tabs.length > 0;
     const localQuickbaseSettings = readQuickbaseSettingsLocal(me && me.id);
     const backendQuickbaseSettings = normalizeQuickbaseSettingsWithTabs(profileWithCloudFallback.quickbase_settings, quickbaseConfig);
     const windowMeQuickbaseSettings = normalizeQuickbaseSettingsWithTabs(windowMeQuickbaseSettingsRaw, quickbaseConfig);
-    const hasBackendTabs = hasPersistedQuickbaseTabs(backendQuickbaseSettings);
-    const quickbaseSettings = hasWindowMeTabs
-      ? deepClone(windowMeQuickbaseSettings)
-      : (hasBackendTabs ? backendQuickbaseSettings : (localQuickbaseSettings || backendQuickbaseSettings));
+    const quickbaseSettings = chooseInitialQuickbaseSettingsSource({
+      backendQuickbaseSettings,
+      windowMeQuickbaseSettings,
+      localQuickbaseSettings
+    });
     const initialTabMeta = quickbaseSettings.tabs[quickbaseSettings.activeTabIndex] || quickbaseSettings.tabs[0] || createTabMeta({}, { tabName: 'Main Report' });
     const initialTabId = String(initialTabMeta.id || '').trim();
     const initialTabSettings = createDefaultSettings((quickbaseSettings.settingsByTabId && quickbaseSettings.settingsByTabId[initialTabId]) || {}, {});
