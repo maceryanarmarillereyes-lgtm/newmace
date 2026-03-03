@@ -198,8 +198,8 @@
       id: String(src.id || generateUUID()),
       tabName: String(src.tabName || src.name || base.tabName || 'Main Report').trim() || 'Main Report',
       reportLink,
-      qid: String(src.qid || src.qb_qid || base.qid || '').trim(),
-      tableId: String(src.tableId || src.qb_table_id || base.tableId || '').trim(),
+      qid: String(parsed.qid || src.qid || src.qb_qid || base.qid || '').trim(),
+      tableId: String(parsed.tableId || src.tableId || src.qb_table_id || base.tableId || '').trim(),
       realm: String(src.realm || src.qb_realm || base.realm || parsed.realm || '').trim(),
       dashboard_counters: normalizeDashboardCounters(src.dashboard_counters || src.dashboardCounters || base.dashboard_counters),
       customColumns: Array.isArray(src.customColumns || src.qb_custom_columns || base.customColumns)
@@ -664,8 +664,8 @@
       const parsed = parseQuickbaseLink(activeTab.reportLink);
       state.tabName = String(activeTab.tabName || 'Main Report').trim() || 'Main Report';
       state.reportLink = String(activeTab.reportLink || '').trim();
-      state.qid = String(activeTab.qid || parsed.qid || '').trim();
-      state.tableId = String(activeTab.tableId || parsed.tableId || '').trim();
+      state.qid = String(parsed.qid || activeTab.qid || '').trim();
+      state.tableId = String(parsed.tableId || activeTab.tableId || '').trim();
       state.realm = String(activeTab.realm || parsed.realm || '').trim();
       state.customColumns = Array.isArray(activeTab.customColumns) ? activeTab.customColumns.map((v) => String(v)) : [];
       state.customFilters = normalizeFilters(activeTab.customFilters);
