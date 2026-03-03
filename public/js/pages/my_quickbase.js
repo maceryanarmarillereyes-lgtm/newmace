@@ -435,12 +435,32 @@
     const p = profile && typeof profile === 'object' ? profile : {};
     const quickbaseSettings = parseQuickbaseSettings(p.quickbase_settings);
     const quickbaseConfig = parseQuickbaseSettings(p.quickbase_config);
+    const settingsFromTabs = Array.isArray(quickbaseSettings.tabs) && quickbaseSettings.tabs.length
+      ? (() => {
+        const maxIndex = quickbaseSettings.tabs.length - 1;
+        const idx = Math.min(Math.max(Number(quickbaseSettings.activeTabIndex || 0), 0), maxIndex);
+        return quickbaseSettings.tabs[idx] || quickbaseSettings.tabs[0] || {};
+      })()
+      : null;
     const source = Object.keys(quickbaseSettings).length
-      ? quickbaseSettings
+      ? (settingsFromTabs || quickbaseSettings)
       : Object.keys(quickbaseConfig).length
         ? quickbaseConfig
         : normalizeQuickbaseConfig(p);
     return normalizeQuickbaseConfig(source);
+  }
+
+  function hasPersistedQuickbaseTabs(settings) {
+    if (!settings || !Array.isArray(settings.tabs)) return false;
+    return settings.tabs.some((tab) => {
+      const rawTab = tab && typeof tab === 'object' ? tab : {};
+      const normalizedTab = createDefaultSettings(rawTab, {});
+      const hasReportConfig = !!String(normalizedTab.reportLink || normalizedTab.qid || normalizedTab.tableId || '').trim();
+      const hasCustomColumns = Array.isArray(normalizedTab.customColumns) && normalizedTab.customColumns.length > 0;
+      const hasFilterConfig = Array.isArray(normalizedTab.customFilters) && normalizedTab.customFilters.length > 0;
+      const hasDashboardCounters = Array.isArray(normalizedTab.dashboard_counters) && normalizedTab.dashboard_counters.length > 0;
+      return hasReportConfig || hasCustomColumns || hasFilterConfig || hasDashboardCounters;
+    });
   }
 
 
@@ -624,7 +644,8 @@
       writeQuickbaseSettingsLocal,
       normalizeQuickbaseSettingsWithTabs,
       createDefaultSettings,
-      parseQuickbaseReportUrl
+      parseQuickbaseReportUrl,
+      hasPersistedQuickbaseTabs
     };
   }
 
@@ -667,13 +688,7 @@
     const localQuickbaseSettings = readQuickbaseSettingsLocal(me && me.id);
     const backendQuickbaseSettings = normalizeQuickbaseSettingsWithTabs(profileWithCloudFallback.quickbase_settings, quickbaseConfig);
     const windowMeQuickbaseSettings = normalizeQuickbaseSettingsWithTabs(windowMeQuickbaseSettingsRaw, quickbaseConfig);
-    const hasBackendTabs = Array.isArray(backendQuickbaseSettings.tabs)
-      && backendQuickbaseSettings.tabs.some((tab) => {
-        const tabId = String(tab && tab.id || '').trim();
-        const tabSettings = backendQuickbaseSettings.settingsByTabId && backendQuickbaseSettings.settingsByTabId[tabId];
-        const fallback = tab && (tab.reportLink || tab.qid || tab.tableId);
-        return !!String((tabSettings && (tabSettings.reportLink || tabSettings.qid || tabSettings.tableId)) || fallback || '').trim();
-      });
+    const hasBackendTabs = hasPersistedQuickbaseTabs(backendQuickbaseSettings);
     const quickbaseSettings = hasWindowMeTabs
       ? deepClone(windowMeQuickbaseSettings)
       : (hasBackendTabs ? backendQuickbaseSettings : (localQuickbaseSettings || backendQuickbaseSettings));
