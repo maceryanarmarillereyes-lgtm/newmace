@@ -27,6 +27,10 @@ assert.strictEqual(parsed.appId, 'bpvmztzkw');
 assert.strictEqual(parsed.tableId, 'bpvm1212tzr5');
 assert.strictEqual(parsed.qid, '123');
 
+const legacyDbUrl = hooks.parseQuickbaseReportUrl('https://tenant.quickbase.com/db/bq7m2ab12?a=q&qid=-2021117');
+assert.strictEqual(legacyDbUrl.tableId, 'bq7m2ab12');
+assert.strictEqual(legacyDbUrl.qid, '-2021117');
+
 const invalid = hooks.parseQuickbaseReportUrl('not-a-url');
 assert.strictEqual(invalid, null);
 

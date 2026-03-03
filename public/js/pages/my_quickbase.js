@@ -16,6 +16,8 @@
       .replace(/'/g, '&#039;');
   }
 
+  const ENABLE_QID_URL_MATCH_VALIDATION = true;
+
   function parseQuickbaseReportUrl(url) {
     const value = String(url || '').trim();
     if (!value) return null;
@@ -25,7 +27,12 @@
       const appIndex = segments.findIndex((segment) => String(segment).toLowerCase() === 'app');
       const tableIndex = segments.findIndex((segment) => String(segment).toLowerCase() === 'table');
       const appId = appIndex >= 0 ? String(segments[appIndex + 1] || '').trim() : '';
-      const tableId = tableIndex >= 0 ? String(segments[tableIndex + 1] || '').trim() : '';
+      const tableId = tableIndex >= 0
+        ? String(segments[tableIndex + 1] || '').trim()
+        : (() => {
+          const dbIndex = segments.findIndex((segment) => String(segment).toLowerCase() === 'db');
+          return dbIndex >= 0 ? String(segments[dbIndex + 1] || '').trim() : '';
+        })();
       const rawQid = String(u.searchParams.get('qid') || '').trim();
       const qidMatch = rawQid.match(/-?\d+/);
       const qid = qidMatch && qidMatch[0] ? qidMatch[0] : '';
@@ -907,6 +914,7 @@
       const reportLink = String(tab.reportLink || '').trim();
       const qid = String(tab.qid || '').trim();
       if (!reportLink) return { ok: true };
+      if (!ENABLE_QID_URL_MATCH_VALIDATION) return { ok: true };
       const parsed = parseQuickbaseReportUrl(reportLink);
       if (parsed && parsed.qid && qid && parsed.qid !== qid) {
         return { ok: false, field: 'qid', message: 'QID must match the qid value inside the Report Link URL.' };
@@ -1024,6 +1032,14 @@
       };
       const serializedQuickbaseSettings = {
         activeTabIndex: state.activeTabIndex,
+        reportLink: activeSettingsObject.reportLink,
+        qid: activeSettingsObject.qid,
+        tableId: activeSettingsObject.tableId,
+        realm: activeSettingsObject.realm,
+        customColumns: activeSettingsObject.customColumns,
+        customFilters: activeSettingsObject.customFilters,
+        filterMatch: activeSettingsObject.filterMatch,
+        dashboardCounters: activeSettingsObject.dashboardCounters,
         tabs: Array.isArray(state.quickbaseSettings.tabs)
           ? state.quickbaseSettings.tabs.map((tab) => {
             const tabMeta = createTabMeta(tab, {});

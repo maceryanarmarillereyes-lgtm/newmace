@@ -18,7 +18,12 @@ export function parseQuickbaseReportUrl(url: string): ParsedQuickbaseUrl | null 
     const appIndex = segments.findIndex((segment) => segment.toLowerCase() === 'app');
     const tableIndex = segments.findIndex((segment) => segment.toLowerCase() === 'table');
     const appId = appIndex >= 0 ? (segments[appIndex + 1] || '').trim() || undefined : undefined;
-    const tableId = tableIndex >= 0 ? (segments[tableIndex + 1] || '').trim() || undefined : undefined;
+    const tableId = tableIndex >= 0
+      ? (segments[tableIndex + 1] || '').trim() || undefined
+      : (() => {
+        const dbIndex = segments.findIndex((segment) => segment.toLowerCase() === 'db');
+        return dbIndex >= 0 ? (segments[dbIndex + 1] || '').trim() || undefined : undefined;
+      })();
 
     if (!appId && !tableId && !qid) return null;
     return { appId, tableId, qid };
