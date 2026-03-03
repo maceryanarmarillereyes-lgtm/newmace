@@ -909,7 +909,7 @@
       }
     }
 
-    function validateQuickbaseTabSettings(tabSettings) {
+    function validateQidMatchesUrl(tabSettings) {
       const tab = tabSettings && typeof tabSettings === 'object' ? tabSettings : {};
       const reportLink = String(tab.reportLink || '').trim();
       const qid = String(tab.qid || '').trim();
@@ -920,6 +920,35 @@
         return { ok: false, field: 'qid', message: 'QID must match the qid value inside the Report Link URL.' };
       }
       return { ok: true };
+    }
+
+    function validateQuickbaseTabSettings(tabSettings) {
+      return validateQidMatchesUrl(tabSettings);
+    }
+
+    /**
+     * My Quickbase per-tab settings isolation – migration note
+     * - Internal state now stores per-tab settings in settingsByTabId with cloned objects (no shared references).
+     * - Report Link parsing auto-syncs qid/tableId for each tab independently.
+     * - Save payload stays backward compatible: profile.quickbase_settings preserves legacy { activeTabIndex, tabs } shape.
+     * - Future readers must not rely on object identity being shared across tabs.
+     */
+    function serializeQuickbaseSettingsForSave(quickbaseSettingsState, activeTabIndex) {
+      const settingsState = quickbaseSettingsState && typeof quickbaseSettingsState === 'object' ? quickbaseSettingsState : {};
+      const tabs = Array.isArray(settingsState.tabs) ? settingsState.tabs : [];
+      const settingsByTabId = settingsState.settingsByTabId && typeof settingsState.settingsByTabId === 'object'
+        ? settingsState.settingsByTabId
+        : {};
+
+      return {
+        activeTabIndex: Number.isFinite(Number(activeTabIndex)) ? Number(activeTabIndex) : 0,
+        tabs: tabs.map((tab) => {
+          const tabMeta = createTabMeta(tab, {});
+          const tabId = String(tabMeta.id || '').trim();
+          const tabSettings = createDefaultSettings(settingsByTabId[tabId] || tab || {}, {});
+          return buildDefaultTab(Object.assign({}, tabMeta, tabSettings), {});
+        })
+      };
     }
 
 
@@ -1030,26 +1059,7 @@
         filterMatch: activeTab.filterMatch,
         dashboardCounters: normalizeDashboardCounters(activeTab.dashboard_counters)
       };
-      const serializedQuickbaseSettings = {
-        activeTabIndex: state.activeTabIndex,
-        reportLink: activeSettingsObject.reportLink,
-        qid: activeSettingsObject.qid,
-        tableId: activeSettingsObject.tableId,
-        realm: activeSettingsObject.realm,
-        customColumns: activeSettingsObject.customColumns,
-        customFilters: activeSettingsObject.customFilters,
-        filterMatch: activeSettingsObject.filterMatch,
-        dashboardCounters: activeSettingsObject.dashboardCounters,
-        tabs: Array.isArray(state.quickbaseSettings.tabs)
-          ? state.quickbaseSettings.tabs.map((tab) => {
-            const tabMeta = createTabMeta(tab, {});
-            const tabId = String(tabMeta.id || '').trim();
-            const tabSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[tabId];
-            return buildDefaultTab(Object.assign({}, tabMeta, createDefaultSettings(tabSettings || {}, {})), {});
-          })
-          : [],
-        settingsByTabId: Object.assign({}, state.quickbaseSettings.settingsByTabId || {})
-      };
+      const serializedQuickbaseSettings = serializeQuickbaseSettingsForSave(state.quickbaseSettings, state.activeTabIndex);
       const payload = {
         qb_report_link: activeSettingsObject.reportLink,
         qb_qid: activeSettingsObject.qid,

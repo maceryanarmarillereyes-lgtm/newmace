@@ -42,5 +42,6 @@ normalized.settingsByTabId['tab-2'] = Object.assign({}, normalized.settingsByTab
 
 assert.notStrictEqual(normalized.settingsByTabId['tab-2'], tab2Before, 'tab-2 should be replaced with a new object reference');
 assert.strictEqual(JSON.stringify(normalized.settingsByTabId['tab-1']), JSON.stringify(tab1Before), 'tab-1 settings must remain unchanged when tab-2 updates');
+assert.notStrictEqual(normalized.settingsByTabId['tab-1'], normalized.settingsByTabId['tab-2'], 'tab settings should never share object references');
 
 console.log('my_quickbase tab update isolation test passed');
