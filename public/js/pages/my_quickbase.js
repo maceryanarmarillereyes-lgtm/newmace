@@ -1191,10 +1191,7 @@
         qb_filter_match: activeSettingsObject.filterMatch,
         qb_dashboard_counters: activeSettingsObject.dashboardCounters,
         quickbase_config: activeSettingsObject,
-        quickbase_settings: {
-          activeTabIndex: state.activeTabIndex || 0,
-          tabs: (state.quickbaseSettings && state.quickbaseSettings.tabs) || []
-        }
+        quickbase_settings: serializedQuickbaseSettings
       };
       writeQuickbaseSettingsLocal(me.id, serializedQuickbaseSettings);
       const authToken = window.CloudAuth && typeof CloudAuth.accessToken === 'function' ? CloudAuth.accessToken() : '';

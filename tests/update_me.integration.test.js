@@ -307,6 +307,50 @@ async function testRetryPreservesQuickbaseSettingsWhenOnlyLegacyColumnsAreMissin
   assert.equal(payload.ok, true);
 }
 
+
+async function testInvalidReportTabsAreDroppedBeforePersist() {
+  const calls = [];
+  const route = loadRoute({
+    supabaseMocks: {
+      getUserFromJwt: async () => ({ id: 'u-7' }),
+      getProfileForUserId: async () => ({ user_id: 'u-7', role: 'MEMBER' }),
+      serviceSelect: async () => ({ ok: true, json: [{ column_name: 'quickbase_settings' }] }),
+      serviceUpdate: async (_table, patch) => {
+        calls.push(patch);
+        return { ok: true, json: [patch] };
+      }
+    },
+    schemaMocks: {
+      ensureQuickbaseSettingsColumn: async () => true
+    }
+  });
+
+  const req = {
+    method: 'PATCH',
+    headers: { authorization: 'Bearer token' },
+    body: {
+      quickbase_settings: {
+        activeTabIndex: 1,
+        tabs: [
+          { id: 'bad-tab', tabName: 'Broken', reportLink: 'https://sample.quickbase.com/db/aaa?a=q', qid: '', tableId: '' },
+          { id: 'good-tab', tabName: 'Working', reportLink: 'https://sample.quickbase.com/db/bbb?a=q&qid=22' }
+        ]
+      }
+    }
+  };
+  const res = makeRes();
+
+  await route(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].quickbase_settings.tabs.length, 1);
+  assert.equal(calls[0].quickbase_settings.tabs[0].id, 'good-tab');
+  assert.equal(calls[0].quickbase_settings.tabs[0].qid, '22');
+  assert.equal(calls[0].quickbase_settings.tabs[0].tableId, 'bbb');
+  assert.equal(calls[0].quickbase_settings.activeTabIndex, 0);
+}
+
 async function run() {
   await testNormalizeAndEscape();
   await testFallbackColumnMissing();
@@ -314,6 +358,7 @@ async function run() {
   await testQuickbaseConfigDoesNotOverrideTabbedSettings();
   await testColumnProbeUsesMumsProfilesInsteadOfInformationSchema();
   await testRetryPreservesQuickbaseSettingsWhenOnlyLegacyColumnsAreMissing();
+  await testInvalidReportTabsAreDroppedBeforePersist();
   console.log('update_me integration tests passed');
 }
 
