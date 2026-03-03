@@ -316,53 +316,81 @@ module.exports = async (req, res) => {
       patch.qb_custom_columns = normalized;
     }
 
+    // === QUICKBASE SETTINGS PERSISTENCE FIX ===
     if (Object.prototype.hasOwnProperty.call(body, 'quickbase_settings')) {
-      let inputQuickbaseSettings = body.quickbase_settings;
-      if (typeof inputQuickbaseSettings === 'string') {
-        try {
-          inputQuickbaseSettings = inputQuickbaseSettings ? JSON.parse(inputQuickbaseSettings) : {};
-        } catch (_) {
-          return sendJson(res, 400, { error: 'invalid_payload', detail: 'quickbase_settings not valid JSON' });
+      try {
+        await ensureQuickbaseSettingsColumn();
+
+        const rawSettings = body.quickbase_settings;
+        let normalizedPayload;
+
+        // Handle string input (double-serialized JSON)
+        if (typeof rawSettings === 'string') {
+          try {
+            normalizedPayload = JSON.parse(rawSettings);
+          } catch (parseErr) {
+            console.error('[update_me] Failed to parse quickbase_settings string:', parseErr.message);
+            return sendJson(res, 400, { ok: false, error: 'invalid_quickbase_settings_format' });
+          }
+        } else {
+          normalizedPayload = rawSettings;
         }
-      }
 
-      if (!inputQuickbaseSettings || typeof inputQuickbaseSettings !== 'object' || Array.isArray(inputQuickbaseSettings)) {
-        return sendJson(res, 400, { error: 'invalid_payload', detail: 'quickbase_settings must be an object' });
-      }
-
-      if (Object.prototype.hasOwnProperty.call(inputQuickbaseSettings, 'filters')) {
-        if (!Array.isArray(inputQuickbaseSettings.filters)) {
-          return sendJson(res, 400, { error: 'invalid_payload', detail: 'quickbase_settings.filters must be an array' });
+        if (!normalizedPayload || typeof normalizedPayload !== 'object' || Array.isArray(normalizedPayload)) {
+          return sendJson(res, 400, { ok: false, error: 'invalid_quickbase_settings_format' });
         }
-        try {
-          const normalizedFilters = normalizeFilters(inputQuickbaseSettings.filters)
-            .map((filter) => ({
-              ...filter,
-              value: escapeQuickbaseValue(filter.value)
-            }));
-          inputQuickbaseSettings.filters = normalizedFilters;
-          inputQuickbaseSettings.qb_custom_filters = normalizedFilters;
-          console.info('[users.update] quickbase filter normalization applied', { count: normalizedFilters.length });
-        } catch (err) {
-          return sendJson(res, 400, { error: 'invalid_payload', detail: String(err && err.message ? err.message : err) });
+
+        if (Object.prototype.hasOwnProperty.call(normalizedPayload, 'filters')) {
+          if (!Array.isArray(normalizedPayload.filters)) {
+            return sendJson(res, 400, { error: 'invalid_payload', detail: 'quickbase_settings.filters must be an array' });
+          }
+          try {
+            const normalizedFilters = normalizeFilters(normalizedPayload.filters)
+              .map((filter) => ({
+                ...filter,
+                value: escapeQuickbaseValue(filter.value)
+              }));
+            normalizedPayload.filters = normalizedFilters;
+            normalizedPayload.qb_custom_filters = normalizedFilters;
+            console.info('[users.update] quickbase filter normalization applied', { count: normalizedFilters.length });
+          } catch (err) {
+            return sendJson(res, 400, { error: 'invalid_payload', detail: String(err && err.message ? err.message : err) });
+          }
         }
+
+        // Normalize the payload structure
+        const finalPayload = normalizeQuickbaseSettingsPayload(normalizedPayload);
+
+        // Deep clone to prevent reference issues
+        patch.quickbase_settings = deepClone(finalPayload);
+
+        // Also update legacy quickbase_config for backward compatibility
+        const legacyConfig = getLegacyQuickbaseConfigFromSettings(finalPayload);
+        patch.quickbase_config = deepClone(legacyConfig);
+
+        // Update individual legacy columns for queries
+        if (legacyConfig.reportLink) patch.qb_report_link = legacyConfig.reportLink;
+        if (legacyConfig.qid) patch.qb_qid = legacyConfig.qid;
+        if (legacyConfig.tableId) patch.qb_table_id = legacyConfig.tableId;
+        if (legacyConfig.realm) patch.qb_realm = legacyConfig.realm;
+        if (Array.isArray(legacyConfig.customColumns)) {
+          patch.qb_custom_columns = JSON.stringify(legacyConfig.customColumns);
+        }
+        if (Array.isArray(legacyConfig.customFilters)) {
+          patch.qb_custom_filters = JSON.stringify(legacyConfig.customFilters);
+        }
+        if (legacyConfig.filterMatch) patch.qb_filter_match = legacyConfig.filterMatch;
+        if (Array.isArray(legacyConfig.dashboardCounters)) {
+          patch.qb_dashboard_counters = JSON.stringify(legacyConfig.dashboardCounters);
+        }
+
+        console.log('[update_me] Saving quickbase_settings:', JSON.stringify(finalPayload).substring(0, 500));
+      } catch (settingsErr) {
+        console.error('[update_me] quickbase_settings processing error:', settingsErr);
+        return sendJson(res, 500, { ok: false, error: 'quickbase_settings_save_failed', message: settingsErr.message });
       }
-
-      const normalizedSettings = normalizeQuickbaseSettingsPayload(inputQuickbaseSettings);
-      const legacyConfig = getLegacyQuickbaseConfigFromSettings(normalizedSettings);
-      patch.quickbase_settings = normalizedSettings;
-      patch.quickbase_config = legacyConfig;
-
-      // Keep legacy columns in sync for backward compatibility.
-      patch.qb_report_link = legacyConfig.reportLink;
-      patch.qb_qid = legacyConfig.qid;
-      patch.qb_realm = legacyConfig.realm;
-      patch.qb_table_id = legacyConfig.tableId;
-      patch.qb_custom_columns = legacyConfig.customColumns;
-      patch.qb_custom_filters = legacyConfig.customFilters;
-      patch.qb_filter_match = legacyConfig.filterMatch;
-      patch.qb_dashboard_counters = legacyConfig.dashboardCounters;
     }
+    // === END QUICKBASE SETTINGS PERSISTENCE FIX ===
 
     if (Object.prototype.hasOwnProperty.call(body, 'quickbase_config')) {
       const normalizedConfig = normalizeQuickbaseConfig(parseQuickbaseConfigInput(body.quickbase_config));

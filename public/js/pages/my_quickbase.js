@@ -1164,7 +1164,7 @@
       };
     }
 
-    async function persistQuickbaseSettings() {
+    async function persistQuickbaseSettings(settingsPayload) {
       if (!me) return;
       scrapeModalSettingsIntoActiveTab();
       syncActiveTabFromState();
@@ -1180,7 +1180,14 @@
         filterMatch: activeTab.filterMatch,
         dashboardCounters: normalizeDashboardCounters(activeTab.dashboard_counters)
       };
-      const serializedQuickbaseSettings = serializeQuickbaseSettingsForSave(state.quickbaseSettings, state.activeTabIndex);
+
+      const serializedQuickbaseSettings = settingsPayload || serializeQuickbaseSettingsForSave(state.quickbaseSettings, state.activeTabIndex);
+
+      // Ensure payload is an object, not a string
+      const normalizedPayload = typeof serializedQuickbaseSettings === 'string'
+        ? JSON.parse(serializedQuickbaseSettings)
+        : serializedQuickbaseSettings;
+
       const payload = {
         qb_report_link: activeSettingsObject.reportLink,
         qb_qid: activeSettingsObject.qid,
@@ -1191,11 +1198,11 @@
         qb_filter_match: activeSettingsObject.filterMatch,
         qb_dashboard_counters: activeSettingsObject.dashboardCounters,
         quickbase_config: activeSettingsObject,
-        quickbase_settings: serializedQuickbaseSettings
+        quickbase_settings: normalizedPayload
       };
-      writeQuickbaseSettingsLocal(me.id, serializedQuickbaseSettings);
+      writeQuickbaseSettingsLocal(me.id, normalizedPayload);
       const authToken = window.CloudAuth && typeof CloudAuth.accessToken === 'function' ? CloudAuth.accessToken() : '';
-      const res = await fetch('/api/users/update_me', {
+      const response = await fetch('/api/users/update_me', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -1203,13 +1210,22 @@
         },
         body: JSON.stringify(payload)
       });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(out.message || out.error || 'Could not save Quickbase settings.');
-      console.log('[Cloud Sync] Multi-Tab Settings Saved');
-      if (window.Store && Store.setProfile) {
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        throw new Error(data.message || data.error || 'Failed to save settings');
+      }
+
+      // Update local cache after successful save
+      if (window.Store && Store.setProfileField) {
+        Store.setProfileField('quickbase_settings', normalizedPayload);
+      } else if (window.Store && Store.setProfile) {
         Store.setProfile(me.id, Object.assign({}, payload, { updatedAt: Date.now() }));
       }
-      writeQuickbaseSettingsLocal(me.id, serializedQuickbaseSettings);
+
+      console.log('[Cloud Sync] Multi-Tab Settings Saved');
+      writeQuickbaseSettingsLocal(me.id, normalizedPayload);
+      return data;
     }
 
     function queuePersistQuickbaseSettings() {
