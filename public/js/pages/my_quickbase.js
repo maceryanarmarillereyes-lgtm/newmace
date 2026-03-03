@@ -1149,8 +1149,8 @@
         qb_dashboard_counters: activeSettingsObject.dashboardCounters,
         quickbase_config: activeSettingsObject,
         quickbase_settings: {
-          activeTabIndex: state.activeTabIndex,
-          tabs: serializedQuickbaseSettings.tabs
+          activeTabIndex: state.activeTabIndex || 0,
+          tabs: (state.quickbaseSettings && state.quickbaseSettings.tabs) || []
         }
       };
       writeQuickbaseSettingsLocal(me.id, serializedQuickbaseSettings);
