@@ -35,6 +35,8 @@ assert.ok(hooks && typeof hooks.writeQuickbaseSettingsLocal === 'function', 'sho
 
 const key = hooks.getQuickbaseSettingsLocalKey('user-1');
 assert.strictEqual(key, 'mums_my_quickbase_settings:user-1');
+assert.strictEqual(hooks.getQuickbaseTabsLocalKey('user-1'), 'myQuickbase.tabs:user-1');
+assert.strictEqual(hooks.getQuickbaseTabSettingsLocalKey('user-1', 'tab-1'), 'myQuickbase.tab.user-1.tab-1.settings');
 
 const settings = {
   activeTabIndex: 0,
@@ -45,5 +47,8 @@ const loaded = hooks.readQuickbaseSettingsLocal('user-1');
 assert.ok(loaded && Array.isArray(loaded.tabs), 'loaded settings should include tabs');
 assert.strictEqual(loaded.tabs[0].qid, '-1');
 assert.strictEqual(loaded.tabs[0].tableId, 'abc123');
+
+const perTabSettingsKey = hooks.getQuickbaseTabSettingsLocalKey('user-1', loaded.tabs[0].id);
+assert.ok(sandbox.window.localStorage.getItem(perTabSettingsKey), 'tab settings should be stored under per-tab key');
 
 console.log('my_quickbase local settings helper test passed');
