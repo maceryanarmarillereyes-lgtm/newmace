@@ -92,7 +92,9 @@ async function getRoutes(env) {
     'tasks/monitoring': unwrapCjs(await import('../../server/routes/tasks/monitoring.js')),
     'tasks/reassign_pending': unwrapCjs(await import('../../server/routes/tasks/reassign_pending.js')),
 
-    'quickbase/monitoring': unwrapCjs(await import('../../server/routes/quickbase/monitoring.js'))
+    'quickbase/monitoring': unwrapCjs(await import('../../server/routes/quickbase/monitoring.js')),
+    'quickbase_tabs': unwrapCjs(await import('../../server/routes/quickbase_tabs.js')),
+    'quickbase_tabs/upsert': unwrapCjs(await import('../../server/routes/quickbase_tabs.js'))
   };
 
   return ROUTES;
@@ -184,6 +186,11 @@ function resolveRoute(routePath, routes) {
       re: /^member\/([^/]+)\/schedule$/,
       map: (m) => ({ memberId: decodeURIComponent(m[1] || '') }),
       handler: routes['member/schedule']
+    },
+    {
+      re: /^quickbase_tabs\/([^/]+)$/,
+      map: (m) => ({ tab_id: decodeURIComponent(m[1] || '') }),
+      handler: routes['quickbase_tabs']
     }
   ];
 
