@@ -194,11 +194,64 @@ async function testQuickbaseConfigDoesNotOverrideTabbedSettings() {
   assert.equal(calls[0].quickbase_settings.tabs[1].qid, '2');
 }
 
+async function testColumnProbeUsesMumsProfilesInsteadOfInformationSchema() {
+  const calls = [];
+  const serviceSelectCalls = [];
+  const route = loadRoute({
+    supabaseMocks: {
+      getUserFromJwt: async () => ({ id: 'u-5' }),
+      getProfileForUserId: async () => ({ user_id: 'u-5', role: 'MEMBER' }),
+      serviceSelect: async (tableOrPath, query) => {
+        serviceSelectCalls.push({ tableOrPath, query });
+        if (tableOrPath === 'mums_profiles' && String(query || '').includes('select=quickbase_settings')) {
+          return { ok: true, json: [{ quickbase_settings: null }] };
+        }
+        return { ok: false, json: [] };
+      },
+      serviceUpdate: async (_table, patch) => {
+        calls.push(patch);
+        return { ok: true, json: [patch] };
+      }
+    },
+    schemaMocks: {
+      ensureQuickbaseSettingsColumn: async (db) => {
+        const rows = await db.query();
+        return Array.isArray(rows) && rows.length > 0;
+      }
+    }
+  });
+
+  const req = {
+    method: 'PATCH',
+    headers: { authorization: 'Bearer token' },
+    body: {
+      quickbase_settings: {
+        qid: '11',
+        filters: [{ fid: '10', operator: 'Contains', value: 'Case' }]
+      }
+    }
+  };
+  const res = makeRes();
+
+  await route(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 1);
+  assert.ok(Object.prototype.hasOwnProperty.call(calls[0], 'quickbase_settings'));
+  assert.equal(typeof calls[0].quickbase_config, 'object');
+  assert.equal(
+    serviceSelectCalls.some((c) => c.tableOrPath === 'mums_profiles' && String(c.query || '').includes('select=quickbase_settings')),
+    true
+  );
+  assert.equal(serviceSelectCalls.some((c) => String(c.tableOrPath || '').includes('information_schema.columns')), false);
+}
+
 async function run() {
   await testNormalizeAndEscape();
   await testFallbackColumnMissing();
   await testQuickbaseSettingsTabsArePreserved();
   await testQuickbaseConfigDoesNotOverrideTabbedSettings();
+  await testColumnProbeUsesMumsProfilesInsteadOfInformationSchema();
   console.log('update_me integration tests passed');
 }
 

@@ -448,9 +448,13 @@ module.exports = async (req, res) => {
 
     const db = {
       async query() {
-        const query = 'select=column_name&table_name=eq.mums_profiles&column_name=eq.quickbase_settings&limit=1';
-        const schemaOut = await serviceSelect('/rest/v1/information_schema.columns?' + query);
-        return (schemaOut && schemaOut.ok && Array.isArray(schemaOut.json)) ? schemaOut.json : [];
+        // Detect column availability by selecting it directly from mums_profiles.
+        // information_schema is commonly blocked in hosted PostgREST/RLS setups,
+        // which caused false negatives and forced a quickbase_config fallback.
+        const probeOut = await serviceSelect('mums_profiles', 'select=quickbase_settings&limit=1');
+        return (probeOut && probeOut.ok)
+          ? [{ column_name: 'quickbase_settings' }]
+          : [];
       }
     };
 
