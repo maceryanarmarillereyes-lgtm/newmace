@@ -239,6 +239,27 @@ async function getProfileForUserId(userId) {
   return out.json && out.json[0] ? out.json[0] : null;
 }
 
+
+async function updateProfileQuickbaseSettings(userId, quickbaseSettings) {
+  const uid = String(userId || '').trim();
+  if (!uid) throw new Error('Missing userId');
+
+  const out = await serviceUpdate('mums_profiles', {
+    quickbase_settings: quickbaseSettings,
+    updated_at: new Date().toISOString()
+  }, {
+    user_id: `eq.${uid}`
+  });
+
+  if (!out.ok) {
+    console.error('[updateProfileQuickbaseSettings] Error:', out.json || out.text);
+    throw new Error((out.json && out.json.message) || out.text || 'quickbase_settings_update_failed');
+  }
+
+  const rows = Array.isArray(out.json) ? out.json : [];
+  return rows[0] || null;
+}
+
 module.exports = {
   serviceFetch,
   serviceHeaders,
@@ -247,5 +268,6 @@ module.exports = {
   serviceInsert,
   serviceUpdate,
   getUserFromJwt,
-  getProfileForUserId
+  getProfileForUserId,
+  updateProfileQuickbaseSettings
 };
