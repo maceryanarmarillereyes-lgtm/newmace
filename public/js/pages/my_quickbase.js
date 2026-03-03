@@ -16,18 +16,6 @@
       .replace(/'/g, '&#039;');
   }
 
-  function deepClone(obj) {
-    if (obj === null || typeof obj !== 'object') return obj;
-    if (Array.isArray(obj)) return obj.map((item) => deepClone(item));
-    const cloned = {};
-    for (const key in obj) {
-      if (Object.prototype.hasOwnProperty.call(obj, key)) {
-        cloned[key] = deepClone(obj[key]);
-      }
-    }
-    return cloned;
-  }
-
   const ENABLE_QID_URL_MATCH_VALIDATION = true;
 
   function parseQuickbaseReportUrl(url) {
@@ -236,6 +224,14 @@
     return `qb-tab-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
   }
 
+  function deepClone(obj) {
+    try {
+      return JSON.parse(JSON.stringify(obj));
+    } catch (_) {
+      return obj;
+    }
+  }
+
   function createDefaultSettings(source, defaults) {
     const src = source && typeof source === 'object' ? source : {};
     const base = defaults && typeof defaults === 'object' ? defaults : {};
@@ -243,9 +239,9 @@
     const parsed = parseQuickbaseLink(reportLink);
     return {
       reportLink,
-      qid: String(parsed.qid || src.qid || src.qb_qid || base.qid || '').trim(),
-      tableId: String(parsed.tableId || src.tableId || src.qb_table_id || base.tableId || '').trim(),
-      realm: String(src.realm || src.qb_realm || base.realm || parsed.realm || '').trim(),
+      qid: String(src.qid || src.qb_qid || parsed.qid || base.qid || '').trim(),
+      tableId: String(src.tableId || src.qb_table_id || parsed.tableId || base.tableId || '').trim(),
+      realm: String(src.realm || src.qb_realm || parsed.realm || base.realm || '').trim(),
       dashboard_counters: deepClone(normalizeDashboardCounters(src.dashboard_counters || src.dashboardCounters || base.dashboard_counters || [])),
       customColumns: deepClone(Array.isArray(src.customColumns || src.qb_custom_columns || base.customColumns)
         ? (src.customColumns || src.qb_custom_columns || base.customColumns).map((v) => String(v))
@@ -265,7 +261,22 @@
   }
 
   function buildDefaultTab(source, defaults) {
-    return Object.assign({}, createTabMeta(source, defaults), createDefaultSettings(source, defaults));
+    const src = source && typeof source === 'object' ? deepClone(source) : {};
+    const base = defaults && typeof defaults === 'object' ? deepClone(defaults) : {};
+    const reportLink = String(src.reportLink || src.qb_report_link || '').trim();
+    const parsed = parseQuickbaseLink(reportLink);
+    return {
+      id: String(src.id || generateUUID()),
+      tabName: String(src.tabName || src.name || base.tabName || 'New Report').trim() || 'New Report',
+      reportLink,
+      qid: String(src.qid || src.qb_qid || parsed.qid || '').trim(),
+      tableId: String(src.tableId || src.qb_table_id || parsed.tableId || '').trim(),
+      realm: String(src.realm || src.qb_realm || parsed.realm || '').trim(),
+      dashboard_counters: deepClone(normalizeDashboardCounters(src.dashboard_counters || src.dashboardCounters || [])),
+      customColumns: deepClone(Array.isArray(src.customColumns || src.qb_custom_columns) ? (src.customColumns || src.qb_custom_columns).map((v) => String(v)) : []),
+      customFilters: deepClone(normalizeFilters(src.customFilters || src.qb_custom_filters || [])),
+      filterMatch: normalizeFilterMatch(src.filterMatch || src.qb_filter_match || 'ALL')
+    };
   }
 
   function normalizeQuickbaseSettingsWithTabs(rawSettings, fallbackConfig) {
@@ -687,7 +698,8 @@
       currentPage: 1,
       pageSize: 100,
       qbCache: {},
-      settingsModalView: 'report-config'
+      settingsModalView: 'report-config',
+      settingsEditingTabId: ''
     };
 
     function syncTabManagerFromState(tabId) {
@@ -826,8 +838,8 @@
       const parsed = parseQuickbaseLink(activeTab.reportLink);
       state.tabName = String(activeTab.tabName || 'Main Report').trim() || 'Main Report';
       state.reportLink = String(activeTab.reportLink || '').trim();
-      state.qid = String(parsed.qid || activeTab.qid || '').trim();
-      state.tableId = String(parsed.tableId || activeTab.tableId || '').trim();
+      state.qid = String(activeTab.qid || parsed.qid || '').trim();
+      state.tableId = String(activeTab.tableId || parsed.tableId || '').trim();
       state.realm = String(activeTab.realm || parsed.realm || '').trim();
       state.customColumns = Array.isArray(activeTab.customColumns) ? activeTab.customColumns.map((v) => String(v)) : [];
       state.customFilters = normalizeFilters(activeTab.customFilters);
@@ -1736,7 +1748,8 @@
     }
 
     function openSettings() {
-      const currentTab = getActiveTab() || {};
+      const currentTab = deepClone(getActiveTab() || {});
+      state.settingsEditingTabId = String(currentTab.id || getActiveTabId() || '').trim();
       state.modalDraft = {
         tabName: deepClone(currentTab.tabName) || '',
         reportLink: deepClone(currentTab.reportLink) || '',
@@ -1762,6 +1775,7 @@
 
     function closeSettings() {
       if (state.isSaving) return;
+      state.settingsEditingTabId = '';
       cleanupModalBindings();
       if (window.UI && UI.closeModal) UI.closeModal('qbSettingsModal');
     }
@@ -1801,7 +1815,7 @@
       if (target.id === 'qbAddTabBtn') {
         captureSettingsDraftFromInputs();
         const managedTabId = tabManager ? tabManager.createTab({ tabName: 'New Report' }) : '';
-        const freshTab = {
+        const newTab = deepClone({
           id: managedTabId || generateUUID(),
           tabName: 'New Report',
           reportLink: '',
@@ -1812,8 +1826,7 @@
           customColumns: [],
           customFilters: [],
           filterMatch: 'ALL'
-        };
-        const newTab = buildDefaultTab(freshTab, {});
+        });
         const newTabId = String(newTab.id || '').trim();
         state.quickbaseSettings.tabs.push(deepClone(newTab));
         state.quickbaseSettings.settingsByTabId = Object.assign({}, state.quickbaseSettings.settingsByTabId || {}, {
@@ -1854,7 +1867,8 @@
       if (!Number.isFinite(idx) || idx === state.activeTabIndex) return;
       captureSettingsDraftFromInputs();
       state.activeTabIndex = idx;
-      const currentTab = getActiveTab() || {};
+      const currentTab = deepClone(getActiveTab() || {});
+      state.settingsEditingTabId = String(currentTab.id || getActiveTabId() || '').trim();
       state.modalDraft = {
         tabName: deepClone(currentTab.tabName) || '',
         reportLink: deepClone(currentTab.reportLink) || '',
@@ -1949,7 +1963,7 @@
         const validation = validateQuickbaseTabSettings(getActiveTab());
         if (!validation.ok) throw new Error(validation.message);
         const activeTabId = String(getActiveTabId() || '').trim();
-        const currentTabId = activeTabId;
+        const targetTabId = String(state.settingsEditingTabId || activeTabId || '').trim();
         const pendingTabSettings = {
           tabName: deepClone(state.tabName) || '',
           reportLink: deepClone(state.reportLink) || '',
@@ -1961,23 +1975,31 @@
           filterMatch: state.filterMatch || 'ALL',
           dashboard_counters: deepClone(state.dashboardCounters || [])
         };
-        const tabIndex = state.quickbaseSettings.tabs.findIndex((t) => t.id === currentTabId);
+        const tabIndex = state.quickbaseSettings.tabs.findIndex((t) => String(t && t.id || '').trim() === targetTabId);
         if (tabIndex !== -1) {
           state.quickbaseSettings.tabs[tabIndex] = deepClone({
             ...state.quickbaseSettings.tabs[tabIndex],
-            ...pendingTabSettings,
-            id: currentTabId
+            tabName: pendingTabSettings.tabName,
+            reportLink: pendingTabSettings.reportLink,
+            qid: pendingTabSettings.qid,
+            tableId: pendingTabSettings.tableId,
+            realm: pendingTabSettings.realm,
+            customColumns: deepClone(pendingTabSettings.customColumns || []),
+            customFilters: deepClone(pendingTabSettings.customFilters || []),
+            filterMatch: pendingTabSettings.filterMatch || 'ALL',
+            dashboard_counters: deepClone(pendingTabSettings.dashboard_counters || []),
+            id: targetTabId
           });
         }
-        if (tabManager && activeTabId) {
-          tabManager.updateTabLocal(activeTabId, {
+        if (tabManager && targetTabId) {
+          tabManager.updateTabLocal(targetTabId, {
             tabName: String(state.tabName || 'Main Report').trim() || 'Main Report',
             reportLink: String(state.reportLink || '').trim(),
             baseReportQid: String(state.qid || '').trim(),
             qid: String(state.qid || '').trim(),
             tableId: String(state.tableId || '').trim()
           });
-          await tabManager.saveTab(activeTabId);
+          await tabManager.saveTab(targetTabId);
         }
         await persistQuickbaseSettings();
         renderTabBar();
