@@ -52,6 +52,17 @@ function normalizeQuickbaseOperator(value) {
 }
 
 
+
+function deepClone(obj) {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map((item) => deepClone(item));
+  const cloned = {};
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) cloned[key] = deepClone(obj[key]);
+  }
+  return cloned;
+}
+
 function parseQuickbaseConfigInput(raw) {
   if (!raw) return {};
   if (typeof raw === 'object') return raw;
@@ -140,10 +151,10 @@ function normalizeQuickbaseSettingsPayload(raw) {
         reportLink: normalizedTab.reportLink,
         qid: normalizedTab.qid,
         tableId: normalizedTab.tableId,
-        customColumns: normalizedTab.customColumns,
-        customFilters: normalizedTab.customFilters,
+        customColumns: deepClone(normalizedTab.customColumns || []),
+        customFilters: deepClone(normalizedTab.customFilters || []),
         filterMatch: normalizedTab.filterMatch,
-        dashboard_counters: normalizedTab.dashboardCounters
+        dashboard_counters: deepClone(normalizedTab.dashboardCounters || [])
       };
     })
     .slice(0, 25);
