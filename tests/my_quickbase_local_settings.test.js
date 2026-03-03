@@ -51,4 +51,16 @@ assert.strictEqual(loaded.tabs[0].tableId, 'abc123');
 const perTabSettingsKey = hooks.getQuickbaseTabSettingsLocalKey('user-1', loaded.tabs[0].id);
 assert.ok(sandbox.window.localStorage.getItem(perTabSettingsKey), 'tab settings should be stored under per-tab key');
 
+
+const staleSettings = {
+  activeTabIndex: 0,
+  tabs: [{ tabName: 'Main Report', qid: '1000288', tableId: 'bpmvztr5', reportLink: '' }]
+};
+hooks.writeQuickbaseSettingsLocal('user-2', staleSettings);
+const loadedStale = hooks.readQuickbaseSettingsLocal('user-2');
+assert.ok(loadedStale && loadedStale.tabs && loadedStale.tabs[0], 'loaded stale settings should include first tab');
+assert.strictEqual(loadedStale.tabs[0].reportLink, '');
+assert.strictEqual(loadedStale.tabs[0].qid, '', 'qid should be cleared when report link is empty');
+assert.strictEqual(loadedStale.tabs[0].tableId, '', 'tableId should be cleared when report link is empty');
+
 console.log('my_quickbase local settings helper test passed');

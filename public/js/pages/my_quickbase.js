@@ -237,11 +237,12 @@
     const base = defaults && typeof defaults === 'object' ? defaults : {};
     const reportLink = String(src.reportLink || src.qb_report_link || base.reportLink || '').trim();
     const parsed = parseQuickbaseLink(reportLink);
+    const hasReportLink = !!reportLink;
     return {
       reportLink,
-      qid: String(src.qid || src.qb_qid || parsed.qid || base.qid || '').trim(),
-      tableId: String(src.tableId || src.qb_table_id || parsed.tableId || base.tableId || '').trim(),
-      realm: String(src.realm || src.qb_realm || parsed.realm || base.realm || '').trim(),
+      qid: hasReportLink ? String(src.qid || src.qb_qid || parsed.qid || base.qid || '').trim() : '',
+      tableId: hasReportLink ? String(src.tableId || src.qb_table_id || parsed.tableId || base.tableId || '').trim() : '',
+      realm: hasReportLink ? String(src.realm || src.qb_realm || parsed.realm || base.realm || '').trim() : '',
       dashboard_counters: deepClone(normalizeDashboardCounters(src.dashboard_counters || src.dashboardCounters || base.dashboard_counters || [])),
       customColumns: deepClone(Array.isArray(src.customColumns || src.qb_custom_columns || base.customColumns)
         ? (src.customColumns || src.qb_custom_columns || base.customColumns).map((v) => String(v))
@@ -265,13 +266,14 @@
     const base = defaults && typeof defaults === 'object' ? deepClone(defaults) : {};
     const reportLink = String(src.reportLink || src.qb_report_link || '').trim();
     const parsed = parseQuickbaseLink(reportLink);
+    const hasReportLink = !!reportLink;
     return {
       id: String(src.id || generateUUID()),
       tabName: String(src.tabName || src.name || base.tabName || 'New Report').trim() || 'New Report',
       reportLink,
-      qid: String(src.qid || src.qb_qid || parsed.qid || '').trim(),
-      tableId: String(src.tableId || src.qb_table_id || parsed.tableId || '').trim(),
-      realm: String(src.realm || src.qb_realm || parsed.realm || '').trim(),
+      qid: hasReportLink ? String(src.qid || src.qb_qid || parsed.qid || '').trim() : '',
+      tableId: hasReportLink ? String(src.tableId || src.qb_table_id || parsed.tableId || '').trim() : '',
+      realm: hasReportLink ? String(src.realm || src.qb_realm || parsed.realm || '').trim() : '',
       dashboard_counters: deepClone(normalizeDashboardCounters(src.dashboard_counters || src.dashboardCounters || [])),
       customColumns: deepClone(Array.isArray(src.customColumns || src.qb_custom_columns) ? (src.customColumns || src.qb_custom_columns).map((v) => String(v)) : []),
       customFilters: deepClone(normalizeFilters(src.customFilters || src.qb_custom_filters || [])),
@@ -926,22 +928,28 @@
       const parsed = parseQuickbaseReportUrl(reportLink);
       const parsedLink = parseQuickbaseLink(reportLink);
       const updates = {};
-      if (parsed && parsed.qid) {
-        updates.qid = parsed.qid;
-      }
-      if (parsed && parsed.tableId) {
-        updates.tableId = parsed.tableId;
-      }
-      if (parsedLink && parsedLink.realm) {
-        updates.realm = parsedLink.realm;
+      if (!reportLink) {
+        updates.qid = '';
+        updates.tableId = '';
+        updates.realm = '';
+      } else {
+        if (parsed && parsed.qid) {
+          updates.qid = parsed.qid;
+        }
+        if (parsed && parsed.tableId) {
+          updates.tableId = parsed.tableId;
+        }
+        if (parsedLink && parsedLink.realm) {
+          updates.realm = parsedLink.realm;
+        }
       }
       if (Object.keys(updates).length) updateTabSettings(safeTabId, updates);
 
       if (safeTabId === getActiveTabId()) {
         state.reportLink = reportLink;
-        if (updates.qid) state.qid = String(updates.qid || '').trim();
-        if (updates.tableId) state.tableId = String(updates.tableId || '').trim();
-        if (updates.realm) state.realm = String(updates.realm || '').trim();
+        if (Object.prototype.hasOwnProperty.call(updates, 'qid')) state.qid = String(updates.qid || '').trim();
+        if (Object.prototype.hasOwnProperty.call(updates, 'tableId')) state.tableId = String(updates.tableId || '').trim();
+        if (Object.prototype.hasOwnProperty.call(updates, 'realm')) state.realm = String(updates.realm || '').trim();
         syncSettingsInputsFromState();
       }
     }
@@ -999,9 +1007,14 @@
 
       const reportLink = String(reportLinkEl && reportLinkEl.value || state.reportLink || '').trim();
       const parsed = parseQuickbaseLink(reportLink);
-      const resolvedQid = String(tabBaseQidEl && tabBaseQidEl.value || qidEl && qidEl.value || parsed.qid || state.qid || '').trim();
-      const resolvedTableId = String(tableIdEl && tableIdEl.value || parsed.tableId || state.tableId || '').trim();
-      const resolvedRealm = String(parsed.realm || state.realm || '').trim();
+      const hasReportLink = !!reportLink;
+      const resolvedQid = hasReportLink
+        ? String(tabBaseQidEl && tabBaseQidEl.value || qidEl && qidEl.value || parsed.qid || state.qid || '').trim()
+        : '';
+      const resolvedTableId = hasReportLink
+        ? String(tableIdEl && tableIdEl.value || parsed.tableId || state.tableId || '').trim()
+        : '';
+      const resolvedRealm = hasReportLink ? String(parsed.realm || state.realm || '').trim() : '';
 
       state.tabName = String(tabNameEl && tabNameEl.value || state.tabName || 'Main Report').trim() || 'Main Report';
       state.reportLink = reportLink;
@@ -1062,13 +1075,14 @@
       const qidInput = String((root.querySelector('#qbQid') || {}).value || '').trim();
       const tableIdInput = String((root.querySelector('#qbTableId') || {}).value || '').trim();
       const parsed = parseQuickbaseLink(reportLink);
+      const hasReportLink = !!reportLink;
       const scrapedCounters = normalizeDashboardCounters(scrapeModalCounterInputs());
 
       activeTab.tabName = tabNameInput || activeTab.tabName || 'Main Report';
       activeTab.reportLink = reportLink;
-      activeTab.qid = tabBaseQidInput || qidInput || parsed.qid || '';
-      activeTab.tableId = tableIdInput || parsed.tableId || '';
-      activeTab.realm = parsed.realm || '';
+      activeTab.qid = hasReportLink ? (tabBaseQidInput || qidInput || parsed.qid || '') : '';
+      activeTab.tableId = hasReportLink ? (tableIdInput || parsed.tableId || '') : '';
+      activeTab.realm = hasReportLink ? (parsed.realm || '') : '';
       activeTab.dashboard_counters = scrapedCounters;
 
       state.tabName = activeTab.tabName;
