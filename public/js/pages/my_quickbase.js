@@ -862,6 +862,9 @@
       const qidEl = root.querySelector('#qbQid');
       if (qidEl) qidEl.value = String(state.qid || '');
 
+      const tabBaseQidEl = root.querySelector('#qbTabBaseQid');
+      if (tabBaseQidEl) tabBaseQidEl.value = String(state.qid || '');
+
       const tableIdEl = root.querySelector('#qbTableId');
       if (tableIdEl) tableIdEl.value = String(state.tableId || '');
 
@@ -1886,10 +1889,12 @@
         if (activeTabId) {
           const cloned = tabManager.getTab(activeTabId);
           const settings = deepClone(cloned.settings || {}) || {};
-          state.tabName = String(settings.tabName || state.tabName || 'Main Report').trim() || 'Main Report';
-          state.reportLink = String(settings.reportLink || state.reportLink || '').trim();
-          state.qid = String(settings.qid || state.qid || '').trim();
-          state.tableId = String(settings.tableId || state.tableId || '').trim();
+          const currentTabSnapshot = getActiveTab();
+          state.tabName = String(settings.tabName || currentTabSnapshot.tabName || 'Main Report').trim() || 'Main Report';
+          state.reportLink = String(settings.reportLink || currentTabSnapshot.reportLink || '').trim();
+          state.qid = String(settings.qid || currentTabSnapshot.qid || '').trim();
+          state.tableId = String(settings.tableId || currentTabSnapshot.tableId || '').trim();
+          state.realm = String(settings.realm || currentTabSnapshot.realm || '').trim();
         }
       }
       syncSettingsInputsFromState();
