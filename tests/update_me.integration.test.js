@@ -246,12 +246,74 @@ async function testColumnProbeUsesMumsProfilesInsteadOfInformationSchema() {
   assert.equal(serviceSelectCalls.some((c) => String(c.tableOrPath || '').includes('information_schema.columns')), false);
 }
 
+async function testRetryPreservesQuickbaseSettingsWhenOnlyLegacyColumnsAreMissing() {
+  const calls = [];
+  const route = loadRoute({
+    supabaseMocks: {
+      getUserFromJwt: async () => ({ id: 'u-6' }),
+      getProfileForUserId: async () => ({ user_id: 'u-6', role: 'MEMBER' }),
+      serviceSelect: async () => ({ ok: true, json: [{ column_name: 'quickbase_settings' }] }),
+      serviceUpdate: async (_table, patch) => {
+        calls.push(patch);
+        if (calls.length === 1) {
+          return {
+            ok: false,
+            json: {
+              message: 'column "qb_custom_columns" does not exist'
+            }
+          };
+        }
+        return { ok: true, json: [patch] };
+      }
+    },
+    schemaMocks: {
+      ensureQuickbaseSettingsColumn: async () => true
+    }
+  });
+
+  const req = {
+    method: 'PATCH',
+    headers: { authorization: 'Bearer token' },
+    body: {
+      quickbase_settings: {
+        activeTabIndex: 0,
+        tabs: [
+          {
+            id: 'tab-main',
+            tabName: 'Main Report',
+            reportLink: 'https://sample.quickbase.com/db/aaa?a=q&qid=11',
+            qid: '11',
+            tableId: 'aaa',
+            customColumns: ['6', '7'],
+            customFilters: [{ fieldId: '6', operator: 'EX', value: 'OPEN' }],
+            dashboard_counters: [{ fieldId: '6', operator: 'EX', value: 'OPEN', label: 'Open' }]
+          }
+        ]
+      }
+    }
+  };
+  const res = makeRes();
+
+  await route(req, res);
+  const payload = JSON.parse(res.body);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 2);
+  assert.equal(Array.isArray(calls[0].qb_custom_columns), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(calls[1], 'qb_custom_columns'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(calls[1], 'quickbase_settings'), true);
+  assert.equal(Array.isArray(calls[1].quickbase_settings.tabs), true);
+  assert.equal(calls[1].quickbase_settings.tabs[0].qid, '11');
+  assert.equal(payload.ok, true);
+}
+
 async function run() {
   await testNormalizeAndEscape();
   await testFallbackColumnMissing();
   await testQuickbaseSettingsTabsArePreserved();
   await testQuickbaseConfigDoesNotOverrideTabbedSettings();
   await testColumnProbeUsesMumsProfilesInsteadOfInformationSchema();
+  await testRetryPreservesQuickbaseSettingsWhenOnlyLegacyColumnsAreMissing();
   console.log('update_me integration tests passed');
 }
 
