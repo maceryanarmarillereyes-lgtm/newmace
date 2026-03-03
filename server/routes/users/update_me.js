@@ -231,6 +231,7 @@ module.exports = async (req, res) => {
     if (!authed) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
     const body = await readBody(req);
+    const { quickbase_settings } = body || {};
     req.user = req.user || { id: authed.id };
     const patch = {};
 
@@ -500,6 +501,7 @@ module.exports = async (req, res) => {
 
     const supabase = createServiceSupabaseAdapter();
     try {
+      console.log('[Update Me Route] Received quickbase_settings:', quickbase_settings);
       out = await supabase.from('profiles').update(updates).eq('id', req.user.id);
       if (out && out.error) {
         console.error('Supabase Update Error:', out.error);
