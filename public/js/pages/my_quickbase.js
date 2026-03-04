@@ -1440,7 +1440,12 @@
     }
 
     function filterRowTemplate(f, idx) {
-      const fieldOptions = state.allAvailableFields.map((x) => `<option value="${esc(String(x.id))}" ${String(f.fieldId) === String(x.id) ? 'selected' : ''}>${esc(x.label)} (#${esc(String(x.id))})</option>`).join('');
+      const knownFields = Array.isArray(state.allAvailableFields) ? state.allAvailableFields.slice() : [];
+      const selectedFieldId = String(f.fieldId || '').trim();
+      if (selectedFieldId && !knownFields.some((x) => String(x && x.id) === selectedFieldId)) {
+        knownFields.unshift({ id: selectedFieldId, label: `Field #${selectedFieldId}` });
+      }
+      const fieldOptions = knownFields.map((x) => `<option value="${esc(String(x.id))}" ${String(f.fieldId) === String(x.id) ? 'selected' : ''}>${esc(x.label)} (#${esc(String(x.id))})</option>`).join('');
       const activeValue = String(f.value || '').trim();
       return `
         <div class="row" data-filter-idx="${idx}" style="gap:8px;align-items:center;flex-wrap:wrap;">
