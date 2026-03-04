@@ -203,21 +203,53 @@ module.exports = async (req, res) => {
           ? profileQuickbaseConfig.qb_custom_filters
           : []);
 
-    let qid = String(req?.query?.qid || req?.query?.qId || '').trim();
-    let tableId = String(req?.query?.tableId || req?.query?.table_id || '').trim();
-    let realm = String(req?.query?.realm || '').trim();
+    // Accept tab-specific overrides from request (GET query or POST body)
+    const reqBody = req.body && typeof req.body === 'object' ? req.body : {};
+    const reqTabId = String(req?.query?.tab_id || reqBody.tab_id || '').trim();
+    const reqReportLink = String(req?.query?.reportLink || reqBody.reportLink || '').trim();
+    let qid = String(req?.query?.qid || req?.query?.qId || reqBody.qid || '').trim();
+    let tableId = String(req?.query?.tableId || req?.query?.table_id || reqBody.tableId || '').trim();
+    let realm = String(req?.query?.realm || reqBody.realm || '').trim();
 
-    if (!qid || !tableId || !realm) {
-      qid = qid || profileQid;
-      tableId = tableId || profileTableId;
-      realm = realm || profileRealm;
+    // Tab-specific custom filters override profile filters
+    let reqCustomFilters = null;
+    try {
+      reqCustomFilters = Array.isArray(reqBody.customFilters)
+        ? reqBody.customFilters
+        : (typeof reqBody.customFilters === 'string' ? JSON.parse(reqBody.customFilters || '[]') : null);
+    } catch (_) {
+      reqCustomFilters = null;
+    }
+    const reqFilterMatch = String(reqBody.filterMatch || '').trim().toUpperCase();
+
+    // Fall back to profile only if request has nothing
+    if (!qid) qid = profileQid;
+    if (!tableId) tableId = profileTableId;
+    if (!realm) realm = profileRealm;
+
+    // Use tab-specific filters if provided, otherwise profile filters
+    const effectiveCustomFilters = reqCustomFilters !== null ? reqCustomFilters : profileCustomFilters;
+    const effectiveFilterMatch = reqFilterMatch === 'ANY' || reqFilterMatch === 'ALL'
+      ? reqFilterMatch
+      : profileFilterMatch;
+
+    let reqCustomColumns = null;
+    try {
+      const rawReqColumns = reqBody.customColumns || req?.query?.customColumns || '';
+      reqCustomColumns = Array.isArray(rawReqColumns)
+        ? rawReqColumns
+        : (typeof rawReqColumns === 'string' && rawReqColumns
+          ? JSON.parse(decodeURIComponent(rawReqColumns) || '[]')
+          : null);
+    } catch (_) {
+      reqCustomColumns = null;
     }
 
     if (!qid || !tableId || !realm) {
       return sendJson(res, 400, {
         ok: false,
         warning: 'quickbase_credentials_missing',
-        message: 'Missing Quickbase configuration. Please configure your QID in My Quickbase Settings.'
+        message: 'No Report Link configured for this tab. Please set a Report Link in My Quickbase Settings.'
       });
     }
 
@@ -290,7 +322,9 @@ module.exports = async (req, res) => {
 
     const hasPersonalQuickbaseQuery = !!String(qid || '').trim();
     const profileCustomColumns = normalizeProfileColumns(profileQuickbaseConfig.customColumns || profileQuickbaseConfig.qb_custom_columns || profile.qb_custom_columns);
-    const mappedProfileColumns = profileCustomColumns
+    const requestCustomColumns = normalizeProfileColumns(reqCustomColumns);
+    const effectiveCustomColumns = requestCustomColumns.length ? requestCustomColumns : profileCustomColumns;
+    const mappedProfileColumns = effectiveCustomColumns
       .map((id) => {
         const found = allAvailableFields.find((f) => Number(f.id) === Number(id));
         return found ? { id: Number(found.id), label: found.label } : null;
@@ -349,21 +383,24 @@ module.exports = async (req, res) => {
         whereClauses.push(`{${statusFieldId}.XEX.'${encodeQuickbaseLiteral(status)}'}`);
       });
     }
-
-    let requestCustomFilters = [];
-    try {
-      const rawFilters = req?.query?.customFilters || req?.query?.filters || '';
-      if (rawFilters) {
+    const queryCustomFilters = (() => {
+      try {
+        const rawFilters = req?.query?.customFilters || req?.query?.filters || '';
+        if (!rawFilters) return null;
         const parsed = typeof rawFilters === 'string' ? JSON.parse(decodeURIComponent(rawFilters)) : rawFilters;
-        if (Array.isArray(parsed)) requestCustomFilters = parsed;
+        return Array.isArray(parsed) ? parsed : null;
+      } catch (_) {
+        return null;
       }
-    } catch (_) {}
+    })();
+    const queryFilterMatch = normalizeFilterMatch(req?.query?.filterMatch || 'ALL');
 
-    const requestFilterMatch = normalizeFilterMatch(req?.query?.filterMatch || 'ALL');
-    const activeFilters = requestCustomFilters.length > 0 ? requestCustomFilters : profileCustomFilters;
-    const activeFilterMatch = requestCustomFilters.length > 0
-      ? requestFilterMatch
-      : profileFilterMatch;
+    const activeFilters = queryCustomFilters !== null
+      ? queryCustomFilters
+      : (Array.isArray(effectiveCustomFilters) ? effectiveCustomFilters : []);
+    const activeFilterMatch = queryCustomFilters !== null
+      ? queryFilterMatch
+      : normalizeFilterMatch(effectiveFilterMatch);
 
     const profileFilterClauses = buildProfileFilterClauses(activeFilters);
 
@@ -501,6 +538,8 @@ module.exports = async (req, res) => {
         },
         appliedWhere: finalWhere || null,
         appliedDynamicFilters: {
+          tab_id: reqTabId || null,
+          reportLink: reqReportLink || null,
           assignedTo: assignedToFilter,
           caseStatus: caseStatusFilter,
           type: typeFilter,
