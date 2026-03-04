@@ -578,7 +578,7 @@
       return `<tr><td class="qb-case-id">${esc(String(r && r.qbRecordId || 'N/A'))}</td>${cells}</tr>`;
     }).join('');
 
-    host.innerHTML = `<div class="qb-table-inner"><table class="qb-data-table"><thead><tr><th>Case #</th>${headers}</tr></thead><tbody>${body}</tbody></table></div>`;
+    host.innerHTML = `<div class="qb-table-inner" style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 320px);min-height:200px;width:100%;"><table class="qb-data-table"><thead><tr><th>Case #</th>${headers}</tr></thead><tbody>${body}</tbody></table></div>`;
     if (rows.length > pageSize && typeof opts.onPageChange === 'function') {
       const pager = document.createElement('div');
       pager.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px;';
@@ -752,6 +752,7 @@
       currentPage: 1,
       pageSize: 100,
       qbCache: {},
+      _tabDataCache: {},
       settingsModalView: 'report-config',
       settingsEditingTabId: ''
     };
@@ -781,13 +782,18 @@
     const QUICKBASE_CACHE_TTL_MS = 2 * 60 * 1000;
     const QUICKBASE_BACKGROUND_LIMIT = 500;
 
-    function getQuickbaseCacheKey({ tableId, qid, filters, filterMatch }) {
-      const hashBase = JSON.stringify({ tableId, qid, filters, filterMatch });
+    function getQuickbaseCacheKey({ tabId, tableId, qid, filters, filterMatch }) {
+      const hashBase = JSON.stringify({ tabId, tableId, qid, filters, filterMatch });
       return `qb_cache:${hashBase}`;
     }
 
-    function readQuickbaseCache(cacheKey) {
+    function readQuickbaseCache(cacheKey, tabId) {
       const now = Date.now();
+      const safeTabId = String(tabId || '').trim();
+      if (safeTabId && state._tabDataCache && state._tabDataCache[safeTabId]) {
+        const tabEntry = state._tabDataCache[safeTabId][cacheKey];
+        if (tabEntry && (now - tabEntry.savedAt) < QUICKBASE_CACHE_TTL_MS) return tabEntry.payload;
+      }
       const memoryEntry = state.qbCache[cacheKey];
       if (memoryEntry && (now - memoryEntry.savedAt) < QUICKBASE_CACHE_TTL_MS) return memoryEntry.payload;
       try {
@@ -805,9 +811,17 @@
       }
     }
 
-    function writeQuickbaseCache(cacheKey, payload) {
+    function writeQuickbaseCache(cacheKey, payload, tabId) {
       const entry = { savedAt: Date.now(), payload };
       state.qbCache[cacheKey] = entry;
+      const safeTabId = String(tabId || '').trim();
+      if (safeTabId) {
+        if (!state._tabDataCache || typeof state._tabDataCache !== 'object') state._tabDataCache = {};
+        if (!state._tabDataCache[safeTabId] || typeof state._tabDataCache[safeTabId] !== 'object') {
+          state._tabDataCache[safeTabId] = {};
+        }
+        state._tabDataCache[safeTabId][cacheKey] = entry;
+      }
       try {
         sessionStorage.setItem(cacheKey, JSON.stringify(entry));
       } catch (_) {}
@@ -1681,21 +1695,25 @@
           if (!window.QuickbaseAdapter || typeof window.QuickbaseAdapter.fetchMonitoringData !== 'function') {
             throw new Error('Quickbase adapter unavailable');
           }
-          const shouldApplyFilters = shouldApplyServerFilters(opts);
-          const mergedFilters = shouldApplyFilters ? normalizeFilters(state.customFilters) : [];
           const activeTab = getActiveTab();
+          const activeTabId = String(activeTab && activeTab.id || getActiveTabId() || '').trim();
+          const shouldApplyFilters = shouldApplyServerFilters(opts);
+          const tabCustomFilters = Array.isArray(activeTab && activeTab.customFilters) ? normalizeFilters(activeTab.customFilters) : [];
+          const tabFilterMatch = normalizeFilterMatch(activeTab && activeTab.filterMatch);
+          const mergedFilters = shouldApplyFilters ? tabCustomFilters : [];
           const activeQid = String(activeTab.qid || state.qid || '').trim();
           const hasExplicitLoadMore = Number(opts.offset || 0) >= 100;
           const hasActiveSearch = !!String(getActiveSearchTerm() || '').trim();
           const requestLimit = 100;
           const cacheKey = getQuickbaseCacheKey({
+            tabId: activeTabId,
             tableId: state.tableId,
             qid: activeQid || '',
             filters: mergedFilters,
-            filterMatch: state.filterMatch
+            filterMatch: tabFilterMatch
           });
           // FIX: [Issue 2] - Reuse cache if fetched within 2 minutes.
-          const cachedPayload = forceRefresh ? null : readQuickbaseCache(cacheKey);
+          const cachedPayload = forceRefresh ? null : readQuickbaseCache(cacheKey, activeTabId);
           if (cachedPayload) {
             state.allAvailableFields = Array.isArray(cachedPayload.allAvailableFields) ? cachedPayload.allAvailableFields : [];
             state.baseRecords = Array.isArray(cachedPayload.records) ? cachedPayload.records.slice() : [];
@@ -1733,7 +1751,7 @@
           const data = await window.QuickbaseAdapter.fetchMonitoringData({
             ...requestPayload,
             customFilters: mergedFilters,
-            filterMatch: state.filterMatch,
+            filterMatch: tabFilterMatch,
             search: ''
           });
           state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
@@ -1750,7 +1768,7 @@
             columns: incomingColumns,
             records: state.baseRecords.slice(),
             allAvailableFields: state.allAvailableFields
-          });
+          }, activeTabId);
           // FIX: [Issue 2] - Progressive background fetch for full dataset.
           if (requestLimit < QUICKBASE_BACKGROUND_LIMIT && !hasExplicitLoadMore && !hasActiveSearch) {
             setTimeout(async () => {
@@ -1760,7 +1778,7 @@
                   bust: Date.now(),
                   limit: QUICKBASE_BACKGROUND_LIMIT,
                   customFilters: mergedFilters,
-                  filterMatch: state.filterMatch,
+                  filterMatch: tabFilterMatch,
                   search: ''
                 });
                 const bgRecords = Array.isArray(bgData && bgData.records) ? bgData.records : [];
@@ -1771,7 +1789,7 @@
                   columns: incomingColumns,
                   records: state.baseRecords.slice(),
                   allAvailableFields: state.allAvailableFields
-                });
+                }, activeTabId);
                 applySearchAndRender();
                 console.info(`[Quickbase] progressive load merged ${bgRecords.length} records`);
               } catch (_) {}
@@ -2021,6 +2039,11 @@
       const idx = Number(target.getAttribute('data-tab-idx'));
       if (!Number.isFinite(idx) || idx === state.activeTabIndex) return;
       captureSettingsDraftFromInputs();
+      state.allAvailableFields = [];
+      state.baseRecords = [];
+      state.rawPayload = { columns: [], records: [] };
+      state.currentPayload = { columns: [], records: [] };
+      state.currentPage = 1;
       state.activeTabIndex = idx;
       const currentTab = deepClone(getActiveTab() || {});
       state.settingsEditingTabId = String(currentTab.id || getActiveTabId() || '').trim();

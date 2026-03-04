@@ -324,8 +324,24 @@ module.exports = async (req, res) => {
       });
     }
 
-    const profileFilterClauses = buildProfileFilterClauses(profileQuickbaseConfig.customFilters || profileQuickbaseConfig.qb_custom_filters || profile.qb_custom_filters);
-    const profileFilterMatch = normalizeFilterMatch(profileQuickbaseConfig.filterMatch || profileQuickbaseConfig.qb_filter_match || profile.qb_filter_match || profile.qb_custom_filter_match);
+    let requestCustomFilters = [];
+    try {
+      const rawFilters = req?.query?.customFilters || req?.query?.filters || '';
+      if (rawFilters) {
+        const parsed = typeof rawFilters === 'string' ? JSON.parse(decodeURIComponent(rawFilters)) : rawFilters;
+        if (Array.isArray(parsed)) requestCustomFilters = parsed;
+      }
+    } catch (_) {}
+
+    const requestFilterMatch = normalizeFilterMatch(req?.query?.filterMatch || 'ALL');
+    const profileFallbackFilters = profileQuickbaseConfig.customFilters || profileQuickbaseConfig.qb_custom_filters || profile.qb_custom_filters || [];
+    const profileFallbackMatch = profileQuickbaseConfig.filterMatch || profileQuickbaseConfig.qb_filter_match || profile.qb_filter_match || profile.qb_custom_filter_match || 'ALL';
+    const activeFilters = requestCustomFilters.length > 0 ? requestCustomFilters : profileFallbackFilters;
+    const activeFilterMatch = requestCustomFilters.length > 0
+      ? requestFilterMatch
+      : normalizeFilterMatch(profileFallbackMatch);
+
+    const profileFilterClauses = buildProfileFilterClauses(activeFilters);
 
     const routeWhere = String(req?.query?.where || '').trim();
     const manualWhere = whereClauses.length > 0 ? whereClauses.join(' AND ') : '';
@@ -356,7 +372,7 @@ module.exports = async (req, res) => {
     if (typeof profileFilterClauses !== 'undefined' && profileFilterClauses.length > 0) {
       const groupedProfileClause = profileFilterClauses.length === 1
         ? profileFilterClauses[0]
-        : `(${profileFilterClauses.join(` ${profileFilterMatch === 'ANY' ? 'OR' : 'AND'} `)})`;
+        : `(${profileFilterClauses.join(` ${activeFilterMatch === 'ANY' ? 'OR' : 'AND'} `)})`;
       if (groupedProfileClause) conditions.push(groupedProfileClause);
     }
     // 4. Search Bar Logic
