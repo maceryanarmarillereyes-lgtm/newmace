@@ -493,7 +493,7 @@ module.exports = async (req, res) => {
           caseStatus: caseStatusFilter,
           type: typeFilter,
           custom: profileFilterClauses,
-          customMatch: profileFilterMatch,
+          customMatch: activeFilterMatch,
           search,
           searchFieldIds: searchableFieldIds
         }
