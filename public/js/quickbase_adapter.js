@@ -68,7 +68,7 @@
   function normalizeMonitoringLimit(rawLimit) {
     const parsed = Number(rawLimit);
     if (!Number.isFinite(parsed) || parsed <= 0) return 100;
-    return Math.min(100, Math.floor(parsed));
+    return Math.min(1000, Math.floor(parsed));
   }
 
   function getToken() {
