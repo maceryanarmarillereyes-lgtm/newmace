@@ -651,7 +651,7 @@
 
   function shouldApplyServerFilters(options) {
     const opts = options && typeof options === 'object' ? options : {};
-    return opts.applyFilters === true;
+    return opts.applyFilters !== false;
   }
 
   if (window.__MUMS_TEST_HOOKS__) {
@@ -1706,9 +1706,11 @@
           const tabCustomFilters = Array.isArray(activeTab && activeTab.customFilters) ? normalizeFilters(activeTab.customFilters) : [];
           const tabFilterMatch = normalizeFilterMatch(activeTab && activeTab.filterMatch);
           const mergedFilters = shouldApplyFilters ? tabCustomFilters : [];
-          const activeQid = String(activeTab.qid || '').trim();
-          const activeTableId = String(activeTab.tableId || '').trim();
-          const activeRealm = String(activeTab.realm || '').trim();
+          // Derive qid/tableId/realm from reportLink if not explicitly set on the tab
+          const _tabParsed = parseQuickbaseLink(String(activeTab && activeTab.reportLink || ''));
+          const activeQid = String(activeTab.qid || _tabParsed.qid || '').trim();
+          const activeTableId = String(activeTab.tableId || _tabParsed.tableId || '').trim();
+          const activeRealm = String(activeTab.realm || _tabParsed.realm || '').trim();
           const hasExplicitLoadMore = Number(opts.offset || 0) >= 100;
           const hasActiveSearch = !!String(getActiveSearchTerm() || '').trim();
           const requestLimit = 100;

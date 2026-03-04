@@ -1,33 +1,17 @@
 /* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. */
 function normalizeSettings(value) {
   if (!value) return {};
-  if (typeof value === 'object') return value;
-
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed) return {};
-
-    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-      try {
-        return JSON.parse(trimmed);
-      } catch (error) {
-        return {};
-      }
-    }
-
+    try { const p = JSON.parse(trimmed); if (p && typeof p === 'object' && !Array.isArray(p)) return p; } catch (_) {}
     if (trimmed.includes(',')) {
       const out = {};
-      trimmed
-        .split(',')
-        .map((entry) => entry.trim())
-        .forEach((entry) => {
-          if (entry) out[entry] = true;
-        });
+      trimmed.split(',').map(e => e.trim()).filter(Boolean).forEach(e => { out[e] = true; });
       return out;
     }
   }
-
   return {};
 }
-
 module.exports = { normalizeSettings };
