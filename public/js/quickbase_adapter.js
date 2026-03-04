@@ -201,6 +201,13 @@
       realm: realm
     });
 
+    if (Array.isArray(overrideParams && overrideParams.customFilters) && overrideParams.customFilters.length > 0) {
+      queryParams.set('customFilters', encodeURIComponent(JSON.stringify(overrideParams.customFilters)));
+    }
+    if (overrideParams && overrideParams.filterMatch) {
+      queryParams.set('filterMatch', String(overrideParams.filterMatch).trim().toUpperCase() === 'ANY' ? 'ANY' : 'ALL');
+    }
+
     const extraWhere = shouldUseDefaultReport ? '' : buildQuickbaseWhere(overrideParams && overrideParams.customFilters, overrideParams && overrideParams.filterMatch);
     appendParam(queryParams, 'where', (overrideParams && overrideParams.where) || extraWhere);
     appendParam(queryParams, 'search', normalizedSearch);
