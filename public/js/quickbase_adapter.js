@@ -194,43 +194,36 @@
       authorization: 'Bearer ' + token
     };
 
-    // Construct URL with query parameters
-    const queryParams = new URLSearchParams({
-      qid: qid,
-      tableId: tableId,
-      realm: realm
-    });
+    const payload = {
+      qid,
+      tableId,
+      realm,
+      customFilters: Array.isArray(overrideParams && overrideParams.customFilters) ? overrideParams.customFilters : [],
+      filterMatch: (overrideParams && overrideParams.filterMatch) ? (String(overrideParams.filterMatch).trim().toUpperCase() === 'ANY' ? 'ANY' : 'ALL') : 'ALL',
+      customColumns: Array.isArray(overrideParams && overrideParams.customColumns) ? overrideParams.customColumns : []
+    };
 
-    if (Array.isArray(overrideParams && overrideParams.customFilters) && overrideParams.customFilters.length > 0) {
-      queryParams.set('customFilters', encodeURIComponent(JSON.stringify(overrideParams.customFilters)));
-    }
-    if (Array.isArray(overrideParams && overrideParams.customColumns) && overrideParams.customColumns.length > 0) {
-      queryParams.set('customColumns', encodeURIComponent(JSON.stringify(overrideParams.customColumns)));
-    }
-    if (overrideParams && overrideParams.filterMatch) {
-      queryParams.set('filterMatch', String(overrideParams.filterMatch).trim().toUpperCase() === 'ANY' ? 'ANY' : 'ALL');
-    }
-    appendParam(queryParams, 'tab_id', overrideParams && overrideParams.tab_id);
-    appendParam(queryParams, 'reportLink', overrideParams && overrideParams.reportLink);
+    if (overrideParams && overrideParams.tab_id) payload.tab_id = overrideParams.tab_id;
+    if (overrideParams && overrideParams.reportLink) payload.reportLink = overrideParams.reportLink;
 
     const extraWhere = shouldUseDefaultReport ? '' : buildQuickbaseWhere(overrideParams && overrideParams.customFilters, overrideParams && overrideParams.filterMatch);
-    appendParam(queryParams, 'where', (overrideParams && overrideParams.where) || extraWhere);
-    appendParam(queryParams, 'search', normalizedSearch);
-    appendParam(queryParams, 'searchFields', Array.isArray(overrideParams && overrideParams.searchFields)
-      ? (overrideParams.searchFields || []).map(function(v){ return String(v || '').trim(); }).filter(Boolean).join(',')
-      : '');
-    appendParam(queryParams, 'limit', normalizeMonitoringLimit(overrideParams && overrideParams.limit));
+    if ((overrideParams && overrideParams.where) || extraWhere) payload.where = (overrideParams && overrideParams.where) || extraWhere;
+    if (normalizedSearch) payload.search = normalizedSearch;
+    if (Array.isArray(overrideParams && overrideParams.searchFields)) {
+      payload.searchFields = (overrideParams.searchFields || []).map(function(v){ return String(v || '').trim(); }).filter(Boolean).join(',');
+    }
+    payload.limit = normalizeMonitoringLimit(overrideParams && overrideParams.limit);
 
     const candidates = [
-      '/api/quickbase/monitoring?' + queryParams.toString(),
-      '/functions/quickbase/monitoring?' + queryParams.toString()
+      '/api/quickbase/monitoring',
+      '/functions/quickbase/monitoring'
     ];
 
     let lastErr = null;
 
     for (const url of candidates) {
       try {
-        const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
+        const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload), cache: 'no-store' });
         const data = await res.json().catch(function(){ return {}; });
 
         if (!res.ok) {

@@ -203,53 +203,44 @@ module.exports = async (req, res) => {
           ? profileQuickbaseConfig.qb_custom_filters
           : []);
 
-    // Accept tab-specific overrides from request (GET query or POST body)
-    const reqBody = req.body && typeof req.body === 'object' ? req.body : {};
+    // Accept tab-specific values from both GET query and POST body
+    const reqBody = (req.method === 'POST' && req.body && typeof req.body === 'object') ? req.body : {};
     const reqTabId = String(req?.query?.tab_id || reqBody.tab_id || '').trim();
     const reqReportLink = String(req?.query?.reportLink || reqBody.reportLink || '').trim();
     let qid = String(req?.query?.qid || req?.query?.qId || reqBody.qid || '').trim();
     let tableId = String(req?.query?.tableId || req?.query?.table_id || reqBody.tableId || '').trim();
     let realm = String(req?.query?.realm || reqBody.realm || '').trim();
 
-    // Tab-specific custom filters override profile filters
+    // Parse tab-supplied custom filters (override profile filters)
     let reqCustomFilters = null;
-    try {
-      reqCustomFilters = Array.isArray(reqBody.customFilters)
-        ? reqBody.customFilters
-        : (typeof reqBody.customFilters === 'string' ? JSON.parse(reqBody.customFilters || '[]') : null);
-    } catch (_) {
-      reqCustomFilters = null;
+    if (Array.isArray(reqBody.customFilters)) {
+      reqCustomFilters = reqBody.customFilters;
+    } else if (typeof reqBody.customFilters === 'string') {
+      try { reqCustomFilters = JSON.parse(reqBody.customFilters); } catch(_) { reqCustomFilters = []; }
     }
     const reqFilterMatch = String(reqBody.filterMatch || '').trim().toUpperCase();
+
+    let reqCustomColumns = null;
+    if (Array.isArray(reqBody.customColumns)) {
+      reqCustomColumns = reqBody.customColumns;
+    } else if (typeof reqBody.customColumns === 'string') {
+      try { reqCustomColumns = JSON.parse(reqBody.customColumns); } catch(_) { reqCustomColumns = null; }
+    }
 
     // Fall back to profile only if request has nothing
     if (!qid) qid = profileQid;
     if (!tableId) tableId = profileTableId;
     if (!realm) realm = profileRealm;
 
-    // Use tab-specific filters if provided, otherwise profile filters
+    // Use tab-specific filters if provided, else fall back to profile
     const effectiveCustomFilters = reqCustomFilters !== null ? reqCustomFilters : profileCustomFilters;
-    const effectiveFilterMatch = reqFilterMatch === 'ANY' || reqFilterMatch === 'ALL'
-      ? reqFilterMatch
-      : profileFilterMatch;
-
-    let reqCustomColumns = null;
-    try {
-      const rawReqColumns = reqBody.customColumns || req?.query?.customColumns || '';
-      reqCustomColumns = Array.isArray(rawReqColumns)
-        ? rawReqColumns
-        : (typeof rawReqColumns === 'string' && rawReqColumns
-          ? JSON.parse(decodeURIComponent(rawReqColumns) || '[]')
-          : null);
-    } catch (_) {
-      reqCustomColumns = null;
-    }
+    const effectiveFilterMatch = (reqFilterMatch === 'ANY' || reqFilterMatch === 'ALL') ? reqFilterMatch : profileFilterMatch;
 
     if (!qid || !tableId || !realm) {
       return sendJson(res, 400, {
         ok: false,
         warning: 'quickbase_credentials_missing',
-        message: 'No Report Link configured for this tab. Please set a Report Link in My Quickbase Settings.'
+        message: 'No Report Link configured for this tab. Please set a Report Link in Quickbase Settings.'
       });
     }
 
@@ -486,7 +477,7 @@ module.exports = async (req, res) => {
           .map((f) => fieldsMetaById[String(f.id)] || { id: Number(f.id), label: String(f.label || '').trim() })
           .filter((f) => Number.isFinite(f.id) && String(f.label || '').trim());
 
-    const orderedEffectiveFields = sortFieldsByProfileOrder(effectiveFields, profileQuickbaseConfig.customColumns || profileQuickbaseConfig.qb_custom_columns || profile.qb_custom_columns);
+    const orderedEffectiveFields = sortFieldsByProfileOrder(effectiveFields, effectiveCustomColumns);
 
     const columns = (Array.isArray(out.records) && out.records.length)
       ? orderedEffectiveFields
