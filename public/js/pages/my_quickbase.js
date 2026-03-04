@@ -1930,7 +1930,7 @@
         renderColumnGrid();
         renderFilters();
         renderCounterFilters();
-        await loadQuickbaseData({ applyFilters: false, forceRefresh: true });
+        await loadQuickbaseData({ applyFilters: true, forceRefresh: true });
         if (window.UI && UI.toast) UI.toast('Tab deleted successfully.');
       } catch (err) {
         if (window.UI && UI.toast) UI.toast('Failed to delete tab: ' + String(err && err.message || err), 'error');
@@ -1942,7 +1942,7 @@
       setActiveUserSearched(false);
       setActiveSearchTerm('');
       state.searchTerm = '';
-      return loadQuickbaseData({ applyFilters: false });
+      return loadQuickbaseData({ applyFilters: true });
     }
 
     root.querySelector('#qbOpenSettingsBtn').onclick = openSettings;
@@ -2029,7 +2029,7 @@
         renderCounterFilters();
         try {
           await persistQuickbaseSettings();
-          await loadQuickbaseData({ applyFilters: false });
+          await loadQuickbaseData({ applyFilters: true });
           if (window.UI && UI.toast) UI.toast('New tab added and synced.');
         } catch (err) {
           if (window.UI && UI.toast) UI.toast('Failed to add tab: ' + String(err && err.message || err), 'error');
@@ -2078,7 +2078,7 @@
       renderColumnGrid();
       renderFilters();
       renderCounterFilters();
-      await loadQuickbaseData({ applyFilters: false });
+      await loadQuickbaseData({ applyFilters: true });
     };
     root.querySelector('#qbAddFilterBtn').onclick = () => {
       state.customFilters.push({ fieldId: '', operator: 'EX', value: '' });
