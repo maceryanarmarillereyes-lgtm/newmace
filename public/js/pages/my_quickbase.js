@@ -2039,6 +2039,9 @@
       const idx = Number(target.getAttribute('data-tab-idx'));
       if (!Number.isFinite(idx) || idx === state.activeTabIndex) return;
       captureSettingsDraftFromInputs();
+      // ISOLATION: clear stale data from previous tab before switching
+      state.rows = [];
+      state.columns = [];
       state.allAvailableFields = [];
       state.baseRecords = [];
       state.rawPayload = { columns: [], records: [] };

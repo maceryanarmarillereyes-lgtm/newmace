@@ -177,6 +177,20 @@ module.exports = async (req, res) => {
     const profileQid = String(profileQuickbaseConfig.qid || profileQuickbaseConfig.qb_qid || profile.qb_qid || profile.quickbase_qid || '').trim();
     const profileTableId = String(profileQuickbaseConfig.tableId || profileQuickbaseConfig.qb_table_id || profile.qb_table_id || profile.quickbase_table_id || '').trim();
 
+    // Extract filterMatch and customFilters from profile settings with safe defaults
+    const profileFilterMatchRaw = String(
+      profileQuickbaseConfig.filterMatch ||
+      profileQuickbaseConfig.qb_filter_match ||
+      profile.qb_filter_match ||
+      'ALL'
+    ).trim().toUpperCase();
+    const profileFilterMatch = profileFilterMatchRaw === 'ANY' ? 'ANY' : 'ALL';
+    const profileCustomFilters = Array.isArray(profileQuickbaseConfig.customFilters)
+      ? profileQuickbaseConfig.customFilters
+      : (Array.isArray(profileQuickbaseConfig.qb_custom_filters)
+          ? profileQuickbaseConfig.qb_custom_filters
+          : []);
+
     let qid = String(req?.query?.qid || req?.query?.qId || '').trim();
     let tableId = String(req?.query?.tableId || req?.query?.table_id || '').trim();
     let realm = String(req?.query?.realm || '').trim();
@@ -334,12 +348,10 @@ module.exports = async (req, res) => {
     } catch (_) {}
 
     const requestFilterMatch = normalizeFilterMatch(req?.query?.filterMatch || 'ALL');
-    const profileFallbackFilters = profileQuickbaseConfig.customFilters || profileQuickbaseConfig.qb_custom_filters || profile.qb_custom_filters || [];
-    const profileFallbackMatch = profileQuickbaseConfig.filterMatch || profileQuickbaseConfig.qb_filter_match || profile.qb_filter_match || profile.qb_custom_filter_match || 'ALL';
-    const activeFilters = requestCustomFilters.length > 0 ? requestCustomFilters : profileFallbackFilters;
+    const activeFilters = requestCustomFilters.length > 0 ? requestCustomFilters : profileCustomFilters;
     const activeFilterMatch = requestCustomFilters.length > 0
       ? requestFilterMatch
-      : normalizeFilterMatch(profileFallbackMatch);
+      : profileFilterMatch;
 
     const profileFilterClauses = buildProfileFilterClauses(activeFilters);
 
