@@ -2183,7 +2183,15 @@
       const activeTabId = String(getActiveTabId() || '').trim();
       if (activeTabId) {
         state.quickbaseSettings.settingsByTabId = state.quickbaseSettings.settingsByTabId || {};
-        state.quickbaseSettings.settingsByTabId[activeTabId] = createDefaultSettings(tabSnapshot, {});
+        const prevTabSettings = createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId] || {}, {});
+        state.quickbaseSettings.settingsByTabId[activeTabId] = createDefaultSettings({
+          ...prevTabSettings,
+          ...tabSnapshot,
+          customColumns: deepClone(state.customColumns || prevTabSettings.customColumns || []),
+          customFilters: deepClone(state.customFilters || prevTabSettings.customFilters || []),
+          filterMatch: state.filterMatch || prevTabSettings.filterMatch || 'ALL',
+          dashboard_counters: deepClone(state.dashboardCounters || prevTabSettings.dashboard_counters || [])
+        }, {});
       }
       state.tabName = tabSnapshot.tabName;
       state.reportLink = tabSnapshot.reportLink;
@@ -2231,11 +2239,17 @@
         }
         if (tabManager && targetTabId) {
           tabManager.updateTabLocal(targetTabId, {
-            tabName: String(state.tabName || 'Main Report').trim() || 'Main Report',
-            reportLink: String(state.reportLink || '').trim(),
-            baseReportQid: String(state.qid || '').trim(),
-            qid: String(state.qid || '').trim(),
-            tableId: String(state.tableId || '').trim()
+            ...pendingTabSettings,
+            tabName: String(pendingTabSettings.tabName || 'Main Report').trim() || 'Main Report',
+            reportLink: String(pendingTabSettings.reportLink || '').trim(),
+            baseReportQid: String(pendingTabSettings.qid || '').trim(),
+            qid: String(pendingTabSettings.qid || '').trim(),
+            tableId: String(pendingTabSettings.tableId || '').trim(),
+            realm: String(pendingTabSettings.realm || '').trim(),
+            customColumns: deepClone(pendingTabSettings.customColumns || []),
+            customFilters: deepClone(pendingTabSettings.customFilters || []),
+            filterMatch: pendingTabSettings.filterMatch || 'ALL',
+            dashboard_counters: deepClone(pendingTabSettings.dashboard_counters || [])
           });
           await tabManager.saveTab(targetTabId);
         }
