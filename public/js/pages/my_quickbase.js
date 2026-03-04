@@ -1706,13 +1706,15 @@
           const tabCustomFilters = Array.isArray(activeTab && activeTab.customFilters) ? normalizeFilters(activeTab.customFilters) : [];
           const tabFilterMatch = normalizeFilterMatch(activeTab && activeTab.filterMatch);
           const mergedFilters = shouldApplyFilters ? tabCustomFilters : [];
-          const activeQid = String(activeTab.qid || state.qid || '').trim();
+          const activeQid = String(activeTab.qid || '').trim();
+          const activeTableId = String(activeTab.tableId || '').trim();
+          const activeRealm = String(activeTab.realm || '').trim();
           const hasExplicitLoadMore = Number(opts.offset || 0) >= 100;
           const hasActiveSearch = !!String(getActiveSearchTerm() || '').trim();
           const requestLimit = 100;
           const cacheKey = getQuickbaseCacheKey({
             tabId: activeTabId,
-            tableId: state.tableId,
+            tableId: activeTableId,
             qid: activeQid || '',
             filters: mergedFilters,
             filterMatch: tabFilterMatch
@@ -1739,8 +1741,8 @@
             bust: Date.now(),
             limit: requestLimit,
             qid: activeQid || '',
-            tableId: String(activeTab.tableId || state.tableId || '').trim(),
-            realm: String(activeTab.realm || state.realm || '').trim()
+            tableId: activeTableId,
+            realm: activeRealm
           };
           if (!requestPayload.qid || !requestPayload.tableId || !requestPayload.realm) {
             state.allAvailableFields = [];
