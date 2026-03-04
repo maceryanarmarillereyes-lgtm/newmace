@@ -1,4 +1,6 @@
-/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Strictly protects Enterprise UI/UX, Realtime Sync Logic, Core State Management, and Database/API Adapters. Do NOT modify existing logic or layout in this file without explicitly asking Thunter BOY for clearance. If overlapping changes are required, STOP and provide a RISK IMPACT REPORT first. */
-const { normalizeSettings } = require('../../lib/normalizeSettings');
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. */
+// Resolve normalizeSettings from the correct root-level lib path
+const path = require('path');
+const { normalizeSettings } = require(path.resolve(__dirname, '../../lib/normalizeSettings'));
 
 module.exports = { normalizeSettings };
