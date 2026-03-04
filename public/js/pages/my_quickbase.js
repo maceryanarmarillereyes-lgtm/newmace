@@ -902,17 +902,21 @@
     }
 
     function syncStateFromActiveTab() {
-      const activeTab = buildDefaultTab(deepClone(getActiveTab()) || {});
-      const parsed = parseQuickbaseLink(activeTab.reportLink);
-      state.tabName = String(activeTab.tabName || 'Main Report').trim() || 'Main Report';
-      state.reportLink = String(activeTab.reportLink || '').trim();
-      state.qid = String(activeTab.qid || parsed.qid || '').trim();
-      state.tableId = String(activeTab.tableId || parsed.tableId || '').trim();
-      state.realm = String(activeTab.realm || parsed.realm || '').trim();
-      state.customColumns = Array.isArray(activeTab.customColumns) ? activeTab.customColumns.map((v) => String(v)) : [];
-      state.customFilters = normalizeFilters(activeTab.customFilters);
-      state.filterMatch = normalizeFilterMatch(activeTab.filterMatch);
-      state.dashboardCounters = normalizeDashboardCounters(activeTab.dashboard_counters);
+      const activeTabId = getActiveTabId();
+      const freshSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[activeTabId]
+        ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId], {})
+        : createDefaultSettings({}, {});
+      const activeTabMeta = getActiveTabMeta();
+      const parsed = parseQuickbaseLink(freshSettings.reportLink);
+      state.tabName = String(activeTabMeta.tabName || 'Main Report').trim() || 'Main Report';
+      state.reportLink = String(freshSettings.reportLink || '').trim();
+      state.qid = String(freshSettings.qid || parsed.qid || '').trim();
+      state.tableId = String(freshSettings.tableId || parsed.tableId || '').trim();
+      state.realm = String(freshSettings.realm || parsed.realm || '').trim();
+      state.customColumns = deepClone(Array.isArray(freshSettings.customColumns) ? freshSettings.customColumns : []);
+      state.customFilters = deepClone(normalizeFilters(freshSettings.customFilters || []));
+      state.filterMatch = normalizeFilterMatch(freshSettings.filterMatch || 'ALL');
+      state.dashboardCounters = deepClone(normalizeDashboardCounters(freshSettings.dashboard_counters || []));
       state.activeCounterIndex = -1;
       const headerSearch = root.querySelector('#qbHeaderSearch');
       if (headerSearch) headerSearch.value = getActiveSearchTerm();
@@ -1729,15 +1733,18 @@
           }
           const activeTab = getActiveTab();
           const activeTabId = String(activeTab && activeTab.id || getActiveTabId() || '').trim();
+          const freshTabSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[activeTabId]
+            ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId], {})
+            : createDefaultSettings(activeTab, {});
           const shouldApplyFilters = shouldApplyServerFilters(opts);
-          const tabCustomFilters = Array.isArray(activeTab && activeTab.customFilters) ? normalizeFilters(activeTab.customFilters) : [];
-          const tabFilterMatch = normalizeFilterMatch(activeTab && activeTab.filterMatch);
+          const tabCustomFilters = Array.isArray(freshTabSettings.customFilters) ? normalizeFilters(freshTabSettings.customFilters) : [];
+          const tabFilterMatch = normalizeFilterMatch(freshTabSettings.filterMatch);
           const mergedFilters = shouldApplyFilters ? tabCustomFilters : [];
           // Derive qid/tableId/realm from reportLink if not explicitly set on the tab
-          const _tabParsed = parseQuickbaseLink(String(activeTab && activeTab.reportLink || ''));
-          const activeQid = String(activeTab.qid || _tabParsed.qid || '').trim();
-          const activeTableId = String(activeTab.tableId || _tabParsed.tableId || '').trim();
-          const activeRealm = String(activeTab.realm || _tabParsed.realm || '').trim();
+          const _tabParsed = parseQuickbaseLink(String(freshTabSettings.reportLink || ''));
+          const activeQid = String(freshTabSettings.qid || _tabParsed.qid || '').trim();
+          const activeTableId = String(freshTabSettings.tableId || _tabParsed.tableId || '').trim();
+          const activeRealm = String(freshTabSettings.realm || _tabParsed.realm || '').trim();
           const hasExplicitLoadMore = Number(opts.offset || 0) >= 100;
           const hasActiveSearch = !!String(getActiveSearchTerm() || '').trim();
           const requestLimit = 100;
@@ -1850,9 +1857,32 @@
       const normalizedSearch = getActiveSearchTerm();
       const activeCounter = state.activeCounterIndex >= 0 ? state.dashboardCounters[state.activeCounterIndex] : null;
       state.searchTerm = normalizedSearch;
+
+      const activeTabId = getActiveTabId();
+      const freshTabSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[activeTabId]
+        ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId], {})
+        : createDefaultSettings({}, {});
+
+      let filteredBase = Array.isArray(state.baseRecords) ? state.baseRecords : [];
+      if (Array.isArray(freshTabSettings.customFilters) && freshTabSettings.customFilters.length > 0) {
+        const filterMatch = normalizeFilterMatch(freshTabSettings.filterMatch);
+        filteredBase = filteredBase.filter((record) => {
+          const matches = freshTabSettings.customFilters.map((filter) => {
+            const field = record && record.fields ? record.fields[String(filter.fieldId)] : null;
+            const sourceValue = String(field && field.value != null ? field.value : '').toLowerCase();
+            const matcherValue = String(filter.value || '').toLowerCase();
+            if (filter.operator === 'XEX') return sourceValue !== matcherValue;
+            if (filter.operator === 'CT') return sourceValue.includes(matcherValue);
+            if (filter.operator === 'XCT') return !sourceValue.includes(matcherValue);
+            return sourceValue === matcherValue;
+          });
+          return filterMatch === 'ANY' ? matches.some(Boolean) : matches.every(Boolean);
+        });
+      }
+
       const basePayload = {
         columns: Array.isArray(state.rawPayload && state.rawPayload.columns) ? state.rawPayload.columns : [],
-        records: Array.isArray(state.baseRecords) ? state.baseRecords : []
+        records: filteredBase
       };
       const counterFilteredPayload = filterRecordsByCounter(basePayload, activeCounter);
       state.currentPayload = normalizedSearch
@@ -1956,7 +1986,12 @@
         delete state.quickbaseSettings.settingsByTabId[targetTabId];
         state.quickbaseSettings.tabs = tabs.filter((_, i) => i !== idx);
         const nextLen = state.quickbaseSettings.tabs.length;
-        state.activeTabIndex = Math.min(Math.max(state.activeTabIndex === idx ? idx - 1 : state.activeTabIndex, 0), Math.max(0, nextLen - 1));
+        if (state.activeTabIndex === idx) {
+          state.activeTabIndex = Math.max(0, idx - 1);
+        } else if (state.activeTabIndex > idx) {
+          state.activeTabIndex = Math.max(0, state.activeTabIndex - 1);
+        }
+        state.activeTabIndex = Math.min(state.activeTabIndex, Math.max(0, nextLen - 1));
         state.quickbaseSettings.activeTabIndex = state.activeTabIndex;
         syncStateFromActiveTab();
         syncSettingsInputsFromState();
