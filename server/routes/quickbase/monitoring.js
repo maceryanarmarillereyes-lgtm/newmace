@@ -130,6 +130,7 @@ function sortFieldsByProfileOrder(fields, profileColumnOrder) {
 function buildProfileFilterClauses(rawFilters) {
   if (!Array.isArray(rawFilters)) return [];
   const groupedByField = new Map();
+  const negativeOperators = new Set(['XEX', 'XCT', 'XSW', 'XIR', 'XTV']);
   rawFilters.forEach((f) => {
     if (!f || typeof f !== 'object') return;
     const fieldId = Number(f.fieldId ?? f.field_id ?? f.fid ?? f.id);
@@ -137,14 +138,25 @@ function buildProfileFilterClauses(rawFilters) {
     const opRaw = String(f.operator ?? 'EX').trim().toUpperCase();
     const operator = ['EX', 'XEX', 'CT', 'XCT', 'SW', 'XSW', 'BF', 'AF', 'IR', 'XIR', 'TV', 'XTV', 'LT', 'LTE', 'GT', 'GTE'].includes(opRaw) ? opRaw : 'EX';
     if (!Number.isFinite(fieldId) || !value) return;
-    if (!groupedByField.has(fieldId)) groupedByField.set(fieldId, []);
-    groupedByField.get(fieldId).push(`{${fieldId}.${operator}.'${encodeQuickbaseLiteral(value)}'}`);
+    if (!groupedByField.has(fieldId)) groupedByField.set(fieldId, { positive: [], negative: [] });
+    const bucket = groupedByField.get(fieldId);
+    const clause = `{${fieldId}.${operator}.'${encodeQuickbaseLiteral(value)}'}`;
+    if (negativeOperators.has(operator)) {
+      bucket.negative.push(clause);
+    } else {
+      bucket.positive.push(clause);
+    }
   });
 
-  return Array.from(groupedByField.values()).map((clauses) => {
-    if (!Array.isArray(clauses) || !clauses.length) return '';
-    if (clauses.length === 1) return clauses[0];
-    return `(${clauses.join(' OR ')})`;
+  return Array.from(groupedByField.values()).map((grouped) => {
+    if (!grouped || typeof grouped !== 'object') return '';
+    const positiveClause = grouped.positive.length
+      ? (grouped.positive.length === 1 ? grouped.positive[0] : `(${grouped.positive.join(' OR ')})`)
+      : '';
+    const negativeClause = grouped.negative.length
+      ? (grouped.negative.length === 1 ? grouped.negative[0] : `(${grouped.negative.join(' AND ')})`)
+      : '';
+    return [positiveClause, negativeClause].filter(Boolean).join(' AND ');
   }).filter(Boolean);
 }
 
