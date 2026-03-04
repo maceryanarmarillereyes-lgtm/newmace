@@ -1524,8 +1524,35 @@
     }
 
 
+    function getCounterTargetFields() {
+      const candidates = [];
+      const addFromSource = (list) => {
+        if (!Array.isArray(list)) return;
+        list.forEach((item) => {
+          if (!item || typeof item !== 'object') return;
+          const id = String(item.id ?? item.fieldId ?? item.fid ?? '').trim();
+          if (!id) return;
+          const label = String(item.label ?? item.name ?? item.title ?? '').trim() || `Field #${id}`;
+          candidates.push({ id, label });
+        });
+      };
+
+      addFromSource(state.allAvailableFields);
+      if (!candidates.length) {
+        addFromSource(state.rawPayload && state.rawPayload.columns);
+      }
+
+      const seen = new Set();
+      return candidates.filter((field) => {
+        if (seen.has(field.id)) return false;
+        seen.add(field.id);
+        return true;
+      });
+    }
+
     function counterRowTemplate(counter, idx) {
-      const fieldOptions = state.allAvailableFields
+      const targetFields = getCounterTargetFields();
+      const fieldOptions = targetFields
         .map((x) => `<option value="${esc(String(x.id))}" ${String(counter.fieldId) === String(x.id) ? 'selected' : ''}>${esc(x.label)} (#${esc(String(x.id))})</option>`)
         .join('');
       return `
