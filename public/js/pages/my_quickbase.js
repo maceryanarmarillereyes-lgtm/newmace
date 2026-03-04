@@ -598,6 +598,13 @@
     }
   }
 
+  function renderEmptyState(root, message) {
+    const host = root.querySelector('#qbDataBody');
+    const meta = root.querySelector('#qbDataMeta');
+    if (meta) meta.textContent = 'No Quickbase Records Found';
+    if (host) host.innerHTML = `<div class="card pad"><div class="small muted">${esc(String(message || 'No records loaded.'))}</div></div>`;
+  }
+
 
   function shouldApplyInitialFilters(searchInput) {
     return String(searchInput || '').trim().length > 0;
@@ -1258,7 +1265,7 @@
 
 
     root.innerHTML = `
-      <div class="dashx qb-page-shell">
+      <div class="dashx qb-page-shell" style="width:100%;max-width:100%;overflow-x:hidden;box-sizing:border-box;">
         <div class="qb-static-zone">
         <div id="qbTabBar" style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0;padding:0;"></div>
 
@@ -1279,22 +1286,22 @@
           </div>
         </div>
 
-        <div style="margin-top:15px;">
-          <div id="qbDashboardCounters" class="qb-dashboard-counters"></div>
+        <div style="margin-top:15px;width:100%;max-width:100%;box-sizing:border-box;">
+          <div id="qbDashboardCounters" class="qb-dashboard-counters" style="display:flex;flex-wrap:wrap;gap:12px;"></div>
 
-        <div class="card pad qb-table-card">
+        <div class="card pad qb-table-card" style="width:100%;max-width:100%;box-sizing:border-box;">
           <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
             <div class="h3" style="margin:0;">Quickbase Records</div>
             <div id="qbDataMeta" class="small muted">Loading…</div>
           </div>
-          <div id="qbDataBody" class="qb-data-body"></div>
+          <div id="qbDataBody" class="qb-data-body" style="width:100%;overflow-x:auto;"></div>
         </div>
       </div>
       </div>
       </div>
 
       <div class="modal" id="qbSettingsModal" aria-hidden="true">
-        <div class="panel" style="max-width:980px; width:min(980px,96vw); background: linear-gradient(140deg, rgba(23,35,67,.88), rgba(15,23,42,.82)); border:1px solid rgba(255,255,255,.18); backdrop-filter: blur(18px);">
+        <div class="panel" style="max-width:95vw;width:700px;overflow-y:auto;max-height:90vh; background: linear-gradient(140deg, rgba(23,35,67,.88), rgba(15,23,42,.82)); border:1px solid rgba(255,255,255,.18); backdrop-filter: blur(18px);">
           <div id="qbSettingsSavingLock" style="display:none;position:absolute;inset:0;z-index:90;align-items:center;justify-content:center;background:rgba(2,6,23,.72);backdrop-filter:blur(3px);border-radius:16px;">
             <div class="small" style="padding:10px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.25);background:rgba(15,23,42,.88);font-weight:700;letter-spacing:.02em;">Saving Quickbase settings…</div>
           </div>
@@ -1709,6 +1716,50 @@
       modalBindingsActive = false;
     }
 
+
+    async function refreshAvailableFieldsForActiveTab(tabId) {
+      const safeTabId = String(tabId || getActiveTabId() || '').trim();
+      if (!safeTabId) return;
+      const managerSettings = tabManager && typeof tabManager.getTab === 'function'
+        ? ((tabManager.getTab(safeTabId) || {}).settings || {})
+        : {};
+      const fallbackSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[safeTabId]
+        ? state.quickbaseSettings.settingsByTabId[safeTabId]
+        : {};
+      const tabSettings = createDefaultSettings(Object.assign({}, fallbackSettings, managerSettings), {});
+      const parsed = parseQuickbaseLink(String(tabSettings.reportLink || ''));
+      const qid = String(tabSettings.qid || parsed.qid || '').trim();
+      const tableId = String(tabSettings.tableId || parsed.tableId || '').trim();
+      const realm = String(tabSettings.realm || parsed.realm || '').trim();
+
+      if (!qid || !tableId || !realm) {
+        state.allAvailableFields = [];
+        renderColumnGrid();
+        renderFilters();
+        renderCounterFilters();
+        return;
+      }
+
+      try {
+        const data = await window.QuickbaseAdapter.fetchMonitoringData({
+          bust: Date.now(),
+          limit: 1,
+          qid,
+          tableId,
+          realm,
+          customFilters: [],
+          filterMatch: 'ALL',
+          search: ''
+        });
+        state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
+      } catch (_) {
+        state.allAvailableFields = [];
+      }
+      renderColumnGrid();
+      renderFilters();
+      renderCounterFilters();
+    }
+
     async function loadQuickbaseData(options) {
       const opts = options && typeof options === 'object' ? options : {};
       const silent = !!opts.silent;
@@ -1733,9 +1784,25 @@
           }
           const activeTab = getActiveTab();
           const activeTabId = String(activeTab && activeTab.id || getActiveTabId() || '').trim();
-          const freshTabSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[activeTabId]
-            ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId], {})
-            : createDefaultSettings(activeTab, {});
+          const managerTab = tabManager && activeTabId && typeof tabManager.getTab === 'function' ? tabManager.getTab(activeTabId) : null;
+          const managerTabSettings = managerTab && managerTab.settings ? managerTab.settings : null;
+          const freshTabSettings = managerTabSettings
+            ? createDefaultSettings(managerTabSettings, {})
+            : (state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[activeTabId]
+              ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId], {})
+              : createDefaultSettings(activeTab, {}));
+          const reportLink = String(freshTabSettings.reportLink || '').trim();
+          if (!reportLink) {
+            state.allAvailableFields = [];
+            state.baseRecords = [];
+            state.rawPayload = { columns: [], records: [] };
+            state.currentPayload = { columns: [], records: [] };
+            renderColumnGrid();
+            renderFilters();
+            applySearchAndRender();
+            renderEmptyState(root, 'No records loaded — Please configure a Report Link in Settings.');
+            return;
+          }
           const shouldApplyFilters = shouldApplyServerFilters(opts);
           const tabCustomFilters = Array.isArray(freshTabSettings.customFilters) ? normalizeFilters(freshTabSettings.customFilters) : [];
           const tabFilterMatch = normalizeFilterMatch(freshTabSettings.filterMatch);
@@ -1793,6 +1860,9 @@
           }
           const data = await window.QuickbaseAdapter.fetchMonitoringData({
             ...requestPayload,
+            tab_id: activeTabId,
+            reportLink,
+            customColumns: Array.isArray(freshTabSettings.customColumns) ? freshTabSettings.customColumns : [],
             customFilters: mergedFilters,
             filterMatch: tabFilterMatch,
             search: ''
@@ -1818,8 +1888,11 @@
               try {
                 const bgData = await window.QuickbaseAdapter.fetchMonitoringData({
                   ...requestPayload,
+                  tab_id: activeTabId,
+                  reportLink,
                   bust: Date.now(),
                   limit: QUICKBASE_BACKGROUND_LIMIT,
+                  customColumns: Array.isArray(freshTabSettings.customColumns) ? freshTabSettings.customColumns : [],
                   customFilters: mergedFilters,
                   filterMatch: tabFilterMatch,
                   search: ''
@@ -2118,6 +2191,8 @@
       state.rawPayload = { columns: [], records: [] };
       state.currentPayload = { columns: [], records: [] };
       state.currentPage = 1;
+      renderEmptyState(root, 'Loading records for selected tab...');
+      renderDashboardCounters(root, [], { dashboard_counters: [] }, state);
       state.activeTabIndex = idx;
       const currentTab = deepClone(getActiveTab() || {});
       state.settingsEditingTabId = String(currentTab.id || getActiveTabId() || '').trim();
@@ -2273,7 +2348,10 @@
           });
         }
         if (tabManager && targetTabId) {
-          tabManager.updateTabLocal(targetTabId, {
+          const currentManagedTab = tabManager.getTab(targetTabId);
+          const currentManagedSettings = currentManagedTab && currentManagedTab.settings ? currentManagedTab.settings : {};
+          const managedSettings = {
+            ...currentManagedSettings,
             ...pendingTabSettings,
             tabName: String(pendingTabSettings.tabName || 'Main Report').trim() || 'Main Report',
             reportLink: String(pendingTabSettings.reportLink || '').trim(),
@@ -2285,10 +2363,12 @@
             customFilters: deepClone(pendingTabSettings.customFilters || []),
             filterMatch: pendingTabSettings.filterMatch || 'ALL',
             dashboard_counters: deepClone(pendingTabSettings.dashboard_counters || [])
-          });
+          };
+          tabManager.updateTabLocal(targetTabId, managedSettings);
           await tabManager.saveTab(targetTabId);
         }
         await persistQuickbaseSettings();
+        await refreshAvailableFieldsForActiveTab(targetTabId || getActiveTabId());
         renderTabBar();
         if (window.UI && UI.toast) UI.toast('Quickbase settings saved successfully!');
         closeSettings();
