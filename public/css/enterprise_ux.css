@@ -5194,15 +5194,22 @@ body.members-fullscreen-active .tooltip{
 /* ── DASHBOARD COUNTERS ── */
 .qb-dashboard-counters {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
   flex-shrink: 0;
+  /* Default: up to 4 per row, each at least 150px, max 220px.
+     Single widget = 220px wide (fixed). More widgets = auto-distribute evenly. */
+  grid-template-columns: repeat(auto-fill, minmax(150px, 220px));
+}
+/* When there are many counters, switch to full-fill so they share space */
+.qb-dashboard-counters.qb-counters-many {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
 }
 .qb-counter-widget {
   backdrop-filter: blur(12px);
   border-radius: 12px;
   padding: 12px 14px;
-  min-height: 110px;
+  min-height: 90px;
+  max-height: 130px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -5221,11 +5228,11 @@ body.members-fullscreen-active .tooltip{
   text-transform: uppercase;
   letter-spacing: .12em;
   color: rgba(203,213,225,.8);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   font-weight: 700;
 }
 .qb-counter-value {
-  font-size: 48px;
+  font-size: 40px;
   font-weight: 900;
   line-height: 1;
 }

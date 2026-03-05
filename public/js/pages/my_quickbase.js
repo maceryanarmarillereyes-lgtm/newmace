@@ -495,7 +495,14 @@
       const dashboardCounters = normalizeDashboardCounters(settings && settings.dashboard_counters);
       if (!dashboardCounters.length) {
         host.innerHTML = '';
+        host.classList.remove('qb-counters-many');
         return;
+      }
+      // Smart sizing: when >4 counters, switch to fill mode so they share space evenly
+      if (dashboardCounters.length > 4) {
+        host.classList.add('qb-counters-many');
+      } else {
+        host.classList.remove('qb-counters-many');
       }
       const widgets = dashboardCounters.map((counter, widgetsIndex) => {
         const matcherValue = String(counter.value || '').toLowerCase();
@@ -1991,13 +1998,21 @@
             filterMatch: tabFilterMatch
           });
           // FIX: [Issue 2] - Reuse cache if fetched within 2 minutes.
-          const cachedPayload = forceRefresh ? null : readQuickbaseCache(cacheKey, activeTabId);
+          const cachedPayload = forceRefresh ? null : readQuickbaseCache(cacheKey, thisLoadTabId);
           if (cachedPayload) {
+            // ── STALE GUARD (cache hit path) ──────────────────────────────
+            // Cache hit is also async — verify we're still on the same tab
+            // before writing to shared state.
+            if (state._currentLoadToken !== thisLoadTabId) {
+              console.info('[Quickbase] discarding stale cache hit for tab', thisLoadTabId);
+              return;
+            }
             state.allAvailableFields = Array.isArray(cachedPayload.allAvailableFields) ? cachedPayload.allAvailableFields : [];
             state.baseRecords = Array.isArray(cachedPayload.records) ? cachedPayload.records.slice() : [];
-            if (activeTabId) {
+            state._loadedForTabId = thisLoadTabId;
+            if (thisLoadTabId) {
               state._tabDataCache = Object.assign({}, state._tabDataCache || {}, {
-                [activeTabId]: Object.assign({}, state._tabDataCache && state._tabDataCache[activeTabId] || {}, {
+                [thisLoadTabId]: Object.assign({}, state._tabDataCache && state._tabDataCache[thisLoadTabId] || {}, {
                   cachedRows: state.baseRecords.slice()
                 })
               });
@@ -2059,6 +2074,7 @@
           const incomingColumns = Array.isArray(data && data.columns) ? data.columns : [];
           const incomingRecords = Array.isArray(data && data.records) ? data.records : [];
           state.baseRecords = incomingRecords.slice();
+          state._loadedForTabId = thisLoadTabId;
           if (thisLoadTabId) {
             state._tabDataCache = Object.assign({}, state._tabDataCache || {}, {
               [thisLoadTabId]: Object.assign({}, state._tabDataCache && state._tabDataCache[thisLoadTabId] || {}, {
@@ -2129,11 +2145,21 @@
     }
 
     function applySearchAndRender() {
+      // ── TAB OWNERSHIP GUARD ─────────────────────────────────────────────
+      // Never render data from a different tab. _loadedForTabId tracks which
+      // tab's records are currently in state.baseRecords. If it doesn't match
+      // the active tab, skip rendering stale data.
+      const _renderForTabId = getActiveTabId();
+      if (state._loadedForTabId && state._loadedForTabId !== _renderForTabId) {
+        console.info('[Quickbase] applySearchAndRender skipped — data is for tab', state._loadedForTabId, 'but active is', _renderForTabId);
+        return;
+      }
+
       const normalizedSearch = getActiveSearchTerm();
       const activeCounter = state.activeCounterIndex >= 0 ? state.dashboardCounters[state.activeCounterIndex] : null;
       state.searchTerm = normalizedSearch;
 
-      const activeTabId = getActiveTabId();
+      const activeTabId = _renderForTabId;
       const freshTabSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[activeTabId]
         ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId], {})
         : createDefaultSettings({}, {});
@@ -2422,6 +2448,8 @@
       // If we don't reset this, loadQuickbaseData returns the old promise which
       // renders the WRONG tab's data, leaving the new tab stuck on "Loading...".
       quickbaseLoadInFlight = null;
+      // Clear tab data ownership so applySearchAndRender doesn't block the new tab's load
+      state._loadedForTabId = null;
 
       // ISOLATION: clear stale data from previous tab before switching
       state.allAvailableFields = [];
@@ -2638,6 +2666,16 @@
         renderTabBar();
         if (window.UI && UI.toast) UI.toast('Quickbase settings saved successfully!');
         closeSettings();
+        // FIX[Bug1]: Render counters immediately with current cached records so they
+        // appear INSTANTLY after save — no page refresh needed.
+        const _savedCounters = deepClone(state.dashboardCounters || []);
+        if (_savedCounters.length) {
+          renderDashboardCounters(root, state.baseRecords, { dashboard_counters: _savedCounters }, state, (idx) => {
+            state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
+            state.currentPage = 1;
+            applySearchAndRender();
+          });
+        }
         await loadQuickbaseData({ forceRefresh: true });
       } catch (err) {
         if (window.UI && UI.toast) UI.toast('Failed to save settings: ' + String(err && err.message || err), 'error');
