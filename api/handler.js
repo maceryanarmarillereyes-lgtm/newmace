@@ -79,6 +79,8 @@ const ROUTES = {
   'tasks/distribution_export': require('../server/routes/tasks/distribution_export'),
 
   'quickbase/monitoring': require('../server/routes/quickbase/monitoring'),
+  'quickbase_tabs': require('../server/routes/quickbase_tabs'),
+  'quickbase_tabs/upsert': require('../server/routes/quickbase_tabs'),
 };
 
 const DYNAMIC_ROUTES = [
@@ -86,6 +88,11 @@ const DYNAMIC_ROUTES = [
     pattern: /^member\/([^/]+)\/schedule$/,
     handler: ROUTES['member/schedule'],
     paramMap: (m) => ({ memberId: decodeURIComponent(m[1] || '') })
+  },
+  {
+    pattern: /^quickbase_tabs\/([^/]+)$/,
+    handler: ROUTES['quickbase_tabs'],
+    paramMap: (m) => ({ tab_id: decodeURIComponent(m[1] || '') })
   }
 ];
 
@@ -102,6 +109,22 @@ function resolveRoute(routePath) {
 
 module.exports = async (req, res) => {
   try {
+    // Parse JSON body for POST/PUT/PATCH requests when runtime has not already populated req.body
+    if (!req.body && req.method && ['POST', 'PUT', 'PATCH'].includes(String(req.method).toUpperCase())) {
+      await new Promise((resolve, reject) => {
+        let raw = '';
+        req.on('data', (chunk) => { raw += chunk; });
+        req.on('end', () => {
+          if (raw) {
+            try { req.body = JSON.parse(raw); } catch (_) { req.body = {}; }
+          } else {
+            req.body = {};
+          }
+          resolve();
+        });
+        req.on('error', reject);
+      });
+    }
     // Prefer rewrite-provided query param `path`.
     let p = req.query && (req.query.path ?? req.query.p);
 

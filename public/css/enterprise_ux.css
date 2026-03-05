@@ -1,4 +1,4 @@
-/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Strictly protects Enterprise UI/UX, Realtime Sync Logic, Core State Management, and Database/API Adapters. Do NOT modify existing logic or layout in this file without explicitly asking Thunter BOY for clearance. If overlapping changes are required, STOP and provide a RISK IMPACT REPORT first. */
 /* MUMS Enterprise UX Kit (Dashboard + My Schedule)
    - CSS Grid + Flex hybrid
    - Responsive + accessibility-focused
@@ -4951,4 +4951,21 @@ body.members-fullscreen-active .tooltip{
   .qb-header-row{ flex-wrap:wrap; }
   .qb-header-search-wrap{ order:3; width:100%; max-width:none; }
   .qb-header-search{ width:100%; }
+}
+
+/* === MY QUICKBASE TABLE SCROLL FIX === */
+.qb-table-wrapper,
+.monitoring-table-container,
+.qb-records-table-wrap,
+[data-qb-table-container] {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+  max-height: calc(100vh - 300px) !important;
+  min-height: 150px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.qb-records-table,
+.monitoring-table {
+  min-width: 600px;
 }

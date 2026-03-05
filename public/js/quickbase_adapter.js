@@ -1,4 +1,4 @@
-/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Strictly protects Enterprise UI/UX, Realtime Sync Logic, Core State Management, and Database/API Adapters. Do NOT modify existing logic or layout in this file without explicitly asking Thunter BOY for clearance. If overlapping changes are required, STOP and provide a RISK IMPACT REPORT first. */
 (function(){
   function encodeQuickbaseLiteral(value) {
     return String(value == null ? '' : value).replace(/'/g, "\\'");
@@ -63,6 +63,12 @@
     const clean = String(value == null ? '' : value).trim();
     if (!clean) return;
     params.set(key, clean);
+  }
+
+  function normalizeMonitoringLimit(rawLimit) {
+    const parsed = Number(rawLimit);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 100;
+    return Math.min(1000, Math.floor(parsed));
   }
 
   function getToken() {
@@ -188,31 +194,36 @@
       authorization: 'Bearer ' + token
     };
 
-    // Construct URL with query parameters
-    const queryParams = new URLSearchParams({
-      qid: qid,
-      tableId: tableId,
-      realm: realm
-    });
+    const payload = {
+      qid,
+      tableId,
+      realm,
+      customFilters: Array.isArray(overrideParams && overrideParams.customFilters) ? overrideParams.customFilters : [],
+      filterMatch: (overrideParams && overrideParams.filterMatch) ? (String(overrideParams.filterMatch).trim().toUpperCase() === 'ANY' ? 'ANY' : 'ALL') : 'ALL',
+      customColumns: Array.isArray(overrideParams && overrideParams.customColumns) ? overrideParams.customColumns : []
+    };
+
+    if (overrideParams && overrideParams.tab_id) payload.tab_id = overrideParams.tab_id;
+    if (overrideParams && overrideParams.reportLink) payload.reportLink = overrideParams.reportLink;
 
     const extraWhere = shouldUseDefaultReport ? '' : buildQuickbaseWhere(overrideParams && overrideParams.customFilters, overrideParams && overrideParams.filterMatch);
-    appendParam(queryParams, 'where', (overrideParams && overrideParams.where) || extraWhere);
-    appendParam(queryParams, 'search', normalizedSearch);
-    appendParam(queryParams, 'searchFields', Array.isArray(overrideParams && overrideParams.searchFields)
-      ? (overrideParams.searchFields || []).map(function(v){ return String(v || '').trim(); }).filter(Boolean).join(',')
-      : '');
-    appendParam(queryParams, 'limit', overrideParams && overrideParams.limit);
+    if ((overrideParams && overrideParams.where) || extraWhere) payload.where = (overrideParams && overrideParams.where) || extraWhere;
+    if (normalizedSearch) payload.search = normalizedSearch;
+    if (Array.isArray(overrideParams && overrideParams.searchFields)) {
+      payload.searchFields = (overrideParams.searchFields || []).map(function(v){ return String(v || '').trim(); }).filter(Boolean).join(',');
+    }
+    payload.limit = normalizeMonitoringLimit(overrideParams && overrideParams.limit);
 
     const candidates = [
-      '/api/quickbase/monitoring?' + queryParams.toString(),
-      '/functions/quickbase/monitoring?' + queryParams.toString()
+      '/api/quickbase/monitoring',
+      '/functions/quickbase/monitoring'
     ];
 
     let lastErr = null;
 
     for (const url of candidates) {
       try {
-        const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
+        const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload), cache: 'no-store' });
         const data = await res.json().catch(function(){ return {}; });
 
         if (!res.ok) {

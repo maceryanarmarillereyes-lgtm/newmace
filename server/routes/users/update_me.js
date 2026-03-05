@@ -1,4 +1,4 @@
-/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Strictly protects Enterprise UI/UX, Realtime Sync Logic, Core State Management, and Database/API Adapters. Do NOT modify existing logic or layout in this file without explicitly asking Thunter BOY for clearance. If overlapping changes are required, STOP and provide a RISK IMPACT REPORT first. */
 const { getUserFromJwt, getProfileForUserId, serviceUpdate, serviceSelect } = require('../../lib/supabase');
 const { normalizeFilters } = require('../../lib/quickbase-utils');
 const { escapeQuickbaseValue } = require('../../lib/escape');
@@ -52,6 +52,17 @@ function normalizeQuickbaseOperator(value) {
 }
 
 
+
+function deepClone(obj) {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map((item) => deepClone(item));
+  const cloned = {};
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) cloned[key] = deepClone(obj[key]);
+  }
+  return cloned;
+}
+
 function parseQuickbaseConfigInput(raw) {
   if (!raw) return {};
   if (typeof raw === 'object') return raw;
@@ -86,6 +97,33 @@ function normalizeQuickbaseConfig(raw) {
   const filterMatchRaw = String(src.filterMatch || src.qb_filter_match || '').trim().toUpperCase();
   const filterMatch = filterMatchRaw === 'ANY' ? 'ANY' : 'ALL';
 
+  let dashboardCounters = [];
+  if (Array.isArray(src.dashboardCounters) || typeof src.dashboardCounters === 'string') {
+    try {
+      dashboardCounters = Array.isArray(src.dashboardCounters)
+        ? src.dashboardCounters
+        : JSON.parse(src.dashboardCounters || '[]');
+    } catch (_) {
+      dashboardCounters = [];
+    }
+  } else if (Array.isArray(src.dashboard_counters) || typeof src.dashboard_counters === 'string') {
+    try {
+      dashboardCounters = Array.isArray(src.dashboard_counters)
+        ? src.dashboard_counters
+        : JSON.parse(src.dashboard_counters || '[]');
+    } catch (_) {
+      dashboardCounters = [];
+    }
+  } else if (Array.isArray(src.qb_dashboard_counters) || typeof src.qb_dashboard_counters === 'string') {
+    try {
+      dashboardCounters = Array.isArray(src.qb_dashboard_counters)
+        ? src.qb_dashboard_counters
+        : JSON.parse(src.qb_dashboard_counters || '[]');
+    } catch (_) {
+      dashboardCounters = [];
+    }
+  }
+
   return {
     reportLink: String(src.reportLink || src.qb_report_link || '').trim(),
     qid: String(src.qid || src.qb_qid || '').trim(),
@@ -93,8 +131,92 @@ function normalizeQuickbaseConfig(raw) {
     tableId: String(src.tableId || src.qb_table_id || '').trim(),
     customColumns,
     customFilters,
-    filterMatch
+    filterMatch,
+    dashboardCounters
   };
+}
+
+
+function parseQuickbaseIdentifiersFromLink(linkRaw) {
+  const link = String(linkRaw || '').trim();
+  if (!link) return { qid: '', tableId: '' };
+
+  let qid = '';
+  let tableId = '';
+  try {
+    const parsed = new URL(link);
+    qid = String(parsed.searchParams.get('qid') || '').trim();
+    if (!qid) {
+      const reportMatch = String(parsed.pathname || '').match(/\/report\/(-?\d+)/i);
+      if (reportMatch && reportMatch[1]) qid = String(reportMatch[1]).trim();
+    }
+  } catch (_) {}
+
+  const dbMatch = link.match(/\/db\/([a-zA-Z0-9]+)/i);
+  if (dbMatch && dbMatch[1]) tableId = String(dbMatch[1]).trim();
+  if (!tableId) {
+    const tableMatch = link.match(/\/table\/([a-zA-Z0-9]+)/i);
+    if (tableMatch && tableMatch[1]) tableId = String(tableMatch[1]).trim();
+  }
+
+  return { qid, tableId };
+}
+
+function normalizeQuickbaseSettingsPayload(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const hasTabs = Array.isArray(src.tabs);
+  if (!hasTabs) return normalizeQuickbaseConfig(src);
+
+  const tabs = src.tabs
+    .filter((tab) => tab && typeof tab === 'object')
+    .map((tab) => {
+      const normalizedTab = normalizeQuickbaseConfig(tab);
+      const parsed = parseQuickbaseIdentifiersFromLink(normalizedTab.reportLink);
+      const reportLink = String(normalizedTab.reportLink || '').trim();
+      const qid = String(normalizedTab.qid || parsed.qid || '').trim();
+      const tableId = String(normalizedTab.tableId || parsed.tableId || '').trim();
+      if (reportLink && (!qid || !tableId)) return null;
+      return {
+        id: String(tab.id || '').trim(),
+        tabName: String(tab.tabName || tab.name || '').trim() || 'Main Report',
+        reportLink,
+        qid,
+        tableId,
+        customColumns: deepClone(normalizedTab.customColumns || []),
+        customFilters: deepClone(normalizedTab.customFilters || []),
+        filterMatch: normalizedTab.filterMatch,
+        dashboard_counters: deepClone(normalizedTab.dashboardCounters || [])
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 25);
+
+  const safeTabs = tabs.length ? tabs : [{
+    id: '',
+    tabName: 'Main Report',
+    reportLink: '',
+    qid: '',
+    tableId: '',
+    customColumns: [],
+    customFilters: [],
+    filterMatch: 'ALL',
+    dashboard_counters: []
+  }];
+  const maxIndex = safeTabs.length - 1;
+  const activeTabIndex = Math.min(Math.max(Number(src.activeTabIndex || 0), 0), maxIndex);
+  return {
+    activeTabIndex,
+    tabs: safeTabs
+  };
+}
+
+function getLegacyQuickbaseConfigFromSettings(settings) {
+  const normalizedSettings = settings && typeof settings === 'object' ? settings : {};
+  if (!Array.isArray(normalizedSettings.tabs)) return normalizeQuickbaseConfig(normalizedSettings);
+  const tabs = normalizedSettings.tabs;
+  if (!tabs.length) return normalizeQuickbaseConfig({});
+  const activeTabIndex = Math.min(Math.max(Number(normalizedSettings.activeTabIndex || 0), 0), tabs.length - 1);
+  return normalizeQuickbaseConfig(tabs[activeTabIndex] || tabs[0]);
 }
 
 function toBool(v){
@@ -141,6 +263,7 @@ module.exports = async (req, res) => {
     if (!authed) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
     const body = await readBody(req);
+    const { quickbase_settings } = body || {};
     req.user = req.user || { id: authed.id };
     const patch = {};
 
@@ -193,56 +316,88 @@ module.exports = async (req, res) => {
       patch.qb_custom_columns = normalized;
     }
 
+    // === QUICKBASE SETTINGS PERSISTENCE FIX ===
     if (Object.prototype.hasOwnProperty.call(body, 'quickbase_settings')) {
-      let inputQuickbaseSettings = body.quickbase_settings;
-      if (typeof inputQuickbaseSettings === 'string') {
-        try {
-          inputQuickbaseSettings = inputQuickbaseSettings ? JSON.parse(inputQuickbaseSettings) : {};
-        } catch (_) {
-          return sendJson(res, 400, { error: 'invalid_payload', detail: 'quickbase_settings not valid JSON' });
+      try {
+        await ensureQuickbaseSettingsColumn();
+
+        const rawSettings = body.quickbase_settings;
+        let normalizedPayload;
+
+        // Handle string input (double-serialized JSON)
+        if (typeof rawSettings === 'string') {
+          try {
+            normalizedPayload = JSON.parse(rawSettings);
+          } catch (parseErr) {
+            console.error('[update_me] Failed to parse quickbase_settings string:', parseErr.message);
+            return sendJson(res, 400, { ok: false, error: 'invalid_quickbase_settings_format' });
+          }
+        } else {
+          normalizedPayload = rawSettings;
         }
-      }
 
-      if (!inputQuickbaseSettings || typeof inputQuickbaseSettings !== 'object' || Array.isArray(inputQuickbaseSettings)) {
-        return sendJson(res, 400, { error: 'invalid_payload', detail: 'quickbase_settings must be an object' });
-      }
-
-      if (Object.prototype.hasOwnProperty.call(inputQuickbaseSettings, 'filters')) {
-        if (!Array.isArray(inputQuickbaseSettings.filters)) {
-          return sendJson(res, 400, { error: 'invalid_payload', detail: 'quickbase_settings.filters must be an array' });
+        if (!normalizedPayload || typeof normalizedPayload !== 'object' || Array.isArray(normalizedPayload)) {
+          return sendJson(res, 400, { ok: false, error: 'invalid_quickbase_settings_format' });
         }
-        try {
-          const normalizedFilters = normalizeFilters(inputQuickbaseSettings.filters)
-            .map((filter) => ({
-              ...filter,
-              value: escapeQuickbaseValue(filter.value)
-            }));
-          inputQuickbaseSettings.filters = normalizedFilters;
-          inputQuickbaseSettings.qb_custom_filters = normalizedFilters;
-          console.info('[users.update] quickbase filter normalization applied', { count: normalizedFilters.length });
-        } catch (err) {
-          return sendJson(res, 400, { error: 'invalid_payload', detail: String(err && err.message ? err.message : err) });
+
+        if (Object.prototype.hasOwnProperty.call(normalizedPayload, 'filters')) {
+          if (!Array.isArray(normalizedPayload.filters)) {
+            return sendJson(res, 400, { error: 'invalid_payload', detail: 'quickbase_settings.filters must be an array' });
+          }
+          try {
+            const normalizedFilters = normalizeFilters(normalizedPayload.filters)
+              .map((filter) => ({
+                ...filter,
+                value: escapeQuickbaseValue(filter.value)
+              }));
+            normalizedPayload.filters = normalizedFilters;
+            normalizedPayload.qb_custom_filters = normalizedFilters;
+            console.info('[users.update] quickbase filter normalization applied', { count: normalizedFilters.length });
+          } catch (err) {
+            return sendJson(res, 400, { error: 'invalid_payload', detail: String(err && err.message ? err.message : err) });
+          }
         }
+
+        // Normalize the payload structure
+        const finalPayload = normalizeQuickbaseSettingsPayload(normalizedPayload);
+
+        // Deep clone to prevent reference issues
+        patch.quickbase_settings = deepClone(finalPayload);
+
+        // Also update legacy quickbase_config for backward compatibility
+        const legacyConfig = getLegacyQuickbaseConfigFromSettings(finalPayload);
+        patch.quickbase_config = deepClone(legacyConfig);
+
+        // Update individual legacy columns for queries
+        if (legacyConfig.reportLink) patch.qb_report_link = legacyConfig.reportLink;
+        if (legacyConfig.qid) patch.qb_qid = legacyConfig.qid;
+        if (legacyConfig.tableId) patch.qb_table_id = legacyConfig.tableId;
+        if (legacyConfig.realm) patch.qb_realm = legacyConfig.realm;
+        if (Array.isArray(legacyConfig.customColumns)) {
+          patch.qb_custom_columns = JSON.stringify(legacyConfig.customColumns);
+        }
+        if (Array.isArray(legacyConfig.customFilters)) {
+          patch.qb_custom_filters = JSON.stringify(legacyConfig.customFilters);
+        }
+        if (legacyConfig.filterMatch) patch.qb_filter_match = legacyConfig.filterMatch;
+        if (Array.isArray(legacyConfig.dashboardCounters)) {
+          patch.qb_dashboard_counters = JSON.stringify(legacyConfig.dashboardCounters);
+        }
+
+        console.log('[update_me] Saving quickbase_settings:', JSON.stringify(finalPayload).substring(0, 500));
+      } catch (settingsErr) {
+        console.error('[update_me] quickbase_settings processing error:', settingsErr);
+        return sendJson(res, 500, { ok: false, error: 'quickbase_settings_save_failed', message: settingsErr.message });
       }
-
-      const normalizedSettings = normalizeQuickbaseConfig(inputQuickbaseSettings);
-      patch.quickbase_settings = normalizedSettings;
-      patch.quickbase_config = normalizedSettings;
-
-      // Keep legacy columns in sync for backward compatibility.
-      patch.qb_report_link = normalizedSettings.reportLink;
-      patch.qb_qid = normalizedSettings.qid;
-      patch.qb_realm = normalizedSettings.realm;
-      patch.qb_table_id = normalizedSettings.tableId;
-      patch.qb_custom_columns = normalizedSettings.customColumns;
-      patch.qb_custom_filters = normalizedSettings.customFilters;
-      patch.qb_filter_match = normalizedSettings.filterMatch;
     }
+    // === END QUICKBASE SETTINGS PERSISTENCE FIX ===
 
     if (Object.prototype.hasOwnProperty.call(body, 'quickbase_config')) {
       const normalizedConfig = normalizeQuickbaseConfig(parseQuickbaseConfigInput(body.quickbase_config));
       patch.quickbase_config = normalizedConfig;
-      patch.quickbase_settings = normalizedConfig;
+      if (!Object.prototype.hasOwnProperty.call(body, 'quickbase_settings')) {
+        patch.quickbase_settings = normalizedConfig;
+      }
 
       // Keep legacy columns in sync for backward compatibility.
       patch.qb_report_link = normalizedConfig.reportLink;
@@ -252,6 +407,7 @@ module.exports = async (req, res) => {
       patch.qb_custom_columns = normalizedConfig.customColumns;
       patch.qb_custom_filters = normalizedConfig.customFilters;
       patch.qb_filter_match = normalizedConfig.filterMatch;
+      patch.qb_dashboard_counters = normalizedConfig.dashboardCounters;
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'qb_filter_match')) {
@@ -271,6 +427,21 @@ module.exports = async (req, res) => {
         .filter((f) => f.fieldId && f.value)
         .slice(0, 200);
       patch.qb_custom_filters = normalized;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'qb_dashboard_counters')) {
+      const source = body.qb_dashboard_counters;
+      if (Array.isArray(source)) {
+        patch.qb_dashboard_counters = source;
+      } else if (typeof source === 'string') {
+        try {
+          patch.qb_dashboard_counters = JSON.parse(source || '[]');
+        } catch (_) {
+          patch.qb_dashboard_counters = [];
+        }
+      } else {
+        patch.qb_dashboard_counters = [];
+      }
     }
     const prof = await getProfileForUserId(authed.id);
     if (!prof) return sendJson(res, 404, { ok: false, error: 'profile_missing', message: 'Profile not found. Call /api/users/me first.' });
@@ -330,15 +501,20 @@ module.exports = async (req, res) => {
     if (!Object.keys(patch).length) return sendJson(res, 200, { ok: true, updated: false, profile: null });
 
     let out;
-    const filtersCount = Array.isArray((patch.quickbase_settings || {}).customFilters)
-      ? patch.quickbase_settings.customFilters.length
+    const quickbaseSettingsFilters = getLegacyQuickbaseConfigFromSettings(patch.quickbase_settings || {});
+    const filtersCount = Array.isArray(quickbaseSettingsFilters.customFilters)
+      ? quickbaseSettingsFilters.customFilters.length
       : 0;
 
     const db = {
       async query() {
-        const query = 'select=column_name&table_name=eq.mums_profiles&column_name=eq.quickbase_settings&limit=1';
-        const schemaOut = await serviceSelect('/rest/v1/information_schema.columns?' + query);
-        return (schemaOut && schemaOut.ok && Array.isArray(schemaOut.json)) ? schemaOut.json : [];
+        // Detect column availability by selecting it directly from mums_profiles.
+        // information_schema is commonly blocked in hosted PostgREST/RLS setups,
+        // which caused false negatives and forced a quickbase_config fallback.
+        const probeOut = await serviceSelect('mums_profiles', 'select=quickbase_settings&limit=1');
+        return (probeOut && probeOut.ok)
+          ? [{ column_name: 'quickbase_settings' }]
+          : [];
       }
     };
 
@@ -362,6 +538,7 @@ module.exports = async (req, res) => {
       'qb_custom_columns',
       'qb_custom_filters',
       'qb_filter_match',
+      'qb_dashboard_counters',
       'quickbase_config',
       'quickbase_settings',
       'team_override',
@@ -370,12 +547,17 @@ module.exports = async (req, res) => {
     const updates = allowedFields.reduce((acc, key) => {
       if (!Object.prototype.hasOwnProperty.call(patch, key)) return acc;
       let value = patch[key];
-      if (key === 'quickbase_settings' && typeof value === 'string') {
-        try {
-          value = value ? JSON.parse(value) : {};
-        } catch (_) {
-          value = {};
+      if (key === 'quickbase_settings') {
+        if (typeof value === 'string') {
+          try {
+            value = value ? JSON.parse(value) : {};
+          } catch (_) {
+            value = {};
+          }
         }
+        value = (value && typeof value === 'object' && !Array.isArray(value))
+          ? deepClone(value)
+          : {};
       }
       acc[key] = value;
       return acc;
@@ -383,6 +565,7 @@ module.exports = async (req, res) => {
 
     const supabase = createServiceSupabaseAdapter();
     try {
+      console.log('[Update Me Route] Received quickbase_settings:', quickbase_settings);
       out = await supabase.from('profiles').update(updates).eq('id', req.user.id);
       if (out && out.error) {
         console.error('Supabase Update Error:', out.error);
@@ -393,26 +576,37 @@ module.exports = async (req, res) => {
     }
 
     // Backward-compatible fallback:
-    // If environment DB is missing qb_custom_* columns, retry update without those keys
-    // so core Quickbase config (token/qid/table/realm/link) still saves successfully.
+    // If environment DB is missing some legacy Quickbase columns, retry update
+    // by removing only the missing keys so quickbase_settings can still persist.
     if (out && out.error) {
       const detailBlob = JSON.stringify(out.error || '').toLowerCase();
-      const missingCustomCols = detailBlob.includes('qb_custom_columns') || detailBlob.includes('qb_custom_filters') || detailBlob.includes('quickbase_config') || detailBlob.includes('quickbase_settings');
-      if (missingCustomCols) {
+      const columnToPatchKey = {
+        qb_custom_columns: 'qb_custom_columns',
+        qb_custom_filters: 'qb_custom_filters',
+        qb_dashboard_counters: 'qb_dashboard_counters',
+        quickbase_config: 'quickbase_config',
+        quickbase_settings: 'quickbase_settings'
+      };
+      const missingPatchKeys = Object.keys(columnToPatchKey)
+        .filter((column) => detailBlob.includes(column))
+        .map((column) => columnToPatchKey[column]);
+
+      if (missingPatchKeys.length) {
         const retryPatch = { ...updates };
-        delete retryPatch.qb_custom_columns;
-        delete retryPatch.qb_custom_filters;
-        delete retryPatch.quickbase_config;
-        delete retryPatch.quickbase_settings;
+        missingPatchKeys.forEach((key) => { delete retryPatch[key]; });
+
         if (Object.keys(retryPatch).length > 0) {
           const retryOut = await supabase.from('profiles').update(retryPatch).eq('id', req.user.id);
           if (!retryOut.error) {
+            const retainedSettings = Object.prototype.hasOwnProperty.call(retryPatch, 'quickbase_settings');
             return sendJson(res, 200, {
               ok: true,
               updated: true,
               patch: retryPatch,
               warning: 'quickbase_columns_or_config_missing_in_db',
-              message: 'Saved core Quickbase settings. Run latest migrations to enable custom columns/filters/config persistence.'
+              message: retainedSettings
+                ? 'Saved Quickbase settings. Some legacy columns are missing; run latest migrations to restore full backward compatibility.'
+                : 'Saved core Quickbase settings. Run latest migrations to enable full custom settings persistence.'
             });
           }
         }

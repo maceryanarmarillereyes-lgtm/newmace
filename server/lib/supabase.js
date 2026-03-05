@@ -1,4 +1,4 @@
-/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Strictly protects Enterprise UI/UX, Realtime Sync Logic, Core State Management, and Database/API Adapters. Do NOT modify existing logic or layout in this file without explicitly asking Thunter BOY for clearance. If overlapping changes are required, STOP and provide a RISK IMPACT REPORT first. */
 /**
  * Supabase server helpers
  *
@@ -239,6 +239,27 @@ async function getProfileForUserId(userId) {
   return out.json && out.json[0] ? out.json[0] : null;
 }
 
+
+async function updateProfileQuickbaseSettings(userId, quickbaseSettings) {
+  const uid = String(userId || '').trim();
+  if (!uid) throw new Error('Missing userId');
+
+  const out = await serviceUpdate('mums_profiles', {
+    quickbase_settings: quickbaseSettings,
+    updated_at: new Date().toISOString()
+  }, {
+    user_id: `eq.${uid}`
+  });
+
+  if (!out.ok) {
+    console.error('[updateProfileQuickbaseSettings] Error:', out.json || out.text);
+    throw new Error((out.json && out.json.message) || out.text || 'quickbase_settings_update_failed');
+  }
+
+  const rows = Array.isArray(out.json) ? out.json : [];
+  return rows[0] || null;
+}
+
 module.exports = {
   serviceFetch,
   serviceHeaders,
@@ -247,5 +268,6 @@ module.exports = {
   serviceInsert,
   serviceUpdate,
   getUserFromJwt,
-  getProfileForUserId
+  getProfileForUserId,
+  updateProfileQuickbaseSettings
 };

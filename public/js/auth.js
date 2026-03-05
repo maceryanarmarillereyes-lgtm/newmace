@@ -1,4 +1,4 @@
-/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Strictly protects Enterprise UI/UX, Realtime Sync Logic, Core State Management, and Database/API Adapters. Do NOT modify existing logic or layout in this file without explicitly asking Thunter BOY for clearance. If overlapping changes are required, STOP and provide a RISK IMPACT REPORT first. */
 (function(){
   const DBG = (window.MUMS_DEBUG || {
     enabled: false,
@@ -322,6 +322,11 @@ try {
                   if (me && me.ok && me.profile) {
                     const p = me.profile;
                     const uid = p.user_id || p.id || sbUser.id;
+                    if (window.Store && typeof Store.setProfile === 'function' && uid) {
+                      try {
+                        Store.setProfile(uid, Object.assign({}, p, { updatedAt: Date.now() }));
+                      } catch (_) {}
+                    }
                     if (window.Store && typeof Store.getUsers === 'function' && typeof Store.saveUsers === 'function') {
                       const users = Array.isArray(Store.getUsers()) ? Store.getUsers() : [];
                       const next = users.slice();

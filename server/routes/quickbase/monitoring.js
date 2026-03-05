@@ -1,9 +1,31 @@
-/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Do not modify existing UI/UX, layouts, or core logic in this file without explicitly asking Thunter BOY for clearance. If changes are required here, STOP and provide a RISK IMPACT REPORT first. */
+/* @AI_CRITICAL_GUARD: UNTOUCHABLE ZONE. Strictly protects Enterprise UI/UX, Realtime Sync Logic, Core State Management, and Database/API Adapters. Do NOT modify existing logic or layout in this file without explicitly asking Thunter BOY for clearance. If overlapping changes are required, STOP and provide a RISK IMPACT REPORT first. */
 const { sendJson, requireAuthedUser } = require('../tasks/_common');
 const { queryQuickbaseRecords, listQuickbaseFields, normalizeQuickbaseCellValue } = require('../../lib/quickbase');
 const { normalizeSettings } = require('../../lib/normalize_settings');
 
+const FIELDS_CACHE_TTL_MS = 60 * 1000;
+const REPORT_META_CACHE_TTL_MS = 30 * 1000;
+const fieldsCache = new Map();
+const reportMetaCache = new Map();
+
+function readCache(cache, key, ttlMs) {
+  const hit = cache.get(key);
+  if (!hit) return null;
+  if ((Date.now() - hit.at) > ttlMs) {
+    cache.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+function writeCache(cache, key, value) {
+  cache.set(key, { at: Date.now(), value });
+}
+
 async function getQuickbaseReportMetadata({ config, qid }) {
+  const cacheKey = [config.qb_realm, config.qb_table_id, qid].join('|');
+  const cached = readCache(reportMetaCache, cacheKey, REPORT_META_CACHE_TTL_MS);
+  if (cached) return cached;
   const cfg = {
     qb_token: config.qb_token,
     qb_realm: config.qb_realm,
@@ -29,11 +51,13 @@ async function getQuickbaseReportMetadata({ config, qid }) {
       .map((f) => Number(f))
       .filter((id) => Number.isFinite(id));
 
-    return {
+    const payload = {
       fields: columnFieldIds,
       filter: json.query?.filter || '',
       sortBy: json.query?.sortBy || []
     };
+    writeCache(reportMetaCache, cacheKey, payload);
+    return payload;
   } catch (_) {
     return null;
   }
@@ -106,6 +130,7 @@ function sortFieldsByProfileOrder(fields, profileColumnOrder) {
 function buildProfileFilterClauses(rawFilters) {
   if (!Array.isArray(rawFilters)) return [];
   const groupedByField = new Map();
+  const negativeOperators = new Set(['XEX', 'XCT', 'XSW', 'XIR', 'XTV']);
   rawFilters.forEach((f) => {
     if (!f || typeof f !== 'object') return;
     const fieldId = Number(f.fieldId ?? f.field_id ?? f.fid ?? f.id);
@@ -113,14 +138,25 @@ function buildProfileFilterClauses(rawFilters) {
     const opRaw = String(f.operator ?? 'EX').trim().toUpperCase();
     const operator = ['EX', 'XEX', 'CT', 'XCT', 'SW', 'XSW', 'BF', 'AF', 'IR', 'XIR', 'TV', 'XTV', 'LT', 'LTE', 'GT', 'GTE'].includes(opRaw) ? opRaw : 'EX';
     if (!Number.isFinite(fieldId) || !value) return;
-    if (!groupedByField.has(fieldId)) groupedByField.set(fieldId, []);
-    groupedByField.get(fieldId).push(`{${fieldId}.${operator}.'${encodeQuickbaseLiteral(value)}'}`);
+    if (!groupedByField.has(fieldId)) groupedByField.set(fieldId, { positive: [], negative: [] });
+    const bucket = groupedByField.get(fieldId);
+    const clause = `{${fieldId}.${operator}.'${encodeQuickbaseLiteral(value)}'}`;
+    if (negativeOperators.has(operator)) {
+      bucket.negative.push(clause);
+    } else {
+      bucket.positive.push(clause);
+    }
   });
 
-  return Array.from(groupedByField.values()).map((clauses) => {
-    if (!Array.isArray(clauses) || !clauses.length) return '';
-    if (clauses.length === 1) return clauses[0];
-    return `(${clauses.join(' OR ')})`;
+  return Array.from(groupedByField.values()).map((grouped) => {
+    if (!grouped || typeof grouped !== 'object') return '';
+    const positiveClause = grouped.positive.length
+      ? (grouped.positive.length === 1 ? grouped.positive[0] : `(${grouped.positive.join(' OR ')})`)
+      : '';
+    const negativeClause = grouped.negative.length
+      ? (grouped.negative.length === 1 ? grouped.negative[0] : `(${grouped.negative.join(' AND ')})`)
+      : '';
+    return [positiveClause, negativeClause].filter(Boolean).join(' AND ');
   }).filter(Boolean);
 }
 
@@ -153,21 +189,60 @@ module.exports = async (req, res) => {
     const profileQid = String(profileQuickbaseConfig.qid || profileQuickbaseConfig.qb_qid || profile.qb_qid || profile.quickbase_qid || '').trim();
     const profileTableId = String(profileQuickbaseConfig.tableId || profileQuickbaseConfig.qb_table_id || profile.qb_table_id || profile.quickbase_table_id || '').trim();
 
-    let qid = String(req?.query?.qid || req?.query?.qId || '').trim();
-    let tableId = String(req?.query?.tableId || req?.query?.table_id || '').trim();
-    let realm = String(req?.query?.realm || '').trim();
+    // Extract filterMatch and customFilters from profile settings with safe defaults
+    const profileFilterMatchRaw = String(
+      profileQuickbaseConfig.filterMatch ||
+      profileQuickbaseConfig.qb_filter_match ||
+      profile.qb_filter_match ||
+      'ALL'
+    ).trim().toUpperCase();
+    const profileFilterMatch = profileFilterMatchRaw === 'ANY' ? 'ANY' : 'ALL';
+    const profileCustomFilters = Array.isArray(profileQuickbaseConfig.customFilters)
+      ? profileQuickbaseConfig.customFilters
+      : (Array.isArray(profileQuickbaseConfig.qb_custom_filters)
+          ? profileQuickbaseConfig.qb_custom_filters
+          : []);
 
-    if (!qid || !tableId || !realm) {
-      qid = qid || profileQid;
-      tableId = tableId || profileTableId;
-      realm = realm || profileRealm;
+    // Accept tab-specific params from POST body first, then GET query, then profile fallback
+    const reqBody = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};
+    const reqTabId = String(req?.query?.tab_id || reqBody.tab_id || '').trim();
+    const reqReportLink = String(req?.query?.reportLink || reqBody.reportLink || '').trim();
+    let qid = String(req?.query?.qid || req?.query?.qId || reqBody.qid || '').trim();
+    let tableId = String(req?.query?.tableId || req?.query?.table_id || reqBody.tableId || '').trim();
+    let realm = String(req?.query?.realm || reqBody.realm || '').trim();
+
+    // Parse tab-scoped custom filters from POST body (overrides profile filters)
+    let effectiveCustomFilters = profileCustomFilters;
+    let effectiveFilterMatch = profileFilterMatch;
+    if (reqBody.customFilters !== undefined) {
+      if (Array.isArray(reqBody.customFilters)) {
+        effectiveCustomFilters = reqBody.customFilters;
+      } else if (typeof reqBody.customFilters === 'string') {
+        try { effectiveCustomFilters = JSON.parse(reqBody.customFilters); } catch (_) { effectiveCustomFilters = []; }
+      }
     }
+    if (typeof reqBody.filterMatch === 'string' && reqBody.filterMatch.trim()) {
+      const fm = reqBody.filterMatch.trim().toUpperCase();
+      effectiveFilterMatch = (fm === 'ANY') ? 'ANY' : 'ALL';
+    }
+
+    let reqCustomColumns = null;
+    if (Array.isArray(reqBody.customColumns)) {
+      reqCustomColumns = reqBody.customColumns;
+    } else if (typeof reqBody.customColumns === 'string') {
+      try { reqCustomColumns = JSON.parse(reqBody.customColumns); } catch(_) { reqCustomColumns = null; }
+    }
+
+    // Fall back to profile values only when request provides nothing
+    if (!qid) qid = profileQid;
+    if (!tableId) tableId = profileTableId;
+    if (!realm) realm = profileRealm;
 
     if (!qid || !tableId || !realm) {
       return sendJson(res, 400, {
         ok: false,
         warning: 'quickbase_credentials_missing',
-        message: 'Missing Quickbase configuration. Please configure your QID in My Quickbase Settings.'
+        message: 'No Report Link configured for this tab. Please set a Report Link in Quickbase Settings.'
       });
     }
 
@@ -193,7 +268,12 @@ module.exports = async (req, res) => {
       });
     }
 
-    const fieldMapOut = await listQuickbaseFields({ config: userQuickbaseConfig });
+    const fieldCacheKey = [userQuickbaseConfig.qb_realm, userQuickbaseConfig.qb_table_id].join('|');
+    let fieldMapOut = readCache(fieldsCache, fieldCacheKey, FIELDS_CACHE_TTL_MS);
+    if (!fieldMapOut) {
+      fieldMapOut = await listQuickbaseFields({ config: userQuickbaseConfig });
+      if (fieldMapOut && fieldMapOut.ok) writeCache(fieldsCache, fieldCacheKey, fieldMapOut);
+    }
     if (!fieldMapOut.ok) {
       return sendJson(res, fieldMapOut.status || 500, {
         ok: false,
@@ -234,8 +314,10 @@ module.exports = async (req, res) => {
     ];
 
     const hasPersonalQuickbaseQuery = !!String(qid || '').trim();
-    const profileCustomColumns = normalizeProfileColumns(profileQuickbaseConfig.customColumns || profileQuickbaseConfig.qb_custom_columns || profile.qb_custom_columns);
-    const mappedProfileColumns = profileCustomColumns
+    let profileCustomColumns = normalizeProfileColumns(profileQuickbaseConfig.customColumns || profileQuickbaseConfig.qb_custom_columns || profile.qb_custom_columns);
+    if (reqCustomColumns !== null) profileCustomColumns = normalizeProfileColumns(reqCustomColumns);
+    const effectiveCustomColumns = profileCustomColumns;
+    const mappedProfileColumns = effectiveCustomColumns
       .map((id) => {
         const found = allAvailableFields.find((f) => Number(f.id) === Number(id));
         return found ? { id: Number(found.id), label: found.label } : null;
@@ -294,9 +376,26 @@ module.exports = async (req, res) => {
         whereClauses.push(`{${statusFieldId}.XEX.'${encodeQuickbaseLiteral(status)}'}`);
       });
     }
+    const queryCustomFilters = (() => {
+      try {
+        const rawFilters = req?.query?.customFilters || req?.query?.filters || '';
+        if (!rawFilters) return null;
+        const parsed = typeof rawFilters === 'string' ? JSON.parse(decodeURIComponent(rawFilters)) : rawFilters;
+        return Array.isArray(parsed) ? parsed : null;
+      } catch (_) {
+        return null;
+      }
+    })();
+    const queryFilterMatch = normalizeFilterMatch(req?.query?.filterMatch || 'ALL');
 
-    const profileFilterClauses = buildProfileFilterClauses(profileQuickbaseConfig.customFilters || profileQuickbaseConfig.qb_custom_filters || profile.qb_custom_filters);
-    const profileFilterMatch = normalizeFilterMatch(profileQuickbaseConfig.filterMatch || profileQuickbaseConfig.qb_filter_match || profile.qb_filter_match || profile.qb_custom_filter_match);
+    const activeFilters = queryCustomFilters !== null
+      ? queryCustomFilters
+      : (Array.isArray(effectiveCustomFilters) ? effectiveCustomFilters : []);
+    const activeFilterMatch = queryCustomFilters !== null
+      ? queryFilterMatch
+      : normalizeFilterMatch(effectiveFilterMatch);
+
+    const profileFilterClauses = buildProfileFilterClauses(activeFilters);
 
     const routeWhere = String(req?.query?.where || '').trim();
     const manualWhere = whereClauses.length > 0 ? whereClauses.join(' AND ') : '';
@@ -327,7 +426,7 @@ module.exports = async (req, res) => {
     if (typeof profileFilterClauses !== 'undefined' && profileFilterClauses.length > 0) {
       const groupedProfileClause = profileFilterClauses.length === 1
         ? profileFilterClauses[0]
-        : `(${profileFilterClauses.join(` ${profileFilterMatch === 'ANY' ? 'OR' : 'AND'} `)})`;
+        : `(${profileFilterClauses.join(` ${activeFilterMatch === 'ANY' ? 'OR' : 'AND'} `)})`;
       if (groupedProfileClause) conditions.push(groupedProfileClause);
     }
     // 4. Search Bar Logic
@@ -380,7 +479,7 @@ module.exports = async (req, res) => {
           .map((f) => fieldsMetaById[String(f.id)] || { id: Number(f.id), label: String(f.label || '').trim() })
           .filter((f) => Number.isFinite(f.id) && String(f.label || '').trim());
 
-    const orderedEffectiveFields = sortFieldsByProfileOrder(effectiveFields, profileQuickbaseConfig.customColumns || profileQuickbaseConfig.qb_custom_columns || profile.qb_custom_columns);
+    const orderedEffectiveFields = sortFieldsByProfileOrder(effectiveFields, effectiveCustomColumns);
 
     const columns = (Array.isArray(out.records) && out.records.length)
       ? orderedEffectiveFields
@@ -432,11 +531,13 @@ module.exports = async (req, res) => {
         },
         appliedWhere: finalWhere || null,
         appliedDynamicFilters: {
+          tab_id: reqTabId || null,
+          reportLink: reqReportLink || null,
           assignedTo: assignedToFilter,
           caseStatus: caseStatusFilter,
           type: typeFilter,
           custom: profileFilterClauses,
-          customMatch: profileFilterMatch,
+          customMatch: activeFilterMatch,
           search,
           searchFieldIds: searchableFieldIds
         }
