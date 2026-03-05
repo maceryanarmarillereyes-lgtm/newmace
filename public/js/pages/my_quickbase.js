@@ -2264,7 +2264,16 @@
       const target = event.target;
       if (!target || !(target instanceof HTMLElement)) return;
       if (target.id === 'qbAddTabBtn') {
-        captureSettingsDraftFromInputs();
+        // Only capture modal inputs when modal is actually open
+        const isModalOpenForAdd = (() => {
+          const modal = root.querySelector('#qbSettingsModal');
+          if (!modal) return false;
+          const display = modal.style.display;
+          return display === 'flex' || display === 'block';
+        })();
+        if (isModalOpenForAdd) captureSettingsDraftFromInputs();
+        // Reset inflight before new tab load
+        quickbaseLoadInFlight = null;
         const managedTabId = tabManager ? tabManager.createTab({ tabName: 'New Report' }) : '';
         const newTab = deepClone({
           id: managedTabId || generateUUID(),
@@ -2316,47 +2325,48 @@
       }
       const idx = Number(target.getAttribute('data-tab-idx'));
       if (!Number.isFinite(idx) || idx === state.activeTabIndex) return;
-      captureSettingsDraftFromInputs();
+
+      // FIX[TabSwitch-1]: Only capture modal inputs when the modal is actually OPEN.
+      // Calling captureSettingsDraftFromInputs() when modal is closed reads stale DOM
+      // values and overwrites the current tab's settings with garbage.
+      const isModalOpen = (() => {
+        const modal = root.querySelector('#qbSettingsModal');
+        if (!modal) return false;
+        const display = modal.style.display;
+        return display === 'flex' || display === 'block';
+      })();
+      if (isModalOpen) captureSettingsDraftFromInputs();
+
+      // FIX[TabSwitch-2]: Cancel any inflight request for the previous tab.
+      // If we don't reset this, loadQuickbaseData returns the old promise which
+      // renders the WRONG tab's data, leaving the new tab stuck on "Loading...".
+      quickbaseLoadInFlight = null;
+
       // ISOLATION: clear stale data from previous tab before switching
-      state.rows = [];
-      state.columns = [];
       state.allAvailableFields = [];
       state.baseRecords = [];
       state.rawPayload = { columns: [], records: [] };
       state.currentPayload = { columns: [], records: [] };
       state.currentPage = 1;
-      const recordsEl = document.querySelector('[data-qb-records-container]') || document.querySelector('.qb-records-body') || document.querySelector('#qbRecordsBody') || root.querySelector('#qbDataBody');
-      if (recordsEl) recordsEl.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(255,255,255,0.5);">Loading...</div>';
+      state.activeCounterIndex = -1;
+
       renderEmptyState(root, 'Loading records for selected tab...');
       renderDashboardCounters(root, [], { dashboard_counters: [] }, state);
+
+      // Switch to the new tab index
       state.activeTabIndex = idx;
-      const currentTab = deepClone(getActiveTab() || {});
-      state.settingsEditingTabId = String(currentTab.id || getActiveTabId() || '').trim();
-      state.modalDraft = {
-        tabName: deepClone(currentTab.tabName) || '',
-        reportLink: deepClone(currentTab.reportLink) || '',
-        qid: deepClone(currentTab.qid) || '',
-        tableId: deepClone(currentTab.tableId) || '',
-        realm: deepClone(currentTab.realm) || '',
-        customColumns: deepClone(currentTab.customColumns || []),
-        customFilters: deepClone(currentTab.customFilters || []),
-        filterMatch: currentTab.filterMatch || 'ALL',
-        dashboard_counters: deepClone(currentTab.dashboard_counters || [])
-      };
+      state.quickbaseSettings.activeTabIndex = idx;
+
+      // FIX[TabSwitch-3]: syncStateFromActiveTab() reads directly from
+      // state.quickbaseSettings.settingsByTabId which is the authoritative source.
+      // Do NOT override state with tabManager.getTab() after this — TabManager is
+      // a secondary cache and may return empty defaults if the tab was not seeded.
       syncStateFromActiveTab();
-      if (tabManager) {
-        const activeTabId = String(getActiveTabId() || '').trim();
-        if (activeTabId) {
-          const cloned = tabManager.getTab(activeTabId);
-          const settings = deepClone(cloned.settings || {}) || {};
-          const currentTabSnapshot = getActiveTab();
-          state.tabName = String(settings.tabName || currentTabSnapshot.tabName || 'Main Report').trim() || 'Main Report';
-          state.reportLink = String(settings.reportLink || currentTabSnapshot.reportLink || '').trim();
-          state.qid = String(settings.qid || currentTabSnapshot.qid || '').trim();
-          state.tableId = String(settings.tableId || currentTabSnapshot.tableId || '').trim();
-          state.realm = String(settings.realm || currentTabSnapshot.realm || '').trim();
-        }
-      }
+
+      const newActiveTabId = getActiveTabId();
+      state.settingsEditingTabId = newActiveTabId;
+      state.modalDraft = deepClone(getActiveTab()) || buildDefaultTab();
+
       syncSettingsInputsFromState();
       queuePersistQuickbaseSettings();
       renderTabBar();
