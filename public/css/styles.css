@@ -4435,8 +4435,8 @@ body[data-theme="aurora_midnight"] .card {
 
 /* ── TOPBAR ── */
 body[data-theme="aurora_midnight"] .topbar {
-  background: linear-gradient(90deg, #070a1d 0%, #080b1f 100%) !important;
-  border: 1px solid rgba(130,148,255,.1) !important;
+  background: linear-gradient(90deg, #0b0f28 0%, #0c1030 100%) !important;
+  border: 1px solid rgba(130,148,255,.15) !important;
   position: relative;
 }
 body[data-theme="aurora_midnight"] .topbar::after {
@@ -4460,7 +4460,7 @@ body[data-theme="aurora_midnight"] .brand-name {
   color: #f0f4ff;
   text-shadow: 0 0 20px rgba(124,111,247,.4), 0 0 32px rgba(6,214,176,.2);
 }
-body[data-theme="aurora_midnight"] .brand-sub { color: #536080; }
+body[data-theme="aurora_midnight"] .brand-sub { color: #8ea4c8; }
 body[data-theme="aurora_midnight"] .brand-mark {
   background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
   box-shadow: 0 0 16px rgba(124,111,247,.55), 0 4px 12px rgba(0,0,0,.35) !important;
@@ -4480,7 +4480,7 @@ body[data-theme="aurora_midnight"] #globalSearchInput {
   color: #e8eeff !important;
   background: transparent !important;
 }
-body[data-theme="aurora_midnight"] #globalSearchInput::placeholder { color: #536080 !important; }
+body[data-theme="aurora_midnight"] #globalSearchInput::placeholder { color: #8ea4c8 !important; }
 
 /* ── TOPBAR ICON BUTTONS ── */
 body[data-theme="aurora_midnight"] .btn.ghost.iconbtn {
@@ -4520,53 +4520,63 @@ body[data-theme="aurora_midnight"] .sync-status .dot {
 
 /* ── LEFT SIDEBAR ── */
 body[data-theme="aurora_midnight"] aside.side {
-  background: linear-gradient(180deg, #080b1d 0%, #070a1b 100%) !important;
-  border-color: rgba(130,148,255,.1) !important;
+  background: linear-gradient(180deg, #0c1130 0%, #0a0e26 100%) !important;
+  border-color: rgba(130,148,255,.16) !important;
 }
 
 /* ── NAV ITEMS ── */
+/* ── SIDEBAR NAV — Aurora Midnight (bright, readable) ── */
 body[data-theme="aurora_midnight"] .nav a,
 body[data-theme="aurora_midnight"] .nav .nav-item,
 body[data-theme="aurora_midnight"] .nav .nav-group-head {
-  color: #8898be !important;
+  color: #c2cee8 !important;
   border-radius: 9px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
   transition: all .14s !important;
   border: 1px solid transparent !important;
+  letter-spacing: .01em !important;
 }
 body[data-theme="aurora_midnight"] .nav a:hover,
 body[data-theme="aurora_midnight"] .nav .nav-item:hover,
 body[data-theme="aurora_midnight"] .nav .nav-group-head:hover {
-  background: rgba(124,111,247,.07) !important;
-  color: #e8eeff !important;
-  border-color: rgba(124,111,247,.1) !important;
+  background: rgba(124,111,247,.1) !important;
+  color: #edf0ff !important;
+  border-color: rgba(124,111,247,.18) !important;
 }
 body[data-theme="aurora_midnight"] .nav a.active,
 body[data-theme="aurora_midnight"] .nav .nav-item.active {
-  background: linear-gradient(90deg, rgba(124,111,247,.2), rgba(124,111,247,.06)) !important;
-  border-color: rgba(124,111,247,.3) !important;
-  color: #c4b5fd !important;
+  background: linear-gradient(90deg, rgba(124,111,247,.22), rgba(124,111,247,.07)) !important;
+  border-color: rgba(124,111,247,.35) !important;
+  color: #d8cfff !important;
   font-weight: 700 !important;
 }
 body[data-theme="aurora_midnight"] .nav a.active::before,
 body[data-theme="aurora_midnight"] .nav .nav-item.active::before {
   content: '';
   position: absolute;
-  left: 0; top: 20%; bottom: 20%;
+  left: 0; top: 18%; bottom: 18%;
   width: 3px;
-  border-radius: 0 2px 2px 0;
-  background: linear-gradient(180deg, #7c6ff7, #06d6b0);
-  box-shadow: 0 0 10px rgba(124,111,247,.6);
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, #a593ff, #06d6b0);
+  box-shadow: 0 0 10px rgba(124,111,247,.7), 0 0 20px rgba(6,214,176,.2);
 }
 body[data-theme="aurora_midnight"] .nav-section-label,
 body[data-theme="aurora_midnight"] .nav-label {
-  color: #3f4f6e !important;
+  color: #8294b8 !important;
   font-size: 10px !important;
   font-weight: 800 !important;
-  letter-spacing: .1em !important;
+  letter-spacing: .12em !important;
   text-transform: uppercase !important;
 }
+body[data-theme="aurora_midnight"] .nav-item.nav-subitem {
+  color: #a8b8d8 !important;
+  font-size: 12.5px !important;
+}
+body[data-theme="aurora_midnight"] .nav-item.nav-subitem:hover { color: #edf0ff !important; }
+body[data-theme="aurora_midnight"] .nav-item.nav-subitem.active { color: #d8cfff !important; }
 body[data-theme="aurora_midnight"] .nav-group.is-record-group .nav-group-kids::before {
-  background: rgba(124,111,247,.25) !important;
+  background: rgba(124,111,247,.3) !important;
 }
 
 /* ── SIDEBAR PROFILE / USER CARD ── */
@@ -4574,12 +4584,12 @@ body[data-theme="aurora_midnight"] .usercard {
   background: transparent !important;
 }
 body[data-theme="aurora_midnight"] .sp-name-strong,
-body[data-theme="aurora_midnight"] .uc-name { color: #f0f4ff !important; }
+body[data-theme="aurora_midnight"] .uc-name { color: #f4f7ff !important; font-weight: 800 !important; }
 body[data-theme="aurora_midnight"] .sp-meta-subtitle,
 body[data-theme="aurora_midnight"] .sp-shift,
 body[data-theme="aurora_midnight"] .sp-team,
 body[data-theme="aurora_midnight"] .sp-shift-sm,
-body[data-theme="aurora_midnight"] .uc-meta { color: #6b7ba8 !important; }
+body[data-theme="aurora_midnight"] .uc-meta { color: #a8bcd8 !important; }
 body[data-theme="aurora_midnight"] .sp-photo,
 body[data-theme="aurora_midnight"] .sp-photo-sm {
   border-color: rgba(124,111,247,.3) !important;
@@ -4598,8 +4608,8 @@ body[data-theme="aurora_midnight"] .sp-position {
 }
 
 /* ── SIDE ACTIVITY LOG ── */
-body[data-theme="aurora_midnight"] .logline { color: #7282aa !important; }
-body[data-theme="aurora_midnight"] .logline .m { color: #a8b4d4 !important; }
+body[data-theme="aurora_midnight"] .logline { color: #a8bcd8 !important; }
+body[data-theme="aurora_midnight"] .logline .m { color: #bcc8e4 !important; }
 body[data-theme="aurora_midnight"] .logline .tl-dot {
   background: rgba(124,111,247,.7) !important;
   box-shadow: 0 0 6px rgba(124,111,247,.4) !important;
@@ -4608,8 +4618,8 @@ body[data-theme="aurora_midnight"] .logline .tl-dot::after { background: rgba(12
 
 /* ── RIGHT SIDEBAR ── */
 body[data-theme="aurora_midnight"] aside.right {
-  background: linear-gradient(180deg, #07091c 0%, #070a1a 100%) !important;
-  border-color: rgba(130,148,255,.1) !important;
+  background: linear-gradient(180deg, #0b0f28 0%, #090d22 100%) !important;
+  border-color: rgba(130,148,255,.16) !important;
 }
 
 /* ── MAIN CONTENT ── */
@@ -4633,9 +4643,9 @@ body[data-theme="aurora_midnight"] .announce-bar:hover {
   border-left-color: #f59e0b !important;
 }
 body[data-theme="aurora_midnight"] .announce-bar::before { display: none !important; }
-body[data-theme="aurora_midnight"] .announce-who { color: #536080 !important; font-size: 10px !important; font-weight: 700 !important; text-transform: uppercase !important; letter-spacing: .06em !important; }
+body[data-theme="aurora_midnight"] .announce-who { color: #8ea4c8 !important; font-size: 10px !important; font-weight: 700 !important; text-transform: uppercase !important; letter-spacing: .06em !important; }
 body[data-theme="aurora_midnight"] .announce-title { color: #f0f4ff !important; font-size: 13px !important; font-weight: 800 !important; }
-body[data-theme="aurora_midnight"] .announce-msg { color: #a8b4d4 !important; font-size: 12px !important; }
+body[data-theme="aurora_midnight"] .announce-msg { color: #bcc8e4 !important; font-size: 12px !important; }
 body[data-theme="aurora_midnight"] .announce-avatar {
   width: 32px !important; height: 32px !important; border-radius: 9px !important;
   background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
@@ -4660,7 +4670,7 @@ body[data-theme="aurora_midnight"] .reminder-card.team {
   background: linear-gradient(135deg, rgba(248,113,113,.07), rgba(251,191,36,.04)) !important;
 }
 body[data-theme="aurora_midnight"] .reminder-card .rc-title { color: #e8eeff !important; font-size: 12px !important; font-weight: 700 !important; }
-body[data-theme="aurora_midnight"] .reminder-card .rc-meta { color: #6b7ba8 !important; font-size: 11px !important; }
+body[data-theme="aurora_midnight"] .reminder-card .rc-meta { color: #a8bcd8 !important; font-size: 11px !important; }
 body[data-theme="aurora_midnight"] .reminder-card .rc-badge {
   font-size: 9px !important; font-weight: 800 !important; text-transform: uppercase !important;
   letter-spacing: .07em !important; padding: 2px 7px !important; border-radius: 5px !important;
@@ -4726,7 +4736,7 @@ body[data-theme="aurora_midnight"] .input:focus {
   background: rgba(255,255,255,.055) !important;
 }
 body[data-theme="aurora_midnight"] input::placeholder,
-body[data-theme="aurora_midnight"] textarea::placeholder { color: #3f5068 !important; }
+body[data-theme="aurora_midnight"] textarea::placeholder { color: #6b82a8 !important; }
 
 /* ── TABLES ── */
 body[data-theme="aurora_midnight"] th {
@@ -4738,7 +4748,7 @@ body[data-theme="aurora_midnight"] th {
   letter-spacing: .08em !important;
   border-bottom: 1px solid rgba(130,148,255,.1) !important;
 }
-body[data-theme="aurora_midnight"] td { border-bottom: 1px solid rgba(130,148,255,.07) !important; color: #a8b4d4 !important; }
+body[data-theme="aurora_midnight"] td { border-bottom: 1px solid rgba(130,148,255,.07) !important; color: #bcc8e4 !important; }
 body[data-theme="aurora_midnight"] tr:hover td { background: rgba(124,111,247,.04) !important; }
 
 /* ── MODALS ── */
@@ -4788,7 +4798,7 @@ body[data-theme="aurora_midnight"] .notification-popout .notif-item.unread {
   background: rgba(124,111,247,.04) !important;
 }
 body[data-theme="aurora_midnight"] .notif-item-title { color: #e8eeff !important; font-weight: 700 !important; }
-body[data-theme="aurora_midnight"] .notif-item-body { color: #7282aa !important; font-size: 11.5px !important; }
+body[data-theme="aurora_midnight"] .notif-item-body { color: #a8bcd8 !important; font-size: 11.5px !important; }
 
 /* ── DASHX NOTIFICATIONS ── */
 body[data-theme="aurora_midnight"] .dashx-notif {
@@ -4801,7 +4811,7 @@ body[data-theme="aurora_midnight"] .dashx-notif.unread {
 }
 
 /* ── BADGES / PILLS ── */
-body[data-theme="aurora_midnight"] .badge { background: rgba(255,255,255,.04) !important; border-color: rgba(130,148,255,.18) !important; color: #a8b4d4 !important; }
+body[data-theme="aurora_midnight"] .badge { background: rgba(255,255,255,.04) !important; border-color: rgba(130,148,255,.18) !important; color: #bcc8e4 !important; }
 body[data-theme="aurora_midnight"] .badge.ok { background: rgba(74,222,128,.1) !important; border-color: rgba(74,222,128,.28) !important; color: #86efac !important; }
 body[data-theme="aurora_midnight"] .badge.danger { background: rgba(248,113,113,.1) !important; border-color: rgba(248,113,113,.28) !important; color: #fca5a5 !important; }
 body[data-theme="aurora_midnight"] .badge.warn { background: rgba(251,191,36,.1) !important; border-color: rgba(251,191,36,.25) !important; color: #fde68a !important; }
@@ -4823,8 +4833,8 @@ body[data-theme="aurora_midnight"] .onlinebar-sec {
   border: 1px solid rgba(130,148,255,.1) !important;
   border-radius: 10px !important;
 }
-body[data-theme="aurora_midnight"] .onlinebar-title { color: #3f5068 !important; font-size: 9px !important; font-weight: 800 !important; letter-spacing: .1em !important; text-transform: uppercase !important; }
-body[data-theme="aurora_midnight"] .onlinebar-count { color: #6b7ba8 !important; }
+body[data-theme="aurora_midnight"] .onlinebar-title { color: #6b82a8 !important; font-size: 9px !important; font-weight: 800 !important; letter-spacing: .1em !important; text-transform: uppercase !important; }
+body[data-theme="aurora_midnight"] .onlinebar-count { color: #a8bcd8 !important; }
 body[data-theme="aurora_midnight"] .online-pill {
   border: 1.5px solid rgba(74,222,128,.65) !important;
   background: rgba(255,255,255,.05) !important;
@@ -4850,7 +4860,7 @@ body[data-theme="aurora_midnight"] .qcircle:hover {
   transform: translateY(-2px);
 }
 body[data-theme="aurora_midnight"] .qcircle .qtxt { color: #e8eeff !important; }
-body[data-theme="aurora_midnight"] .qlabel { color: #4e6080 !important; font-size: 9.5px !important; }
+body[data-theme="aurora_midnight"] .qlabel { color: #8ea4c8 !important; font-size: 9.5px !important; }
 
 /* ── WORLD CLOCKS ── */
 body[data-theme="aurora_midnight"] .wclock {
@@ -4859,10 +4869,10 @@ body[data-theme="aurora_midnight"] .wclock {
   border-radius: 10px !important;
   backdrop-filter: blur(10px) !important;
 }
-body[data-theme="aurora_midnight"] .wclock .wc-label { color: #4e6080 !important; font-size: 9px !important; font-weight: 800 !important; letter-spacing: .08em !important; text-transform: uppercase !important; }
+body[data-theme="aurora_midnight"] .wclock .wc-label { color: #8ea4c8 !important; font-size: 9px !important; font-weight: 800 !important; letter-spacing: .08em !important; text-transform: uppercase !important; }
 body[data-theme="aurora_midnight"] .wclock .wc-h,
 body[data-theme="aurora_midnight"] .wclock .wc-m { color: #e0e7ff !important; }
-body[data-theme="aurora_midnight"] .wclock .wc-sec { color: #4e6080 !important; }
+body[data-theme="aurora_midnight"] .wclock .wc-sec { color: #8ea4c8 !important; }
 
 /* ── HIGH ALERT BOX ── */
 body[data-theme="aurora_midnight"] .high-alert-box {
@@ -4874,7 +4884,7 @@ body[data-theme="aurora_midnight"] .high-alert-box {
 body[data-theme="aurora_midnight"] hr { border-color: rgba(130,148,255,.12) !important; }
 
 /* ── GENERAL TEXT ── */
-body[data-theme="aurora_midnight"] .small, body[data-theme="aurora_midnight"] .muted { color: #6b7ba8 !important; }
+body[data-theme="aurora_midnight"] .small, body[data-theme="aurora_midnight"] .muted { color: #a8bcd8 !important; }
 body[data-theme="aurora_midnight"] .section-title { color: #e8eeff !important; }
 
 /* ── SCHEDULE / SHIFT ELEMENTS ── */
@@ -4893,8 +4903,8 @@ body[data-theme="aurora_midnight"] .up-role {
   border-color: rgba(124,111,247,.22) !important;
   color: #c4b5fd !important;
 }
-body[data-theme="aurora_midnight"] .up-sub { color: #6b7ba8 !important; }
-body[data-theme="aurora_midnight"] .sp-duty { color: #a8b4d4 !important; }
+body[data-theme="aurora_midnight"] .up-sub { color: #a8bcd8 !important; }
+body[data-theme="aurora_midnight"] .sp-duty { color: #bcc8e4 !important; }
 body[data-theme="aurora_midnight"] .sp-name { color: #f0f4ff !important; }
 
 /* ── LINK COLORS ── */
