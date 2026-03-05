@@ -1172,9 +1172,20 @@
       const tabBar = root.querySelector('#qbTabBar');
       if (!tabBar) return;
       const tabs = state.quickbaseSettings.tabs || [];
-      tabBar.innerHTML = tabs.map((tab, idx) => `
-        <button type="button" data-tab-idx="${idx}" style="padding:8px 16px;border-radius:8px;background:${idx === state.activeTabIndex ? 'rgba(33, 150, 243, 0.2)' : 'rgba(255,255,255,0.05)'};border:1px solid ${idx === state.activeTabIndex ? '#2196F3' : 'rgba(255,255,255,0.1)'};cursor:pointer;color:${idx === state.activeTabIndex ? '#fff' : '#888'};transition:0.2s;white-space:nowrap;">${esc(tab.tabName || `Report ${idx + 1}`)}</button>
-      `).join('') + '<button type="button" id="qbAddTabBtn" title="Add New Tab" aria-label="Add New Tab" style="padding:8px 12px;min-width:38px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);cursor:pointer;color:#888;transition:0.2s;white-space:nowrap;font-size:18px;line-height:1;">+</button>';
+      tabBar.innerHTML = tabs.map((tab, idx) => {
+        const isActive = idx === state.activeTabIndex;
+        const tabId = String(tab && tab.id || '').trim();
+        // Check if this tab has fresh cache data
+        const tabSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[tabId]
+          ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[tabId], {})
+          : null;
+        const hasCachedData = !!(state._tabDataCache && state._tabDataCache[tabId] && Array.isArray(state._tabDataCache[tabId].cachedRows) && state._tabDataCache[tabId].cachedRows.length);
+        const cacheBadge = isActive ? '' : hasCachedData
+          ? '<span class="qb-tab-cache-badge qb-tab-badge-cached">◎</span>'
+          : '';
+        const activeBadge = isActive && hasCachedData ? '<span class="qb-tab-cache-badge qb-tab-badge-live">●</span>' : '';
+        return `<button type="button" data-tab-idx="${idx}" class="qb-tab-btn${isActive ? ' qb-tab-btn-active' : ''}" title="${esc(tab.tabName || `Report ${idx + 1}`)}">${activeBadge}<span class="qb-tab-label">${esc(tab.tabName || `Report ${idx + 1}`)}</span>${cacheBadge}</button>`;
+      }).join('') + '<button type="button" id="qbAddTabBtn" title="Add New Tab" aria-label="Add New Tab" class="qb-tab-add-btn">+</button>';
     }
 
     function setSettingsModalView(viewKey) {
@@ -1190,9 +1201,13 @@
       root.querySelectorAll('[data-qb-settings-tab]').forEach((btn) => {
         const tabView = String(btn.getAttribute('data-qb-settings-tab') || '').trim();
         const isActive = tabView === nextView;
-        btn.style.color = isActive ? '#fff' : 'rgba(226,232,240,0.78)';
-        btn.style.borderBottom = isActive ? '2px solid #2196F3' : '2px solid transparent';
-        btn.style.background = 'transparent';
+        btn.classList.toggle('active', isActive);
+        // Support both old inline style tabs and new class-based tabs
+        if (!btn.classList.contains('qb-modal-tab')) {
+          btn.style.color = isActive ? '#fff' : 'rgba(226,232,240,0.78)';
+          btn.style.borderBottom = isActive ? '2px solid #2196F3' : '2px solid transparent';
+          btn.style.background = 'transparent';
+        }
       });
     }
 
@@ -1317,116 +1332,169 @@
 
 
     root.innerHTML = `
-      <div class="dashx qb-page-shell" style="width:100%;max-width:100%;overflow-x:hidden;box-sizing:border-box;min-height:100vh;display:flex;flex-direction:column;">
-        <div class="qb-static-zone" style="display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;">
-        <div id="qbTabBar" style="display:flex;flex-wrap:wrap;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;margin:0;box-sizing:border-box;"></div>
+      <div class="qb-page-shell" id="qbPageShell">
 
-        <div class="card pad" style="margin-top:0;padding-top:0;margin-bottom:12px;backdrop-filter: blur(14px); background: linear-gradient(130deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.16);box-sizing:border-box;">
-          <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;box-sizing:border-box;">
-            <div style="min-width:0;">
-              <div class="h3" id="qbInstanceTitle" style="margin:0;word-break:break-word;">${esc(state.tabName || 'Main Report')}</div>
-              <div class="small muted">Active tab instance dashboard</div>
-            </div>
-            <div class="row qb-header-search-wrap" style="gap:8px;align-items:center;justify-content:center;flex:1;min-width:200px;box-sizing:border-box;flex-wrap:wrap;">
-              <input class="input qb-header-search" id="qbHeaderSearch" type="search" placeholder="Search across active tab records..." style="flex:1;min-width:150px;box-sizing:border-box;" />
-              <button class="btn" id="qbExportCsvBtn" type="button" style="white-space:nowrap;">Export CSV</button>
-            </div>
-            <div class="row" style="gap:8px;flex-wrap:wrap;">
-              <button class="btn" id="qbReloadBtn" type="button" style="white-space:nowrap;">Reload</button>
-              <button class="btn primary" id="qbOpenSettingsBtn" type="button" style="white-space:nowrap;">⚙️ Settings</button>
-            </div>
+        <!-- TAB BAR -->
+        <div class="qb-tabbar-wrap">
+          <div id="qbTabBar" class="qb-tabs-inner"></div>
+          <button type="button" class="qb-fullscreen-btn" id="qbFullscreenBtn" title="Toggle Fullscreen" aria-label="Toggle Fullscreen">
+            <svg id="qbFsIconExpand" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+            <svg id="qbFsIconCollapse" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg>
+          </button>
+        </div>
+
+        <!-- HEADER CARD -->
+        <div class="qb-header-card">
+          <div class="qb-header-left">
+            <div class="qb-instance-title" id="qbInstanceTitle">${esc(state.tabName || 'Main Report')}</div>
+            <div class="qb-instance-sub">Active tab instance dashboard</div>
+          </div>
+          <div class="qb-search-wrap">
+            <span class="qb-search-ico">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </span>
+            <input class="qb-search-input" id="qbHeaderSearch" type="search" placeholder="Search across active tab records…" />
+          </div>
+          <div class="qb-header-actions">
+            <button class="qb-btn qb-btn-ghost" id="qbExportCsvBtn" type="button">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export CSV
+            </button>
+            <button class="qb-btn qb-btn-ghost" id="qbReloadBtn" type="button">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              Reload
+            </button>
+            <button class="qb-btn qb-btn-primary" id="qbOpenSettingsBtn" type="button">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              Settings
+            </button>
           </div>
         </div>
 
-        <div style="margin-top:15px;width:100%;max-width:100%;box-sizing:border-box;display:flex;flex-direction:column;flex:1;min-height:0;">
-          <div id="qbDashboardCounters" class="qb-dashboard-counters" style="display:flex;flex-wrap:wrap;gap:12px;width:100%;box-sizing:border-box;"></div>
+        <!-- DASHBOARD COUNTERS -->
+        <div id="qbDashboardCounters" class="qb-dashboard-counters"></div>
 
-        <div class="card pad qb-table-card" style="width:100%;max-width:100%;box-sizing:border-box;display:flex;flex-direction:column;flex:1;min-height:0;">
-          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
-            <div class="h3" style="margin:0;">Quickbase Records</div>
-            <div id="qbDataMeta" class="small muted">Loading…</div>
-          </div>
-          <div id="qbDataBody" class="qb-data-body" style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;flex:1;box-sizing:border-box;"></div>
-        </div>
-      </div>
-      </div>
-      </div>
-
-      <div class="modal" id="qbSettingsModal" aria-hidden="true" style="position:fixed;inset:0;align-items:center;justify-content:center;z-index:9999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);padding:12px;box-sizing:border-box;overflow:auto;">
-        <div class="panel" style="max-width:min(96vw, 900px);width:100%;max-height:90vh;overflow-y:auto;border-radius:16px; background: linear-gradient(140deg, rgba(23,35,67,.88), rgba(15,23,42,.82)); border:1px solid rgba(255,255,255,.18); backdrop-filter: blur(18px);box-sizing:border-box;">
-          <div id="qbSettingsSavingLock" style="display:none;position:absolute;inset:0;z-index:90;align-items:center;justify-content:center;background:rgba(2,6,23,.72);backdrop-filter:blur(3px);border-radius:16px;">
-            <div class="small" style="padding:10px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.25);background:rgba(15,23,42,.88);font-weight:700;letter-spacing:.02em;">Saving Quickbase settings…</div>
-          </div>
-          <div class="head" style="position:sticky;top:0;background:transparent;padding:24px 32px 0 32px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
-            <div style="flex:1;min-width:0;">
-              <div class="h3" style="margin:0;font-size:20px;font-weight:700;letter-spacing:0.5px;">Quickbase Settings</div>
-              <div class="small muted">Report Config · Custom Columns · Filter Config</div>
+        <!-- TABLE CARD -->
+        <div class="qb-table-card">
+          <div class="qb-table-head">
+            <div class="qb-table-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
+              Quickbase Records
             </div>
-            <button class="btn" id="qbCloseSettingsBtn" type="button" style="flex-shrink:0;">✕</button>
+            <div class="qb-table-meta">
+              <span id="qbDataMeta" class="qb-meta-text">Loading…</span>
+              <span id="qbFreshBadge" class="qb-fresh-badge" style="display:none;">● Live</span>
+              <span id="qbCacheBadge" class="qb-cache-badge" style="display:none;">◎ Cached</span>
+            </div>
           </div>
-          <div class="qb-settings-tabs" style="display:flex;gap:4px;border-bottom:1px solid rgba(255,255,255,0.1);margin-bottom:16px;overflow-x:auto;padding:0 4px;">
-            <button type="button" data-qb-settings-tab="report-config" style="background:transparent;border:0;border-bottom:2px solid #2196F3;color:#fff;padding:10px 12px;cursor:pointer;transition:all .2s ease;white-space:nowrap;">Report Config</button>
-            <button type="button" data-qb-settings-tab="custom-columns" style="background:transparent;border:0;border-bottom:2px solid transparent;color:rgba(226,232,240,0.78);padding:10px 12px;cursor:pointer;transition:all .2s ease;white-space:nowrap;">Custom Columns</button>
-            <button type="button" data-qb-settings-tab="filter-config" style="background:transparent;border:0;border-bottom:2px solid transparent;color:rgba(226,232,240,0.78);padding:10px 12px;cursor:pointer;transition:all .2s ease;white-space:nowrap;">Filter Config</button>
-            <button type="button" data-qb-settings-tab="dashboard-counters" style="background:transparent;border:0;border-bottom:2px solid transparent;color:rgba(226,232,240,0.78);padding:10px 12px;cursor:pointer;transition:all .2s ease;white-space:nowrap;">Dashboard Counters</button>
+          <div id="qbDataBody" class="qb-data-body"></div>
+        </div>
+
+      </div>
+
+      <!-- SETTINGS MODAL -->
+      <div class="modal" id="qbSettingsModal" aria-hidden="true" style="position:fixed;inset:0;align-items:center;justify-content:center;z-index:9999;background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);padding:12px;box-sizing:border-box;overflow:auto;">
+        <div class="qb-modal-panel">
+          <div id="qbSettingsSavingLock" style="display:none;position:absolute;inset:0;z-index:90;align-items:center;justify-content:center;background:rgba(2,6,23,.8);backdrop-filter:blur(4px);border-radius:18px;">
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(15,23,42,.95);font-weight:700;font-size:13px;letter-spacing:.02em;">
+              <svg class="qb-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+              Saving settings…
+            </div>
           </div>
-          <div class="body" style="max-height:60vh;overflow:auto;display:grid;gap:16px;padding:28px 32px;min-height:420px;box-sizing:border-box;">
-            <section class="card pad" data-qb-settings-view="report-config" style="min-height:380px;">
-              <div class="h3" style="margin-top:0;">1) Report Config</div>
-              <div style="display:grid;gap:10px;box-sizing:border-box;">
-                <label class="field"><div class="label">Tab Name</div><input class="input" id="qbTabName" value="${esc(state.tabName)}" placeholder="Daily Distribution" style="box-sizing:border-box;" /></label>
-                <label class="field"><div class="label">Report Link</div><input class="input" id="qbReportLink" value="${esc(state.reportLink)}" placeholder="https://<realm>.quickbase.com/db/<tableid>?a=q&qid=..." style="box-sizing:border-box;" /></label>
-                <label class="field"><div class="label">Base Report QID</div><input class="input" id="qbTabBaseQid" value="${esc(state.qid)}" placeholder="-2021117" readonly style="background:rgba(148,163,184,.14);color:rgba(226,232,240,.78);cursor:not-allowed;box-sizing:border-box;" /></label>
-                <div class="grid cols-2" style="gap:10px;box-sizing:border-box;display:grid;grid-template-columns:1fr 1fr;">
-                  <label class="field"><div class="label">QID</div><input class="input" id="qbQid" value="${esc(state.qid)}" placeholder="-2021117" readonly style="background:rgba(148,163,184,.14);color:rgba(226,232,240,.78);cursor:not-allowed;box-sizing:border-box;" /></label>
-                  <label class="field"><div class="label">Table ID</div><input class="input" id="qbTableId" value="${esc(state.tableId)}" placeholder="bq7m2ab12" readonly style="background:rgba(148,163,184,.14);color:rgba(226,232,240,.78);cursor:not-allowed;box-sizing:border-box;" /></label>
+
+          <div class="qb-modal-header">
+            <div>
+              <div class="qb-modal-title">Quickbase Settings</div>
+              <div class="qb-modal-sub">Configure report, columns, filters and counters per tab</div>
+            </div>
+            <button class="qb-modal-close" id="qbCloseSettingsBtn" type="button" aria-label="Close">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <div class="qb-modal-tabs">
+            <button type="button" class="qb-modal-tab active" data-qb-settings-tab="report-config">Report Config</button>
+            <button type="button" class="qb-modal-tab" data-qb-settings-tab="custom-columns">Custom Columns</button>
+            <button type="button" class="qb-modal-tab" data-qb-settings-tab="filter-config">Filter Config</button>
+            <button type="button" class="qb-modal-tab" data-qb-settings-tab="dashboard-counters">Dashboard Counters</button>
+          </div>
+
+          <div class="qb-modal-body">
+
+            <section class="qb-modal-section" data-qb-settings-view="report-config">
+              <div class="qb-section-title"><span class="qb-section-num">1</span>Report Config</div>
+              <div class="qb-field-stack">
+                <div class="qb-field">
+                  <label class="qb-field-label">Tab Name</label>
+                  <input class="qb-field-input" id="qbTabName" value="${esc(state.tabName)}" placeholder="e.g. Daily Distribution" />
+                </div>
+                <div class="qb-field">
+                  <label class="qb-field-label">Report Link</label>
+                  <input class="qb-field-input" id="qbReportLink" value="${esc(state.reportLink)}" placeholder="https://<realm>.quickbase.com/db/<tableid>?a=q&qid=…" />
+                  <div class="qb-field-hint">⚡ QID, Table ID and field dropdowns auto-fill from this URL</div>
+                </div>
+                <div class="qb-field">
+                  <label class="qb-field-label">Base Report QID</label>
+                  <input class="qb-field-input qb-field-readonly" id="qbTabBaseQid" value="${esc(state.qid)}" placeholder="e.g. 1000288" readonly />
+                </div>
+                <div class="qb-field-row">
+                  <div class="qb-field">
+                    <label class="qb-field-label">QID</label>
+                    <input class="qb-field-input qb-field-readonly" id="qbQid" value="${esc(state.qid)}" placeholder="e.g. 1000288" readonly />
+                  </div>
+                  <div class="qb-field">
+                    <label class="qb-field-label">Table ID</label>
+                    <input class="qb-field-input qb-field-readonly" id="qbTableId" value="${esc(state.tableId)}" placeholder="e.g. bpvmztzr5" readonly />
+                  </div>
                 </div>
               </div>
             </section>
 
-            <section class="card pad" data-qb-settings-view="custom-columns" style="display:none;min-height:380px;">
-              <div class="h3" style="margin-top:0;">2) Custom Columns</div>
-              <label class="field" style="margin-bottom:10px;">
-                <div class="label">Search Columns</div>
-                <input type="text" id="qbColumnSearch" placeholder="Search columns..." class="input" />
-              </label>
+            <section class="qb-modal-section" data-qb-settings-view="custom-columns" style="display:none;">
+              <div class="qb-section-title"><span class="qb-section-num">2</span>Custom Columns</div>
+              <div class="qb-field" style="margin-bottom:12px;">
+                <label class="qb-field-label">Search Columns</label>
+                <input type="text" id="qbColumnSearch" placeholder="Filter available fields…" class="qb-field-input" />
+              </div>
               <div style="position:relative;">
-                <div style="max-height:350px;overflow-y:auto;padding-right:4px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(2,6,23,.3);">
-                  <div id="qbColumnGrid" class="grid cols-3" style="gap:8px;padding:8px;"></div>
+                <div class="qb-columns-scroll">
+                  <div id="qbColumnGrid" class="qb-col-grid"></div>
                 </div>
-                <div id="qbSelectedFloatingPanel" style="display:none;position:absolute;top:12px;right:14px;z-index:40;min-width:240px;max-width:320px;background:linear-gradient(140deg, rgba(15,23,42,.85), rgba(30,41,59,.7));backdrop-filter:blur(12px);border:1px solid rgba(148,163,184,.35);border-radius:14px;box-shadow:0 16px 35px rgba(2,6,23,.45);">
-                  <div id="qbSelectedFloatingHandle" style="padding:10px 12px;cursor:move;border-bottom:1px solid rgba(148,163,184,.28);font-weight:700;font-size:12px;letter-spacing:.03em;text-transform:uppercase;">Selected Columns</div>
-                  <div id="qbSelectedFloatingList" class="small" style="display:grid;gap:6px;padding:10px 12px;max-height:230px;overflow:auto;"></div>
+                <div id="qbSelectedFloatingPanel" style="display:none;position:absolute;top:12px;right:14px;z-index:40;min-width:240px;max-width:320px;background:linear-gradient(140deg,rgba(15,23,42,.95),rgba(30,41,59,.9));backdrop-filter:blur(14px);border:1px solid rgba(148,163,184,.3);border-radius:14px;box-shadow:0 16px 40px rgba(0,0,0,.5);">
+                  <div id="qbSelectedFloatingHandle" style="padding:10px 14px;cursor:move;border-bottom:1px solid rgba(148,163,184,.2);font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(148,163,184,.9);">Selected Columns</div>
+                  <div id="qbSelectedFloatingList" style="display:grid;gap:6px;padding:10px 14px;max-height:230px;overflow:auto;font-size:12px;"></div>
                 </div>
               </div>
             </section>
 
-            <section class="card pad" data-qb-settings-view="filter-config" style="display:none;min-height:380px;">
-              <div class="row" style="justify-content:space-between;align-items:center;">
-                <div class="h3" style="margin:0;">3) Filter Config</div>
-                <button class="btn" id="qbAddFilterBtn" type="button">+ Add Filter</button>
+            <section class="qb-modal-section" data-qb-settings-view="filter-config" style="display:none;">
+              <div class="qb-section-header">
+                <div class="qb-section-title" style="margin-bottom:0;"><span class="qb-section-num">3</span>Filter Config</div>
+                <button class="qb-btn qb-btn-ghost qb-btn-sm" id="qbAddFilterBtn" type="button">+ Add Filter</button>
               </div>
-              <div class="row" style="margin-top:10px;align-items:center;gap:8px;">
-                <span class="small muted">Match</span>
-                <select class="input" id="qbFilterMatch" style="max-width:180px;">
+              <div class="qb-filter-match-row">
+                <span class="qb-field-label" style="margin:0;">Match</span>
+                <select class="qb-field-input qb-select-sm" id="qbFilterMatch">
                   <option value="ALL" ${state.filterMatch === 'ALL' ? 'selected' : ''}>ALL of the following rules</option>
                   <option value="ANY" ${state.filterMatch === 'ANY' ? 'selected' : ''}>ANY of the following rules</option>
                 </select>
               </div>
-              <div id="qbFilterRows" style="display:grid;gap:8px;margin-top:10px;"></div>
+              <div id="qbFilterRows" class="qb-filter-rows"></div>
             </section>
 
-            <section class="card pad" data-qb-settings-view="dashboard-counters" style="display:none;min-height:380px;">
-              <div class="row" style="justify-content:space-between;align-items:center;">
-                <div class="h3" style="margin:0;">Dashboard Counter Filters (Self-Configure)</div>
-                <button class="btn primary" id="qbAddCounterBtn" type="button">+ Add New Counter Filter</button>
+            <section class="qb-modal-section" data-qb-settings-view="dashboard-counters" style="display:none;">
+              <div class="qb-section-header">
+                <div class="qb-section-title" style="margin-bottom:0;"><span class="qb-section-num">4</span>Dashboard Counter Filters</div>
+                <button class="qb-btn qb-btn-primary qb-btn-sm" id="qbAddCounterBtn" type="button">+ Add Counter</button>
               </div>
-              <div id="qbCounterRows" style="display:grid;gap:10px;margin-top:10px;"></div>
+              <div id="qbCounterRows" class="qb-counter-rows"></div>
             </section>
+
           </div>
-          <div class="row" style="padding:20px 32px 24px 32px;display:flex;justify-content:flex-end;gap:12px;position:sticky;bottom:0;border-top:1px solid rgba(255,255,255,0.08);background:linear-gradient(180deg, rgba(15,23,42,0.2), rgba(15,23,42,0.92));flex-wrap:wrap;box-sizing:border-box;">
-            <button class="btn" id="qbCancelSettingsBtn" type="button" style="background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);padding:10px 24px;border-radius:8px;font-size:15px;border:1px solid rgba(255,255,255,0.15);cursor:pointer;flex:1;min-width:120px;max-width:200px;box-sizing:border-box;">Cancel</button>
-            <button class="btn primary" id="qbSaveSettingsBtn" type="button" style="background:linear-gradient(135deg, #2196F3, #1565C0);color:white;padding:10px 28px;border-radius:8px;font-size:15px;font-weight:600;border:none;cursor:pointer;transition:opacity 0.2s;flex:1;min-width:120px;max-width:200px;box-sizing:border-box;">Save Settings</button>
+
+          <div class="qb-modal-footer">
+            <button class="qb-btn qb-btn-ghost" id="qbCancelSettingsBtn" type="button">Cancel</button>
+            <button class="qb-btn qb-btn-primary" id="qbSaveSettingsBtn" type="button">Save Settings</button>
           </div>
         </div>
       </div>
@@ -1944,6 +2012,8 @@
             state.isDefaultReportMode = !shouldApplyFilters && !getActiveSearchTerm();
             applySearchAndRender();
             lastQuickbaseLoadAt = Date.now();
+            if (typeof updateDataFreshnessBadge === 'function') updateDataFreshnessBadge(true);
+            renderTabBar();
             console.info(`[Quickbase] cache hit (${state.baseRecords.length} records) in ${Math.round(performance.now() - startedAt)}ms`);
             return;
           }
@@ -1991,6 +2061,8 @@
           state.isDefaultReportMode = !shouldApplyFilters && !getActiveSearchTerm();
           state.currentPage = 1;
           applySearchAndRender();
+          if (typeof updateDataFreshnessBadge === 'function') updateDataFreshnessBadge(false);
+          renderTabBar();
           writeQuickbaseCache(cacheKey, {
             columns: incomingColumns,
             records: state.baseRecords.slice(),
@@ -2363,6 +2435,28 @@
       // a secondary cache and may return empty defaults if the tab was not seeded.
       syncStateFromActiveTab();
 
+      // SMART LOADING: if fresh cache exists for this tab, render immediately
+      // without showing a loading spinner. Only show loading if no cache.
+      const switchTabId = getActiveTabId();
+      const switchTabSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[switchTabId]
+        ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[switchTabId], {})
+        : createDefaultSettings({}, {});
+      const switchParsed = parseQuickbaseLink(String(switchTabSettings.reportLink || ''));
+      const switchCacheKey = getQuickbaseCacheKey({
+        tabId: switchTabId,
+        tableId: String(switchTabSettings.tableId || switchParsed.tableId || '').trim(),
+        qid: String(switchTabSettings.qid || switchParsed.qid || '').trim(),
+        filters: normalizeFilters(switchTabSettings.customFilters || []),
+        filterMatch: normalizeFilterMatch(switchTabSettings.filterMatch || 'ALL')
+      });
+      const switchCacheHit = readQuickbaseCache(switchCacheKey, switchTabId);
+      if (!switchCacheHit) {
+        // No cache — show loading placeholder
+        renderEmptyState(root, 'Loading records for selected tab…');
+        renderDashboardCounters(root, [], { dashboard_counters: [] }, state);
+      }
+      // If cache hit — leave the previous content visible during load (smooth transition)
+
       const newActiveTabId = getActiveTabId();
       state.settingsEditingTabId = newActiveTabId;
       state.modalDraft = deepClone(getActiveTab()) || buildDefaultTab();
@@ -2549,5 +2643,40 @@
       await renderDefaultReport();
     }
     setupAutoRefresh();
+
+    // ── FULLSCREEN TOGGLE ──────────────────────────────────────────────
+    const fsBtn = root.querySelector('#qbFullscreenBtn');
+    const fsExpand = root.querySelector('#qbFsIconExpand');
+    const fsCollapse = root.querySelector('#qbFsIconCollapse');
+    const qbShell = root.querySelector('#qbPageShell');
+    if (fsBtn && qbShell) {
+      fsBtn.onclick = () => {
+        if (!document.fullscreenElement) {
+          (qbShell.requestFullscreen ? qbShell.requestFullscreen() : Promise.resolve()).catch(() => {});
+        } else {
+          document.exitFullscreen && document.exitFullscreen();
+        }
+      };
+      document.addEventListener('fullscreenchange', () => {
+        const isFs = !!document.fullscreenElement;
+        if (fsExpand) fsExpand.style.display = isFs ? 'none' : '';
+        if (fsCollapse) fsCollapse.style.display = isFs ? '' : 'none';
+        qbShell.classList.toggle('qb-is-fullscreen', isFs);
+      });
+    }
+
+    // ── FRESH / CACHED BADGE UPDATER ───────────────────────────────────
+    function updateDataFreshnessBadge(fromCache) {
+      const freshBadge = root.querySelector('#qbFreshBadge');
+      const cacheBadge = root.querySelector('#qbCacheBadge');
+      if (!freshBadge || !cacheBadge) return;
+      if (fromCache) {
+        freshBadge.style.display = 'none';
+        cacheBadge.style.display = '';
+      } else {
+        freshBadge.style.display = '';
+        cacheBadge.style.display = 'none';
+      }
+    }
   };
 })();
