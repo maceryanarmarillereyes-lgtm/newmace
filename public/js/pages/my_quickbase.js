@@ -578,7 +578,7 @@
       return `<tr><td class="qb-case-id">${esc(String(r && r.qbRecordId || 'N/A'))}</td>${cells}</tr>`;
     }).join('');
 
-    host.innerHTML = `<div class="qb-table-inner"><table class="qb-data-table"><thead><tr><th>Case #</th>${headers}</tr></thead><tbody>${body}</tbody></table></div>`;
+    host.innerHTML = `<div class="qb-table-inner" style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 320px);min-height:200px;width:100%;"><table class="qb-data-table"><thead><tr><th>Case #</th>${headers}</tr></thead><tbody>${body}</tbody></table></div>`;
     if (rows.length > pageSize && typeof opts.onPageChange === 'function') {
       const pager = document.createElement('div');
       pager.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px;';
@@ -596,6 +596,13 @@
         };
       });
     }
+  }
+
+  function renderEmptyState(root, message) {
+    const host = root.querySelector('#qbDataBody');
+    const meta = root.querySelector('#qbDataMeta');
+    if (meta) meta.textContent = 'No Quickbase Records Found';
+    if (host) host.innerHTML = `<div class="card pad"><div class="small muted">${esc(String(message || 'No records loaded.'))}</div></div>`;
   }
 
 
@@ -651,7 +658,7 @@
 
   function shouldApplyServerFilters(options) {
     const opts = options && typeof options === 'object' ? options : {};
-    return opts.applyFilters === true;
+    return opts.applyFilters !== false;
   }
 
   if (window.__MUMS_TEST_HOOKS__) {
@@ -752,6 +759,7 @@
       currentPage: 1,
       pageSize: 100,
       qbCache: {},
+      _tabDataCache: {},
       settingsModalView: 'report-config',
       settingsEditingTabId: ''
     };
@@ -781,13 +789,18 @@
     const QUICKBASE_CACHE_TTL_MS = 2 * 60 * 1000;
     const QUICKBASE_BACKGROUND_LIMIT = 500;
 
-    function getQuickbaseCacheKey({ tableId, qid, filters, filterMatch }) {
-      const hashBase = JSON.stringify({ tableId, qid, filters, filterMatch });
+    function getQuickbaseCacheKey({ tabId, tableId, qid, filters, filterMatch }) {
+      const hashBase = JSON.stringify({ tabId, tableId, qid, filters, filterMatch });
       return `qb_cache:${hashBase}`;
     }
 
-    function readQuickbaseCache(cacheKey) {
+    function readQuickbaseCache(cacheKey, tabId) {
       const now = Date.now();
+      const safeTabId = String(tabId || '').trim();
+      if (safeTabId && state._tabDataCache && state._tabDataCache[safeTabId]) {
+        const tabEntry = state._tabDataCache[safeTabId][cacheKey];
+        if (tabEntry && (now - tabEntry.savedAt) < QUICKBASE_CACHE_TTL_MS) return tabEntry.payload;
+      }
       const memoryEntry = state.qbCache[cacheKey];
       if (memoryEntry && (now - memoryEntry.savedAt) < QUICKBASE_CACHE_TTL_MS) return memoryEntry.payload;
       try {
@@ -805,9 +818,17 @@
       }
     }
 
-    function writeQuickbaseCache(cacheKey, payload) {
+    function writeQuickbaseCache(cacheKey, payload, tabId) {
       const entry = { savedAt: Date.now(), payload };
       state.qbCache[cacheKey] = entry;
+      const safeTabId = String(tabId || '').trim();
+      if (safeTabId) {
+        if (!state._tabDataCache || typeof state._tabDataCache !== 'object') state._tabDataCache = {};
+        if (!state._tabDataCache[safeTabId] || typeof state._tabDataCache[safeTabId] !== 'object') {
+          state._tabDataCache[safeTabId] = {};
+        }
+        state._tabDataCache[safeTabId][cacheKey] = entry;
+      }
       try {
         sessionStorage.setItem(cacheKey, JSON.stringify(entry));
       } catch (_) {}
@@ -888,17 +909,21 @@
     }
 
     function syncStateFromActiveTab() {
-      const activeTab = buildDefaultTab(deepClone(getActiveTab()) || {});
-      const parsed = parseQuickbaseLink(activeTab.reportLink);
-      state.tabName = String(activeTab.tabName || 'Main Report').trim() || 'Main Report';
-      state.reportLink = String(activeTab.reportLink || '').trim();
-      state.qid = String(activeTab.qid || parsed.qid || '').trim();
-      state.tableId = String(activeTab.tableId || parsed.tableId || '').trim();
-      state.realm = String(activeTab.realm || parsed.realm || '').trim();
-      state.customColumns = Array.isArray(activeTab.customColumns) ? activeTab.customColumns.map((v) => String(v)) : [];
-      state.customFilters = normalizeFilters(activeTab.customFilters);
-      state.filterMatch = normalizeFilterMatch(activeTab.filterMatch);
-      state.dashboardCounters = normalizeDashboardCounters(activeTab.dashboard_counters);
+      const activeTabId = getActiveTabId();
+      const freshSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[activeTabId]
+        ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId], {})
+        : createDefaultSettings({}, {});
+      const activeTabMeta = getActiveTabMeta();
+      const parsed = parseQuickbaseLink(freshSettings.reportLink);
+      state.tabName = String(activeTabMeta.tabName || 'Main Report').trim() || 'Main Report';
+      state.reportLink = String(freshSettings.reportLink || '').trim();
+      state.qid = String(freshSettings.qid || parsed.qid || '').trim();
+      state.tableId = String(freshSettings.tableId || parsed.tableId || '').trim();
+      state.realm = String(freshSettings.realm || parsed.realm || '').trim();
+      state.customColumns = deepClone(Array.isArray(freshSettings.customColumns) ? freshSettings.customColumns : []);
+      state.customFilters = deepClone(normalizeFilters(freshSettings.customFilters || []));
+      state.filterMatch = normalizeFilterMatch(freshSettings.filterMatch || 'ALL');
+      state.dashboardCounters = deepClone(normalizeDashboardCounters(freshSettings.dashboard_counters || []));
       state.activeCounterIndex = -1;
       const headerSearch = root.querySelector('#qbHeaderSearch');
       if (headerSearch) headerSearch.value = getActiveSearchTerm();
@@ -1240,52 +1265,52 @@
 
 
     root.innerHTML = `
-      <div class="dashx qb-page-shell">
-        <div class="qb-static-zone">
-        <div id="qbTabBar" style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0;padding:0;"></div>
+      <div class="dashx qb-page-shell" style="width:100%;max-width:100%;overflow-x:hidden;box-sizing:border-box;min-height:100vh;display:flex;flex-direction:column;">
+        <div class="qb-static-zone" style="display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;">
+        <div id="qbTabBar" style="display:flex;flex-wrap:wrap;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;margin:0;box-sizing:border-box;"></div>
 
-        <div class="card pad" style="margin-top:0;padding-top:0;margin-bottom:12px;backdrop-filter: blur(14px); background: linear-gradient(130deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.16);">
-          <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-            <div>
-              <div class="h3" id="qbInstanceTitle" style="margin:0;">${esc(state.tabName || 'Main Report')}</div>
+        <div class="card pad" style="margin-top:0;padding-top:0;margin-bottom:12px;backdrop-filter: blur(14px); background: linear-gradient(130deg, rgba(255,255,255,.08), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.16);box-sizing:border-box;">
+          <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;box-sizing:border-box;">
+            <div style="min-width:0;">
+              <div class="h3" id="qbInstanceTitle" style="margin:0;word-break:break-word;">${esc(state.tabName || 'Main Report')}</div>
               <div class="small muted">Active tab instance dashboard</div>
             </div>
-            <div class="row qb-header-search-wrap" style="gap:8px;align-items:center;justify-content:center;flex:1;">
-              <input class="input qb-header-search" id="qbHeaderSearch" type="search" placeholder="Search across active tab records..." />
-              <button class="btn" id="qbExportCsvBtn" type="button">Export CSV</button>
+            <div class="row qb-header-search-wrap" style="gap:8px;align-items:center;justify-content:center;flex:1;min-width:200px;box-sizing:border-box;flex-wrap:wrap;">
+              <input class="input qb-header-search" id="qbHeaderSearch" type="search" placeholder="Search across active tab records..." style="flex:1;min-width:150px;box-sizing:border-box;" />
+              <button class="btn" id="qbExportCsvBtn" type="button" style="white-space:nowrap;">Export CSV</button>
             </div>
-            <div class="row" style="gap:8px;">
-              <button class="btn" id="qbReloadBtn" type="button">Reload</button>
-              <button class="btn primary" id="qbOpenSettingsBtn" type="button">⚙️ Settings</button>
+            <div class="row" style="gap:8px;flex-wrap:wrap;">
+              <button class="btn" id="qbReloadBtn" type="button" style="white-space:nowrap;">Reload</button>
+              <button class="btn primary" id="qbOpenSettingsBtn" type="button" style="white-space:nowrap;">⚙️ Settings</button>
             </div>
           </div>
         </div>
 
-        <div style="margin-top:15px;">
-          <div id="qbDashboardCounters" class="qb-dashboard-counters"></div>
+        <div style="margin-top:15px;width:100%;max-width:100%;box-sizing:border-box;display:flex;flex-direction:column;flex:1;min-height:0;">
+          <div id="qbDashboardCounters" class="qb-dashboard-counters" style="display:flex;flex-wrap:wrap;gap:12px;width:100%;box-sizing:border-box;"></div>
 
-        <div class="card pad qb-table-card">
-          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div class="card pad qb-table-card" style="width:100%;max-width:100%;box-sizing:border-box;display:flex;flex-direction:column;flex:1;min-height:0;">
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
             <div class="h3" style="margin:0;">Quickbase Records</div>
             <div id="qbDataMeta" class="small muted">Loading…</div>
           </div>
-          <div id="qbDataBody" class="qb-data-body"></div>
+          <div id="qbDataBody" class="qb-data-body" style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;flex:1;box-sizing:border-box;"></div>
         </div>
       </div>
       </div>
       </div>
 
-      <div class="modal" id="qbSettingsModal" aria-hidden="true">
-        <div class="panel" style="max-width:980px; width:min(980px,96vw); background: linear-gradient(140deg, rgba(23,35,67,.88), rgba(15,23,42,.82)); border:1px solid rgba(255,255,255,.18); backdrop-filter: blur(18px);">
+      <div class="modal" id="qbSettingsModal" aria-hidden="true" style="position:fixed;inset:0;align-items:center;justify-content:center;z-index:9999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);padding:12px;box-sizing:border-box;overflow:auto;">
+        <div class="panel" style="max-width:min(96vw, 900px);width:100%;max-height:90vh;overflow-y:auto;border-radius:16px; background: linear-gradient(140deg, rgba(23,35,67,.88), rgba(15,23,42,.82)); border:1px solid rgba(255,255,255,.18); backdrop-filter: blur(18px);box-sizing:border-box;">
           <div id="qbSettingsSavingLock" style="display:none;position:absolute;inset:0;z-index:90;align-items:center;justify-content:center;background:rgba(2,6,23,.72);backdrop-filter:blur(3px);border-radius:16px;">
             <div class="small" style="padding:10px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.25);background:rgba(15,23,42,.88);font-weight:700;letter-spacing:.02em;">Saving Quickbase settings…</div>
           </div>
-          <div class="head" style="position:sticky;top:0;background:transparent;">
-            <div>
-              <div class="h3" style="margin:0;">Quickbase Settings</div>
+          <div class="head" style="position:sticky;top:0;background:transparent;padding:24px 32px 0 32px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:0;">
+              <div class="h3" style="margin:0;font-size:20px;font-weight:700;letter-spacing:0.5px;">Quickbase Settings</div>
               <div class="small muted">Report Config · Custom Columns · Filter Config</div>
             </div>
-            <button class="btn" id="qbCloseSettingsBtn" type="button">✕</button>
+            <button class="btn" id="qbCloseSettingsBtn" type="button" style="flex-shrink:0;">✕</button>
           </div>
           <div class="qb-settings-tabs" style="display:flex;gap:4px;border-bottom:1px solid rgba(255,255,255,0.1);margin-bottom:16px;overflow-x:auto;padding:0 4px;">
             <button type="button" data-qb-settings-tab="report-config" style="background:transparent;border:0;border-bottom:2px solid #2196F3;color:#fff;padding:10px 12px;cursor:pointer;transition:all .2s ease;white-space:nowrap;">Report Config</button>
@@ -1293,21 +1318,21 @@
             <button type="button" data-qb-settings-tab="filter-config" style="background:transparent;border:0;border-bottom:2px solid transparent;color:rgba(226,232,240,0.78);padding:10px 12px;cursor:pointer;transition:all .2s ease;white-space:nowrap;">Filter Config</button>
             <button type="button" data-qb-settings-tab="dashboard-counters" style="background:transparent;border:0;border-bottom:2px solid transparent;color:rgba(226,232,240,0.78);padding:10px 12px;cursor:pointer;transition:all .2s ease;white-space:nowrap;">Dashboard Counters</button>
           </div>
-          <div class="body" style="max-height:60vh;overflow:auto;display:grid;gap:16px;padding-bottom:6px;">
-            <section class="card pad" data-qb-settings-view="report-config">
+          <div class="body" style="max-height:60vh;overflow:auto;display:grid;gap:16px;padding:28px 32px;min-height:420px;box-sizing:border-box;">
+            <section class="card pad" data-qb-settings-view="report-config" style="min-height:380px;">
               <div class="h3" style="margin-top:0;">1) Report Config</div>
-              <div style="display:grid;gap:10px;">
-                <label class="field"><div class="label">Tab Name</div><input class="input" id="qbTabName" value="${esc(state.tabName)}" placeholder="Daily Distribution" /></label>
-                <label class="field"><div class="label">Report Link</div><input class="input" id="qbReportLink" value="${esc(state.reportLink)}" placeholder="https://<realm>.quickbase.com/db/<tableid>?a=q&qid=..." /></label>
-                <label class="field"><div class="label">Base Report QID</div><input class="input" id="qbTabBaseQid" value="${esc(state.qid)}" placeholder="-2021117" readonly style="background:rgba(148,163,184,.14);color:rgba(226,232,240,.78);cursor:not-allowed;" /></label>
-                <div class="grid cols-2" style="gap:10px;">
-                  <label class="field"><div class="label">QID</div><input class="input" id="qbQid" value="${esc(state.qid)}" placeholder="-2021117" readonly style="background:rgba(148,163,184,.14);color:rgba(226,232,240,.78);cursor:not-allowed;" /></label>
-                  <label class="field"><div class="label">Table ID</div><input class="input" id="qbTableId" value="${esc(state.tableId)}" placeholder="bq7m2ab12" readonly style="background:rgba(148,163,184,.14);color:rgba(226,232,240,.78);cursor:not-allowed;" /></label>
+              <div style="display:grid;gap:10px;box-sizing:border-box;">
+                <label class="field"><div class="label">Tab Name</div><input class="input" id="qbTabName" value="${esc(state.tabName)}" placeholder="Daily Distribution" style="box-sizing:border-box;" /></label>
+                <label class="field"><div class="label">Report Link</div><input class="input" id="qbReportLink" value="${esc(state.reportLink)}" placeholder="https://<realm>.quickbase.com/db/<tableid>?a=q&qid=..." style="box-sizing:border-box;" /></label>
+                <label class="field"><div class="label">Base Report QID</div><input class="input" id="qbTabBaseQid" value="${esc(state.qid)}" placeholder="-2021117" readonly style="background:rgba(148,163,184,.14);color:rgba(226,232,240,.78);cursor:not-allowed;box-sizing:border-box;" /></label>
+                <div class="grid cols-2" style="gap:10px;box-sizing:border-box;display:grid;grid-template-columns:1fr 1fr;">
+                  <label class="field"><div class="label">QID</div><input class="input" id="qbQid" value="${esc(state.qid)}" placeholder="-2021117" readonly style="background:rgba(148,163,184,.14);color:rgba(226,232,240,.78);cursor:not-allowed;box-sizing:border-box;" /></label>
+                  <label class="field"><div class="label">Table ID</div><input class="input" id="qbTableId" value="${esc(state.tableId)}" placeholder="bq7m2ab12" readonly style="background:rgba(148,163,184,.14);color:rgba(226,232,240,.78);cursor:not-allowed;box-sizing:border-box;" /></label>
                 </div>
               </div>
             </section>
 
-            <section class="card pad" data-qb-settings-view="custom-columns" style="display:none;">
+            <section class="card pad" data-qb-settings-view="custom-columns" style="display:none;min-height:380px;">
               <div class="h3" style="margin-top:0;">2) Custom Columns</div>
               <label class="field" style="margin-bottom:10px;">
                 <div class="label">Search Columns</div>
@@ -1324,7 +1349,7 @@
               </div>
             </section>
 
-            <section class="card pad" data-qb-settings-view="filter-config" style="display:none;">
+            <section class="card pad" data-qb-settings-view="filter-config" style="display:none;min-height:380px;">
               <div class="row" style="justify-content:space-between;align-items:center;">
                 <div class="h3" style="margin:0;">3) Filter Config</div>
                 <button class="btn" id="qbAddFilterBtn" type="button">+ Add Filter</button>
@@ -1339,7 +1364,7 @@
               <div id="qbFilterRows" style="display:grid;gap:8px;margin-top:10px;"></div>
             </section>
 
-            <section class="card pad" data-qb-settings-view="dashboard-counters" style="display:none;">
+            <section class="card pad" data-qb-settings-view="dashboard-counters" style="display:none;min-height:380px;">
               <div class="row" style="justify-content:space-between;align-items:center;">
                 <div class="h3" style="margin:0;">Dashboard Counter Filters (Self-Configure)</div>
                 <button class="btn primary" id="qbAddCounterBtn" type="button">+ Add New Counter Filter</button>
@@ -1347,9 +1372,9 @@
               <div id="qbCounterRows" style="display:grid;gap:10px;margin-top:10px;"></div>
             </section>
           </div>
-          <div class="row" style="justify-content:flex-end;gap:8px;position:sticky;bottom:0;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);background:linear-gradient(180deg, rgba(15,23,42,0.2), rgba(15,23,42,0.92));">
-            <button class="btn" id="qbCancelSettingsBtn" type="button">Cancel</button>
-            <button class="btn primary" id="qbSaveSettingsBtn" type="button">Save Settings</button>
+          <div class="row" style="padding:20px 32px 24px 32px;display:flex;justify-content:flex-end;gap:12px;position:sticky;bottom:0;border-top:1px solid rgba(255,255,255,0.08);background:linear-gradient(180deg, rgba(15,23,42,0.2), rgba(15,23,42,0.92));flex-wrap:wrap;box-sizing:border-box;">
+            <button class="btn" id="qbCancelSettingsBtn" type="button" style="background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);padding:10px 24px;border-radius:8px;font-size:15px;border:1px solid rgba(255,255,255,0.15);cursor:pointer;flex:1;min-width:120px;max-width:200px;box-sizing:border-box;">Cancel</button>
+            <button class="btn primary" id="qbSaveSettingsBtn" type="button" style="background:linear-gradient(135deg, #2196F3, #1565C0);color:white;padding:10px 28px;border-radius:8px;font-size:15px;font-weight:600;border:none;cursor:pointer;transition:opacity 0.2s;flex:1;min-width:120px;max-width:200px;box-sizing:border-box;">Save Settings</button>
           </div>
         </div>
       </div>
@@ -1426,7 +1451,12 @@
     }
 
     function filterRowTemplate(f, idx) {
-      const fieldOptions = state.allAvailableFields.map((x) => `<option value="${esc(String(x.id))}" ${String(f.fieldId) === String(x.id) ? 'selected' : ''}>${esc(x.label)} (#${esc(String(x.id))})</option>`).join('');
+      const knownFields = Array.isArray(state.allAvailableFields) ? state.allAvailableFields.slice() : [];
+      const selectedFieldId = String(f.fieldId || '').trim();
+      if (selectedFieldId && !knownFields.some((x) => String(x && x.id) === selectedFieldId)) {
+        knownFields.unshift({ id: selectedFieldId, label: `Field #${selectedFieldId}` });
+      }
+      const fieldOptions = knownFields.map((x) => `<option value="${esc(String(x.id))}" ${String(f.fieldId) === String(x.id) ? 'selected' : ''}>${esc(x.label)} (#${esc(String(x.id))})</option>`).join('');
       const activeValue = String(f.value || '').trim();
       return `
         <div class="row" data-filter-idx="${idx}" style="gap:8px;align-items:center;flex-wrap:wrap;">
@@ -1505,8 +1535,35 @@
     }
 
 
+    function getCounterTargetFields() {
+      const candidates = [];
+      const addFromSource = (list) => {
+        if (!Array.isArray(list)) return;
+        list.forEach((item) => {
+          if (!item || typeof item !== 'object') return;
+          const id = String(item.id ?? item.fieldId ?? item.fid ?? '').trim();
+          if (!id) return;
+          const label = String(item.label ?? item.name ?? item.title ?? '').trim() || `Field #${id}`;
+          candidates.push({ id, label });
+        });
+      };
+
+      addFromSource(state.allAvailableFields);
+      if (!candidates.length) {
+        addFromSource(state.rawPayload && state.rawPayload.columns);
+      }
+
+      const seen = new Set();
+      return candidates.filter((field) => {
+        if (seen.has(field.id)) return false;
+        seen.add(field.id);
+        return true;
+      });
+    }
+
     function counterRowTemplate(counter, idx) {
-      const fieldOptions = state.allAvailableFields
+      const targetFields = getCounterTargetFields();
+      const fieldOptions = targetFields
         .map((x) => `<option value="${esc(String(x.id))}" ${String(counter.fieldId) === String(x.id) ? 'selected' : ''}>${esc(x.label)} (#${esc(String(x.id))})</option>`)
         .join('');
       return `
@@ -1628,7 +1685,7 @@
       if (!reportLinkEl || !tableIdEl || !qidEl || !tabBaseQidEl || modalBindingsActive) return;
 
       let lastAutoFillToastAt = 0;
-      const applyAutoExtract = () => {
+      const applyAutoExtract = async () => {
         const nextLink = String(reportLinkEl.value || '').trim();
         const prevQid = String(state.qid || '').trim();
         const prevTableId = String(state.tableId || '').trim();
@@ -1639,6 +1696,15 @@
         if (didAutoFill && window.UI && UI.toast && (Date.now() - lastAutoFillToastAt) > 1200) {
           UI.toast('Auto-filled from Link');
           lastAutoFillToastAt = Date.now();
+        }
+        // FIX: [Issue 3] - Real-time field detection: refresh available fields immediately when link changes
+        if (didAutoFill && nextLink) {
+          try {
+            await refreshAvailableFieldsForActiveTab(getActiveTabId());
+            renderColumnGrid();
+            renderFilters();
+            renderCounterFilters();
+          } catch (_) {}
         }
       };
 
@@ -1659,6 +1725,50 @@
       modalBindingsActive = false;
     }
 
+
+    async function refreshAvailableFieldsForActiveTab(tabId) {
+      const safeTabId = String(tabId || getActiveTabId() || '').trim();
+      if (!safeTabId) return;
+      const managerSettings = tabManager && typeof tabManager.getTab === 'function'
+        ? ((tabManager.getTab(safeTabId) || {}).settings || {})
+        : {};
+      const fallbackSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[safeTabId]
+        ? state.quickbaseSettings.settingsByTabId[safeTabId]
+        : {};
+      const tabSettings = createDefaultSettings(Object.assign({}, fallbackSettings, managerSettings), {});
+      const parsed = parseQuickbaseLink(String(tabSettings.reportLink || ''));
+      const qid = String(tabSettings.qid || parsed.qid || '').trim();
+      const tableId = String(tabSettings.tableId || parsed.tableId || '').trim();
+      const realm = String(tabSettings.realm || parsed.realm || '').trim();
+
+      if (!qid || !tableId || !realm) {
+        state.allAvailableFields = [];
+        renderColumnGrid();
+        renderFilters();
+        renderCounterFilters();
+        return;
+      }
+
+      try {
+        const data = await window.QuickbaseAdapter.fetchMonitoringData({
+          bust: Date.now(),
+          limit: 1,
+          qid,
+          tableId,
+          realm,
+          customFilters: [],
+          filterMatch: 'ALL',
+          search: ''
+        });
+        state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
+      } catch (_) {
+        state.allAvailableFields = [];
+      }
+      renderColumnGrid();
+      renderFilters();
+      renderCounterFilters();
+    }
+
     async function loadQuickbaseData(options) {
       const opts = options && typeof options === 'object' ? options : {};
       const silent = !!opts.silent;
@@ -1666,6 +1776,23 @@
       const host = root.querySelector('#qbDataBody');
       const meta = root.querySelector('#qbDataMeta');
       const reloadBtn = root.querySelector('#qbReloadBtn');
+
+      const activeTabId = String(getActiveTabId() || '').trim();
+      const activeTabConfig = window.TabManager && typeof window.TabManager.getTab === 'function'
+        ? (((window.TabManager.getTab(activeTabId) || {}).settings) || {})
+        : {};
+      const activeReportLink = String(activeTabConfig.reportLink || activeTabConfig.qb_report_link || '').trim();
+      if (!activeReportLink) {
+        const recordsContainer = document.querySelector('[data-qb-records-container]')
+          || document.querySelector('.qb-records-body')
+          || document.querySelector('#qbRecordsBody')
+          || document.querySelector('.quickbase-records-container')
+          || host;
+        if (recordsContainer) {
+          recordsContainer.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(255,255,255,0.5);font-size:15px;">No records loaded — Please configure a Report Link in Settings.</div>';
+        }
+        return;
+      }
 
       if (quickbaseLoadInFlight) return quickbaseLoadInFlight;
 
@@ -1681,21 +1808,48 @@
           if (!window.QuickbaseAdapter || typeof window.QuickbaseAdapter.fetchMonitoringData !== 'function') {
             throw new Error('Quickbase adapter unavailable');
           }
-          const shouldApplyFilters = shouldApplyServerFilters(opts);
-          const mergedFilters = shouldApplyFilters ? normalizeFilters(state.customFilters) : [];
           const activeTab = getActiveTab();
-          const activeQid = String(activeTab.qid || state.qid || '').trim();
+          const activeTabId = String(activeTab && activeTab.id || getActiveTabId() || '').trim();
+          const managerTab = tabManager && activeTabId && typeof tabManager.getTab === 'function' ? tabManager.getTab(activeTabId) : null;
+          const managerTabSettings = managerTab && managerTab.settings ? managerTab.settings : null;
+          const freshTabSettings = managerTabSettings
+            ? createDefaultSettings(managerTabSettings, {})
+            : (state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[activeTabId]
+              ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId], {})
+              : createDefaultSettings(activeTab, {}));
+          const reportLink = String(freshTabSettings.reportLink || '').trim();
+          if (!reportLink) {
+            state.allAvailableFields = [];
+            state.baseRecords = [];
+            state.rawPayload = { columns: [], records: [] };
+            state.currentPayload = { columns: [], records: [] };
+            renderColumnGrid();
+            renderFilters();
+            applySearchAndRender();
+            renderEmptyState(root, 'No records loaded — Please configure a Report Link in Settings.');
+            return;
+          }
+          const shouldApplyFilters = shouldApplyServerFilters(opts);
+          const tabCustomFilters = Array.isArray(freshTabSettings.customFilters) ? normalizeFilters(freshTabSettings.customFilters) : [];
+          const tabFilterMatch = normalizeFilterMatch(freshTabSettings.filterMatch);
+          const mergedFilters = shouldApplyFilters ? tabCustomFilters : [];
+          // Derive qid/tableId/realm from reportLink if not explicitly set on the tab
+          const _tabParsed = parseQuickbaseLink(String(freshTabSettings.reportLink || ''));
+          const activeQid = String(freshTabSettings.qid || _tabParsed.qid || '').trim();
+          const activeTableId = String(freshTabSettings.tableId || _tabParsed.tableId || '').trim();
+          const activeRealm = String(freshTabSettings.realm || _tabParsed.realm || '').trim();
           const hasExplicitLoadMore = Number(opts.offset || 0) >= 100;
           const hasActiveSearch = !!String(getActiveSearchTerm() || '').trim();
           const requestLimit = 100;
           const cacheKey = getQuickbaseCacheKey({
-            tableId: state.tableId,
+            tabId: activeTabId,
+            tableId: activeTableId,
             qid: activeQid || '',
             filters: mergedFilters,
-            filterMatch: state.filterMatch
+            filterMatch: tabFilterMatch
           });
           // FIX: [Issue 2] - Reuse cache if fetched within 2 minutes.
-          const cachedPayload = forceRefresh ? null : readQuickbaseCache(cacheKey);
+          const cachedPayload = forceRefresh ? null : readQuickbaseCache(cacheKey, activeTabId);
           if (cachedPayload) {
             state.allAvailableFields = Array.isArray(cachedPayload.allAvailableFields) ? cachedPayload.allAvailableFields : [];
             state.baseRecords = Array.isArray(cachedPayload.records) ? cachedPayload.records.slice() : [];
@@ -1716,8 +1870,8 @@
             bust: Date.now(),
             limit: requestLimit,
             qid: activeQid || '',
-            tableId: String(activeTab.tableId || state.tableId || '').trim(),
-            realm: String(activeTab.realm || state.realm || '').trim()
+            tableId: activeTableId,
+            realm: activeRealm
           };
           if (!requestPayload.qid || !requestPayload.tableId || !requestPayload.realm) {
             state.allAvailableFields = [];
@@ -1732,8 +1886,11 @@
           }
           const data = await window.QuickbaseAdapter.fetchMonitoringData({
             ...requestPayload,
+            tab_id: activeTabId,
+            reportLink,
+            customColumns: Array.isArray(freshTabSettings.customColumns) ? freshTabSettings.customColumns : [],
             customFilters: mergedFilters,
-            filterMatch: state.filterMatch,
+            filterMatch: tabFilterMatch,
             search: ''
           });
           state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
@@ -1750,17 +1907,20 @@
             columns: incomingColumns,
             records: state.baseRecords.slice(),
             allAvailableFields: state.allAvailableFields
-          });
+          }, activeTabId);
           // FIX: [Issue 2] - Progressive background fetch for full dataset.
           if (requestLimit < QUICKBASE_BACKGROUND_LIMIT && !hasExplicitLoadMore && !hasActiveSearch) {
             setTimeout(async () => {
               try {
                 const bgData = await window.QuickbaseAdapter.fetchMonitoringData({
                   ...requestPayload,
+                  tab_id: activeTabId,
+                  reportLink,
                   bust: Date.now(),
                   limit: QUICKBASE_BACKGROUND_LIMIT,
+                  customColumns: Array.isArray(freshTabSettings.customColumns) ? freshTabSettings.customColumns : [],
                   customFilters: mergedFilters,
-                  filterMatch: state.filterMatch,
+                  filterMatch: tabFilterMatch,
                   search: ''
                 });
                 const bgRecords = Array.isArray(bgData && bgData.records) ? bgData.records : [];
@@ -1771,7 +1931,7 @@
                   columns: incomingColumns,
                   records: state.baseRecords.slice(),
                   allAvailableFields: state.allAvailableFields
-                });
+                }, activeTabId);
                 applySearchAndRender();
                 console.info(`[Quickbase] progressive load merged ${bgRecords.length} records`);
               } catch (_) {}
@@ -1796,9 +1956,32 @@
       const normalizedSearch = getActiveSearchTerm();
       const activeCounter = state.activeCounterIndex >= 0 ? state.dashboardCounters[state.activeCounterIndex] : null;
       state.searchTerm = normalizedSearch;
+
+      const activeTabId = getActiveTabId();
+      const freshTabSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[activeTabId]
+        ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId], {})
+        : createDefaultSettings({}, {});
+
+      let filteredBase = Array.isArray(state.baseRecords) ? state.baseRecords : [];
+      if (Array.isArray(freshTabSettings.customFilters) && freshTabSettings.customFilters.length > 0) {
+        const filterMatch = normalizeFilterMatch(freshTabSettings.filterMatch);
+        filteredBase = filteredBase.filter((record) => {
+          const matches = freshTabSettings.customFilters.map((filter) => {
+            const field = record && record.fields ? record.fields[String(filter.fieldId)] : null;
+            const sourceValue = String(field && field.value != null ? field.value : '').toLowerCase();
+            const matcherValue = String(filter.value || '').toLowerCase();
+            if (filter.operator === 'XEX') return sourceValue !== matcherValue;
+            if (filter.operator === 'CT') return sourceValue.includes(matcherValue);
+            if (filter.operator === 'XCT') return !sourceValue.includes(matcherValue);
+            return sourceValue === matcherValue;
+          });
+          return filterMatch === 'ANY' ? matches.some(Boolean) : matches.every(Boolean);
+        });
+      }
+
       const basePayload = {
         columns: Array.isArray(state.rawPayload && state.rawPayload.columns) ? state.rawPayload.columns : [],
-        records: Array.isArray(state.baseRecords) ? state.baseRecords : []
+        records: filteredBase
       };
       const counterFilteredPayload = filterRecordsByCounter(basePayload, activeCounter);
       state.currentPayload = normalizedSearch
@@ -1902,7 +2085,12 @@
         delete state.quickbaseSettings.settingsByTabId[targetTabId];
         state.quickbaseSettings.tabs = tabs.filter((_, i) => i !== idx);
         const nextLen = state.quickbaseSettings.tabs.length;
-        state.activeTabIndex = Math.min(Math.max(state.activeTabIndex === idx ? idx - 1 : state.activeTabIndex, 0), Math.max(0, nextLen - 1));
+        if (state.activeTabIndex === idx) {
+          state.activeTabIndex = Math.max(0, idx - 1);
+        } else if (state.activeTabIndex > idx) {
+          state.activeTabIndex = Math.max(0, state.activeTabIndex - 1);
+        }
+        state.activeTabIndex = Math.min(state.activeTabIndex, Math.max(0, nextLen - 1));
         state.quickbaseSettings.activeTabIndex = state.activeTabIndex;
         syncStateFromActiveTab();
         syncSettingsInputsFromState();
@@ -1912,7 +2100,7 @@
         renderColumnGrid();
         renderFilters();
         renderCounterFilters();
-        await loadQuickbaseData({ applyFilters: false, forceRefresh: true });
+        await loadQuickbaseData({ applyFilters: true, forceRefresh: true });
         if (window.UI && UI.toast) UI.toast('Tab deleted successfully.');
       } catch (err) {
         if (window.UI && UI.toast) UI.toast('Failed to delete tab: ' + String(err && err.message || err), 'error');
@@ -1924,7 +2112,7 @@
       setActiveUserSearched(false);
       setActiveSearchTerm('');
       state.searchTerm = '';
-      return loadQuickbaseData({ applyFilters: false });
+      return loadQuickbaseData({ applyFilters: true });
     }
 
     root.querySelector('#qbOpenSettingsBtn').onclick = openSettings;
@@ -2011,7 +2199,7 @@
         renderCounterFilters();
         try {
           await persistQuickbaseSettings();
-          await loadQuickbaseData({ applyFilters: false });
+          await loadQuickbaseData({ applyFilters: true });
           if (window.UI && UI.toast) UI.toast('New tab added and synced.');
         } catch (err) {
           if (window.UI && UI.toast) UI.toast('Failed to add tab: ' + String(err && err.message || err), 'error');
@@ -2021,6 +2209,18 @@
       const idx = Number(target.getAttribute('data-tab-idx'));
       if (!Number.isFinite(idx) || idx === state.activeTabIndex) return;
       captureSettingsDraftFromInputs();
+      // ISOLATION: clear stale data from previous tab before switching
+      state.rows = [];
+      state.columns = [];
+      state.allAvailableFields = [];
+      state.baseRecords = [];
+      state.rawPayload = { columns: [], records: [] };
+      state.currentPayload = { columns: [], records: [] };
+      state.currentPage = 1;
+      const recordsEl = document.querySelector('[data-qb-records-container]') || document.querySelector('.qb-records-body') || document.querySelector('#qbRecordsBody') || root.querySelector('#qbDataBody');
+      if (recordsEl) recordsEl.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(255,255,255,0.5);">Loading...</div>';
+      renderEmptyState(root, 'Loading records for selected tab...');
+      renderDashboardCounters(root, [], { dashboard_counters: [] }, state);
       state.activeTabIndex = idx;
       const currentTab = deepClone(getActiveTab() || {});
       state.settingsEditingTabId = String(currentTab.id || getActiveTabId() || '').trim();
@@ -2055,7 +2255,7 @@
       renderColumnGrid();
       renderFilters();
       renderCounterFilters();
-      await loadQuickbaseData({ applyFilters: false });
+      await loadQuickbaseData({ applyFilters: true });
     };
     root.querySelector('#qbAddFilterBtn').onclick = () => {
       state.customFilters.push({ fieldId: '', operator: 'EX', value: '' });
@@ -2121,7 +2321,15 @@
       const activeTabId = String(getActiveTabId() || '').trim();
       if (activeTabId) {
         state.quickbaseSettings.settingsByTabId = state.quickbaseSettings.settingsByTabId || {};
-        state.quickbaseSettings.settingsByTabId[activeTabId] = createDefaultSettings(tabSnapshot, {});
+        const prevTabSettings = createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId] || {}, {});
+        state.quickbaseSettings.settingsByTabId[activeTabId] = createDefaultSettings({
+          ...prevTabSettings,
+          ...tabSnapshot,
+          customColumns: deepClone(state.customColumns || prevTabSettings.customColumns || []),
+          customFilters: deepClone(state.customFilters || prevTabSettings.customFilters || []),
+          filterMatch: state.filterMatch || prevTabSettings.filterMatch || 'ALL',
+          dashboard_counters: deepClone(state.dashboardCounters || prevTabSettings.dashboard_counters || [])
+        }, {});
       }
       state.tabName = tabSnapshot.tabName;
       state.reportLink = tabSnapshot.reportLink;
@@ -2168,16 +2376,34 @@
           });
         }
         if (tabManager && targetTabId) {
-          tabManager.updateTabLocal(targetTabId, {
-            tabName: String(state.tabName || 'Main Report').trim() || 'Main Report',
-            reportLink: String(state.reportLink || '').trim(),
-            baseReportQid: String(state.qid || '').trim(),
-            qid: String(state.qid || '').trim(),
-            tableId: String(state.tableId || '').trim()
-          });
+          const currentManagedTab = tabManager.getTab(targetTabId);
+          const currentManagedSettings = currentManagedTab && currentManagedTab.settings ? currentManagedTab.settings : {};
+          const managedSettings = {
+            ...currentManagedSettings,
+            ...pendingTabSettings,
+            tabName: String(pendingTabSettings.tabName || 'Main Report').trim() || 'Main Report',
+            reportLink: String(pendingTabSettings.reportLink || '').trim(),
+            baseReportQid: String(pendingTabSettings.qid || '').trim(),
+            qid: String(pendingTabSettings.qid || '').trim(),
+            tableId: String(pendingTabSettings.tableId || '').trim(),
+            realm: String(pendingTabSettings.realm || '').trim(),
+            customColumns: deepClone(pendingTabSettings.customColumns || []),
+            customFilters: deepClone(pendingTabSettings.customFilters || []),
+            filterMatch: pendingTabSettings.filterMatch || 'ALL',
+            dashboard_counters: deepClone(pendingTabSettings.dashboard_counters || [])
+          };
+          tabManager.updateTabLocal(targetTabId, managedSettings);
           await tabManager.saveTab(targetTabId);
         }
         await persistQuickbaseSettings();
+        await refreshAvailableFieldsForActiveTab(targetTabId || getActiveTabId());
+        const savedSettings = tabManager && targetTabId && typeof tabManager.getTab === 'function'
+          ? ((tabManager.getTab(targetTabId) || {}).settings || {})
+          : {};
+        const newReportLink = String(savedSettings.reportLink || '').trim();
+        if (newReportLink && typeof populateFieldDropdowns === 'function') {
+          populateFieldDropdowns(savedSettings.realm, savedSettings.tableId, savedSettings.qid);
+        }
         renderTabBar();
         if (window.UI && UI.toast) UI.toast('Quickbase settings saved successfully!');
         closeSettings();
