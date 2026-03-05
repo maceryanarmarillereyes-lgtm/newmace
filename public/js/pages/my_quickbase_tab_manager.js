@@ -147,18 +147,27 @@
       const safeTabId = String(tabId || '').trim();
       const entry = tabs.get(safeTabId);
       if (!entry) return;
-      const payload = {
-        user_id: safeUserId(currentUserId),
-        tab_id: safeTabId,
-        tab_name: String(entry.settings.tabName || '').trim() || 'New Tab',
-        settings_json: cloneDeep(entry.settings)
-      };
-      await apiRequest('/quickbase_tabs/upsert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      // Always save to localStorage first — this is the reliable fallback.
       saveLocalFallback();
+      // Attempt remote sync but DO NOT throw on failure.
+      // Settings are already persisted via mums_profiles.quickbase_settings
+      // by persistQuickbaseSettings(). The quickbase_tabs table is secondary.
+      try {
+        const payload = {
+          user_id: safeUserId(currentUserId),
+          tab_id: safeTabId,
+          tab_name: String(entry.settings.tabName || '').trim() || 'New Tab',
+          settings_json: cloneDeep(entry.settings)
+        };
+        await apiRequest('/quickbase_tabs/upsert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (_) {
+        // Silently ignore - localStorage fallback is already saved above.
+        // Primary settings are stored in mums_profiles via persistQuickbaseSettings().
+      }
     },
 
 
@@ -166,19 +175,27 @@
     async deleteTab(tabId) {
       const safeTabId = String(tabId || '').trim();
       if (!safeTabId) return;
-      const userId = encodeURIComponent(safeUserId(currentUserId));
-      const token = root.CloudAuth && typeof root.CloudAuth.accessToken === 'function'
-        ? String(root.CloudAuth.accessToken() || '').trim()
-        : '';
-      await apiRequest(`/quickbase_tabs/${encodeURIComponent(safeTabId)}?user_id=${userId}&tab_id=${encodeURIComponent(safeTabId)}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + token
-        }
-      });
+      // Remove from local map first — UI should update regardless of API result.
       tabs.delete(safeTabId);
       saveLocalFallback();
+      // Attempt remote delete but DO NOT throw on failure.
+      try {
+        const userId = encodeURIComponent(safeUserId(currentUserId));
+        const token = root.CloudAuth && typeof root.CloudAuth.accessToken === 'function'
+          ? String(root.CloudAuth.accessToken() || '').trim()
+          : '';
+        await apiRequest(`/quickbase_tabs/${encodeURIComponent(safeTabId)}?user_id=${userId}&tab_id=${encodeURIComponent(safeTabId)}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + token
+          }
+        });
+      } catch (_) {
+        // Silently ignore - local state is already cleaned up above.
+        // Tab is deleted from localStorage and state; the remote cleanup
+        // will happen naturally on next upsert cycle or can be ignored.
+      }
     },
 
     async loadTabs() {
