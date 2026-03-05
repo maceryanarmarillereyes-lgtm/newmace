@@ -9,6 +9,13 @@ function normalizeTabId(raw) {
   return String(raw || '').trim();
 }
 
+
+function tabIdFromUrlPath(url) {
+  const raw = String(url || '').split('?')[0];
+  const match = raw.match(/\/quickbase_tabs\/([^/]+)$/i);
+  return normalizeTabId(match && match[1] ? decodeURIComponent(match[1]) : '');
+}
+
 function normalizeRow(row) {
   const src = row && typeof row === 'object' ? row : {};
   const settings = src.settings_json && typeof src.settings_json === 'object' ? src.settings_json : {};
@@ -73,11 +80,11 @@ async function upsertTab(req, res) {
 
 async function deleteTab(req, res, params) {
   const userId = normalizeUserId(req?.query?.user_id || req?.body?.user_id);
-  const tabId = normalizeTabId(params?.tab_id || req?.query?.tab_id || req?.body?.tab_id);
+  const tabId = normalizeTabId(params?.tab_id || req?.query?.tab_id || req?.body?.tab_id || tabIdFromUrlPath(req?.url));
   if (!userId || !tabId) return sendJson(res, 400, { ok: false, error: 'missing_user_or_tab_id' });
 
   const q = `user_id=eq.${encodeURIComponent(userId)}&tab_id=eq.${encodeURIComponent(tabId)}`;
-  const out = await serviceFetch(`/quickbase_tabs?${q}`, { method: 'DELETE' });
+  const out = await serviceFetch(`/rest/v1/quickbase_tabs?${q}`, { method: 'DELETE' });
   if (!out.ok) return sendJson(res, 500, { ok: false, error: 'quickbase_tabs_delete_failed', details: out.json || out.text });
 
   return sendJson(res, 200, { ok: true, deleted: { user_id: userId, tab_id: tabId } });

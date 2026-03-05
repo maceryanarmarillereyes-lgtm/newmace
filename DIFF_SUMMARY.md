@@ -45,3 +45,20 @@ Generated: 2026-02-07 11:29:40
 
 ## Notes
 - The "normal state" screenshot is a **reference-based mockup** (global nav/topbar overlays were added for illustration).
+
+---
+
+## fix(my-quickbase): tab isolation + realtime fields + record guard + responsive (applied patch)
+
+### Files Changed
+
+**`public/js/pages/my_quickbase.js`**
+- [Bug1] Added TabManager seeding: tabs from Supabase profile are force-seeded into TabManager localStorage on init, then re-synced. Each tab's settings are now truly isolated.
+- [Bug3] Fixed `loadQuickbaseData` early return: now falls back to `state.quickbaseSettings.settingsByTabId` when TabManager doesn't have the tab, so configured tabs always load their records.
+- [Bug2] Fixed `openSettings()`: if reportLink exists and fields aren't loaded, `refreshAvailableFieldsForActiveTab()` is called immediately so Custom Columns / Filter Config / Dashboard Counter dropdowns populate in realtime on modal open.
+
+**`public/css/enterprise_ux.css`**
+- [Bug4] Added responsive QB page media queries at 1024px / 768px / 480px: `.qb-page-shell` height/overflow fixed, counters reflow to 2-col grid, font sizes scale on mobile.
+
+### Zero Regressions
+All untouchable files preserved. Realtime, auth, mailbox, members, users unaffected.
