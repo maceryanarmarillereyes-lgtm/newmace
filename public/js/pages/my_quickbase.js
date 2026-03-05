@@ -1685,26 +1685,39 @@
       if (!reportLinkEl || !tableIdEl || !qidEl || !tabBaseQidEl || modalBindingsActive) return;
 
       let lastAutoFillToastAt = 0;
+      let fetchFieldsTimer = null;
+      let lastFetchedLink = '';
       const applyAutoExtract = async () => {
         const nextLink = String(reportLinkEl.value || '').trim();
+        const prevLink = String(state.reportLink || '').trim();
         const prevQid = String(state.qid || '').trim();
         const prevTableId = String(state.tableId || '').trim();
+        const prevRealm = String(state.realm || '').trim();
         handleReportLinkChange(getActiveTabId(), nextLink);
-        const didAutoFill = prevQid !== String(state.qid || '').trim() || prevTableId !== String(state.tableId || '').trim();
+        const didAutoFill = prevQid !== String(state.qid || '').trim()
+          || prevTableId !== String(state.tableId || '').trim()
+          || prevRealm !== String(state.realm || '').trim();
         syncActiveTabFromState();
         queuePersistQuickbaseSettings();
         if (didAutoFill && window.UI && UI.toast && (Date.now() - lastAutoFillToastAt) > 1200) {
           UI.toast('Auto-filled from Link');
           lastAutoFillToastAt = Date.now();
         }
-        // FIX: [Issue 3] - Real-time field detection: refresh available fields immediately when link changes
-        if (didAutoFill && nextLink) {
-          try {
-            await refreshAvailableFieldsForActiveTab(getActiveTabId());
-            renderColumnGrid();
-            renderFilters();
-            renderCounterFilters();
-          } catch (_) {}
+        // FIX: [Issue 3] - Real-time field detection should refresh for any changed/pasted link,
+        // even when qid/tableId stay the same (realm-only change, or repasting same link after tab switch).
+        if (fetchFieldsTimer) clearTimeout(fetchFieldsTimer);
+        const normalizedNextLink = String(nextLink || '').trim();
+        const shouldRefreshFields = !!normalizedNextLink && (normalizedNextLink !== prevLink || normalizedNextLink !== lastFetchedLink);
+        if (shouldRefreshFields) {
+          fetchFieldsTimer = setTimeout(async () => {
+            try {
+              await refreshAvailableFieldsForActiveTab(getActiveTabId());
+              lastFetchedLink = normalizedNextLink;
+              renderColumnGrid();
+              renderFilters();
+              renderCounterFilters();
+            } catch (_) {}
+          }, 250);
         }
       };
 
@@ -1712,6 +1725,7 @@
       reportLinkEl.addEventListener('input', applyAutoExtract);
       reportLinkEl.addEventListener('paste', onPaste);
       cleanupHandlers.push(() => {
+        if (fetchFieldsTimer) clearTimeout(fetchFieldsTimer);
         reportLinkEl.removeEventListener('input', applyAutoExtract);
         reportLinkEl.removeEventListener('paste', onPaste);
       });
