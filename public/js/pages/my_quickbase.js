@@ -929,6 +929,14 @@
       if (headerSearch) headerSearch.value = getActiveSearchTerm();
       const instanceTitle = root.querySelector('#qbInstanceTitle');
       if (instanceTitle) instanceTitle.textContent = state.tabName || 'Main Report';
+      const activeTabRecordCache = state._tabDataCache && state._tabDataCache[activeTabId] && Array.isArray(state._tabDataCache[activeTabId].cachedRows)
+        ? state._tabDataCache[activeTabId].cachedRows
+        : [];
+      state.baseRecords = activeTabRecordCache.slice();
+      state.rawPayload = {
+        columns: Array.isArray(state.rawPayload && state.rawPayload.columns) ? state.rawPayload.columns : [],
+        records: state.baseRecords.slice()
+      };
     }
 
     function syncSettingsInputsFromState() {
@@ -1867,6 +1875,13 @@
           if (cachedPayload) {
             state.allAvailableFields = Array.isArray(cachedPayload.allAvailableFields) ? cachedPayload.allAvailableFields : [];
             state.baseRecords = Array.isArray(cachedPayload.records) ? cachedPayload.records.slice() : [];
+            if (activeTabId) {
+              state._tabDataCache = Object.assign({}, state._tabDataCache || {}, {
+                [activeTabId]: Object.assign({}, state._tabDataCache && state._tabDataCache[activeTabId] || {}, {
+                  cachedRows: state.baseRecords.slice()
+                })
+              });
+            }
             state.rawPayload = {
               columns: Array.isArray(cachedPayload.columns) ? cachedPayload.columns : [],
               records: state.baseRecords.slice()
@@ -1913,6 +1928,13 @@
           const incomingColumns = Array.isArray(data && data.columns) ? data.columns : [];
           const incomingRecords = Array.isArray(data && data.records) ? data.records : [];
           state.baseRecords = incomingRecords.slice();
+          if (activeTabId) {
+            state._tabDataCache = Object.assign({}, state._tabDataCache || {}, {
+              [activeTabId]: Object.assign({}, state._tabDataCache && state._tabDataCache[activeTabId] || {}, {
+                cachedRows: incomingRecords.slice()
+              })
+            });
+          }
           state.rawPayload = { columns: incomingColumns, records: state.baseRecords.slice() };
           state.isDefaultReportMode = !shouldApplyFilters && !getActiveSearchTerm();
           state.currentPage = 1;
@@ -1940,6 +1962,13 @@
                 const bgRecords = Array.isArray(bgData && bgData.records) ? bgData.records : [];
                 if (!bgRecords.length) return;
                 state.baseRecords = mergeRecordsById(state.baseRecords, bgRecords);
+                if (activeTabId) {
+                  state._tabDataCache = Object.assign({}, state._tabDataCache || {}, {
+                    [activeTabId]: Object.assign({}, state._tabDataCache && state._tabDataCache[activeTabId] || {}, {
+                      cachedRows: state.baseRecords.slice()
+                    })
+                  });
+                }
                 state.rawPayload = { columns: incomingColumns, records: state.baseRecords.slice() };
                 writeQuickbaseCache(cacheKey, {
                   columns: incomingColumns,
@@ -2092,15 +2121,21 @@
       if (!Number.isFinite(idx) || idx < 0 || idx >= tabs.length) return;
       const target = tabs[idx] || {};
       const targetTabId = String(target.id || '').trim();
+      const isDeletingActiveTab = state.activeTabIndex === idx;
       if (!targetTabId) return;
 
       try {
         if (tabManager) await tabManager.deleteTab(targetTabId);
         delete state.quickbaseSettings.settingsByTabId[targetTabId];
+        if (state._tabDataCache && Object.prototype.hasOwnProperty.call(state._tabDataCache, targetTabId)) {
+          delete state._tabDataCache[targetTabId];
+        }
         state.quickbaseSettings.tabs = tabs.filter((_, i) => i !== idx);
         const nextLen = state.quickbaseSettings.tabs.length;
-        if (state.activeTabIndex === idx) {
-          state.activeTabIndex = Math.max(0, idx - 1);
+        if (!nextLen) {
+          state.activeTabIndex = 0;
+        } else if (isDeletingActiveTab) {
+          state.activeTabIndex = 0;
         } else if (state.activeTabIndex > idx) {
           state.activeTabIndex = Math.max(0, state.activeTabIndex - 1);
         }

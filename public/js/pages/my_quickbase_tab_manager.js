@@ -166,11 +166,18 @@
     async deleteTab(tabId) {
       const safeTabId = String(tabId || '').trim();
       if (!safeTabId) return;
-      tabs.delete(safeTabId);
       const userId = encodeURIComponent(safeUserId(currentUserId));
-      await apiRequest(`/quickbase_tabs/${encodeURIComponent(safeTabId)}?user_id=${userId}`, {
-        method: 'DELETE'
+      const token = root.CloudAuth && typeof root.CloudAuth.accessToken === 'function'
+        ? String(root.CloudAuth.accessToken() || '').trim()
+        : '';
+      await apiRequest(`/quickbase_tabs/${encodeURIComponent(safeTabId)}?user_id=${userId}&tab_id=${encodeURIComponent(safeTabId)}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + token
+        }
       });
+      tabs.delete(safeTabId);
       saveLocalFallback();
     },
 
