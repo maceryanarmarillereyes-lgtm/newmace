@@ -1,1639 +1,319 @@
-(window.Pages = window.Pages || {}, window.Pages.my_schedule = function (root) {
-  // ---------------------------------------------------------------------------
-  // My Schedule — Enterprise Calendar (13126-09)
-  // - Weekly / Daily / Team views
-  // - Pixel-perfect hour ruler alignment (shared row height grid)
-  // - TEAM TASK color coding + badges (.task-label / .task-color)
-  // - Team tabular view inspired by enterprise scheduling systems
-  // ---------------------------------------------------------------------------
-  const session = (window.Store && Store.getSession) ? Store.getSession() : null;
-  const sessionUserId = session && (session.userId || session.user_id || session.uid || session.id);
-  let me = (window.Auth && Auth.user) ? Auth.user : null;
-  // Backfill user profile from Store when Auth.user is not yet hydrated (fixes 'No blocks' on My Schedule).
-  try{
-    if((!me || !me.id) && sessionUserId && window.Store && Store.getUserById){
-      const prof = Store.getUserById(String(sessionUserId));
-      if(prof) me = prof;
-    }
-    if(me && !me.id && sessionUserId) me.id = String(sessionUserId);
-  }catch(_){ }
-  if(!me) me = { id: String(sessionUserId || ''), role: 'MEMBER' };
-  if (me && me.teamId == null && me.team_id != null) me.teamId = me.team_id;
-  if (me && me.team_id == null && me.teamId != null) me.team_id = me.teamId;
-  const role = (me && me.role) ? String(me.role) : 'MEMBER';
-  const canEditSelf = (role === 'TEAM_LEAD' || role === 'SUPER_ADMIN');
-
-  const tzManila = 'Asia/Manila';
-  let localTZ = '';
-  try { localTZ = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { localTZ = ''; }
-
-  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  function currentTeamId() {
-    const raw = (me && (me.teamId != null ? me.teamId : me.team_id));
-    return String(raw == null ? '' : raw);
-  }
-
-  function getBearerToken() {
-    try {
-      const t = (window.CloudAuth && CloudAuth.accessToken) ? String(CloudAuth.accessToken() || '').trim() : '';
-      if (t) return t;
-    } catch (_) { }
-    try {
-      const sess = (window.CloudAuth && CloudAuth.loadSession) ? CloudAuth.loadSession() : null;
-      const t2 = sess && sess.access_token ? String(sess.access_token).trim() : '';
-      if (t2) return t2;
-    } catch (_) { }
-    return '';
-  }
-
-  let teamThemePalette = {};
-  let themePaletteLoadedFor = '';
-
-
-  function esc(s) { return (window.UI && UI.esc) ? UI.esc(s) : String(s || '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
-
-  function pad2(n) { return String(n).padStart(2, '0'); }
-
-  function hm(min) {
-    let m = ((min % (24 * 60)) + (24 * 60)) % (24 * 60);
-    const h = Math.floor(m / 60);
-    const mm = m % 60;
-    return `${pad2(h)}:${pad2(mm)}`;
-  }
-
-  function hmShort(min) {
-    let m = ((min % (24 * 60)) + (24 * 60)) % (24 * 60);
-    const h = Math.floor(m / 60);
-    const mm = m % 60;
-    return `${h}:${pad2(mm)}`;
-  }
-
-  function parseHM(s) {
-    const m = String(s || '').trim().match(/^(\d{1,2}):(\d{2})$/);
-    if (!m) return 0;
-    return (Number(m[1]) || 0) * 60 + (Number(m[2]) || 0);
-  }
-
-  function addDaysISO(iso, delta) {
-    try {
-      const d = new Date(`${iso}T00:00:00Z`);
-      d.setUTCDate(d.getUTCDate() + Number(delta || 0));
-      return d.toISOString().slice(0, 10);
-    } catch (_) {
-      return iso;
-    }
-  }
-
-  function weekdayFromISO(iso) {
-    try {
-      const d = new Date(`${iso}T00:00:00Z`);
-      return d.getUTCDay();
-    } catch (_) {
-      return 0;
-    }
-  }
-
-  function formatDateLong(iso) {
-    try {
-      // Use UTC midnight so TZ formatting does not shift the day.
-      const d = new Date(`${iso}T00:00:00Z`);
-      return new Intl.DateTimeFormat('en-US', {
-        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-        timeZone: tzManila,
-      }).format(d);
-    } catch (_) {
-      return String(iso || '');
-    }
-  }
-
-  function nowISOManila() {
-    try {
-      if (window.UI && UI.manilaNow) {
-        const p = UI.manilaNow();
-        if (p && p.isoDate) return String(p.isoDate);
-      }
-    } catch (_) { }
-    return new Date().toISOString().slice(0, 10);
-  }
-
-  const todayISO = nowISOManila();
-  const todayWD = weekdayFromISO(todayISO);
-  const weekStartSunISO = addDaysISO(todayISO, -todayWD);
-
-  function isTodayISO(iso) {
-    return String(iso || '') === String(todayISO || '');
-  }
-
-  function isoForDay(dayIdx) {
-    return addDaysISO(weekStartSunISO, Number(dayIdx || 0));
-  }
-
-  function getTeam() {
-    try {
-      const tid = currentTeamId();
-      if (window.Store && Store.getTeamConfig && tid !== '') {
-        const cfg = Store.getTeamConfig(tid);
-        if (cfg) return { id: tid, label: cfg.label || cfg.name || tid, cfg };
-      }
-    } catch (_) { }
-    const tid = currentTeamId();
-    return { id: tid, label: tid, cfg: null };
-  }
-
-  function inferTeamShift(team) {
-    // Align with existing conventions used across app:
-    // - Team config schedule.start/end or defaults per shift key
-    const cfg = (team && team.cfg) ? team.cfg : null;
-    const s = (cfg && cfg.schedule && cfg.schedule.start) ? String(cfg.schedule.start) : (me.shift === 'MID' ? '15:00' : (me.shift === 'NIGHT' ? '22:00' : '06:00'));
-    const e = (cfg && cfg.schedule && cfg.schedule.end) ? String(cfg.schedule.end) : (me.shift === 'MID' ? '22:00' : (me.shift === 'NIGHT' ? '06:00' : '15:00'));
-    const startMin = parseHM(s);
-    let endMin = parseHM(e);
-    let lenMin = endMin - startMin;
-    if (lenMin <= 0) lenMin += (24 * 60);
-    return { startHM: s, endHM: e, startMin, endMin, lenMin };
-  }
-
-  function shiftKey() {
-    try {
-      const t = getTeam();
-      const cfg = t && t.cfg ? t.cfg : null;
-      const sk = (cfg && cfg.shiftKey) ? String(cfg.shiftKey) : ((me && me.shift) ? String(me.shift).toLowerCase() : '');
-      return sk || 'shift';
-    } catch (_) {
-      return 'shift';
-    }
-  }
-
-  function getTeamTasks() {
-    try {
-      const tid = currentTeamId();
-      if (window.Store && Store.getTeamTasks && tid !== '') return Store.getTeamTasks(tid) || [];
-    } catch (_) { }
-    return [];
-  }
-
-  function taskLabel(taskId) {
-    const id = String(taskId || '');
-    const tasks = getTeamTasks();
-    const t = tasks.find(x => String(x && (x.id || x.taskId || x.label || x.name)) === id) || null;
-    if (t) return String(t.label || t.name || t.id || id);
-    // If schedule stores label directly
-    if (id && !/^[0-9a-f\-]{6,}$/i.test(id)) return id;
-    return id;
-  }
-
-  function isRenderableColor(color) {
-    const value = String(color || '').trim();
-    if (!value) return false;
-    if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) return true;
-    if (/^(rgb|rgba|hsl|hsla)\(/i.test(value)) return true;
-    return false;
-  }
-
-  function rgbaFromColor(color, alpha) {
-    const c = String(color || '').trim();
-    const a = Number.isFinite(Number(alpha)) ? Number(alpha) : 1;
-    if ((window.UI && UI.hexToRgba) && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c)) {
-      try { return UI.hexToRgba(c, a); } catch (_) { }
-    }
-    const hex = c.replace('#', '');
-    if (/^[0-9a-f]{3}$/i.test(hex)) {
-      const r = parseInt(hex[0] + hex[0], 16);
-      const g = parseInt(hex[1] + hex[1], 16);
-      const b = parseInt(hex[2] + hex[2], 16);
-      return `rgba(${r},${g},${b},${a})`;
-    }
-    if (/^[0-9a-f]{6}$/i.test(hex)) {
-      const r = parseInt(hex.slice(0, 2), 16);
-      const g = parseInt(hex.slice(2, 4), 16);
-      const b = parseInt(hex.slice(4, 6), 16);
-      return `rgba(${r},${g},${b},${a})`;
-    }
-    if (/^(rgb|rgba|hsl|hsla)\(/i.test(c)) return c;
-    return `rgba(147,197,253,${a})`;
-  }
-
-  function semanticTaskColor(labelOrId) {
-    const key = String(labelOrId || '').trim().toLowerCase();
-    if (key === 'mailbox_manager' || key.includes('mailbox')) return '#c4b5fd';
-    if (key === 'back_office' || key.includes('back office') || key.includes('admin')) return '#fdba74';
-    if (key === 'call_onqueue' || key === 'call_available' || key.includes('call')) return '#86efac';
-    if (key === 'lunch' || key.includes('lunch') || key.includes('break')) return '#94a3b8';
-    return '#93c5fd';
-  }
-
-  function normalizeTaskKey(value) {
-    return String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[_\s-]+/g, ' ')
-      .replace(/\s+/g, ' ');
-  }
-
-  function normalizeTaskCssKey(value) {
-    return String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '');
-  }
-
-  function paletteTaskAliases(taskKey) {
-    const k = normalizeTaskCssKey(taskKey);
-    if (!k) return [];
-    if (k === 'call_onqueue') return ['call_onqueue', 'call_available'];
-    if (k === 'call_available') return ['call_available', 'call_onqueue'];
-    return [k];
-  }
-
-  function themeColorForTask(taskIdOrLabel) {
-    const keys = paletteTaskAliases(taskIdOrLabel);
-    for (const key of keys) {
-      const paletteKey = `task_${key}`;
-      const c = teamThemePalette && teamThemePalette[paletteKey];
-      if (isRenderableColor(c)) return String(c);
-    }
-    return '';
-  }
-
-  function findTeamTaskMeta(taskIdOrLabel) {
-    const wanted = normalizeTaskKey(taskIdOrLabel);
-    if (!wanted) return null;
-    const tasks = getTeamTasks();
-    for (const task of tasks) {
-      if (!task) continue;
-      const id = String(task.id || task.taskId || '');
-      const label = String(task.label || task.name || '');
-      const aliases = [
-        normalizeTaskKey(id),
-        normalizeTaskKey(label),
-      ].filter(Boolean);
-      if (aliases.includes(wanted)) return task;
-    }
-    return null;
-  }
-
-  function normalizeTaskColor(labelOrId, rawColor) {
-    if (isRenderableColor(rawColor)) return String(rawColor);
-    return semanticTaskColor(labelOrId);
-  }
-
-  function taskColor(taskId) {
-    const label = taskLabel(taskId);
-    const fromTheme = themeColorForTask(taskId) || themeColorForTask(label);
-    if (isRenderableColor(fromTheme)) return String(fromTheme);
-    const teamTask = findTeamTaskMeta(taskId) || findTeamTaskMeta(label);
-    const configuredColor = teamTask ? String(teamTask.color || teamTask.colour || '') : '';
-    return normalizeTaskColor(label || taskId, configuredColor) || 'rgba(255,255,255,.18)';
-  }
-
-  function taskTypeAttr(taskIdOrLabel) {
-    const keys = paletteTaskAliases(taskIdOrLabel);
-    return keys[0] || 'block';
-  }
-
-  function buildThemeStyleVars(hours) {
-    const out = [`--schx-hours:${hours}`];
-    const pairs = Object.entries(teamThemePalette || {});
-    for (const [k, v] of pairs) {
-      if (!String(k || '').startsWith('task_')) continue;
-      if (!isRenderableColor(v)) continue;
-      const taskKey = normalizeTaskCssKey(String(k).slice(5));
-      if (!taskKey) continue;
-      out.push(`--theme-${taskKey}:${String(v)}`);
-    }
-    return out.join(';');
-  }
-
-  function scheduleLegendItems() {
-    const defaults = [
-      { id: 'mailbox_manager', label: 'Mailbox Manager' },
-      { id: 'call_available', label: 'Call Available' },
-      { id: 'back_office', label: 'Back Office' },
-      { id: 'lunch', label: 'Lunch / Break' },
-    ];
-    const tasks = getTeamTasks();
-    return defaults.map(def => {
-      const hit = tasks.find(t => {
-        const tid = String(t && (t.id || t.taskId || '')).toLowerCase();
-        const lbl = String(t && (t.label || t.name || '')).toLowerCase();
-        if (def.id === 'call_available') return tid === 'call_available' || tid === 'call_onqueue' || lbl.includes('call available');
-        if (def.id === 'lunch') return tid === 'lunch' || lbl.includes('lunch') || lbl.includes('break');
-        return tid === def.id || lbl.includes(def.label.toLowerCase());
-      }) || null;
-      const raw = hit ? (hit.color || hit.colour || '') : '';
-      const label = hit ? String(hit.label || hit.name || def.label) : def.label;
-      const color = normalizeTaskColor(def.id, raw);
-      return { label, color };
-    });
-  }
-
-  function taskVars(color) {
-    const c = String(color || '#93c5fd');
-    const bg = (window.UI && UI.hexToRgba) ? UI.hexToRgba(c, 0.18) : 'rgba(80,160,255,0.18)';
-    const border = c;
-    const text = '#FFFFFF';
-    return { color: c, bg, border, text };
-  }
-
-  function shiftLabel(sk) {
-    const key = String(sk || '').toLowerCase();
-    if (key.includes('night')) return 'night';
-    if (key.includes('mid')) return 'mid';
-    return 'morning';
-  }
-
-  function taskIcon(label) {
-    const key = String(label || '').trim().toLowerCase();
-    if (key.includes('call')) return '📞';
-    if (key.includes('mailbox')) return '📥';
-    if (key.includes('lunch') || key.includes('break')) return '☕';
-    if (key.includes('back office') || key.includes('admin')) return '🗂️';
-    return '•';
-  }
-
-  function normalizeBlock(b) {
-    const o = b || {};
-    const actionItemsRaw = Array.isArray(o.actionItems) ? o.actionItems : (Array.isArray(o.subTasks) ? o.subTasks : []);
-    const actionItems = actionItemsRaw
-      .map(normalizeActionItem)
-      .filter(item => !!item.description);
-    return {
-      start: String(o.start || o.s || '00:00'),
-      end: String(o.end || o.e || '00:00'),
-      schedule: String(o.schedule || o.task || o.role || o.label || ''),
-      notes: String(o.notes || ''),
-      actionItems,
-    };
-  }
-
-  function normalizeActionItem(raw) {
-    const item = raw && typeof raw === 'object' ? raw : {};
-    const descriptionRaw = String(item.description || item.detail || item.text || '').trim();
-    const shortRaw = String(item.shortDescription || item.short || '').trim();
-    const fullRaw = String(item.fullDescription || item.full || '').trim();
-    const autoShort = shortRaw || String(descriptionRaw.split(':')[0] || '').trim();
-    const autoFull = fullRaw || String(descriptionRaw.includes(':') ? descriptionRaw.split(':').slice(1).join(':') : descriptionRaw).trim();
-    const description = String(descriptionRaw || composeActionItemDescription(autoShort, autoFull)).trim().slice(0, 500);
-    const shortDescription = String(autoShort || descriptionRaw || '').trim().slice(0, 80);
-    const fullDescription = String(autoFull || description).trim().slice(0, 500);
-    const priorityRaw = String(item.priority || 'normal').trim().toLowerCase();
-    const priority = (priorityRaw === 'low' || priorityRaw === 'high') ? priorityRaw : 'normal';
-    return {
-      id: String(item.id || `ai_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`),
-      description,
-      shortDescription,
-      fullDescription,
-      completed: !!(item.completed || item.done || item.status === 'completed'),
-      priority,
-      createdAt: Number(item.createdAt || Date.now()),
-    };
-  }
-
-  function collectBlockActionShortLabels(block) {
-    const list = Array.isArray(block && block.actionItems) ? block.actionItems : [];
-    const labels = list
-      .map(normalizeActionItem)
-      .map(item => String(item.shortDescription || item.description || '').trim())
-      .filter(Boolean)
-      .slice(0, 3);
-    return labels;
-  }
-
-  function getBlocksForUserDay(userId, dayIdx) {
-    try {
-      if (window.Store && Store.getUserDayBlocks) {
-        const list = Store.getUserDayBlocks(String(userId || ''), Number(dayIdx || 0)) || [];
-        return Array.isArray(list) ? list : [];
-      }
-    } catch (_) { }
-    return [];
-  }
-
-  function getMyBlocks(dayIdx) {
-    return getBlocksForUserDay(me.id, dayIdx);
-  }
-
-  function userRestWeekdays(userId, teamId) {
-    try {
-      if (!window.Store || !Store.getTeamMaster) return [];
-      const tid = String(teamId != null ? teamId : currentTeamId());
-      const uid = String(userId || '');
-      if (!tid || !uid) return [];
-      const master = Store.getTeamMaster(tid);
-      const member = master && master.members ? master.members[uid] : null;
-      const list = Array.isArray(member && member.restWeekdays) ? member.restWeekdays : [];
-      return list
-        .map(v => Number(v))
-        .filter(v => Number.isInteger(v) && v >= 0 && v <= 6);
-    } catch (_) {
-      return [];
-    }
-  }
-
-  function isRestDayForUser(userId, isoDate, teamId) {
-    const restDays = userRestWeekdays(userId, teamId);
-    if (!restDays.length) return false;
-    const wd = weekdayFromISO(String(isoDate || ''));
-    return restDays.includes(wd);
-  }
-
-  function weekdayShortLabel(dayIdx) {
-    const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const idx = Number(dayIdx);
-    return labels[idx] || 'N/A';
-  }
-
-  function renderRestDayStrip(week, focusIso) {
-    const myRestDays = userRestWeekdays(me && me.id, currentTeamId());
-    const teamMembers = getTeamMembers();
-    const focusRestMembers = teamMembers.filter(member => isRestDayForUser(member.id, focusIso, member.teamId || member.team_id));
-    const todayRestMembers = teamMembers.filter(member => isRestDayForUser(member.id, todayISO, member.teamId || member.team_id));
-    const focusDayIdx = weekdayFromISO(focusIso);
-    const focusIsRest = myRestDays.includes(focusDayIdx);
-
-    const myDaysHtml = week.map(d => {
-      const isRest = myRestDays.includes(d.dayIdx);
-      const isFocus = String(d.iso || '') === String(focusIso || '');
-      return `<span class="schx-rest-chip ${isRest ? 'is-rest' : ''} ${isFocus ? 'is-focus' : ''}">${esc(weekdayShortLabel(d.dayIdx))}</span>`;
-    }).join('');
-
-    return `
-      <section class="schx-rest-strip" aria-label="Rest day schedule">
-        <div class="schx-rest-heading">Rest Day Schedule</div>
-        <div class="schx-rest-grid">
-          <div class="schx-rest-card">
-            <div class="small muted">My rest days</div>
-            <div class="schx-rest-chips">${myDaysHtml || '<span class="small muted">N/A</span>'}</div>
-            <div class="small muted">${focusIsRest ? 'Focused date is your rest day.' : 'Focused date is an active working day.'}</div>
-          </div>
-          <div class="schx-rest-card emphasis">
-            <div class="small muted">Team rest status</div>
-            <div class="big">${focusRestMembers.length} member${focusRestMembers.length === 1 ? '' : 's'} on rest</div>
-            <div class="small muted">Today: ${todayRestMembers.length} • Focused date: ${esc(formatDateLong(focusIso))}</div>
-          </div>
-        </div>
-      </section>
-    `;
-  }
-
-  // Time conversion: Manila schedule times -> local display label
-  function localTimeLabel(isoDate, hmStr) {
-    try {
-      if (!UI.parseManilaDateTimeLocal) return '';
-      const ms = UI.parseManilaDateTimeLocal(`${isoDate}T${hmStr}`);
-      if (!ms) return '';
-      return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch (_) { return ''; }
-  }
-
-  function localRangeLabel(isoDate, startHM, endHM) {
-    try {
-      const sMin = parseHM(startHM);
-      const eMin = parseHM(endHM);
-      const wraps = eMin <= sMin;
-      const a = localTimeLabel(isoDate, startHM);
-      const b = localTimeLabel(wraps ? addDaysISO(isoDate, 1) : isoDate, endHM);
-      if (!a || !b) return '';
-      return `${a}–${b}`;
-    } catch (_) { return ''; }
-  }
-
-  function computeOffset(shift, hmStr) {
-    const m = parseHM(hmStr);
-    let off = m - shift.startMin;
-    if (off < 0) off += (24 * 60);
-    return off;
-  }
-
-  function clampShiftRange(shift, startOff, endOff) {
-    let s = Math.max(0, Math.min(shift.lenMin, startOff));
-    let e = endOff;
-    if (e <= s) e += (24 * 60);
-    e = Math.max(0, Math.min(shift.lenMin, e));
-    if (e <= s) e = Math.min(shift.lenMin, s + 15);
-    return { s, e, dur: e - s };
-  }
-
-  function blockMetrics(shift, b) {
-    const startOff = computeOffset(shift, b.start);
-    const endOff = computeOffset(shift, b.end);
-    const r = clampShiftRange(shift, startOff, endOff);
-    const topH = r.s / 60;
-    const heightH = Math.max(0.25, r.dur / 60);
-    return { topH, heightH, durMin: r.dur, startOff: r.s, endOff: r.e };
-  }
-
-  function nowManilaParts() {
-    try { return UI.manilaNow ? UI.manilaNow() : null; } catch (_) { return null; }
-  }
-
-  function computeCountdown(shift) {
-    const parts = nowManilaParts() || { isoDate: todayISO, hh: new Date().getHours(), mm: new Date().getMinutes() };
-    const nowMin = (Number(parts.hh) || 0) * 60 + (Number(parts.mm) || 0);
-    const wd = weekdayFromISO(parts.isoDate || todayISO);
-    const blocks = getMyBlocks(wd).map(normalizeBlock).sort((a, b) => parseHM(a.start) - parseHM(b.start));
-    if (!blocks.length) return { label: '—', active: null, next: null, wd, isoDate: parts.isoDate || todayISO, blocks, secLeft: 0, state: 'idle' };
-
-    const inBlock = (b) => {
-      const s = parseHM(b.start);
-      const e = parseHM(b.end);
-      if (e > s) return nowMin >= s && nowMin < e;
-      return (nowMin >= s) || (nowMin < e);
-    };
-
-    const active = blocks.find(inBlock) || null;
-    const after = blocks.filter(b => parseHM(b.start) > nowMin);
-    const next = after[0] || (active ? null : blocks[0] || null);
-
-    let label = '—';
-    let secLeft = 0;
-    let state = 'idle';
-    try {
-      const nowMs = Date.now();
-      const fmt = (sec) => (UI.formatDuration ? UI.formatDuration(sec) : `${Math.round(sec / 60)}m`);
-      if (active && UI.parseManilaDateTimeLocal) {
-        const eMin = parseHM(active.end);
-        const sMin = parseHM(active.start);
-        const wraps = eMin <= sMin;
-        const endISO = wraps && nowMin >= sMin ? addDaysISO(parts.isoDate, 1) : parts.isoDate;
-        const endMs = UI.parseManilaDateTimeLocal(`${endISO}T${active.end}`);
-        const left = Math.max(0, Math.floor((endMs - nowMs) / 1000));
-        secLeft = left;
-        state = 'active';
-        label = `Ends in ${fmt(left)}`;
-      } else if (next && UI.parseManilaDateTimeLocal) {
-        const nMin = parseHM(next.start);
-        const startISO = (nMin < nowMin) ? addDaysISO(parts.isoDate, 1) : parts.isoDate;
-        const startMs = UI.parseManilaDateTimeLocal(`${startISO}T${next.start}`);
-        const left = Math.max(0, Math.floor((startMs - nowMs) / 1000));
-        secLeft = left;
-        state = 'next';
-        label = `Starts in ${fmt(left)}`;
-      }
-    } catch (_) { }
-
-    return { label, active, next, wd, isoDate: parts.isoDate || todayISO, blocks, secLeft, state };
-  }
-
-  function computeCountdownTone(countdown) {
-    const sec = Number(countdown && countdown.secLeft) || 0;
-    if (!countdown || countdown.state === 'idle') return 'muted';
-    if (sec <= 3600) return 'warn';
-    if (sec <= 3 * 3600) return 'focus';
-    return 'ok';
-  }
-
-  function currentTimeOffsetMinutes(shift) {
-    try {
-      const p = nowManilaParts();
-      let hh = p ? Number(p.hh) : NaN;
-      let mm = p ? Number(p.mm) : NaN;
-      if (!Number.isFinite(hh) || !Number.isFinite(mm)) {
-        const now = new Date();
-        const manila = new Intl.DateTimeFormat('en-US', {
-          timeZone: tzManila,
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        }).formatToParts(now);
-        hh = Number((manila.find(x => x.type === 'hour') || {}).value || 0);
-        mm = Number((manila.find(x => x.type === 'minute') || {}).value || 0);
-      }
-      const nowMin = (hh || 0) * 60 + (mm || 0);
-      let off = nowMin - shift.startMin;
-      if (off < 0) off += (24 * 60);
-      if (off < 0 || off > shift.lenMin) return null;
-      return off;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  function currentWeekStartMondayISO() {
-    const wd = weekdayFromISO(todayISO);
-    const delta = (wd === 0) ? -6 : (1 - wd);
-    return addDaysISO(todayISO, delta);
-  }
-
-  function findAuditForBlock(dayIdx, b) {
-    try {
-      if (!Store.getWeekAudit) return null;
-      const weekStartISO = currentWeekStartMondayISO();
-      const list = Store.getWeekAudit(currentTeamId(), weekStartISO) || [];
-      if (!list.length) return null;
-      const needle = `${b.start}-${b.end}`;
-      const dayName = DAYS[dayIdx] || String(dayIdx);
-      const hit = list.find(a => a && a.targetId === me.id && String(a.detail || '').includes(needle) && String(a.detail || '').includes(dayName));
-      return hit || null;
-    } catch (_) { return null; }
-  }
-
-  function formatTs(ts) {
-    try {
-      return new Date(Number(ts || 0)).toLocaleString('en-CA', {
-        timeZone: tzManila,
-        month: 'short',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      });
-    } catch (_) { return ''; }
-  }
-
-  // Persistent state
-  let viewMode = 'week';
-  let focusDay = todayWD;
-  try {
-    const stored = String(localStorage.getItem('mums_sched_view') || '').toLowerCase();
-    if (stored === 'day' || stored === 'week' || stored === 'team') viewMode = stored;
-  } catch (_) { }
-  // Always start on the current Manila day when the page opens.
-  // This avoids stale focus from previous sessions and reduces date confusion.
-  focusDay = todayWD;
-
-  let tickTimer = null;
-  let storeListener = null;
-  let selectedBlockKey = '';
-  let teamMembersCache = [];
-  let teamMembersLoadedFor = '';
-  let teamMembersLoading = false;
-
-  function setViewMode(mode) {
-    const m = String(mode || '').toLowerCase();
-    viewMode = (m === 'day' || m === 'team') ? m : 'week';
-    try { localStorage.setItem('mums_sched_view', viewMode); } catch (_) { }
-    if (viewMode === 'team') refreshTeamMembers();
-    render();
-  }
-
-  function setFocusDay(d) {
-    focusDay = Math.max(0, Math.min(6, Number(d) || 0));
-    try { localStorage.setItem('mums_sched_day', String(focusDay)); } catch (_) { }
-    selectedBlockKey = '';
-    render();
-  }
-
-  function blockKey(dayIdx, b, idx) {
-    const bb = b || {};
-    return `${Number(dayIdx || 0)}|${String(bb.start || '')}|${String(bb.end || '')}|${String(bb.schedule || '')}|${Number(idx || 0)}`;
-  }
-
-  function blockStatus(dayIso, block) {
-    const now = nowManilaParts();
-    if (!now) return 'Scheduled';
-    const targetIso = String(dayIso || '');
-    const todayIso = String(now.isoDate || '');
-    if (targetIso < todayIso) return 'Completed';
-    if (targetIso > todayIso) return 'Scheduled';
-    const nowMin = (Number(now.hh) || 0) * 60 + (Number(now.mm) || 0);
-    const s = parseHM(block.start);
-    const e = parseHM(block.end);
-    const wraps = e <= s;
-    const active = wraps ? (nowMin >= s || nowMin < e) : (nowMin >= s && nowMin < e);
-    if (active) return 'In Progress';
-    if (nowMin >= s) return 'Completed';
-    return 'Scheduled';
-  }
-
-  function isDayCompleted(dayIso, blocks) {
-    const now = nowManilaParts();
-    if (!now) return false;
-    const targetIso = String(dayIso || '');
-    const todayIso = String(now.isoDate || '');
-    if (targetIso < todayIso) return true;
-    if (targetIso > todayIso) return false;
-    const list = Array.isArray(blocks) ? blocks : [];
-    if (!list.length) return false;
-    return list.every(b => blockStatus(targetIso, b) === 'Completed');
-  }
-
-  function formatNowTimeBadge() {
-    const now = nowManilaParts();
-    if (!now) return 'Now';
-    const hh = Number(now.hh) || 0;
-    const mm = Number(now.mm) || 0;
-    const period = hh >= 12 ? 'PM' : 'AM';
-    const h12 = (hh % 12) || 12;
-    return `${h12}:${pad2(mm)} ${period}`;
-  }
-
-  function render() {
-    const host = root || document.getElementById('main') || document.body;
-    const team = getTeam();
-    const teamLabel = (window.Config && Config.teamLabel && currentTeamId() !== '') ? Config.teamLabel(currentTeamId()) : (team ? (team.label || team.id) : (currentTeamId() || '—'));
-    const shift = inferTeamShift(team);
-    const sk = shiftKey();
-
-    const week = Array.from({ length: 7 }, (_, d) => {
-      const iso = isoForDay(d);
-      const blocks = getMyBlocks(d).map(normalizeBlock).sort((a, b) => parseHM(a.start) - parseHM(b.start));
-      return { dayIdx: d, iso, dayLabel: DAYS[d], blocks };
-    });
-
-    const mode = viewMode;
-    const visibleDays = (mode === 'day') ? [week[focusDay]] : week;
-    const countdown = computeCountdown(shift);
-
-    const todayLong = formatDateLong(todayISO);
-    const focusISO = isoForDay(focusDay);
-    const focusLong = formatDateLong(focusISO);
-    const teamMembers = getTeamMembers();
-    const todayTeamRestCount = teamMembers.filter(member => isRestDayForUser(member.id, todayISO, member.teamId || member.team_id)).length;
-
-    const tzLine = (localTZ && localTZ !== tzManila)
-      ? `Local: <b>${esc(localTZ)}</b> • Manila: <b>${esc(tzManila)}</b>`
-      : `Timezone: <b>${esc(tzManila)}</b>`;
-
-    const totalWeekBlocks = week.reduce((n, d) => n + d.blocks.length, 0);
-    const todayBlocks = week[todayWD] ? week[todayWD].blocks : [];
-
-    const hours = Math.max(1, Math.ceil(shift.lenMin / 60));
-    const countdownTone = computeCountdownTone(countdown);
-    const nowOffset = currentTimeOffsetMinutes(shift);
-
-    host.innerHTML = `
-      <div class="schx" data-shift="${esc(sk)}" style="${esc(buildThemeStyleVars(hours))}">
-        <div class="schx-header">
-          <div>
-            <div class="ux-h1">My Schedule</div>
-            <div class="small muted">${esc(todayLong)} • ${tzLine}</div>
-          </div>
-          <div class="schx-actions">
-            <div class="schx-toggle" role="tablist" aria-label="Schedule view">
-              <button class="btn ghost small ${mode === 'week' ? 'active' : ''}" type="button" data-view="week" role="tab" aria-selected="${mode === 'week'}">Weekly</button>
-              <button class="btn ghost small ${mode === 'day' ? 'active' : ''}" type="button" data-view="day" role="tab" aria-selected="${mode === 'day'}">Daily</button>
-              <button class="btn ghost small ${mode === 'team' ? 'active' : ''}" type="button" data-view="team" role="tab" aria-selected="${mode === 'team'}">Team</button>
-            </div>
-            <span class="ux-chip"><span class="dot"></span>${esc(role || '')}${teamLabel ? ` • ${esc(teamLabel)}` : ''}</span>
-            <a class="btn" href="/my_attendance">Attendance</a>
-            <a class="btn" href="/mailbox">Mailbox</a>
-            <button class="btn schx-header-cta" type="button" data-act="new-action-item" aria-label="New Action Item">
-              <span class="schx-action-cta-icon" aria-hidden="true">＋</span>
-              <span>New Action Item</span>
-            </button>
-          </div>
-        </div>
-
-        <div class="schx-kpis">
-          <div class="schx-kpi">
-            <div class="small muted">Shift status</div>
-            <div class="big">${esc(shiftLabel(sk))}</div>
-            <div class="small muted">${esc(shift.startHM)}–${esc(shift.endHM)}</div>
-          </div>
-          <div class="schx-kpi">
-            <div class="small muted">Today</div>
-            <div class="big">${todayBlocks.length} block${todayBlocks.length === 1 ? '' : 's'}</div>
-            <div class="small muted">${countdown.active ? `Active: ${esc(taskLabel(countdown.active.schedule))}` : (todayBlocks.length ? 'No active block' : 'No blocks')}</div>
-          </div>
-          <div class="schx-kpi countdown ${esc(countdownTone)}">
-            <div class="small muted">Countdown</div>
-            <div class="big" id="schxCountdown">${esc(countdown.label)}</div>
-            <div class="small muted">Auto-updates in real time</div>
-          </div>
-          <div class="schx-kpi">
-            <div class="small muted">This week</div>
-            <div class="big">${totalWeekBlocks} total</div>
-            <div class="small muted">${esc(formatDateLong(weekStartSunISO))} → ${esc(formatDateLong(isoForDay(6)))}</div>
-          </div>
-          <div class="schx-kpi rest-kpi">
-            <div class="small muted">Rest day coverage</div>
-            <div class="big">${todayTeamRestCount} member${todayTeamRestCount === 1 ? '' : 's'}</div>
-            <div class="small muted">On rest today</div>
-          </div>
-        </div>
-
-        <div class="schx-legend" aria-label="Schedule legend and actions">
-          <div class="schx-legend-items">
-            ${scheduleLegendItems().map(item => `<span class="legend-item"><span class="legend-dot" style="background:${esc(item.color)}"></span>${esc(item.label)}</span>`).join('')}
-          </div>
-        </div>
-
-        ${renderRestDayStrip(week, focusISO)}
-
-        ${(mode === 'day' || mode === 'team') ? renderDayTabs(week) : ''}
-
-        <div class="schx-cal" aria-label="Schedule calendar">
-          ${mode === 'team'
-      ? renderTeamView(shift, hours, focusISO, focusLong)
-      : `
-            <div class="${mode === 'day' ? 'schx-day-layout' : ''}">
-            <div class="schx-grid" style="--shift-len:${shift.lenMin}">
-              <div class="schedule-ruler schx-ruler" aria-hidden="true">
-                <!-- Spacer matches the day header + gap so tick labels align with grid lines -->
-                <div class="schx-ruler-spacer" aria-hidden="true"></div>
-                <div class="schx-ruler-body schx-ruler-grid" aria-hidden="true">
-                  ${renderRuler(shift, hours)}
-                </div>
-              </div>
-
-              <div class="schx-cols ${mode === 'day' ? 'day' : 'week'}" id="schxCols" aria-label="${mode === 'day' ? 'Daily calendar' : 'Weekly calendar'}">
-                ${nowOffset != null ? `<div class="schx-nowline" aria-hidden="true" style="top:calc(var(--schx-head-h) + var(--schx-head-gap) + ${(nowOffset / 60)} * var(--schx-row-h))"><span class="schx-nowline-dot"></span><span class="schx-nowline-badge">${esc(formatNowTimeBadge())}</span></div>` : ''}
-                ${visibleDays.map(d => renderDay(d, shift, hours)).join('')}
-              </div>
-            </div>
-            ${mode === 'day' ? renderDayContextPanel(week[focusDay]) : ''}
-            </div>
-
-            <div class="schx-foot">
-              <div class="small muted">Tip: ${mode === 'day' ? 'Swipe left/right on the day canvas to change day.' : 'On smaller screens, switch to Daily view for maximum readability.'}</div>
-              <div class="ux-row" style="justify-content:flex-end">
-                <a class="btn" href="/master_schedule">Master Schedule</a>
-                ${canEditSelf ? '<a class="btn" href="/members">Edit Team Schedules</a>' : ''}
-              </div>
-            </div>
-          `
-    }
-        </div>
-
-        <details class="schx-audit" style="margin-top:14px">
-          <summary class="mysx-summary">Audit trail (best-effort)</summary>
-          <div class="small muted" style="margin-top:10px">Shows the latest schedule audit events recorded for this week (Team Lead actions).</div>
-          <div style="margin-top:10px">${renderAuditList()}</div>
-        </details>
-
-        <div id="schxTooltip" class="mysx-tooltip" role="tooltip" aria-hidden="true"></div>
-      </div>
-    `;
-
-    bindViewToggle(host);
-    bindDayTabs(host);
-    bindTooltip(host);
-    bindBlockSelection(host);
-    bindNewActionItem(host, week);
-    bindSwipe(host);
-    startTickLoop(host, shift);
-  }
-
-  function minutesToTimeInput(min) {
-    const safe = Number.isFinite(Number(min)) ? Number(min) : 0;
-    const normalized = ((safe % (24 * 60)) + (24 * 60)) % (24 * 60);
-    return hm(normalized);
-  }
-
-  function composeActionItemDescription(shortText, fullText) {
-    const shortValue = String(shortText || '').trim();
-    const fullValue = String(fullText || '').trim();
-    if (shortValue && fullValue) return `${shortValue}: ${fullValue}`;
-    return shortValue || fullValue || '';
-  }
-
-  function isWithinBlockWindow(block, minuteValue) {
-    const b = normalizeBlock(block);
-    const start = parseHM(b.start);
-    const end = parseHM(b.end);
-    const minute = Number(minuteValue);
-    if (!Number.isFinite(minute)) return false;
-    if (end === start) return minute === start;
-    if (end > start) return minute >= start && minute < end;
-    return minute >= start || minute < end;
-  }
-
-  function buildStandaloneActionBlock(timeValue, shortText, fullText) {
-    const startMin = parseHM(timeValue);
-    const endMin = startMin + 60;
-    const shortValue = String(shortText || '').trim();
-    const fullValue = String(fullText || '').trim();
-    const detail = composeActionItemDescription(shortValue, fullValue);
-    const actionItem = normalizeActionItem({ description: detail, completed: false, priority: 'normal' });
-    return normalizeBlock({
-      start: minutesToTimeInput(startMin),
-      end: minutesToTimeInput(endMin),
-      schedule: shortValue || 'Action Item',
-      notes: fullValue,
-      actionItems: [actionItem],
-    });
-  }
-
-  function buildActionItemModal() {
-    const defaultDate = isoForDay(focusDay);
-    const shift = inferTeamShift(getTeam());
-    const defaultTime = String(shift && shift.startHM ? shift.startHM : '09:00');
-    return `
-      <div class="modal" id="schxActionModal" aria-hidden="true" role="dialog" aria-label="New Action Item">
-        <div class="panel schx-modal-panel">
-          <div class="head">
-            <strong>New Action Item</strong>
-            <button class="btn ghost tiny" type="button" data-act="close-action-modal" aria-label="Close">✕</button>
-          </div>
-          <div class="body">
-            <form id="schxActionForm" class="schx-action-form" novalidate>
-              <label class="small muted" for="schxActionDate">Date</label>
-              <input id="schxActionDate" type="date" value="${esc(defaultDate)}" required>
-
-              <label class="small muted" for="schxActionTime">Time</label>
-              <input id="schxActionTime" type="time" value="${esc(defaultTime)}" required>
-
-              <label class="small muted" for="schxActionShort">Short Description</label>
-              <input id="schxActionShort" type="text" maxlength="80" placeholder="Quick title" required>
-
-              <label class="small muted" for="schxActionFull">Full Description</label>
-              <textarea id="schxActionFull" maxlength="500" rows="4" placeholder="Add full details" required></textarea>
-              <div class="small muted"><span id="schxDetailsCount">0</span>/500</div>
-
-              <div class="ux-row" style="justify-content:flex-end; margin-top:8px;">
-                <button class="btn ghost" type="button" data-act="close-action-modal">Cancel</button>
-                <button class="btn primary" type="submit">Save</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  function bindNewActionItem(host, week) {
-    const openBtn = host.querySelector('[data-act="new-action-item"]');
-    if (!openBtn) return;
-
-    const staleModal = document.getElementById('schxActionModal');
-    if (staleModal) {
-      staleModal.remove();
-      document.body.classList.remove('modal-open');
-    }
-
-    const modalWrap = document.createElement('div');
-    modalWrap.innerHTML = buildActionItemModal();
-    const modal = modalWrap.firstElementChild;
-    if (!modal) return;
-    document.body.appendChild(modal);
-
-    const close = () => {
-      document.body.classList.remove('modal-open');
-      modal.remove();
-    };
-
-    const show = () => {
-      modal.classList.add('open');
-      modal.setAttribute('aria-hidden', 'false');
-      document.body.classList.add('modal-open');
-      const first = modal.querySelector('#schxActionDate');
-      if (first) first.focus();
-    };
-
-    openBtn.addEventListener('click', show);
-
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) close();
-    });
-    modal.querySelectorAll('[data-act="close-action-modal"]').forEach(btn => btn.addEventListener('click', close));
-
-    const detailsEl = modal.querySelector('#schxActionFull');
-    const countEl = modal.querySelector('#schxDetailsCount');
-    if (detailsEl && countEl) {
-      detailsEl.addEventListener('input', () => {
-        const len = String(detailsEl.value || '').slice(0, 500).length;
-        countEl.textContent = String(len);
-      });
-    }
-
-    const form = modal.querySelector('#schxActionForm');
-    if (!form) return;
-    form.addEventListener('submit', (ev) => {
-      ev.preventDefault();
-      const actionDate = String((modal.querySelector('#schxActionDate') || {}).value || '').trim();
-      const actionTime = String((modal.querySelector('#schxActionTime') || {}).value || '').trim();
-      const shortDescription = String((modal.querySelector('#schxActionShort') || {}).value || '').trim();
-      const fullDescription = String((modal.querySelector('#schxActionFull') || {}).value || '').trim();
-
-      if (!actionDate) {
-        if (window.UI && UI.toast) UI.toast('Please select a date.', 'warn');
-        return;
-      }
-      if (!actionTime || !/^\d{2}:\d{2}$/.test(actionTime)) {
-        if (window.UI && UI.toast) UI.toast('Please select a valid time.', 'warn');
-        return;
-      }
-      if (!shortDescription) {
-        if (window.UI && UI.toast) UI.toast('Short description is required.', 'warn');
-        return;
-      }
-      if (!fullDescription) {
-        if (window.UI && UI.toast) UI.toast('Full description is required.', 'warn');
-        return;
-      }
-      if (shortDescription.length > 80) {
-        if (window.UI && UI.toast) UI.toast('Short description must be 80 characters or less.', 'warn');
-        return;
-      }
-      if (fullDescription.length > 500) {
-        if (window.UI && UI.toast) UI.toast('Full description must be 500 characters or less.', 'warn');
-        return;
-      }
-
-      const dayIdx = week.findIndex(day => String(day && day.iso || '') === actionDate);
-      if (dayIdx < 0) {
-        if (window.UI && UI.toast) UI.toast('Selected date is outside the visible week.', 'warn');
-        return;
-      }
-
-      const current = getMyBlocks(dayIdx).map(normalizeBlock);
-      const minuteValue = parseHM(actionTime);
-      const matchIndex = current.findIndex(block => isWithinBlockWindow(block, minuteValue));
-      const combined = composeActionItemDescription(shortDescription, fullDescription);
-      const appended = normalizeActionItem({ description: combined, completed: false, priority: 'normal' });
-
-      let nextBlocks = [];
-      if (matchIndex >= 0) {
-        nextBlocks = current.map((b, idx) => {
-          if (idx !== matchIndex) return b;
-          const existing = Array.isArray(b.actionItems) ? b.actionItems.map(normalizeActionItem).filter(item => !!item.description) : [];
-          const nextNotes = [String(b.notes || '').trim(), fullDescription].filter(Boolean).join('\n');
-          return {
-            ...b,
-            actionItems: [...existing, appended],
-            notes: nextNotes,
-          };
-        });
-      } else {
-        nextBlocks = [...current, buildStandaloneActionBlock(actionTime, shortDescription, fullDescription)]
-          .sort((a, b) => parseHM(a.start) - parseHM(b.start));
-      }
-
-      if (window.Store && Store.setUserDayBlocks) {
-        Store.setUserDayBlocks(me.id, currentTeamId(), dayIdx, nextBlocks);
-      }
-      if (window.UI && UI.toast) {
-        UI.toast(matchIndex >= 0 ? 'Action item linked to existing task block.' : 'Action item added to your schedule.', 'ok');
-      }
-      close();
-      render();
-    });
-  }
-
-
-  function renderDayTabs(week) {
-    return `
-      <div class="schx-daytabs" role="tablist" aria-label="Focus day">
-        ${week.map(d => {
-      const active = d.dayIdx === focusDay ? 'active' : '';
-      const today = isTodayISO(d.iso) ? 'is-today' : '';
-      const dot = d.blocks.length ? '<span class="dot" aria-hidden="true"></span>' : '';
-      const rest = isRestDayForUser(me && me.id, d.iso, currentTeamId()) ? '<span class="rest-tag" aria-label="Rest day">REST</span>' : '';
-      const date = String(d.iso || '').slice(-2);
-      return `<button class="schx-daytab ${active} ${today}" type="button" data-day="${d.dayIdx}" role="tab" aria-selected="${d.dayIdx === focusDay}"><span class="schx-daytab-date">${esc(date)}</span> <span>${esc(d.dayLabel.slice(0, 3))}</span>${rest}${dot}</button>`;
-    }).join('')}
-      </div>
-    `;
-  }
-
-  // Ruler is rendered as fixed-height rows (shared unit system with the calendar grid)
-  // to avoid pixel drift on zoom/resizes and keep labels aligned with grid lines.
-  function renderRuler(shift, hours) {
-    const rows = [];
-    for (let i = 0; i < hours; i++) {
-      const label = hm(shift.startMin + (i * 60));
-      rows.push(`<div class="schx-ruler-row" aria-hidden="true"><span class="schx-tick-label">${esc(label)}</span></div>`);
-    }
-
-    // Add the end boundary label (e.g., 15:00) pinned to the bottom grid line.
-    const endLabel = hm(shift.startMin + (hours * 60));
-    rows.push(`<div class="schx-ruler-end" aria-hidden="true"><span class="schx-tick-label">${esc(endLabel)}</span></div>`);
-    return rows.join('');
-  }
-
-  function renderDay(day, shift, hours) {
-    const d = day;
-    const todayClass = isTodayISO(d.iso) ? 'is-today' : '';
-    const blocks = (d.blocks || []).map(normalizeBlock);
-    const dayCompletedClass = isDayCompleted(d.iso, blocks) ? 'is-completed' : '';
-    const isRestDay = isRestDayForUser(me && me.id, d.iso, currentTeamId());
-
-    const blocksHtml = blocks.map((b, idx) => {
-      const label = taskLabel(b.schedule) || 'Block';
-      const c = taskColor(b.schedule);
-      const vars = taskVars(c);
-      const m = blockMetrics(shift, b);
-      const compact = m.heightH < 1.2;
-      const bKey = blockKey(d.dayIdx, b, idx);
-      const selected = (viewMode === 'day' && selectedBlockKey === bKey) ? 'is-selected' : '';
-      const status = blockStatus(d.iso, b);
-      const doneClass = status === 'Completed' ? 'is-completed' : '';
-      const liveClass = (viewMode === 'week' && status === 'In Progress') ? 'is-live-current' : '';
-      const localRange = (localTZ && localTZ !== tzManila) ? localRangeLabel(d.iso, b.start, b.end) : '';
-      const audit = findAuditForBlock(d.dayIdx, b);
-      const auditLine = audit ? `Assigned by ${audit.actorName || '—'} • ${formatTs(audit.ts)}` : '';
-
-      const tooltipLines = [
-        `${label}`,
-        `${formatDateLong(d.iso)}`,
-        `${b.start}–${b.end} (Manila)`,
-      ];
-      if (localRange) tooltipLines.push(`${localRange} (${localTZ})`);
-      if (auditLine) tooltipLines.push(auditLine);
-      if (b.notes) tooltipLines.push(`Notes: ${b.notes}`);
-
-      return `
-        <div
-          class="schedule-block schx-block ${selected} ${compact ? 'compact' : ''} ${doneClass} ${liveClass}"
-          data-task-type="${esc(taskTypeAttr(b.schedule))}"
-          data-block-key="${esc(bKey)}"
-          data-day="${d.dayIdx}"
-          style="top:calc(${m.topH} * var(--schx-row-h));height:calc(${m.heightH} * var(--schx-row-h));--task-color:${esc(vars.color)};--task-text:${esc(vars.text)}"
-          role="button"
-          tabindex="0"
-          data-tooltip="${esc(tooltipLines.join('\n'))}"
-          aria-label="${esc(label)}"
-          aria-current="${liveClass ? 'time' : 'false'}"
-        >
-          <div class="schx-bmeta">
-            <span class="schx-time-range">${esc(`${b.start} - ${b.end}`)}</span>
-            <span class="schx-status-tag">${esc(status)}</span>
-          </div>
-          <div class="schx-btop minimal">
-            <span class="schx-status-icon" aria-hidden="true">${esc(taskIcon(label))}</span>
-            <span class="schx-block-title">${esc(label)}</span>
-          </div>
-          <div class="schx-bfoot">${esc(status)}</div>
-        </div>
-      `;
-    }).join('');
-
-    const lines = renderGridLines(hours);
-
-    return `
-      <section class="schx-day ${todayClass} ${dayCompletedClass}" aria-label="${esc(d.dayLabel)} schedule">
-        <header class="schx-dayhead ${todayClass} ${dayCompletedClass}">
-          <div class="schx-dayname">${esc(d.dayLabel.slice(0, 3))}</div>
-          <div class="schx-daydate">${esc(formatDateLong(d.iso))}${isRestDay ? '<span class="schx-rest-inline">Rest Day</span>' : ''}</div>
-        </header>
-        <div class="schx-daybody" data-day="${d.dayIdx}" style="--shift-len:${shift.lenMin}" aria-label="${esc(d.dayLabel)} blocks">
-          ${lines}
-          <div class="schx-vline" aria-hidden="true"></div>
-          ${blocksHtml || `<div class="schx-empty small muted ${isRestDay ? 'rest-empty' : ''}">${isRestDay ? 'Rest Day — No schedule required' : 'No blocks'}</div>`}
-        </div>
-      </section>
-    `;
-  }
-
-  function renderDayContextPanel(day) {
-    const d = day || { dayIdx: focusDay, blocks: [], iso: isoForDay(focusDay), dayLabel: DAYS[focusDay] || 'Day' };
-    const blocks = (d.blocks || []).map(normalizeBlock);
-    if (!selectedBlockKey && blocks.length) selectedBlockKey = blockKey(d.dayIdx, blocks[0], 0);
-    const idx = blocks.findIndex((b, i) => blockKey(d.dayIdx, b, i) === selectedBlockKey);
-    const activeIdx = idx >= 0 ? idx : (blocks.length ? 0 : -1);
-    const block = activeIdx >= 0 ? blocks[activeIdx] : null;
-    const label = block ? (taskLabel(block.schedule) || 'Block') : 'No selected task';
-    const status = block ? blockStatus(d.iso, block) : 'N/A';
-    return `
-      <aside class="schx-context" aria-label="Task context panel">
-        <div class="schx-context-head">
-          <div class="small muted">Context panel</div>
-          <div class="schx-context-date">${esc(formatDateLong(d.iso || isoForDay(focusDay)))}</div>
-        </div>
-        <div class="schx-context-card">
-          <div class="schx-context-title">${esc(label)}</div>
-          <div class="small muted">${block ? esc(`${block.start} - ${block.end} • ${status}`) : 'Select a block to see details.'}</div>
-          <div class="small muted" style="margin-top:10px;">Granular details are hidden in this view.</div>
-        </div>
-      </aside>
-    `;
-  }
-
-  function renderGridLines(hours) {
-    const lines = [];
-    for (let i = 0; i <= hours; i++) {
-      lines.push(`<div class="schx-line" style="top:calc(${i} * var(--schx-row-h))" aria-hidden="true"></div>`);
-    }
-    return `<div class="schx-lines" aria-hidden="true">${lines.join('')}</div>`;
-  }
-
-  function getTeamMembers() {
-    try {
-      const cached = Array.isArray(teamMembersCache) ? teamMembersCache.filter(Boolean) : [];
-      if (cached.length) {
-        const nameOf = (u) => String(u.fullName || u.name || u.displayName || u.username || u.email || u.id || '');
-        cached.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
-        return cached;
-      }
-      if (!window.Store || !Store.getUsers) return [];
-      const tid = currentTeamId();
-      const users = Store.getUsers() || [];
-      const inTeam = users.filter(u => {
-        if (!u) return false;
-        if (String((u.teamId != null ? u.teamId : u.team_id) || '') !== tid) return false;
-        if (u.deleted || u.isDeleted) return false;
-        return true;
-      });
-      const nameOf = (u) => String(u.fullName || u.name || u.displayName || u.username || u.email || u.id || '');
-      inTeam.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
-      return inTeam;
-    } catch (_) {
-      return [];
-    }
-  }
-
-  function avatarInitials(member) {
-    const source = String((member && (member.fullName || member.name || member.username || member.email || member.id)) || '').trim();
-    if (!source) return 'N/A';
-    const parts = source.split(/\s+/).filter(Boolean).slice(0, 2);
-    if (!parts.length) return source.slice(0, 2).toUpperCase();
-    return parts.map((p) => p.slice(0, 1).toUpperCase()).join('');
-  }
-
-  function renderTeamView(shift, hours, focusISO, focusLong) {
-    if (teamMembersLoading) {
-      return `
-        <div class="team-schedule-head">
-          <div>
-            <div class="mysx-section-title">Team Schedule</div>
-            <div class="small muted">${esc(focusLong)} • ${esc(tzManila)}${(localTZ && localTZ !== tzManila) ? ` • Local: ${esc(localTZ)}` : ''}</div>
-          </div>
-        </div>
-        <div class="small muted" style="padding:16px;border:1px solid rgba(148,163,184,.2);border-radius:14px">Loading team schedules…</div>
-      `;
-    }
-
-    const members = getTeamMembers();
-    const cols = hours;
-    const colLabels = Array.from({ length: cols }, (_, i) => hm(shift.startMin + i * 60));
-    const hourPx = 120;
-    const timelineWidth = cols * hourPx;
-    const nowOffset = currentTimeOffsetMinutes(shift);
-    const coverage = computeTeamCoverage(members, shift, cols, focusDay);
-
-    const header = `
-      <div class="team-schedule-head">
-        <div>
-          <div class="mysx-section-title">Team Schedule</div>
-          <div class="small muted">${esc(focusLong)} • ${esc(tzManila)}${(localTZ && localTZ !== tzManila) ? ` • Local: ${esc(localTZ)}` : ''}</div>
-        </div>
-      </div>
-
-      <div class="team-schedule-wrap" role="table" aria-label="Team schedule table">
-        <div class="team-schedule-grid" role="rowgroup" style="--tsg-hours:${cols};--tsg-hour-px:${hourPx}px;--tsg-timeline-w:${timelineWidth}px">
-          <div class="team-schedule-row team-schedule-header" role="row">
-            <div class="tsg-h ts-name" role="columnheader">MEMBER</div>
-            <div class="tsg-timeline-head" role="columnheader" aria-label="Timeline header">
-              <div class="tsg-hour-grid" style="width:${timelineWidth}px">
-                ${colLabels.map(t => `<div class="tsg-hour-cell">${esc(t)}</div>`).join('')}
-              </div>
-            </div>
-          </div>
-          <div class="team-schedule-body">
-            ${members.map(m => renderTeamRow(m, shift, focusDay, focusISO, timelineWidth)).join('') || `<div class="small muted" style="padding:12px">No team members found.</div>`}
-            ${renderCoverageRow(coverage, shift, timelineWidth)}
-            ${nowOffset != null ? `<div class="tsg-nowline" aria-hidden="true" style="left:calc(var(--tsg-name-w) + ${(nowOffset / shift.lenMin) * 100}%);"><span>${esc(formatNowTimeBadge())}</span></div>` : ''}
-          </div>
-        </div>
-      </div>
-    `;
-
-    return header;
-  }
-
-  function renderTeamRow(member, shift, dayIdx, iso, timelineWidth) {
-    const nameOf = (u) => String(u.fullName || u.name || u.displayName || u.username || u.email || u.id || '');
-    const memberName = nameOf(member) || 'N/A';
-    const avatarUrl = String((member && (member.avatarUrl || member.avatar_url)) || '').trim();
-    const avatar = avatarUrl
-      ? `<img src="${esc(avatarUrl)}" alt="${esc(memberName)} avatar" class="tsg-avatar-img" loading="lazy" />`
-      : `<span class="tsg-avatar-fallback" aria-hidden="true">${esc(avatarInitials(member))}</span>`;
-    const blocks = getBlocksForUserDay(member.id, dayIdx).map(normalizeBlock).sort((a, b) => parseHM(a.start) - parseHM(b.start));
-    const memberRestDays = userRestWeekdays(member.id, member.teamId || member.team_id);
-    const memberIsRest = isRestDayForUser(member.id, iso, member.teamId || member.team_id);
-    const restText = memberRestDays.length ? ` • Rest: ${memberRestDays.map(weekdayShortLabel).join(', ')}` : '';
-    const bars = blocks.map((b) => {
-      const startOff = computeOffset(shift, b.start);
-      const endOff = computeOffset(shift, b.end);
-      const r = clampShiftRange(shift, startOff, endOff);
-      const widthPct = (r.dur / shift.lenMin) * 100;
-      if (widthPct <= 0) return '';
-      const leftPct = (r.s / shift.lenMin) * 100;
-      const taskId = b.schedule;
-      const label = taskLabel(taskId) || 'N/A';
-      const color = taskColor(taskId);
-      const vars = taskVars(color);
-      const tooltip = [
-        memberName,
-        label,
-        formatDateLong(iso),
-        `${b.start}–${b.end} (Manila)`,
-      ].join('\n');
-      return `
-        <div
-          class="tsg-block"
-          role="cell"
-          tabindex="0"
-          data-task-type="${esc(taskTypeAttr(taskId))}"
-          style="left:${leftPct}%;width:${widthPct}%;--task-color:${esc(vars.color)};--task-text:${esc(vars.text)}"
-          data-tooltip="${esc(tooltip)}"
-          aria-label="${esc(memberName)} ${esc(label)} ${esc(b.start)} to ${esc(b.end)}"
-        >
-          <span class="tsg-block-label">${esc(label)}</span>
-        </div>
-      `;
-    }).filter(Boolean).join('');
-
-    return `
-      <div class="team-schedule-row member-row" role="row">
-        <div class="tsg-name" role="rowheader"><span class="tsg-avatar">${avatar}</span><span class="tsg-member-name">${esc(memberName)}</span>${memberIsRest ? '<span class="tsg-rest-flag">REST DAY</span>' : ''}<span class="tsg-member-meta">${esc(restText || ' • Rest: none')}</span></div>
-        <div class="tsg-timeline" role="cell" aria-label="${esc(memberName)} timeline">
-          <div class="tsg-hour-grid" style="width:${timelineWidth}px">
-            ${bars}
-            ${bars ? '' : `<div class="tsg-rest-day ${memberIsRest ? 'is-rest' : ''}">${memberIsRest ? 'Rest Day' : 'No Schedule'}</div>`}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  function isCoverageActiveTask(taskId) {
-    const key = normalizeTaskKey(taskLabel(taskId) || taskId);
-    return !(key.includes('lunch') || key.includes('break'));
-  }
-
-  function computeTeamCoverage(members, shift, cols, dayIdx) {
-    const counts = Array.from({ length: cols }, () => 0);
-    (members || []).forEach(member => {
-      const blocks = getBlocksForUserDay(member.id, dayIdx).map(normalizeBlock);
-      const slots = Array.from({ length: cols }, () => false);
-      blocks.forEach((b) => {
-        if (!isCoverageActiveTask(b.schedule)) return;
-        const startOff = computeOffset(shift, b.start);
-        const endOff = computeOffset(shift, b.end);
-        const r = clampShiftRange(shift, startOff, endOff);
-        const c0 = Math.max(0, Math.floor(r.s / 60));
-        const c1 = Math.min(cols, Math.ceil(r.e / 60));
-        for (let i = c0; i < c1; i++) slots[i] = true;
-      });
-      slots.forEach((active, i) => {
-        if (active) counts[i] += 1;
-      });
-    });
-    return counts;
-  }
-
-  function renderCoverageRow(coverage, shift, timelineWidth) {
-    const cells = (coverage || []).map((count, idx) => {
-      const label = hm(shift.startMin + idx * 60);
-      return `<div class="tsg-coverage-cell">${esc(label)}: <strong>${Number(count || 0)}</strong> Active</div>`;
-    }).join('');
-    return `
-      <div class="team-schedule-row tsg-coverage" role="row">
-        <div class="tsg-name" role="rowheader">Total Active Agents</div>
-        <div class="tsg-timeline" role="cell" aria-label="Coverage summary">
-          <div class="tsg-hour-grid tsg-coverage-grid" style="width:${timelineWidth}px">${cells}</div>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderAuditList() {
-    try {
-      const weekStartISO = currentWeekStartMondayISO();
-      const list = Store.getWeekAudit ? (Store.getWeekAudit(currentTeamId(), weekStartISO) || []) : [];
-      const mine = list.filter(a => a && a.targetId === me.id).slice(0, 25);
-      if (!mine.length) return `<div class="small muted">No audit entries recorded for your schedule yet this week.</div>`;
-      return `<div class="mysx-audit">
-        ${mine.map(a => {
-        return `<div class="mysx-audit-row">
-            <div class="mysx-audit-main">
-              <div class="mysx-audit-action">${esc(a.action || '')}</div>
-              <div class="small muted">${esc(a.detail || '')}</div>
-              <div class="small muted">Actor: ${esc(a.actorName || '—')}</div>
-            </div>
-            <div class="mysx-audit-ts small muted">${esc(formatTs(a.ts))}</div>
-          </div>`;
-      }).join('')}
-      </div>`;
-    } catch (_) {
-      return `<div class="small muted">Audit unavailable.</div>`;
-    }
-  }
-
-  function bindViewToggle(host) {
-    const box = host.querySelector('.schx-toggle');
-    if (!box) return;
-    box.querySelectorAll('button[data-view]').forEach(btn => {
-      btn.onclick = () => setViewMode(btn.dataset.view);
-    });
-  }
-
-  function bindDayTabs(host) {
-    const tabs = host.querySelector('.schx-daytabs');
-    if (!tabs) return;
-    tabs.querySelectorAll('button[data-day]').forEach(btn => {
-      btn.onclick = () => setFocusDay(btn.dataset.day);
-    });
-  }
-
-  function bindTooltip(host) {
-    const tip = host.querySelector('#schxTooltip');
-    if (!tip) return;
-
-    function show(ev, text) {
-      if (!text) return;
-      tip.textContent = text;
-      tip.setAttribute('aria-hidden', 'false');
-      tip.style.opacity = '1';
-      const x = (ev && (ev.clientX || 0)) + 12;
-      const y = (ev && (ev.clientY || 0)) + 12;
-      tip.style.left = `${x}px`;
-      tip.style.top = `${y}px`;
-    }
-
-    function hide() {
-      tip.setAttribute('aria-hidden', 'true');
-      tip.style.opacity = '0';
-    }
-
-    // Bind to any element with data-tooltip
-    host.querySelectorAll('[data-tooltip]').forEach(el => {
-      const text = el.getAttribute('data-tooltip') || '';
-      el.addEventListener('mouseenter', (ev) => show(ev, text));
-      el.addEventListener('mousemove', (ev) => show(ev, text));
-      el.addEventListener('mouseleave', hide);
-      el.addEventListener('focus', (ev) => show(ev, text));
-      el.addEventListener('blur', hide);
-      el.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Escape') hide();
-      });
-    });
-  }
-
-  function bindBlockSelection(host) {
-    host.querySelectorAll('.schx-block[data-block-key]').forEach(el => {
-      const select = () => {
-        selectedBlockKey = String(el.getAttribute('data-block-key') || '');
-        render();
-      };
-      el.addEventListener('click', select);
-      el.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Enter' || ev.key === ' ') {
-          ev.preventDefault();
-          select();
-        }
-      });
-    });
-  }
-
-  function bindSwipe(host) {
-    if (viewMode !== 'day') return;
-    const body = host.querySelector('.schx-daybody');
-    if (!body) return;
-    let x0 = null;
-    body.addEventListener('touchstart', (e) => {
-      if (!e.touches || !e.touches[0]) return;
-      x0 = e.touches[0].clientX;
-    }, { passive: true });
-    body.addEventListener('touchend', (e) => {
-      if (x0 == null) return;
-      const x1 = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientX : x0;
-      const dx = x1 - x0;
-      x0 = null;
-      if (Math.abs(dx) < 60) return;
-      if (dx < 0) setFocusDay((focusDay + 1) % 7);
-      else setFocusDay((focusDay + 6) % 7);
-    }, { passive: true });
-  }
-
-  function startTickLoop(host, shift) {
-    if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
-    const el = host.querySelector('#schxCountdown');
-    const tick = () => {
-      placeTeamNowLine(host, shift);
-      if (!el) return;
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <base href="/" />
+  <script>
+    // Root access must always load the login page.
+    // Keep the SPA router intact for /dashboard, /members, etc.
+    // This runs before any heavy assets load to avoid UI flashes.
+    (function(){
       try {
-        const c = computeCountdown(shift);
-        el.textContent = c.label || '—';
-      } catch (_) { }
-    };
-    tick();
-    if (!el) return;
-    tickTimer = setInterval(() => {
-      tick();
-    }, 1000);
-  }
-
-  function placeTeamNowLine(host, shift) {
-    try {
-      if (viewMode !== 'team') return;
-      const line = host.querySelector('.tsg-nowline');
-      if (!line) return;
-
-      const nameCol = host.querySelector('.team-schedule-header .tsg-h.ts-name');
-      const timelineGrid = host.querySelector('.team-schedule-header .tsg-timeline-head .tsg-hour-grid');
-      const firstHourCell = timelineGrid ? timelineGrid.querySelector('.tsg-hour-cell') : null;
-      const badge = line.querySelector('span');
-      if (badge) badge.textContent = formatNowTimeBadge();
-
-      const nowOffset = currentTimeOffsetMinutes(shift);
-      if (nowOffset == null || !nameCol || !timelineGrid || !firstHourCell) {
-        line.style.display = 'none';
-        return;
-      }
-
-      const nameWidth = Number(nameCol.getBoundingClientRect().width) || 0;
-      const hourWidth = Number(firstHourCell.getBoundingClientRect().width) || 0;
-      const timelineWidth = Number(timelineGrid.scrollWidth || timelineGrid.getBoundingClientRect().width) || 0;
-      if (nameWidth <= 0 || hourWidth <= 0 || timelineWidth <= 0) {
-        line.style.display = 'none';
-        return;
-      }
-
-      const offsetInTimeline = (nowOffset / 60) * hourWidth;
-      const clampedOffset = Math.max(0, Math.min(timelineWidth, offsetInTimeline));
-      line.style.left = `${nameWidth + clampedOffset}px`;
-      line.style.display = '';
-    } catch (_) { }
-  }
-
-  async function refreshTeamMembers() {
-    const uid = String((me && me.id) || '');
-    const teamId = String((me && (me.teamId != null ? me.teamId : me.team_id)) || '');
-    if (!uid || !teamId) return;
-    if (teamMembersLoadedFor === `${uid}:${teamId}`) return;
-    teamMembersLoading = true;
-    if (viewMode === 'team') render();
-    try {
-      const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
-      const headers = jwt ? { Authorization: `Bearer ${jwt}` } : {};
-      const res = await fetch(`/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1`, { headers, cache: 'no-store' });
-      if (!res.ok) return;
-      const data = await res.json().catch(() => ({}));
-      const rows = Array.isArray(data && data.teamMembers) ? data.teamMembers : [];
-      teamMembersCache = rows.map((row) => {
-        const r = row && typeof row === 'object' ? row : {};
-        return {
-          id: String(r.id || r.user_id || ''),
-          teamId: String(r.teamId || r.team_id || teamId || ''),
-          role: String(r.role || 'MEMBER'),
-          name: String(r.name || r.username || r.id || ''),
-          fullName: String(r.name || r.username || r.id || ''),
-          username: String(r.username || ''),
-          avatarUrl: String(r.avatarUrl || r.avatar_url || ''),
-        };
-      }).filter((u) => !!u.id);
-
-      const teamScheduleBlocks = Array.isArray(data && data.teamScheduleBlocks) ? data.teamScheduleBlocks : [];
-      if (window.Store && Store.setUserDayBlocks && teamScheduleBlocks.length) {
-        const bucket = new Map();
-        teamScheduleBlocks.forEach((row) => {
-          const r = row && typeof row === 'object' ? row : {};
-          const memberId = String(r.userId || r.user_id || '').trim();
-          const dayIdx = Number(r.dayIndex);
-          if (!memberId || !Number.isInteger(dayIdx) || dayIdx < 0 || dayIdx > 6) return;
-          const key = `${memberId}|${dayIdx}`;
-          if (!bucket.has(key)) bucket.set(key, []);
-          bucket.get(key).push({
-            start: String(r.start || '00:00'),
-            end: String(r.end || '00:00'),
-            schedule: String(r.schedule || ''),
-            notes: String(r.notes || ''),
-          });
-        });
-        bucket.forEach((blocks, key) => {
-          const [memberId, day] = key.split('|');
-          Store.setUserDayBlocks(memberId, teamId, Number(day), blocks);
-        });
-      }
-
-      teamMembersLoadedFor = `${uid}:${teamId}`;
-      if (viewMode === 'team') render();
-    } catch (_) { }
-    finally {
-      teamMembersLoading = false;
-      if (viewMode === 'team') render();
-    }
-  }
-
-  async function refreshMemberScheduleTheme() {
-    const uid = String((me && me.id) || '');
-    if (!uid || themePaletteLoadedFor === uid) return;
-    try {
-      const jwt = getBearerToken();
-      const headers = jwt ? { Authorization: `Bearer ${jwt}` } : {};
-      const res = await fetch(`/api/member/${encodeURIComponent(uid)}/schedule`, { headers, cache: 'no-store' });
-      if (!res.ok) return;
-      const data = await res.json().catch(() => ({}));
-      const palette = (data && data.teamThemePalette && typeof data.teamThemePalette === 'object') ? data.teamThemePalette : {};
-      teamThemePalette = palette;
-      themePaletteLoadedFor = uid;
-      render();
-    } catch (_) { }
-  }
-
-  function startRealtimeRefresh() {
-    if (storeListener && Store.unlisten) {
-      try { Store.unlisten(storeListener); } catch (_) { }
-      storeListener = null;
-    }
-    if (!Store.listen) return;
-    try {
-      storeListener = Store.listen(function (key) {
-        const k = String(key || '');
-        if (k.includes('schedule') || k.includes('tasks') || k.includes('audit') || k.includes('weekly') || k.includes('users')) {
-          render();
+        const p = String(location.pathname || '/').toLowerCase();
+        if (p === '/' || p === '/login' || p === '/login/' || p === '/index' || p === '/index/') {
+          location.replace('/login.html');
         }
-      });
-    } catch (_) { }
-  }
+      } catch (_) {}
+    })();
+  </script>
+  <title>MUMS | MUMS User Management System</title><link rel="stylesheet" href="/css/styles.css?v=p1-516" />
+  <link rel="stylesheet" href="/css/mailbox.css?v=p1-516" />
+  <link rel="stylesheet" href="/css/enterprise_ux.css?v=p1-516" />
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="topbrand" aria-label="MUMS">
+        <div class="brand-mark" aria-hidden="true">
+          <button class="btn ghost iconbtn sidebar-toggle-overlay" id="sidebarToggle" type="button" title="Toggle sidebar (click) / Pin rail (double-click)" aria-label="Toggle sidebar">
+            <span class="ico" data-ico="menu" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="brand-text">
+          <div class="brand-name">MUMS</div>
+          <div class="brand-sub">MUMS User Management System</div>
+          <div class="brand-build">Build ID: <span data-build-label></span></div>
+        </div>
+      </div>
 
-  // Init
-  render();
-  startRealtimeRefresh();
-  refreshMemberScheduleTheme();
-  refreshTeamMembers();
-});
+      <div class="topbar-center">
+        <div id="reminderFloatHost" class="reminder-float-host" aria-live="polite"></div>
+        <div class="announce-bar" id="announceBar" style="visibility:hidden" title="Click to read full announcement">
+          <div class="announce-left">
+            <div class="announce-avatar" id="announceAvatar" aria-hidden="true"></div>
+            <div class="announce-who" id="announceWho"></div>
+          </div>
+          <div class="announce-body">
+            <div class="announce-title" id="announceTitle">Announcement</div>
+            <div class="announce-msg" id="announceMsg">—</div>
+            <div class="announce-meta small" id="announceMeta" style="opacity:.9">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <div class="top-global-search" role="search">
+          <span class="ico" data-ico="search" aria-hidden="true"></span>
+          <input id="globalSearchInput" type="text" placeholder="Search…" autocomplete="off" aria-label="Global search (Ctrl+K)" />
+          <button class="btn ghost iconbtn" id="globalSearchBtn" type="button" title="Global search (Ctrl+K)" aria-label="Open global search"><span class="ico" data-ico="search" aria-hidden="true"></span></button>
+        </div>
+        <button class="btn ghost iconbtn" id="releaseNotesBtn" type="button" title="Release Notes" aria-label="Release Notes"><span class="ico" data-ico="notes" aria-hidden="true"></span></button>
+        <button class="btn ghost iconbtn" id="dictionaryBtn" type="button" title="MUMS Dictionary" aria-label="MUMS Dictionary"><span class="ico" data-ico="book" aria-hidden="true"></span></button>
+<button class="btn ghost iconbtn" id="settingsBtn" type="button" title="Settings" aria-label="Settings"><span class="ico" data-ico="gear" aria-hidden="true"></span></button>
+        <div id="realtimeSyncStatus" class="sync-status" title="Realtime Sync Status">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="label">Sync:</span>
+          <span class="state">—</span>
+        </div>
+        <button class="btn" id="logoutBtn" type="button">Logout</button>
+      </div>
+    </div>
+
+    <aside class="side card pad">
+      <div class="usercard" id="userCard"></div>
+      <!-- Timezone is shown inside the compact profile card to maximize nav space -->
+      <nav class="nav" id="nav"></nav>
+
+      <div class="side-logs side-logs-minimal" id="sideLogs">
+        <button class="btn ghost side-logs-viewall" id="sideLogsViewAll" type="button">View All Activity</button>
+      </div>
+    </aside>
+
+    <main class="main card pad" id="main"></main>
+
+    <aside class="right card pad" id="rightbar">
+      <div id="right-sidebar-container">
+        <hr style="border: 0; border-top: 1px solid rgba(255, 255, 255, 0.1); margin: 24px 0 16px 0; width: 100%; display: block;" />
+<button id="btn-controller-lab" onclick="window.open('/controller_lab.html', '_blank')" style="width: 100%; padding: 12px 16px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: #ffffff; cursor: pointer; text-align: center; font-weight: 600; font-size: 14px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: all 0.2s ease-in-out; display: flex; align-items: center; justify-content: center; gap: 10px; box-sizing: border-box;" onmouseover="this.style.background='rgba(255, 255, 255, 0.1)'; this.style.borderColor='rgba(255, 255, 255, 0.2)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.05)'; this.style.borderColor='rgba(255, 255, 255, 0.1)';">
+  <i class="fas fa-gamepad" style="font-size: 16px;"></i> Controller Lab
+</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Online users status bar (above the quick links bar) -->
+  <div class="online-users-bar" id="onlineUsersBar" aria-label="Online users" role="region"></div>
+
+  <!-- Bottom quick links bar (10 customizable circles) -->
+  <div class="quicklinks-bar" id="quickLinksBar" aria-label="Quick links" role="navigation">
+    <!-- World clocks (left side) -->
+    <div class="clocks-wrap" id="worldClocks" aria-label="World clocks"></div>
+    <div class="quicklinks-inner" id="quickLinksInner"></div>
+  </div>
+
+  <div class="modal" id="topAnnModal">
+    <div class="panel">
+      <div class="head">
+        <div>
+          <div class="announce-title" id="annModalTitle">Announcement</div>
+          <div class="small">Full description</div>
+        </div>
+        <button class="btn ghost" type="button" data-close="topAnnModal">✕</button>
+      </div>
+      <div class="body" id="annModalBody" style="white-space:pre-wrap"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="settingsModal">
+    <div class="panel">
+      <div class="head">
+        <div>
+          <div class="announce-title">Settings</div>
+          <div class="small">Manage profile and notification sound.</div>
+        </div>
+        <button class="btn ghost" type="button" data-close="settingsModal">✕</button>
+      </div>
+      <div class="body">
+        <div class="settings-grid">
+          <div class="settings-card">
+            <div class="settings-card-title">Profile</div>
+            <div class="small muted" style="margin-top:6px">Update your photo and display name.</div>
+            <div style="margin-top:10px">
+              <button class="btn primary" id="openProfileBtn" type="button">Open Profile Settings</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Notification Sound</div>
+            <div class="small muted" style="margin-top:6px">Adjust sound type and volume for pop-up notifications.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openSoundBtn" type="button">Open Sound Settings</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Theme</div>
+            <div class="small muted" style="margin-top:6px">Choose a professional color theme for MUMS.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openThemeBtn" type="button">Open Theme Settings</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Quick Links</div>
+            <div class="small muted" style="margin-top:6px">Set up to 10 favorite links shown on the bottom bar.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openLinksBtn" type="button">Manage Quick Links</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Cursor</div>
+            <div class="small muted" style="margin-top:6px">Choose between the custom in-app cursor or your system cursor.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openCursorBtn" type="button">Cursor settings</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Sidebar</div>
+            <div class="small muted" style="margin-top:6px">Collapse the menu for compact navigation.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openSidebarBtn" type="button">Sidebar settings</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Data tools</div>
+            <div class="small muted" style="margin-top:6px">Export, import, and validate offline local storage.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openDataToolsBtn" type="button">Open data tools</button>
+            </div>
+          </div>
+
+          <div class="settings-card" id="timeOverrideCard" style="display:none">
+            <div class="settings-card-title">Mailbox Time Override</div>
+            <div class="small muted" style="margin-top:6px">Super Admin testing tool: override Manila time used in the Mailbox screen.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openMailboxTimeBtn" type="button">Configure Mailbox Time</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">World Clocks</div>
+	            <div class="small muted" style="margin-top:6px">Configure clocks for regions or fixed GMT offsets (label, style, colors, alarms).</div>
+            <div style="margin-top:10px">
+	              <div class="row" style="gap:8px;flex-wrap:wrap">
+	                <button class="btn" id="openClocksBtn" type="button">Configure Clocks</button>
+	                <button class="btn ghost" id="openGmtOverviewPageBtn" type="button">Open GMT Overview</button>
+	              </div>
+            </div>
+          </div>
+
+          <div class="settings-card" id="systemCheckCard" style="display:none">
+            <div class="settings-card-title">System Check</div>
+            <div class="small muted" style="margin-top:6px">Run diagnostics, tests, and auto-fixes. Available to Super Admin and Super User.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openSystemCheckBtn" type="button">Run System Check</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="systemCheckModal">
+    <div class="panel" style="max-width:980px">
+      <div class="head">
+        <div>
+          <div class="announce-title">System Check</div>
+          <div class="small">Diagnostics, smoke tests, and safe auto-fixes for offline storage and configuration.</div>
+        </div>
+        <button class="btn ghost" type="button" data-close="systemCheckModal">✕</button>
+      </div>
+      <div class="body">
+        <div class="syscheck-top">
+          <div class="syscheck-status">
+            <div class="h2" style="margin:0">Status: <span id="syscheckState">Ready</span></div>
+            <div class="small muted" style="margin-top:6px">This runs locally in your browser and does not send data anywhere.</div>
+          </div>
+          <div class="syscheck-actions">
+            <div class="syscheck-timer">
+              <div class="small muted">Estimated time</div>
+              <div class="h2" style="margin:4px 0 0"><span id="syscheckCountdown">—</span>s</div>
+            </div>
+            <button class="btn" id="syscheckRunBtn" type="button">Run</button>
+            <button class="btn ghost" id="syscheckClearResolvedBtn" type="button" title="Remove resolved error logs from Activity Logs">Clear resolved errors</button>
+          </div>
+        </div>
+
+        <div class="syscheck-progress" style="margin-top:12px">
+          <div class="bar"><div class="fill" id="syscheckFill" style="width:0%"></div></div>
+          <div class="small muted" id="syscheckHint" style="margin-top:8px">Press Run to start diagnostics.</div>
+        </div>
+
+        <div class="syscheck-results" style="margin-top:14px">
+          <div class="row" style="justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-end">
+            <div>
+              <div class="settings-card-title">Findings</div>
+              <div class="small muted" style="margin-top:6px">Each finding includes impact and recommendations. Severity is Critical or Minor.</div>
+            </div>
+            <div class="row" style="gap:8px;flex-wrap:wrap">
+              <span class="pill" id="syscheckCriticalPill">Critical: 0</span>
+              <span class="pill" id="syscheckMinorPill">Minor: 0</span>
+            </div>
+          </div>
+          <div id="syscheckList" style="margin-top:12px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="modal" id="mailboxTimeModal">
+    <div class="panel" style="max-width:720px">
+      <div class="head">
+        <div>
+          <div class="announce-title">Mailbox Time Override</div>
+          <div class="small">Super Admin testing tool. Overrides Manila time used on the Mailbox screen. Scope can be Super Admin only or Global (affects all users on this device).</div>
+        </div>
+        <button class="btn ghost" type="button" data-close="mailboxTimeModal">✕</button>
+      </div>
+      <div class="body">
+        <div class="small muted" id="mbTimeSys" style="margin-bottom:8px"></div>
+
+        <div class="time-override-preview">
+          <div class="small muted">Effective mailbox time</div>
+          <div class="timer" id="mbTimeClock">--:--:--</div>
+          <div class="small" id="mbTimeClockDate" style="margin-top:2px"></div>
+          <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px">
+            <button class="btn" type="button" data-mbshift="-3600000">-1h</button>
+            <button class="btn" type="button" data-mbshift="-900000">-15m</button>
+            <button class="btn" type="button" data-mbshift="900000">+15m</button>
+            <button class="btn" type="button" data-mbshift="3600000">+1h</button>
+            <button class="btn" type="button" id="mbTimeSetNow">Set to system Manila now</button>
+          </div>
+        </div>
+        <div class="grid2">
+          <div>
+            <label class="small">Override date &amp; time (Manila)</label>
+            <input class="input" type="datetime-local" id="mbTimeInput" />
+          </div>
+          <div>
+            <label class="small">Mode</label>
+            <label class="row small" style="gap:10px;align-items:center;margin-top:8px">
+              <input type="checkbox" id="mbTimeFreeze" />
+              <span>Freeze time</span>
+            </label>
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <label class="small">Override scope</label>
+          <select class="input" id="mbTimeScope" style="margin-top:6px">
+            <option value="sa_only">Super Admin only</option>
+            <option value="global">Global (all users)</option>
+          </select>
+          <div class="small muted" style="margin-top:6px">Global scope affects every user session on this device/browser. Use only for controlled testing.</div>
+        </div>
+        <div class="row" style="gap:12px;flex-wrap:wrap;margin-top:12px;align-items:center">
+          <label class="row small" style="gap:10px;align-items:center">
+            <input type="checkbox" id="mbTimeEnabled" />
+            <span>Enable override</span>
+          </label>
+          <div class="small muted" id="mbTimeEffective"></div>
+        </div>
+        <div class="err" id="mbTimeErr"></div>
+        <div class="row" style="justify-content:flex-end;gap:10px;margin-top:14px">
+          <b
+(Content truncated due to size limit. Use line ranges to read remaining content)
