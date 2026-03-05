@@ -51,6 +51,7 @@ async function run() {
     },
 
     async serviceFetch(path, opts) {
+      fetchCalls.push({ path, opts });
       const method = String(opts && opts.method || 'GET').toUpperCase();
       if (method !== 'DELETE') return { ok: false, json: { error: 'unsupported_method' } };
       const query = String(path).split('?')[1] || '';
@@ -91,11 +92,14 @@ async function run() {
   assert.strictEqual(byTab['tab-a'].settings_json.qid, '101');
   assert.strictEqual(byTab['tab-b'].settings_json.qid, '202');
 
+  const fetchCalls = [];
+
   const delReq = { method: 'DELETE', query: { user_id: 'u1', tab_id: 'tab-a' } };
   const delRes = makeRes();
   await route(delReq, delRes, {});
   const delPayload = JSON.parse(delRes.body || '{}');
   assert.strictEqual(delPayload.ok, true);
+  assert.strictEqual(fetchCalls[0].path.startsWith('/rest/v1/quickbase_tabs?'), true);
 
   const postDeleteListRes = makeRes();
   await route(listReq, postDeleteListRes, {});
