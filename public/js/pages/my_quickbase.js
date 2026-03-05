@@ -572,7 +572,9 @@
     };
 
     const headers = columns.map((c) => `<th>${esc(c.label || c.id || 'Field')}</th>`).join('');
-    const body = visibleRows.map((r) => {
+    const rowStartIndex = (activePage - 1) * pageSize;
+    const body = visibleRows.map((r, rowIdx) => {
+      const globalRowNum = rowStartIndex + rowIdx + 1;
       const cells = columns.map((c) => {
         const field = r && r.fields ? r.fields[String(c.id)] : null;
         const rawValue = field && field.value != null ? field.value : 'N/A';
@@ -582,10 +584,10 @@
           : String(rawValue);
         return `<td>${esc(value)}</td>`;
       }).join('');
-      return `<tr><td class="qb-case-id">${esc(String(r && r.qbRecordId || 'N/A'))}</td>${cells}</tr>`;
+      return `<tr><td class="qb-row-num-cell"><span class="qb-row-num-pill">${globalRowNum}</span></td><td class="qb-case-id">${esc(String(r && r.qbRecordId || 'N/A'))}</td>${cells}</tr>`;
     }).join('');
 
-    host.innerHTML = `<div class="qb-table-inner" style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 320px);min-height:200px;width:100%;"><table class="qb-data-table"><thead><tr><th>Case #</th>${headers}</tr></thead><tbody>${body}</tbody></table></div>`;
+    host.innerHTML = `<div class="qb-table-inner"><table class="qb-data-table"><thead><tr><th class="qb-row-num-th">#</th><th>Case #</th>${headers}</tr></thead><tbody>${body}</tbody></table></div>`;
     if (rows.length > pageSize && typeof opts.onPageChange === 'function') {
       const pager = document.createElement('div');
       pager.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px;';
@@ -1017,7 +1019,7 @@
         id: tabId,
         tabName: String(state.tabName || 'Main Report').trim() || 'Main Report'
       });
-      const nextSettings = createDefaultSettings({
+      const nextSettings = deepClone(createDefaultSettings({
         reportLink: String(state.reportLink || '').trim(),
         qid: String(state.qid || '').trim(),
         tableId: String(state.tableId || '').trim(),
@@ -1026,33 +1028,35 @@
         customFilters: normalizeFilters(state.customFilters),
         filterMatch: normalizeFilterMatch(state.filterMatch),
         dashboard_counters: normalizeDashboardCounters(state.dashboardCounters)
-      });
-      state.quickbaseSettings.tabs[state.activeTabIndex] = deepClone(nextMeta) || createTabMeta({}, {});
+      }, {}));
+      // ISOLATION: Write only to this tab's slot — never mutate another tab's settings
+      state.quickbaseSettings.tabs[state.activeTabIndex] = deepClone(nextMeta);
       state.quickbaseSettings.settingsByTabId = Object.assign({}, state.quickbaseSettings.settingsByTabId || {}, {
-        [tabId]: deepClone(nextSettings) || createDefaultSettings({}, {})
+        [tabId]: nextSettings
       });
       state.quickbaseSettings.activeTabIndex = state.activeTabIndex;
-      state.modalDraft = deepClone(Object.assign({}, nextMeta, nextSettings)) || buildDefaultTab();
+      state.modalDraft = deepClone(Object.assign({}, nextMeta, nextSettings));
     }
 
 
     function updateTabSettings(tabId, partialUpdate) {
       const safeTabId = String(tabId || '').trim();
       if (!safeTabId) return;
-      const nextPartial = partialUpdate && typeof partialUpdate === 'object' ? partialUpdate : {};
+      const nextPartial = partialUpdate && typeof partialUpdate === 'object' ? deepClone(partialUpdate) : {};
       const prevSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[safeTabId]
-        ? state.quickbaseSettings.settingsByTabId[safeTabId]
+        ? deepClone(state.quickbaseSettings.settingsByTabId[safeTabId])
         : createDefaultSettings({}, {});
-      const nextSettings = createDefaultSettings(Object.assign({}, deepClone(prevSettings) || createDefaultSettings({}, {}), nextPartial), {});
+      // ISOLATION: always produce a fresh object — no reference sharing across tabs
+      const nextSettings = createDefaultSettings(Object.assign({}, prevSettings, nextPartial), {});
       state.quickbaseSettings.settingsByTabId = Object.assign({}, state.quickbaseSettings.settingsByTabId || {}, {
-        [safeTabId]: deepClone(nextSettings) || createDefaultSettings({}, {})
+        [safeTabId]: deepClone(nextSettings)
       });
       const tabIndex = Array.isArray(state.quickbaseSettings.tabs)
         ? state.quickbaseSettings.tabs.findIndex((tab) => String(tab && tab.id || '').trim() === safeTabId)
         : -1;
       if (tabIndex >= 0) {
         const tabMeta = createTabMeta(state.quickbaseSettings.tabs[tabIndex], {});
-        state.quickbaseSettings.tabs[tabIndex] = deepClone(tabMeta) || createTabMeta({}, {});
+        state.quickbaseSettings.tabs[tabIndex] = deepClone(tabMeta);
       }
     }
 
@@ -2382,8 +2386,10 @@
         // Reset inflight before new tab load
         quickbaseLoadInFlight = null;
         const managedTabId = tabManager ? tabManager.createTab({ tabName: 'New Report' }) : '';
-        const newTab = deepClone({
-          id: managedTabId || generateUUID(),
+        // ISOLATION: always create a fresh empty settings object — never inherit from any other tab
+        const newTabId = managedTabId || generateUUID();
+        const newTab = {
+          id: newTabId,
           tabName: 'New Report',
           reportLink: '',
           qid: '',
@@ -2393,20 +2399,12 @@
           customColumns: [],
           customFilters: [],
           filterMatch: 'ALL'
-        });
-        const newTabId = String(newTab.id || '').trim();
+        };
+        // ISOLATION: new tab settings are a standalone empty object — deepClone to prevent reference sharing
+        const newTabSettings = deepClone(createDefaultSettings({}, {}));
         state.quickbaseSettings.tabs.push(deepClone(newTab));
         state.quickbaseSettings.settingsByTabId = Object.assign({}, state.quickbaseSettings.settingsByTabId || {}, {
-          [newTabId]: {
-            reportLink: '',
-            qid: '',
-            tableId: '',
-            realm: '',
-            dashboard_counters: [],
-            customColumns: [],
-            customFilters: [],
-            filterMatch: 'ALL'
-          }
+          [newTabId]: newTabSettings
         });
         state.activeTabIndex = state.quickbaseSettings.tabs.length - 1;
         if (tabManager) {

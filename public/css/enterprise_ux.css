@@ -4927,7 +4927,6 @@ body.members-fullscreen-active .tooltip{
 .qb-counter-value{ font-size:56px; font-weight:900; line-height:1; }
 .qb-table-card{ flex-grow:1; min-height:0; display:flex; flex-direction:column; }
 .qb-data-body{ flex-grow:1; min-height:0; overflow:hidden; position:relative; }
-.qb-table-inner{ max-height:100%; overflow:auto; }
 .qb-data-table{ width:100%; min-width:760px; border-collapse:collapse; }
 .qb-data-table th,
 .qb-data-table td{ text-align:left; padding:8px; }
@@ -4951,12 +4950,12 @@ body.members-fullscreen-active .tooltip{
 /* FIX[Bug4]: Responsive layout - full visibility on all devices */
 @media (max-width: 1024px) {
   .qb-page-shell { height: auto; min-height: calc(100vh - 80px); overflow: visible; }
-  .qb-data-body { overflow: visible; min-height: 260px; }
+  .qb-data-body { min-height: 260px; }
   .qb-table-card { min-height: 260px; flex-shrink: 0; }
 }
 @media (max-width: 768px) {
   .qb-page-shell { height: auto; min-height: calc(100vh - 120px); overflow: visible; }
-  .qb-data-body { overflow: visible; min-height: 220px; }
+  .qb-data-body { min-height: 220px; }
   .qb-table-card { min-height: 220px; }
   .qb-dashboard-counters { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .qb-counter-widget { min-height: 100px; padding: 10px; }
@@ -5298,9 +5297,92 @@ body.members-fullscreen-active .tooltip{
 .qb-data-body {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── TABLE INNER: single scroll container ── */
+.qb-table-inner {
+  width: 100%;
+  height: 100%;
   overflow-x: auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  /* single scrollbar — no nested overflow containers */
+}
+/* Hide double webkit scrollbar on inner when outer has one */
+.qb-data-body .qb-table-inner::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.qb-data-body .qb-table-inner::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.03);
+}
+.qb-data-body .qb-table-inner::-webkit-scrollbar-thumb {
+  background: rgba(148,163,184,0.18);
+  border-radius: 999px;
+}
+.qb-data-body .qb-table-inner::-webkit-scrollbar-thumb:hover {
+  background: rgba(148,163,184,0.32);
+}
+
+/* ── ENTERPRISE ROW NUMBERING ── */
+.qb-row-num-th {
+  width: 40px;
+  min-width: 40px;
+  text-align: center;
+  padding: 10px 6px !important;
+  font-size: 10px !important;
+  font-weight: 700;
+  color: rgba(148,163,184,0.35) !important;
+  letter-spacing: .04em;
+  position: sticky;
+  left: 0;
+  z-index: 11;
+  border-right: 1px solid rgba(148,163,184,0.08);
+  background-color: var(--surface-color, #0d1421) !important;
+}
+.qb-row-num-cell {
+  width: 40px;
+  min-width: 40px;
+  text-align: center;
+  vertical-align: middle;
+  padding: 8px 4px !important;
+  border-right: 1px solid rgba(148,163,184,0.07);
+  background: rgba(9,14,26,0.25);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.qb-row-num-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(148,163,184,0.10);
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(148,163,184,0.38);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  pointer-events: none;
+  user-select: none;
+}
+.qb-data-table tbody tr:hover .qb-row-num-pill {
+  background: rgba(59,130,246,0.12);
+  border-color: rgba(59,130,246,0.28);
+  color: rgba(148,163,184,0.78);
+}
+/* Rows beyond 99: shrink font to fit */
+@media (min-width: 0px) {
+  .qb-row-num-pill[data-n="3digit"] {
+    font-size: 9px;
+    letter-spacing: -.02em;
+  }
 }
 
 /* ── SETTINGS MODAL ── */
@@ -5501,7 +5583,7 @@ body.members-fullscreen-active .tooltip{
 /* ── RESPONSIVE ── */
 @media (max-width: 1024px) {
   .qb-page-shell { height: auto; min-height: calc(100vh - 80px); overflow: visible; }
-  .qb-data-body  { overflow: visible; min-height: 240px; }
+  .qb-data-body  { min-height: 240px; }
   .qb-table-card { min-height: 240px; flex-shrink: 0; }
   .qb-col-grid   { grid-template-columns: repeat(2,1fr); }
 }
