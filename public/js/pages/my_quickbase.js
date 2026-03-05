@@ -1803,7 +1803,7 @@
           || document.querySelector('.quickbase-records-container')
           || host;
         if (recordsContainer) {
-          recordsContainer.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(255,255,255,0.5);font-size:15px;">No records loaded — Please configure a Report Link in Settings.</div>';
+          recordsContainer.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(255,255,255,0.5);font-size:15px;">No records Loaded — Please configure a Report Link in Settings.</div>';
         }
         return;
       }
@@ -1840,7 +1840,7 @@
             renderColumnGrid();
             renderFilters();
             applySearchAndRender();
-            renderEmptyState(root, 'No records loaded — Please configure a Report Link in Settings.');
+            renderEmptyState(root, 'No records Loaded — Please configure a Report Link in Settings.');
             return;
           }
           const shouldApplyFilters = shouldApplyServerFilters(opts);
