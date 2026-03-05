@@ -38,21 +38,6 @@
     return out || 'anonymous';
   }
 
-  function resolveCurrentUserId() {
-    if (String(currentUserId || '').trim()) return String(currentUserId).trim();
-    try {
-      const authUser = root.Auth && typeof root.Auth.getUser === 'function' ? root.Auth.getUser() : null;
-      const authId = String(authUser && authUser.id || '').trim();
-      if (authId) return authId;
-    } catch (_) {}
-    try {
-      const cloudMe = root.me && typeof root.me === 'object' ? root.me : null;
-      const cloudId = String(cloudMe && cloudMe.id || '').trim();
-      if (cloudId) return cloudId;
-    } catch (_) {}
-    return '';
-  }
-
   function storageKey() {
     return `mums_quickbase_tabs_${safeUserId(currentUserId)}`;
   }
@@ -112,7 +97,7 @@
 
   const TabManager = {
     init({ userId, apiBaseUrl: nextApiBaseUrl }) {
-      currentUserId = String(userId || resolveCurrentUserId() || '').trim();
+      currentUserId = String(userId || '').trim();
       apiBaseUrl = String(nextApiBaseUrl || '/api').trim() || '/api';
       tabs.clear();
       loadLocalFallback();
@@ -163,7 +148,7 @@
       const entry = tabs.get(safeTabId);
       if (!entry) return;
       const payload = {
-        user_id: safeUserId(resolveCurrentUserId() || currentUserId),
+        user_id: safeUserId(currentUserId),
         tab_id: safeTabId,
         tab_name: String(entry.settings.tabName || '').trim() || 'New Tab',
         settings_json: cloneDeep(entry.settings)
@@ -182,7 +167,7 @@
       const safeTabId = String(tabId || '').trim();
       if (!safeTabId) return;
       tabs.delete(safeTabId);
-      const userId = encodeURIComponent(safeUserId(resolveCurrentUserId() || currentUserId));
+      const userId = encodeURIComponent(safeUserId(currentUserId));
       await apiRequest(`/quickbase_tabs/${encodeURIComponent(safeTabId)}?user_id=${userId}`, {
         method: 'DELETE'
       });
@@ -190,7 +175,7 @@
     },
 
     async loadTabs() {
-      const userId = encodeURIComponent(safeUserId(resolveCurrentUserId() || currentUserId));
+      const userId = encodeURIComponent(safeUserId(currentUserId));
       const out = await apiRequest(`/quickbase_tabs?user_id=${userId}`, { method: 'GET' });
       const rows = Array.isArray(out && out.rows) ? out.rows : [];
       tabs.clear();

@@ -130,7 +130,6 @@ function sortFieldsByProfileOrder(fields, profileColumnOrder) {
 function buildProfileFilterClauses(rawFilters) {
   if (!Array.isArray(rawFilters)) return [];
   const groupedByField = new Map();
-  const negativeOperators = new Set(['XEX', 'XCT', 'XSW', 'XIR', 'XTV']);
   rawFilters.forEach((f) => {
     if (!f || typeof f !== 'object') return;
     const fieldId = Number(f.fieldId ?? f.field_id ?? f.fid ?? f.id);
@@ -138,25 +137,14 @@ function buildProfileFilterClauses(rawFilters) {
     const opRaw = String(f.operator ?? 'EX').trim().toUpperCase();
     const operator = ['EX', 'XEX', 'CT', 'XCT', 'SW', 'XSW', 'BF', 'AF', 'IR', 'XIR', 'TV', 'XTV', 'LT', 'LTE', 'GT', 'GTE'].includes(opRaw) ? opRaw : 'EX';
     if (!Number.isFinite(fieldId) || !value) return;
-    if (!groupedByField.has(fieldId)) groupedByField.set(fieldId, { positive: [], negative: [] });
-    const bucket = groupedByField.get(fieldId);
-    const clause = `{${fieldId}.${operator}.'${encodeQuickbaseLiteral(value)}'}`;
-    if (negativeOperators.has(operator)) {
-      bucket.negative.push(clause);
-    } else {
-      bucket.positive.push(clause);
-    }
+    if (!groupedByField.has(fieldId)) groupedByField.set(fieldId, []);
+    groupedByField.get(fieldId).push(`{${fieldId}.${operator}.'${encodeQuickbaseLiteral(value)}'}`);
   });
 
-  return Array.from(groupedByField.values()).map((grouped) => {
-    if (!grouped || typeof grouped !== 'object') return '';
-    const positiveClause = grouped.positive.length
-      ? (grouped.positive.length === 1 ? grouped.positive[0] : `(${grouped.positive.join(' OR ')})`)
-      : '';
-    const negativeClause = grouped.negative.length
-      ? (grouped.negative.length === 1 ? grouped.negative[0] : `(${grouped.negative.join(' AND ')})`)
-      : '';
-    return [positiveClause, negativeClause].filter(Boolean).join(' AND ');
+  return Array.from(groupedByField.values()).map((clauses) => {
+    if (!Array.isArray(clauses) || !clauses.length) return '';
+    if (clauses.length === 1) return clauses[0];
+    return `(${clauses.join(' OR ')})`;
   }).filter(Boolean);
 }
 
@@ -189,60 +177,21 @@ module.exports = async (req, res) => {
     const profileQid = String(profileQuickbaseConfig.qid || profileQuickbaseConfig.qb_qid || profile.qb_qid || profile.quickbase_qid || '').trim();
     const profileTableId = String(profileQuickbaseConfig.tableId || profileQuickbaseConfig.qb_table_id || profile.qb_table_id || profile.quickbase_table_id || '').trim();
 
-    // Extract filterMatch and customFilters from profile settings with safe defaults
-    const profileFilterMatchRaw = String(
-      profileQuickbaseConfig.filterMatch ||
-      profileQuickbaseConfig.qb_filter_match ||
-      profile.qb_filter_match ||
-      'ALL'
-    ).trim().toUpperCase();
-    const profileFilterMatch = profileFilterMatchRaw === 'ANY' ? 'ANY' : 'ALL';
-    const profileCustomFilters = Array.isArray(profileQuickbaseConfig.customFilters)
-      ? profileQuickbaseConfig.customFilters
-      : (Array.isArray(profileQuickbaseConfig.qb_custom_filters)
-          ? profileQuickbaseConfig.qb_custom_filters
-          : []);
+    let qid = String(req?.query?.qid || req?.query?.qId || '').trim();
+    let tableId = String(req?.query?.tableId || req?.query?.table_id || '').trim();
+    let realm = String(req?.query?.realm || '').trim();
 
-    // Accept tab-specific params from POST body first, then GET query, then profile fallback
-    const reqBody = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};
-    const reqTabId = String(req?.query?.tab_id || reqBody.tab_id || '').trim();
-    const reqReportLink = String(req?.query?.reportLink || reqBody.reportLink || '').trim();
-    let qid = String(req?.query?.qid || req?.query?.qId || reqBody.qid || '').trim();
-    let tableId = String(req?.query?.tableId || req?.query?.table_id || reqBody.tableId || '').trim();
-    let realm = String(req?.query?.realm || reqBody.realm || '').trim();
-
-    // Parse tab-scoped custom filters from POST body (overrides profile filters)
-    let effectiveCustomFilters = profileCustomFilters;
-    let effectiveFilterMatch = profileFilterMatch;
-    if (reqBody.customFilters !== undefined) {
-      if (Array.isArray(reqBody.customFilters)) {
-        effectiveCustomFilters = reqBody.customFilters;
-      } else if (typeof reqBody.customFilters === 'string') {
-        try { effectiveCustomFilters = JSON.parse(reqBody.customFilters); } catch (_) { effectiveCustomFilters = []; }
-      }
+    if (!qid || !tableId || !realm) {
+      qid = qid || profileQid;
+      tableId = tableId || profileTableId;
+      realm = realm || profileRealm;
     }
-    if (typeof reqBody.filterMatch === 'string' && reqBody.filterMatch.trim()) {
-      const fm = reqBody.filterMatch.trim().toUpperCase();
-      effectiveFilterMatch = (fm === 'ANY') ? 'ANY' : 'ALL';
-    }
-
-    let reqCustomColumns = null;
-    if (Array.isArray(reqBody.customColumns)) {
-      reqCustomColumns = reqBody.customColumns;
-    } else if (typeof reqBody.customColumns === 'string') {
-      try { reqCustomColumns = JSON.parse(reqBody.customColumns); } catch(_) { reqCustomColumns = null; }
-    }
-
-    // Fall back to profile values only when request provides nothing
-    if (!qid) qid = profileQid;
-    if (!tableId) tableId = profileTableId;
-    if (!realm) realm = profileRealm;
 
     if (!qid || !tableId || !realm) {
       return sendJson(res, 400, {
         ok: false,
         warning: 'quickbase_credentials_missing',
-        message: 'No Report Link configured for this tab. Please set a Report Link in Quickbase Settings.'
+        message: 'Missing Quickbase configuration. Please configure your QID in My Quickbase Settings.'
       });
     }
 
@@ -314,10 +263,8 @@ module.exports = async (req, res) => {
     ];
 
     const hasPersonalQuickbaseQuery = !!String(qid || '').trim();
-    let profileCustomColumns = normalizeProfileColumns(profileQuickbaseConfig.customColumns || profileQuickbaseConfig.qb_custom_columns || profile.qb_custom_columns);
-    if (reqCustomColumns !== null) profileCustomColumns = normalizeProfileColumns(reqCustomColumns);
-    const effectiveCustomColumns = profileCustomColumns;
-    const mappedProfileColumns = effectiveCustomColumns
+    const profileCustomColumns = normalizeProfileColumns(profileQuickbaseConfig.customColumns || profileQuickbaseConfig.qb_custom_columns || profile.qb_custom_columns);
+    const mappedProfileColumns = profileCustomColumns
       .map((id) => {
         const found = allAvailableFields.find((f) => Number(f.id) === Number(id));
         return found ? { id: Number(found.id), label: found.label } : null;
@@ -376,26 +323,9 @@ module.exports = async (req, res) => {
         whereClauses.push(`{${statusFieldId}.XEX.'${encodeQuickbaseLiteral(status)}'}`);
       });
     }
-    const queryCustomFilters = (() => {
-      try {
-        const rawFilters = req?.query?.customFilters || req?.query?.filters || '';
-        if (!rawFilters) return null;
-        const parsed = typeof rawFilters === 'string' ? JSON.parse(decodeURIComponent(rawFilters)) : rawFilters;
-        return Array.isArray(parsed) ? parsed : null;
-      } catch (_) {
-        return null;
-      }
-    })();
-    const queryFilterMatch = normalizeFilterMatch(req?.query?.filterMatch || 'ALL');
 
-    const activeFilters = queryCustomFilters !== null
-      ? queryCustomFilters
-      : (Array.isArray(effectiveCustomFilters) ? effectiveCustomFilters : []);
-    const activeFilterMatch = queryCustomFilters !== null
-      ? queryFilterMatch
-      : normalizeFilterMatch(effectiveFilterMatch);
-
-    const profileFilterClauses = buildProfileFilterClauses(activeFilters);
+    const profileFilterClauses = buildProfileFilterClauses(profileQuickbaseConfig.customFilters || profileQuickbaseConfig.qb_custom_filters || profile.qb_custom_filters);
+    const profileFilterMatch = normalizeFilterMatch(profileQuickbaseConfig.filterMatch || profileQuickbaseConfig.qb_filter_match || profile.qb_filter_match || profile.qb_custom_filter_match);
 
     const routeWhere = String(req?.query?.where || '').trim();
     const manualWhere = whereClauses.length > 0 ? whereClauses.join(' AND ') : '';
@@ -426,7 +356,7 @@ module.exports = async (req, res) => {
     if (typeof profileFilterClauses !== 'undefined' && profileFilterClauses.length > 0) {
       const groupedProfileClause = profileFilterClauses.length === 1
         ? profileFilterClauses[0]
-        : `(${profileFilterClauses.join(` ${activeFilterMatch === 'ANY' ? 'OR' : 'AND'} `)})`;
+        : `(${profileFilterClauses.join(` ${profileFilterMatch === 'ANY' ? 'OR' : 'AND'} `)})`;
       if (groupedProfileClause) conditions.push(groupedProfileClause);
     }
     // 4. Search Bar Logic
@@ -479,7 +409,7 @@ module.exports = async (req, res) => {
           .map((f) => fieldsMetaById[String(f.id)] || { id: Number(f.id), label: String(f.label || '').trim() })
           .filter((f) => Number.isFinite(f.id) && String(f.label || '').trim());
 
-    const orderedEffectiveFields = sortFieldsByProfileOrder(effectiveFields, effectiveCustomColumns);
+    const orderedEffectiveFields = sortFieldsByProfileOrder(effectiveFields, profileQuickbaseConfig.customColumns || profileQuickbaseConfig.qb_custom_columns || profile.qb_custom_columns);
 
     const columns = (Array.isArray(out.records) && out.records.length)
       ? orderedEffectiveFields
@@ -531,13 +461,11 @@ module.exports = async (req, res) => {
         },
         appliedWhere: finalWhere || null,
         appliedDynamicFilters: {
-          tab_id: reqTabId || null,
-          reportLink: reqReportLink || null,
           assignedTo: assignedToFilter,
           caseStatus: caseStatusFilter,
           type: typeFilter,
           custom: profileFilterClauses,
-          customMatch: activeFilterMatch,
+          customMatch: profileFilterMatch,
           search,
           searchFieldIds: searchableFieldIds
         }

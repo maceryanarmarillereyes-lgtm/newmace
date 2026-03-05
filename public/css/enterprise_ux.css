@@ -4952,20 +4952,3 @@ body.members-fullscreen-active .tooltip{
   .qb-header-search-wrap{ order:3; width:100%; max-width:none; }
   .qb-header-search{ width:100%; }
 }
-
-/* === MY QUICKBASE TABLE SCROLL FIX === */
-.qb-table-wrapper,
-.monitoring-table-container,
-.qb-records-table-wrap,
-[data-qb-table-container] {
-  overflow-x: auto !important;
-  overflow-y: auto !important;
-  max-height: calc(100vh - 300px) !important;
-  min-height: 150px;
-  -webkit-overflow-scrolling: touch;
-}
-
-.qb-records-table,
-.monitoring-table {
-  min-width: 600px;
-}
