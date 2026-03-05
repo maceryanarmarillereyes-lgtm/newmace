@@ -1847,15 +1847,7 @@
       const activeTabConfig = window.TabManager && typeof window.TabManager.getTab === 'function'
         ? (((window.TabManager.getTab(activeTabId) || {}).settings) || {})
         : {};
-      // FIX[Bug3]: Fallback to state.quickbaseSettings when TabManager doesn't have the tab loaded
-      // (happens when tabs come from Supabase profile but aren't yet seeded into TabManager's localStorage)
-      const stateTabSettingsForGuard = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[activeTabId]
-        ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId], {})
-        : createDefaultSettings({}, {});
-      const activeReportLink = String(
-        activeTabConfig.reportLink || activeTabConfig.qb_report_link ||
-        stateTabSettingsForGuard.reportLink || ''
-      ).trim();
+      const activeReportLink = String(activeTabConfig.reportLink || activeTabConfig.qb_report_link || '').trim();
       if (!activeReportLink) {
         const recordsContainer = document.querySelector('[data-qb-records-container]')
           || document.querySelector('.qb-records-body')
