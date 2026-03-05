@@ -81,7 +81,15 @@
     try {
       if (window.Store && typeof Store.getSession === 'function') {
         const s = Store.getSession();
-        const t = s && (s.access_token || (s.session && s.session.access_token));
+        const t = s && (s.access_token || (s.session && s.session.access_token) || (s.data && s.data.session && s.data.session.access_token));
+        if (t) return String(t);
+      }
+    } catch (_) {}
+    try {
+      const raw = window.localStorage && window.localStorage.getItem('mums_supabase_session');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const t = parsed && (parsed.access_token || (parsed.session && parsed.session.access_token));
         if (t) return String(t);
       }
     } catch (_) {}

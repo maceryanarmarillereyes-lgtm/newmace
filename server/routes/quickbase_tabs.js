@@ -9,6 +9,13 @@ function normalizeTabId(raw) {
   return String(raw || '').trim();
 }
 
+
+function tabIdFromUrlPath(url) {
+  const raw = String(url || '').split('?')[0];
+  const match = raw.match(/\/quickbase_tabs\/([^/]+)$/i);
+  return normalizeTabId(match && match[1] ? decodeURIComponent(match[1]) : '');
+}
+
 function normalizeRow(row) {
   const src = row && typeof row === 'object' ? row : {};
   const settings = src.settings_json && typeof src.settings_json === 'object' ? src.settings_json : {};
@@ -73,7 +80,7 @@ async function upsertTab(req, res) {
 
 async function deleteTab(req, res, params) {
   const userId = normalizeUserId(req?.query?.user_id || req?.body?.user_id);
-  const tabId = normalizeTabId(params?.tab_id || req?.query?.tab_id || req?.body?.tab_id);
+  const tabId = normalizeTabId(params?.tab_id || req?.query?.tab_id || req?.body?.tab_id || tabIdFromUrlPath(req?.url));
   if (!userId || !tabId) return sendJson(res, 400, { ok: false, error: 'missing_user_or_tab_id' });
 
   const q = `user_id=eq.${encodeURIComponent(userId)}&tab_id=eq.${encodeURIComponent(tabId)}`;
