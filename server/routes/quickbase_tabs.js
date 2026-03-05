@@ -77,7 +77,7 @@ async function deleteTab(req, res, params) {
   if (!userId || !tabId) return sendJson(res, 400, { ok: false, error: 'missing_user_or_tab_id' });
 
   const q = `user_id=eq.${encodeURIComponent(userId)}&tab_id=eq.${encodeURIComponent(tabId)}`;
-  const out = await serviceFetch(`/quickbase_tabs?${q}`, { method: 'DELETE' });
+  const out = await serviceFetch(`/rest/v1/quickbase_tabs?${q}`, { method: 'DELETE' });
   if (!out.ok) return sendJson(res, 500, { ok: false, error: 'quickbase_tabs_delete_failed', details: out.json || out.text });
 
   return sendJson(res, 200, { ok: true, deleted: { user_id: userId, tab_id: tabId } });
