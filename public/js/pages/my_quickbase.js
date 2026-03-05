@@ -1912,18 +1912,10 @@
       const reloadBtn = root.querySelector('#qbReloadBtn');
 
       const activeTabId = String(getActiveTabId() || '').trim();
-      const activeTabConfig = window.TabManager && typeof window.TabManager.getTab === 'function'
-        ? (((window.TabManager.getTab(activeTabId) || {}).settings) || {})
-        : {};
-      // FIX[Bug3]: Fallback to state.quickbaseSettings when TabManager doesn't have the tab loaded
-      // (happens when tabs come from Supabase profile but aren't yet seeded into TabManager's localStorage)
       const stateTabSettingsForGuard = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[activeTabId]
         ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId], {})
         : createDefaultSettings({}, {});
-      const activeReportLink = String(
-        activeTabConfig.reportLink || activeTabConfig.qb_report_link ||
-        stateTabSettingsForGuard.reportLink || ''
-      ).trim();
+      const activeReportLink = String(stateTabSettingsForGuard.reportLink || '').trim();
       if (!activeReportLink) {
         const recordsContainer = document.querySelector('[data-qb-records-container]')
           || document.querySelector('.qb-records-body')
@@ -1933,6 +1925,7 @@
         if (recordsContainer) {
           recordsContainer.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(255,255,255,0.5);font-size:15px;">No records Loaded — Please configure a Report Link in Settings.</div>';
         }
+        if (meta) meta.textContent = 'No Report Link configured';
         return;
       }
 
@@ -1943,6 +1936,11 @@
         if (meta) meta.textContent = 'Loading...';
       }
 
+      // Stale-response guard: stamp this load with the current tab ID.
+      // If the tab changes while the fetch is in-flight, the response is discarded.
+      const loadToken = activeTabId;
+      state._currentLoadToken = loadToken;
+
       quickbaseLoadInFlight = (async () => {
         if (reloadBtn) reloadBtn.disabled = true;
         const startedAt = performance.now();
@@ -1950,15 +1948,16 @@
           if (!window.QuickbaseAdapter || typeof window.QuickbaseAdapter.fetchMonitoringData !== 'function') {
             throw new Error('Quickbase adapter unavailable');
           }
-          const activeTab = getActiveTab();
-          const activeTabId = String(activeTab && activeTab.id || getActiveTabId() || '').trim();
-          const managerTab = tabManager && activeTabId && typeof tabManager.getTab === 'function' ? tabManager.getTab(activeTabId) : null;
-          const managerTabSettings = managerTab && managerTab.settings ? managerTab.settings : null;
-          const freshTabSettings = managerTabSettings
-            ? createDefaultSettings(managerTabSettings, {})
-            : (state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[activeTabId]
-              ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[activeTabId], {})
-              : createDefaultSettings(activeTab, {}));
+          // Snapshot tab ID for stale-response check inside the async block
+          const thisLoadTabId = loadToken;
+
+          // ── ALWAYS use state.quickbaseSettings.settingsByTabId as the single source of truth.
+          // TabManager (managerTab) is a secondary write-through cache and MUST NOT override
+          // state.settingsByTabId — it may not be seeded for all tabs and can return stale defaults.
+          const freshTabSettings = state.quickbaseSettings.settingsByTabId && state.quickbaseSettings.settingsByTabId[thisLoadTabId]
+            ? createDefaultSettings(state.quickbaseSettings.settingsByTabId[thisLoadTabId], {})
+            : createDefaultSettings({}, {});
+
           const reportLink = String(freshTabSettings.reportLink || '').trim();
           if (!reportLink) {
             state.allAvailableFields = [];
@@ -1973,6 +1972,7 @@
           }
           const shouldApplyFilters = shouldApplyServerFilters(opts);
           const tabCustomFilters = Array.isArray(freshTabSettings.customFilters) ? normalizeFilters(freshTabSettings.customFilters) : [];
+
           const tabFilterMatch = normalizeFilterMatch(freshTabSettings.filterMatch);
           const mergedFilters = shouldApplyFilters ? tabCustomFilters : [];
           // Derive qid/tableId/realm from reportLink if not explicitly set on the tab
@@ -2044,15 +2044,24 @@
             filterMatch: tabFilterMatch,
             search: ''
           });
+
+          // ── STALE-RESPONSE GUARD ─────────────────────────────────────────
+          // If the user switched tabs while this fetch was in-flight, discard
+          // the response — it belongs to a different tab.
+          if (state._currentLoadToken !== thisLoadTabId) {
+            console.info('[Quickbase] discarding stale response for tab', thisLoadTabId, '(now on', state._currentLoadToken, ')');
+            return;
+          }
+
           state.allAvailableFields = Array.isArray(data && data.allAvailableFields) ? data.allAvailableFields : [];
           renderColumnGrid();
           renderFilters();
           const incomingColumns = Array.isArray(data && data.columns) ? data.columns : [];
           const incomingRecords = Array.isArray(data && data.records) ? data.records : [];
           state.baseRecords = incomingRecords.slice();
-          if (activeTabId) {
+          if (thisLoadTabId) {
             state._tabDataCache = Object.assign({}, state._tabDataCache || {}, {
-              [activeTabId]: Object.assign({}, state._tabDataCache && state._tabDataCache[activeTabId] || {}, {
+              [thisLoadTabId]: Object.assign({}, state._tabDataCache && state._tabDataCache[thisLoadTabId] || {}, {
                 cachedRows: incomingRecords.slice()
               })
             });
@@ -2067,7 +2076,7 @@
             columns: incomingColumns,
             records: state.baseRecords.slice(),
             allAvailableFields: state.allAvailableFields
-          }, activeTabId);
+          }, thisLoadTabId);
           // FIX: [Issue 2] - Progressive background fetch for full dataset.
           if (requestLimit < QUICKBASE_BACKGROUND_LIMIT && !hasExplicitLoadMore && !hasActiveSearch) {
             setTimeout(async () => {
@@ -2434,6 +2443,16 @@
       // Do NOT override state with tabManager.getTab() after this — TabManager is
       // a secondary cache and may return empty defaults if the tab was not seeded.
       syncStateFromActiveTab();
+
+      // ── FIX BUG 2: Render dashboard counters immediately after sync ──────
+      // Counters are stored in state.dashboardCounters after syncStateFromActiveTab().
+      // We render them right away so they appear even before records finish loading.
+      // Pass baseRecords from cache (may be empty if no cache — that's OK, count = 0).
+      renderDashboardCounters(root, state.baseRecords, { dashboard_counters: state.dashboardCounters }, state, (idx) => {
+        state.activeCounterIndex = state.activeCounterIndex === idx ? -1 : idx;
+        state.currentPage = 1;
+        applySearchAndRender();
+      });
 
       // SMART LOADING: if fresh cache exists for this tab, render immediately
       // without showing a loading spinner. Only show loading if no cache.
