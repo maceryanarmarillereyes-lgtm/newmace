@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <base href="/" />
+  <script>
+    // Root access must always load the login page.
+    // Keep the SPA router intact for /dashboard, /members, etc.
+    // This runs before any heavy assets load to avoid UI flashes.
+    (function(){
+      try {
+        const p = String(location.pathname || '/').toLowerCase();
+        if (p === '/' || p === '/login' || p === '/login/' || p === '/index' || p === '/index/') {
+          location.replace('/login.html');
+        }
+      } catch (_) {}
+    })();
+  </script>
+  <title>MUMS | MUMS User Management System</title><link rel="stylesheet" href="/css/styles.css?v=p1-516" />
+  <link rel="stylesheet" href="/css/mailbox.css?v=p1-516" />
+  <link rel="stylesheet" href="/css/enterprise_ux.css?v=p1-516" />
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="topbrand" aria-label="MUMS">
+        <div class="brand-mark" aria-hidden="true">
+          <button class="btn ghost iconbtn sidebar-toggle-overlay" id="sidebarToggle" type="button" title="Toggle sidebar (click) / Pin rail (double-click)" aria-label="Toggle sidebar">
+            <span class="ico" data-ico="menu" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="brand-text">
+          <div class="brand-name">MUMS</div>
+          <div class="brand-sub">MUMS User Management System</div>
+          <div class="brand-build">Build ID: <span data-build-label></span></div>
+        </div>
+      </div>
+
+      <div class="topbar-center">
+        <div id="reminderFloatHost" class="reminder-float-host" aria-live="polite"></div>
+        <div class="announce-bar" id="announceBar" style="visibility:hidden" title="Click to read full announcement">
+          <div class="announce-left">
+            <div class="announce-avatar" id="announceAvatar" aria-hidden="true"></div>
+            <div class="announce-who" id="announceWho"></div>
+          </div>
+          <div class="announce-body">
+            <div class="announce-title" id="announceTitle">Announcement</div>
+            <div class="announce-msg" id="announceMsg">—</div>
+            <div class="announce-meta small" id="announceMeta" style="opacity:.9">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <div class="top-global-search" role="search">
+          <span class="ico" data-ico="search" aria-hidden="true"></span>
+          <input id="globalSearchInput" type="text" placeholder="Search…" autocomplete="off" aria-label="Global search (Ctrl+K)" />
+          <button class="btn ghost iconbtn" id="globalSearchBtn" type="button" title="Global search (Ctrl+K)" aria-label="Open global search"><span class="ico" data-ico="search" aria-hidden="true"></span></button>
+        </div>
+        <button class="btn ghost iconbtn" id="releaseNotesBtn" type="button" title="Release Notes" aria-label="Release Notes"><span class="ico" data-ico="notes" aria-hidden="true"></span></button>
+        <button class="btn ghost iconbtn" id="dictionaryBtn" type="button" title="MUMS Dictionary" aria-label="MUMS Dictionary"><span class="ico" data-ico="book" aria-hidden="true"></span></button>
+<button class="btn ghost iconbtn" id="settingsBtn" type="button" title="Settings" aria-label="Settings"><span class="ico" data-ico="gear" aria-hidden="true"></span></button>
+        <div id="realtimeSyncStatus" class="sync-status" title="Realtime Sync Status">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="label">Sync:</span>
+          <span class="state">—</span>
+        </div>
+        <button class="btn" id="logoutBtn" type="button">Logout</button>
+      </div>
+    </div>
+
+    <aside class="side card pad">
+      <div class="usercard" id="userCard"></div>
+      <!-- Timezone is shown inside the compact profile card to maximize nav space -->
+      <nav class="nav" id="nav"></nav>
+
+      <div class="side-logs side-logs-minimal" id="sideLogs">
+        <button class="btn ghost side-logs-viewall" id="sideLogsViewAll" type="button">View All Activity</button>
+      </div>
+    </aside>
+
+    <main class="main card pad" id="main"></main>
+
+    <aside class="right card pad" id="rightbar">
+      <div id="right-sidebar-container">
+        <hr style="border: 0; border-top: 1px solid rgba(255, 255, 255, 0.1); margin: 24px 0 16px 0; width: 100%; display: block;" />
+<button id="btn-controller-lab" onclick="window.open('/controller_lab.html', '_blank')" style="width: 100%; padding: 12px 16px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: #ffffff; cursor: pointer; text-align: center; font-weight: 600; font-size: 14px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: all 0.2s ease-in-out; display: flex; align-items: center; justify-content: center; gap: 10px; box-sizing: border-box;" onmouseover="this.style.background='rgba(255, 255, 255, 0.1)'; this.style.borderColor='rgba(255, 255, 255, 0.2)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.05)'; this.style.borderColor='rgba(255, 255, 255, 0.1)';">
+  <i class="fas fa-gamepad" style="font-size: 16px;"></i> Controller Lab
+</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Online users status bar (above the quick links bar) -->
+  <div class="online-users-bar" id="onlineUsersBar" aria-label="Online users" role="region"></div>
+
+  <!-- Bottom quick links bar (10 customizable circles) -->
+  <div class="quicklinks-bar" id="quickLinksBar" aria-label="Quick links" role="navigation">
+    <!-- World clocks (left side) -->
+    <div class="clocks-wrap" id="worldClocks" aria-label="World clocks"></div>
+    <div class="quicklinks-inner" id="quickLinksInner"></div>
+  </div>
+
+  <div class="modal" id="topAnnModal">
+    <div class="panel">
+      <div class="head">
+        <div>
+          <div class="announce-title" id="annModalTitle">Announcement</div>
+          <div class="small">Full description</div>
+        </div>
+        <button class="btn ghost" type="button" data-close="topAnnModal">✕</button>
+      </div>
+      <div class="body" id="annModalBody" style="white-space:pre-wrap"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="settingsModal">
+    <div class="panel">
+      <div class="head">
+        <div>
+          <div class="announce-title">Settings</div>
+          <div class="small">Manage profile and notification sound.</div>
+        </div>
+        <button class="btn ghost" type="button" data-close="settingsModal">✕</button>
+      </div>
+      <div class="body">
+        <div class="settings-grid">
+          <div class="settings-card">
+            <div class="settings-card-title">Profile</div>
+            <div class="small muted" style="margin-top:6px">Update your photo and display name.</div>
+            <div style="margin-top:10px">
+              <button class="btn primary" id="openProfileBtn" type="button">Open Profile Settings</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Notification Sound</div>
+            <div class="small muted" style="margin-top:6px">Adjust sound type and volume for pop-up notifications.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openSoundBtn" type="button">Open Sound Settings</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Theme</div>
+            <div class="small muted" style="margin-top:6px">Choose a professional color theme for MUMS.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openThemeBtn" type="button">Open Theme Settings</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Quick Links</div>
+            <div class="small muted" style="margin-top:6px">Set up to 10 favorite links shown on the bottom bar.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openLinksBtn" type="button">Manage Quick Links</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Cursor</div>
+            <div class="small muted" style="margin-top:6px">Choose between the custom in-app cursor or your system cursor.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openCursorBtn" type="button">Cursor settings</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Sidebar</div>
+            <div class="small muted" style="margin-top:6px">Collapse the menu for compact navigation.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openSidebarBtn" type="button">Sidebar settings</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">Data tools</div>
+            <div class="small muted" style="margin-top:6px">Export, import, and validate offline local storage.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openDataToolsBtn" type="button">Open data tools</button>
+            </div>
+          </div>
+
+          <div class="settings-card" id="timeOverrideCard" style="display:none">
+            <div class="settings-card-title">Mailbox Time Override</div>
+            <div class="small muted" style="margin-top:6px">Super Admin testing tool: override Manila time used in the Mailbox screen.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openMailboxTimeBtn" type="button">Configure Mailbox Time</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">World Clocks</div>
+	            <div class="small muted" style="margin-top:6px">Configure clocks for regions or fixed GMT offsets (label, style, colors, alarms).</div>
+            <div style="margin-top:10px">
+	              <div class="row" style="gap:8px;flex-wrap:wrap">
+	                <button class="btn" id="openClocksBtn" type="button">Configure Clocks</button>
+	                <button class="btn ghost" id="openGmtOverviewPageBtn" type="button">Open GMT Overview</button>
+	              </div>
+            </div>
+          </div>
+
+          <div class="settings-card" id="systemCheckCard" style="display:none">
+            <div class="settings-card-title">System Check</div>
+            <div class="small muted" style="margin-top:6px">Run diagnostics, tests, and auto-fixes. Available to Super Admin and Super User.</div>
+            <div style="margin-top:10px">
+              <button class="btn" id="openSystemCheckBtn" type="button">Run System Check</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="systemCheckModal">
+    <div class="panel" style="max-width:980px">
+      <div class="head">
+        <div>
+          <div class="announce-title">System Check</div>
+          <div class="small">Diagnostics, smoke tests, and safe auto-fixes for offline storage and configuration.</div>
+        </div>
+        <button class="btn ghost" type="button" data-close="systemCheckModal">✕</button>
+      </div>
+      <div class="body">
+        <div class="syscheck-top">
+          <div class="syscheck-status">
+            <div class="h2" style="margin:0">Status: <span id="syscheckState">Ready</span></div>
+            <div class="small muted" style="margin-top:6px">This runs locally in your browser and does not send data anywhere.</div>
+          </div>
+          <div class="syscheck-actions">
+            <div class="syscheck-timer">
+              <div class="small muted">Estimated time</div>
+              <div class="h2" style="margin:4px 0 0"><span id="syscheckCountdown">—</span>s</div>
+            </div>
+            <button class="btn" id="syscheckRunBtn" type="button">Run</button>
+            <button class="btn ghost" id="syscheckClearResolvedBtn" type="button" title="Remove resolved error logs from Activity Logs">Clear resolved errors</button>
+          </div>
+        </div>
+
+        <div class="syscheck-progress" style="margin-top:12px">
+          <div class="bar"><div class="fill" id="syscheckFill" style="width:0%"></div></div>
+          <div class="small muted" id="syscheckHint" style="margin-top:8px">Press Run to start diagnostics.</div>
+        </div>
+
+        <div class="syscheck-results" style="margin-top:14px">
+          <div class="row" style="justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-end">
+            <div>
+              <div class="settings-card-title">Findings</div>
+              <div class="small muted" style="margin-top:6px">Each finding includes impact and recommendations. Severity is Critical or Minor.</div>
+            </div>
+            <div class="row" style="gap:8px;flex-wrap:wrap">
+              <span class="pill" id="syscheckCriticalPill">Critical: 0</span>
+              <span class="pill" id="syscheckMinorPill">Minor: 0</span>
+            </div>
+          </div>
+          <div id="syscheckList" style="margin-top:12px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="modal" id="mailboxTimeModal">
+    <div class="panel" style="max-width:720px">
+      <div class="head">
+        <div>
+          <div class="announce-title">Mailbox Time Override</div>
+          <div class="small">Super Admin testing tool. Overrides Manila time used on the Mailbox screen. Scope can be Super Admin only or Global (affects all users on this device).</div>
+        </div>
+        <button class="btn ghost" type="button" data-close="mailboxTimeModal">✕</button>
+      </div>
+      <div class="body">
+        <div class="small muted" id="mbTimeSys" style="margin-bottom:8px"></div>
+
+        <div class="time-override-preview">
+          <div class="small muted">Effective mailbox time</div>
+          <div class="timer" id="mbTimeClock">--:--:--</div>
+          <div class="small" id="mbTimeClockDate" style="margin-top:2px"></div>
+          <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px">
+            <button class="btn" type="button" data-mbshift="-3600000">-1h</button>
+            <button class="btn" type="button" data-mbshift="-900000">-15m</button>
+            <button class="btn" type="button" data-mbshift="900000">+15m</button>
+            <button class="btn" type="button" data-mbshift="3600000">+1h</button>
+            <button class="btn" type="button" id="mbTimeSetNow">Set to system Manila now</button>
+          </div>
+        </div>
+        <div class="grid2">
+          <div>
+            <label class="small">Override date &amp; time (Manila)</label>
+            <input class="input" type="datetime-local" id="mbTimeInput" />
+          </div>
+          <div>
+            <label class="small">Mode</label>
+            <label class="row small" style="gap:10px;align-items:center;margin-top:8px">
+              <input type="checkbox" id="mbTimeFreeze" />
+              <span>Freeze time</span>
+            </label>
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <label class="small">Override scope</label>
+          <select class="input" id="mbTimeScope" style="margin-top:6px">
+            <option value="sa_only">Super Admin only</option>
+            <option value="global">Global (all users)</option>
+          </select>
+          <div class="small muted" style="margin-top:6px">Global scope affects every user session on this device/browser. Use only for controlled testing.</div>
+        </div>
+        <div class="row" style="gap:12px;flex-wrap:wrap;margin-top:12px;align-items:center">
+          <label class="row small" style="gap:10px;align-items:center">
+            <input type="checkbox" id="mbTimeEnabled" />
+            <span>Enable override</span>
+          </label>
+          <div class="small muted" id="mbTimeEffective"></div>
+        </div>
+        <div class="err" id="mbTimeErr"></div>
+        <div class="row" style="justify-content:flex-end;gap:10px;margin-top:14px">
+          <b
+(Content truncated due to size limit. Use line ranges to read remaining content)
