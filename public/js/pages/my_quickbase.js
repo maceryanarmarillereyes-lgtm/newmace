@@ -373,9 +373,15 @@
     const opts = options && typeof options === 'object' ? options : {};
     const hasBackendTabs = hasPersistedQuickbaseTabs(opts.backendQuickbaseSettings);
     const hasWindowMeTabs = hasPersistedQuickbaseTabs(opts.windowMeQuickbaseSettings);
+    // ISOLATION FIX: Always prefer backend (Supabase) as the authoritative source.
+    // Backend tab IDs are the canonical IDs — local cache may have mismatched IDs
+    // causing settingsByTabId lookups to fail on tab switch.
     if (hasBackendTabs) return deepClone(opts.backendQuickbaseSettings);
     if (hasWindowMeTabs) return deepClone(opts.windowMeQuickbaseSettings);
-    return deepClone(opts.localQuickbaseSettings || opts.backendQuickbaseSettings);
+    // Only use local if backend has no usable config
+    const hasLocalTabs = hasPersistedQuickbaseTabs(opts.localQuickbaseSettings);
+    if (hasLocalTabs) return deepClone(opts.localQuickbaseSettings);
+    return deepClone(opts.backendQuickbaseSettings);
   }
 
   function getQuickbaseSettingsLocalKey(userId) {
@@ -573,12 +579,34 @@
 
     const headers = columns.map((c) => `<th>${esc(c.label || c.id || 'Field')}</th>`).join('');
     const rowStartIndex = (activePage - 1) * pageSize;
+
+    // ── CASE STATUS COLOR BADGE RENDERER ────────────────────────────────
+    function renderStatusBadge(rawStatus) {
+      const s = String(rawStatus || '').trim();
+      if (!s || s === 'N/A') return `<span class="qb-status-badge qb-status-default">${esc(s || '—')}</span>`;
+      const sl = s.toLowerCase();
+      let cls = 'qb-status-default';
+      if (sl.includes('investigating'))                                 cls = 'qb-status-investigating';
+      else if (sl.includes('waiting for customer') || sl.includes('waiting'))  cls = 'qb-status-waiting';
+      else if (sl.includes('soft close') || sl.includes('soft-close')) cls = 'qb-status-soft-close';
+      else if (sl.includes('initial inquiry'))                          cls = 'qb-status-initial';
+      else if (sl.includes('response received') || sl.includes('for support')) cls = 'qb-status-response';
+      else if (sl.includes('closed') || sl.startsWith('c -'))          cls = 'qb-status-closed';
+      else if (sl.startsWith('s -'))                                    cls = 'qb-status-soft-close';
+      else if (sl.startsWith('o -'))                                    cls = 'qb-status-investigating';
+      return `<span class="qb-status-badge ${cls}"><span class="qb-status-dot"></span>${esc(s)}</span>`;
+    }
+
     const body = visibleRows.map((r, rowIdx) => {
       const globalRowNum = rowStartIndex + rowIdx + 1;
       const cells = columns.map((c) => {
         const field = r && r.fields ? r.fields[String(c.id)] : null;
         const rawValue = field && field.value != null ? field.value : 'N/A';
         const normalizedLabel = String(c && c.label || '').trim().toLowerCase();
+        // Case Status gets color badge treatment
+        if (normalizedLabel === 'case status' || normalizedLabel === 'status') {
+          return `<td>${renderStatusBadge(String(rawValue))}</td>`;
+        }
         const value = (normalizedLabel === 'last update days' || normalizedLabel === 'age')
           ? toDurationLabel(rawValue)
           : String(rawValue);

@@ -4349,3 +4349,118 @@ body[data-theme="aurora_midnight"]{
 body[data-theme="mono"]{
   --surface-bg:#0b0c10;--surface-bg-alt:#111318;--surface-card:#13151b;--surface-card-alt:#0f1116;--surface-modal:#13151b;--text-primary:#f3f4f6;--text-muted:#b7bcc6;--text-inverse:#0f172a;--accent-primary:#a3a3a3;--accent-primary-hover:#8f8f8f;--accent-border:rgba(255,255,255,.10);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MUMS GLOBAL ENTERPRISE UI v3 — Layout & Component Polish
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── TOPBAR GRADIENT ACCENT LINE ── */
+.topbar {
+  position: relative;
+}
+.topbar::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(59,130,246,0.4) 25%,
+    rgba(139,92,246,0.4) 75%,
+    transparent 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── SIDEBAR NAV ITEMS ── */
+.nav a {
+  border-radius: 10px;
+  transition: all 0.14s ease;
+  font-size: 13px;
+  font-weight: 500;
+  position: relative;
+  overflow: hidden;
+}
+.nav a.active {
+  background: linear-gradient(90deg, rgba(59,130,246,0.18), rgba(59,130,246,0.06)) !important;
+  border: 1px solid rgba(59,130,246,0.22) !important;
+  color: #60a5fa !important;
+  font-weight: 700 !important;
+}
+.nav a.active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 22%; bottom: 22%;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(180deg, #3b82f6, #6366f1);
+  box-shadow: 0 0 8px rgba(59,130,246,0.5);
+}
+
+/* ── MAIN CONTENT AREA ── */
+.main.card.pad {
+  border: 1px solid rgba(255,255,255,0.07) !important;
+  background: linear-gradient(160deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)) !important;
+}
+
+/* ── ANNOUNCEMENT BAR UPGRADE ── */
+.announce-bar {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px !important;
+  transition: all 0.15s !important;
+}
+.announce-bar::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, #f59e0b, #f97316);
+  border-radius: 0 2px 2px 0;
+}
+.announce-bar:hover {
+  border-color: rgba(255,255,255,0.14) !important;
+  background: rgba(255,255,255,0.04) !important;
+}
+
+/* ── LOGOUT BUTTON POLISH ── */
+#logoutBtn {
+  background: rgba(239,68,68,0.08) !important;
+  border-color: rgba(239,68,68,0.2) !important;
+  color: #f87171 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  border-radius: 9px !important;
+  transition: all 0.14s !important;
+}
+#logoutBtn:hover {
+  background: rgba(239,68,68,0.16) !important;
+  border-color: rgba(239,68,68,0.35) !important;
+  box-shadow: 0 4px 12px rgba(239,68,68,0.2) !important;
+}
+
+/* ── PILL/BADGE GLOBAL ── */
+.pill {
+  border-radius: 6px !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
+}
+
+/* ── MODAL BACKDROP ── */
+.modal {
+  backdrop-filter: blur(10px) !important;
+}
+
+/* ── GLOBAL SEARCH BAR ── */
+.top-global-search {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid rgba(255,255,255,0.09) !important;
+  border-radius: 10px !important;
+  transition: all 0.15s !important;
+}
+.top-global-search:focus-within {
+  border-color: rgba(59,130,246,0.4) !important;
+  background: rgba(255,255,255,0.06) !important;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1) !important;
+}
