@@ -1607,6 +1607,161 @@ function _mbxReadJwt(){
     }catch(_){}
   }
 
+  function _populateCaseActionTargets(modal, ownerId){
+    try{
+      if(!modal) return;
+      const sel = modal.querySelector('#mbxCaseActionReassign');
+      if(!sel) return;
+      const { table } = ensureShiftTables();
+      const members = Array.isArray(table?.members) ? table.members : [];
+      const options = members
+        .filter(m=>m && String(m.id||'') && String(m.id||'') !== String(ownerId||''))
+        .map(m=>{
+          const id = String(m.id||'').trim();
+          const name = String(m.name||m.username||id).trim() || id;
+          return `<option value="${id.replace(/"/g,'&quot;')}">${name.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</option>`;
+        })
+        .join('');
+      sel.innerHTML = `<option value="">Select member...</option>${options}`;
+      sel.disabled = !options;
+    }catch(_){ }
+  }
+
+  function ensureCaseActionModalMounted(){
+    try{
+      if(document.getElementById('mbxCaseActionModal')) return;
+
+      const host = document.createElement('div');
+      host.className = 'mbx-custom-backdrop';
+      host.id = 'mbxCaseActionModal';
+      host.innerHTML = `
+        <div class="mbx-modal-glass" style="max-width:540px;">
+          <div class="mbx-modal-head">
+            <h3 style="color:#f8fafc; margin:0;">🧩 Case Action</h3>
+            <button class="btn-glass btn-glass-ghost" type="button" data-close="mbxCaseActionModal">✕ Close</button>
+          </div>
+          <div class="mbx-modal-body">
+            <div style="background:rgba(255,255,255,0.02); padding:12px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); margin-bottom:12px;">
+              <div style="font-size:12px; color:#94a3b8;">Case # <strong id="mbxCaseActionNo" style="color:#e2e8f0;">—</strong></div>
+              <div style="font-size:12px; color:#94a3b8; margin-top:4px;">Current owner: <strong id="mbxCaseActionOwner" style="color:#38bdf8;">—</strong></div>
+            </div>
+
+            <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Reassign to</label>
+            <select id="mbxCaseActionReassign" class="mbx-input" style="margin-bottom:14px;"></select>
+
+            <div style="display:flex; gap:10px;">
+              <button id="mbxCaseActionReassignBtn" class="btn-glass btn-glass-primary" type="button" style="flex:1;">Reassign</button>
+              <button id="mbxCaseActionDeleteBtn" class="btn-glass" type="button" style="flex:1; border-color:rgba(239,68,68,0.55); color:#fecaca;">Delete Case</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(host);
+
+      host.addEventListener('click', e=>{
+        if(e.target.closest('[data-close="mbxCaseActionModal"]')){
+          e.preventDefault();
+          e.stopPropagation();
+          _closeCustomModal('mbxCaseActionModal');
+        }
+      });
+
+      const reassignBtn = host.querySelector('#mbxCaseActionReassignBtn');
+      if(reassignBtn){
+        reassignBtn.addEventListener('click', async ()=>{
+          if(_reassignBusy || _caseActionBusy || !_caseActionCtx?.assignmentId) return;
+          const sel = host.querySelector('#mbxCaseActionReassign');
+          const newAssigneeId = String(sel?.value||'').trim();
+          if(!newAssigneeId){
+            alert('Please select a new member for reassignment.');
+            return;
+          }
+
+          try{
+            _reassignBusy = true;
+            reassignBtn.disabled = true;
+            reassignBtn.textContent = 'Reassigning...';
+
+            const { shiftKey } = ensureShiftTables();
+            const res = await fetch('/api/mailbox/case_action', {
+              method:'POST',
+              headers:{ 'Content-Type':'application/json', ..._mbxAuthHeader() },
+              body: JSON.stringify({
+                action: 'reassign',
+                shiftKey,
+                assignmentId: _caseActionCtx.assignmentId,
+                newAssigneeId,
+                clientId: _mbxClientId()
+              })
+            });
+
+            if(!res.ok) throw new Error(await res.text().catch(()=>'Network error'));
+
+            const data = await res.json().catch(()=>({}));
+            const Store = window.Store;
+            if(Store && Store.saveMailboxTable && data && data.table) Store.saveMailboxTable(shiftKey, data.table);
+
+            _closeCustomModal('mbxCaseActionModal');
+            scheduleRender('case-reassign-success');
+
+            const UI = window.UI;
+            if(UI && UI.showToast) UI.showToast(`Case ${_caseActionCtx.caseNo || ''} reassigned`, 'success');
+          }catch(e){
+            alert(`Reassign failed: ${e.message}`);
+          }finally{
+            _reassignBusy = false;
+            reassignBtn.disabled = false;
+            reassignBtn.textContent = 'Reassign';
+          }
+        });
+      }
+
+      const deleteBtn = host.querySelector('#mbxCaseActionDeleteBtn');
+      if(deleteBtn){
+        deleteBtn.addEventListener('click', async ()=>{
+          if(_caseActionBusy || _reassignBusy || !_caseActionCtx?.assignmentId) return;
+          if(!window.confirm(`Delete case ${_caseActionCtx.caseNo || ''}?`)) return;
+
+          try{
+            _caseActionBusy = true;
+            deleteBtn.disabled = true;
+            deleteBtn.textContent = 'Deleting...';
+
+            const { shiftKey } = ensureShiftTables();
+            const res = await fetch('/api/mailbox/case_action', {
+              method:'POST',
+              headers:{ 'Content-Type':'application/json', ..._mbxAuthHeader() },
+              body: JSON.stringify({
+                action: 'delete',
+                shiftKey,
+                assignmentId: _caseActionCtx.assignmentId,
+                clientId: _mbxClientId()
+              })
+            });
+
+            if(!res.ok) throw new Error(await res.text().catch(()=>'Network error'));
+
+            const data = await res.json().catch(()=>({}));
+            const Store = window.Store;
+            if(Store && Store.saveMailboxTable && data && data.table) Store.saveMailboxTable(shiftKey, data.table);
+
+            _closeCustomModal('mbxCaseActionModal');
+            scheduleRender('case-delete-success');
+
+            const UI = window.UI;
+            if(UI && UI.showToast) UI.showToast(`Case ${_caseActionCtx.caseNo || ''} deleted`, 'success');
+          }catch(e){
+            alert(`Delete failed: ${e.message}`);
+          }finally{
+            _caseActionBusy = false;
+            deleteBtn.disabled = false;
+            deleteBtn.textContent = 'Delete Case';
+          }
+        });
+      }
+    }catch(_){ }
+  }
+
   function ensureAssignModalMounted(){
     try{
       if(document.getElementById('mbxAssignModal')) return;
@@ -1739,7 +1894,8 @@ function _mbxReadJwt(){
             if(!table.counts) table.counts = {};
             if(!table.counts[_assignUserId]) table.counts[_assignUserId] = {};
             table.counts[_assignUserId][activeBucket] = (Number(table.counts[_assignUserId][activeBucket])||0) + 1;
-            if(!table.assignments) table.assignments = [];\n            table.assignments.push(assignment);
+            if(!table.assignments) table.assignments = [];
+            table.assignments.push(assignment);
 
             if(Store && Store.saveMailboxTable) Store.saveMailboxTable(shiftKey, table);
 
@@ -1814,6 +1970,7 @@ function _mbxReadJwt(){
           const ownerSpan = modal.querySelector('#mbxCaseActionOwner');
           if(noSpan) noSpan.textContent = _caseActionCtx.caseNo;
           if(ownerSpan) ownerSpan.textContent = _caseActionCtx.ownerName;
+          _populateCaseActionTargets(modal, _caseActionCtx.ownerId);
 
           _openCustomModal('mbxCaseActionModal');
         });
@@ -1828,7 +1985,7 @@ function _mbxReadJwt(){
             btn.disabled = true;
             btn.textContent = 'Confirming...';
 
-            const res = await fetch('/api/mailbox/confirm-assignment', {
+            const res = await fetch('/api/mailbox/confirm', {
               method:'POST',
               headers:{ 'Content-Type':'application/json', ..._mbxAuthHeader() },
               body: JSON.stringify({ assignmentId: aid, clientId: _mbxClientId() })
