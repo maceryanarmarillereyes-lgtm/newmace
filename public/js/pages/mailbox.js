@@ -1739,7 +1739,8 @@ function _mbxReadJwt(){
             if(!table.counts) table.counts = {};
             if(!table.counts[_assignUserId]) table.counts[_assignUserId] = {};
             table.counts[_assignUserId][activeBucket] = (Number(table.counts[_assignUserId][activeBucket])||0) + 1;
-            if(!table.assignments) table.assignments = [];\n            table.assignments.push(assignment);
+            if(!table.assignments) table.assignments = [];
+            table.assignments.push(assignment);
 
             if(Store && Store.saveMailboxTable) Store.saveMailboxTable(shiftKey, table);
 
