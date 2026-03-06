@@ -127,6 +127,7 @@ function mapTeamMemberProfile(profile) {
     teamId: safeString(p.team_id, 80),
     role: normalizeRole(p.role),
     name: safeString(p.name || p.username || p.user_id, 120),
+    username: safeString(p.username || p.name || p.user_id, 120),
     avatarUrl: safeString(p.avatar_url || p.avatar || '', 500)
   };
 }

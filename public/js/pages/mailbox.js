@@ -406,6 +406,12 @@ function _mbxDutyTone(label){
   const _rosterByTeam  = {};   // { teamId: [{id,name,role,teamId,...}] }
   const _scheduleReady = {};   // { teamId: true } once first fetch completes
   const _syncInFlight  = {};   // guard against concurrent fetches per team
+  // _schedSyncPending: prevents re-triggering sync on every render while a sync
+  // is in-flight or already completed.  This MUST be declared here — accessing an
+  // undeclared variable throws a ReferenceError in strict mode (and in some browsers
+  // even in sloppy mode), which caused render() to crash for MEMBER-role users and
+  // prevented _bootRosterSync from ever running.
+  let _schedSyncPending = false;
 
   async function _mbxSyncTeamScheduleBlocks(teamId) {
     if (!teamId) return;
@@ -529,6 +535,8 @@ function _mbxDutyTone(label){
       // Silently degrade — show '—' for Mgr labels, partial roster visible
     } finally {
       _syncInFlight[teamId] = false;
+      // Reset pending flag so future renders can re-check (e.g. after shift change)
+      _schedSyncPending = false;
     }
   }
 
@@ -538,6 +546,7 @@ function _mbxDutyTone(label){
       delete _rosterByTeam[teamId];
       delete _scheduleReady[teamId];
       _syncInFlight[teamId] = false;
+      _schedSyncPending = false; // also reset the pending flag on team reset
     }
   }
 
@@ -1994,14 +2003,23 @@ function _mbxDutyTone(label){
     isManager = canAssignNow({ duty, nowParts });
     
     const mbxMgrName = _mbxFindScheduledManagerForBucket(table, (table.buckets||[]).find(b=>b.id===activeBucketId));
-    // If manager is still unknown and we haven't synced yet, trigger a background sync
-    if (mbxMgrName === '—' && !_schedSyncPending) {
-      try {
-        const _d = getDuty();
-        const _tid = String(_d && _d.current && _d.current.id ? _d.current.id : (table.meta && table.meta.teamId ? table.meta.teamId : ''));
-        if (_tid) _mbxSyncTeamScheduleBlocks(_tid);
-      } catch (_) {}
-    }
+
+    // Trigger background roster+schedule sync if:
+    //   (a) manager label is unknown (—), AND
+    //   (b) we haven't already completed a sync for this team (_scheduleReady), AND
+    //   (c) a sync isn't already in-flight (_syncInFlight), AND
+    //   (d) we haven't already requested a sync this render cycle (_schedSyncPending)
+    // This is the primary mechanism that makes Mgr labels visible for ALL role levels.
+    try {
+      const _syncTid = String(
+        (duty && duty.current && duty.current.id) ? duty.current.id
+          : (table.meta && table.meta.teamId ? table.meta.teamId : '')
+      );
+      if (_syncTid && !_scheduleReady[_syncTid] && !_syncInFlight[_syncTid] && !_schedSyncPending) {
+        _schedSyncPending = true;
+        _mbxSyncTeamScheduleBlocks(_syncTid);
+      }
+    } catch (_) { _schedSyncPending = false; }
 
     const globalOverrideLabelHtml = (function(){
       try{
@@ -2368,30 +2386,16 @@ function _mbxDutyTone(label){
     };
     tick();
     _timer = setInterval(()=>{ try{ tick(); }catch(e){ console.error('Mailbox tick', e); } }, 1000);
-
-    // ── Periodic re-sync every 3 min — keeps Mgr + Live Status fresh ─────────
-    (function _startScheduleSyncInterval() {
-      const INTERVAL = 3 * 60 * 1000; // 3 minutes
-      setInterval(() => {
-        try {
-          const d   = getDuty();
-          const tid = String(d && d.current && d.current.id ? d.current.id : '');
-          if (tid) _mbxSyncTeamScheduleBlocks(tid); // guard is inside the fn
-        } catch (_) {}
-      }, INTERVAL);
-    })();
   }
 
   // ── BOOT ─────────────────────────────────────────────────────────────────
   window.addEventListener('mums:store', onMailboxStoreEvent);
   window.addEventListener('storage',    onMailboxStorageEvent);
 
-  render();
-
   // ── Roster + schedule sync on first load ─────────────────────────────────
-  // Uses a retry backoff so it works even when the page loads before Auth/duty
-  // are fully initialised.  This is the ONLY place that fetches the team roster
-  // for non-privileged users — critical for Mgr labels and full roster display.
+  // MUST run BEFORE the first render() so MEMBER-role users have their team
+  // roster and schedule blocks in-flight when render fires.
+  // Uses retry backoff to handle pages that load before Auth/duty are ready.
   (function _bootRosterSync() {
     let attempts = 0;
     const maxAttempts = 5;
@@ -2414,6 +2418,24 @@ function _mbxDutyTone(label){
     }
     _attempt();
   })();
+
+  // ── Periodic re-sync every 3 min — keeps Mgr labels + Live Status fresh ──
+  // Registered ONCE here at boot (not inside startTimerLoop) to prevent a
+  // memory leak where every full re-render would add a new 3-minute interval.
+  (function _startScheduleSyncInterval() {
+    const INTERVAL = 3 * 60 * 1000;
+    setInterval(() => {
+      try {
+        const d   = getDuty();
+        const tid = String(d && d.current && d.current.id ? d.current.id : '');
+        if (tid) _mbxSyncTeamScheduleBlocks(tid);
+      } catch (_) {}
+    }, INTERVAL);
+  })();
+
+  // Initial render — wrapped in try/catch so any unexpected error never
+  // prevents cleanup registration below (root._cleanup must always be set).
+  try { render(); } catch(e) { console.error('Mailbox initial render error:', e); }
 
   root._cleanup = () => {
     try{ if(_timer) clearInterval(_timer); }catch(_){ }
