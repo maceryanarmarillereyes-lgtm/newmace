@@ -4420,10 +4420,63 @@ body[data-theme="aurora_midnight"] {
   font-family: var(--font);
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   ⚠️  AI GUARDRAIL — CRITICAL LAYOUT RULE FOR ALL THEMES
+   ══════════════════════════════════════════════════════════════════
+   RULE: Themes MUST NOT override structural layout properties.
+   Themes are ONLY allowed to change:
+     ✅ colors, backgrounds, gradients
+     ✅ border colors and styles
+     ✅ box-shadows
+     ✅ font-family, font-weight, letter-spacing, text-shadow
+     ✅ border-radius (decorative only)
+     ✅ opacity, filter (decorative only)
+     ✅ CSS custom property values (--surface-1, --text, etc.)
+
+   Themes MUST NEVER override:
+     ❌ display, grid-template-*, grid-column, grid-row
+     ❌ position, top, right, bottom, left, z-index
+     ❌ width, height, min-height, max-height
+     ❌ overflow (any variant)
+     ❌ flex, flex-direction, flex-grow, flex-shrink, flex-basis
+     ❌ padding (shorthand) — use padding-top/right/left only,
+        NEVER padding-bottom on .app (it controls dock clearance)
+     ❌ margin (shorthand that resets any axis)
+     ❌ gap (on .app — affects the main 3-column grid)
+     ❌ align-self, justify-self on grid children (.side/.main/.right)
+
+   WHY: The bottom dock (.quicklinks-bar) and the online-users-bar
+   are position:fixed with heights stored in CSS variables:
+     --mums-dock-h: 86px
+     --mums-onlinebar-h: 44px
+   The .app container MUST have padding-bottom equal to their sum
+   so sidebar/content is never buried under them.
+   Shorthand "padding:Xpx" resets padding-bottom to X, defeating
+   the base rule "padding-bottom: calc(var(--mums-dock-h) + ...)"
+   and causing all column content to be clipped by the fixed bars.
+
+   CORRECT pattern for any theme that needs custom .app spacing:
+     body[data-theme="your_theme"] .app {
+       gap: 12px;                    ✅ OK — just changes gap
+       padding: 12px;                ❌ WRONG — resets padding-bottom
+       padding-top: 12px;            ✅ CORRECT way to set top only
+       padding-left: 12px;           ✅ CORRECT
+       padding-right: 12px;          ✅ CORRECT
+       /* padding-bottom: NEVER TOUCH — set by base layout */
+     }
+   ══════════════════════════════════════════════════════════════════ */
+
 /* ── APP GRID ── */
 body[data-theme="aurora_midnight"] .app {
   gap: 12px;
-  padding: 12px;
+  /* FIX: was "padding:12px" — shorthand nuked padding-bottom,
+     burying .side/.main/.right under the fixed bottom bars.
+     Now only top/left/right are set; padding-bottom is
+     inherited from the base rule:
+     calc(var(--mums-dock-h) + var(--mums-onlinebar-h) + 18px) */
+  padding-top: 12px;
+  padding-left: 12px;
+  padding-right: 12px;
 }
 
 /* ── CARDS ── */
