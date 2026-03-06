@@ -278,6 +278,28 @@ function _mbxDutyTone(label){
   return 'active';
 }
 
+function _mbxActorIdFromUser(user){
+  if(!user || typeof user !== 'object') return '';
+  const raw = user.id || user.userId || user.user_id || user.uid || user.sub || '';
+  return String(raw || '').trim();
+}
+
+function _mbxReadJwt(){
+  try{
+    const token = (window.CloudAuth && CloudAuth.accessToken) ? String(CloudAuth.accessToken() || '').trim() : '';
+    if(token) return token;
+  }catch(_){ }
+
+  // Best-effort fallback for delayed CloudAuth hydration.
+  try{
+    const session = window.CloudAuth && CloudAuth.readSession ? CloudAuth.readSession() : null;
+    const token = session && session.access_token ? String(session.access_token || '').trim() : '';
+    if(token) return token;
+  }catch(_){ }
+
+  return '';
+}
+
 (window.Pages=window.Pages||{}, window.Pages.mailbox = function(root){
   const me = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser()||{}) : {};
   let isManager = false;
@@ -440,10 +462,10 @@ function _mbxDutyTone(label){
 
     try {
       const me  = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser() || {}) : {};
-      const uid = String(me.id || me.userId || '');
+      const uid = _mbxActorIdFromUser(me);
       if (!uid) return;
 
-      const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+      const jwt = _mbxReadJwt();
       if (!jwt) return;
 
       const res = await fetch(
@@ -1039,6 +1061,22 @@ function _mbxDutyTone(label){
       }
     }
 
+    // 2b. Supplement from existing assignment owners (persisted from prior sessions)
+    for (const a of (table.assignments || [])) {
+      if (!a) continue;
+      const aid = String(a.assigneeId || '').trim();
+      if (!aid || seenIds.has(aid)) continue;
+      seenIds.add(aid);
+      members.push({
+        id: aid,
+        name: String(a.assigneeName || aid).trim(),
+        username: String(a.assigneeName || aid).trim(),
+        role: 'MEMBER',
+        roleLabel: 'MEMBER',
+        dutyLabel: '—'
+      });
+    }
+
     // 3. Also supplement from Store.getUsers() for privileged users who have full roster
     if (teamId && window.Store && Store.getUsers) {
       const nowP = UI && UI.mailboxNowParts ? UI.mailboxNowParts()
@@ -1071,7 +1109,12 @@ function _mbxDutyTone(label){
     const isSyncing = teamId && !(_scheduleReady && _scheduleReady[teamId]);
     const bucketManagers = buckets.map(b => ({
       bucket: b,
-      name: _mbxFindScheduledManagerForBucket(table, b)
+      name: (()=>{
+        const scheduled = _mbxFindScheduledManagerForBucket(table, b);
+        if(scheduled && scheduled !== '—') return scheduled;
+        const persisted = String((table && table.meta && table.meta.bucketManagers && table.meta.bucketManagers[b.id]) || '').trim();
+        return persisted || '—';
+      })()
     }));
 
     // ── Member rows ───────────────────────────────────────────────────────────
