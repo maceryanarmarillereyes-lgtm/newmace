@@ -1525,8 +1525,11 @@ function _mbxReadJwt(){
       document.body.appendChild(host);
 
       host.addEventListener('click', e=>{
-        if(e.target.closest('[data-close="mbxAssignModal"]')) _closeCustomModal('mbxAssignModal');
-        if(e.target === host) _closeCustomModal('mbxAssignModal');
+        if(e.target.closest('[data-close="mbxAssignModal"]')){
+          e.preventDefault();
+          e.stopPropagation();
+          _closeCustomModal('mbxAssignModal');
+        }
       });
 
       const submitBtn = host.querySelector('#mbxAssignSubmit');
@@ -1553,6 +1556,7 @@ function _mbxReadJwt(){
             const assigneeName = targetUser ? (targetUser.name||targetUser.username||_assignUserId) : _assignUserId;
 
             const payload = {
+              shiftKey,
               assigneeId: _assignUserId,
               assigneeName,
               caseNo,
