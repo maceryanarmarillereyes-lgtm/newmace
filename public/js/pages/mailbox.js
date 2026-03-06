@@ -308,24 +308,38 @@ function _mbxDutyTone(label){
       let bStart = Number(bucket.startMin)||0;
       let bEnd   = Number(bucket.endMin)||0;
       if(bEnd <= bStart) bEnd += 1440;
-      if(bStart < shiftStartMin){
-        bStart += 1440;
-        bEnd   += 1440;
-      }
+      if(bStart < shiftStartMin){ bStart += 1440; bEnd += 1440; }
 
-      const all        = (Store && Store.getUsers ? Store.getUsers() : []) || [];
-      const candidates = all.filter(u=>u && u.teamId===teamId && (!u.status || u.status==='active'));
-      const matched    = [];
+      // ── CANDIDATES: merge roster cache + Store.getUsers() ──────────────
+      // _rosterByTeam[teamId] is populated by the server sync for ALL roles.
+      // Store.getUsers() is populated for privileged roles via CloudUsers.
+      // Combining both ensures we never miss a candidate.
+      const cacheMembers = (_rosterByTeam && _rosterByTeam[teamId]) || [];
+      const storeMembers = ((Store && Store.getUsers ? Store.getUsers() : []) || [])
+        .filter(u => u && String(u.teamId||'') === teamId);
+
+      // Dedupe by id — prefer cache entry (has reliable data)
+      const byId = new Map();
+      for (const u of cacheMembers) if (u && u.id) byId.set(String(u.id), u);
+      for (const u of storeMembers) if (u && u.id && !byId.has(String(u.id))) byId.set(String(u.id), u);
+      const candidates = [...byId.values()];
+
+      const matched = [];
 
       for(const u of candidates){
         let isMgr = false;
+        const uid = String(u.id || '');
+        if(!uid) continue;
+
         const dayRefs = [
           { dow: shiftDow,           offset:    0 },
           { dow: (shiftDow + 1) % 7, offset: 1440 }
         ];
 
         for(const ref of dayRefs){
-          const blocks = Store.getUserDayBlocks ? (Store.getUserDayBlocks(u.id, ref.dow) || []) : [];
+          const blocks = Store && Store.getUserDayBlocks
+            ? (Store.getUserDayBlocks(uid, ref.dow) || []) : [];
+
           for(const b of blocks){
             let s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
             let e = (UI && UI.parseHM) ? UI.parseHM(b.end)   : _mbxParseHM(b.end);
@@ -333,36 +347,32 @@ function _mbxDutyTone(label){
             if(e <= s) e += 1440;
             s += ref.offset;
             e += ref.offset;
-
             if(!(s < bEnd && bStart < e)) continue;
 
-            // Match by role ID or resolved schedule label
             const roleId = String(b.role || b.schedule || '').toLowerCase().trim();
-            const sc     = Config && Config.scheduleById ? Config.scheduleById(b.role || b.schedule) : null;
+            const sc     = Config && Config.scheduleById
+              ? Config.scheduleById(b.role || b.schedule) : null;
             const lbl    = String(sc && sc.label ? sc.label : roleId).toLowerCase();
+
             if(roleId === 'mailbox_manager' || lbl.includes('mailbox manager') ||
                roleId === 'mailbox manager' || lbl.includes('mailbox_manager')){
-              isMgr = true;
-              break;
+              isMgr = true; break;
             }
           }
           if(isMgr) break;
         }
 
-        // ── Fallback: check user.schedule / user.task field (legacy data) ──
-        // Some accounts have their schedule stored directly on the user profile
-        // rather than in per-day blocks. This covers that case.
+        // Fallback: user.schedule / user.task on the profile object (legacy)
         if(!isMgr){
           const legacyFields = [
             String(u.schedule || '').toLowerCase(),
             String(u.task     || '').toLowerCase(),
-            String(u.taskRole || '').toLowerCase(),
           ];
           if(legacyFields.some(f => f === 'mailbox_manager' || f.includes('mailbox manager'))){
-            // Only count if the bucket overlaps the shift window they're in
             const nowMin = (() => {
               try{
-                const p = UI && UI.mailboxNowParts ? UI.mailboxNowParts() : (UI ? UI.manilaNow() : null);
+                const p = UI && UI.mailboxNowParts ? UI.mailboxNowParts()
+                  : (UI ? UI.manilaNow() : null);
                 return p ? (Number(p.hh||0)*60 + Number(p.mm||0)) : -1;
               }catch(_){ return -1; }
             })();
@@ -380,25 +390,33 @@ function _mbxDutyTone(label){
     }catch(e){ return '—'; }
   }
 
-  // ── Team Schedule + Roster Sync ───────────────────────────────────────────
-  // Fetches ALL team members AND their schedule blocks from the server.
-  // Hydrates Store.getUsers() so the full roster is visible to ALL roles,
-  // and hydrates schedule blocks so Mgr labels and Live Status work everywhere.
-  // Called on boot, on shift-change, and every 5 minutes.
-  let _schedSyncPending = false;
-  let _schedSyncTeamId  = '';
-  let _rosterSyncDone   = false; // track whether we've successfully hydrated roster
+  // ════════════════════════════════════════════════════════════════════════════
+  // ROSTER + SCHEDULE SYNC  (works for ALL roles incl. MEMBER)
+  // ════════════════════════════════════════════════════════════════════════════
+  // Strategy: store fetched team members in an in-memory map (_rosterByTeam).
+  // This completely bypasses Store.saveUsers / sanitizeUsers which can corrupt
+  // or drop members that arrive without a username/email.  The cache is used
+  // directly by renderTable and _mbxFindScheduledManagerForBucket.
+  //
+  // /api/users/list is role-restricted (MEMBER only sees themselves).
+  // /api/member/:uid/schedule?includeTeam=1 returns teamMembers for ANY user
+  // viewing their own profile — that is the source we use here.
+  // ════════════════════════════════════════════════════════════════════════════
+
+  const _rosterByTeam  = {};   // { teamId: [{id,name,role,teamId,...}] }
+  const _scheduleReady = {};   // { teamId: true } once first fetch completes
+  const _syncInFlight  = {};   // guard against concurrent fetches per team
 
   async function _mbxSyncTeamScheduleBlocks(teamId) {
     if (!teamId) return;
-    // Allow re-sync even if same teamId if roster hasn't loaded yet
-    if (_schedSyncPending && _schedSyncTeamId === teamId && _rosterSyncDone) return;
-    _schedSyncPending = true;
-    _schedSyncTeamId  = teamId;
+    if (_syncInFlight[teamId]) return;          // one fetch at a time per team
+    _syncInFlight[teamId] = true;
+
     try {
       const me  = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser() || {}) : {};
       const uid = String(me.id || me.userId || '');
       if (!uid) return;
+
       const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
       if (!jwt) return;
 
@@ -407,105 +425,92 @@ function _mbxDutyTone(label){
         { headers: { Authorization: `Bearer ${jwt}` }, cache: 'no-store' }
       );
       if (!res.ok) return;
+
       const data = await res.json().catch(() => ({}));
 
-      // ── 1. Hydrate team roster into Store.getUsers() ───────────────────────
-      // CRITICAL FIX: MEMBER role users can't fetch full roster via /api/users/list,
-      // but /api/member/:id/schedule?includeTeam=1 returns teamMembers for same-team
-      // users. We merge those into the local Store so the shift table is complete.
-      const teamMembers = Array.isArray(data && data.teamMembers) ? data.teamMembers : [];
-      if (teamMembers.length && window.Store && Store.getUsers && Store.saveUsers) {
-        try {
-          const existingUsers   = Store.getUsers() || [];
-          const existingById    = new Map(existingUsers.map(u => [String(u.id || ''), u]));
-          let changed = false;
+      // ── 1. Cache the roster (no Store.saveUsers — avoids sanitize corruption) ──
+      const rawMembers = Array.isArray(data && data.teamMembers) ? data.teamMembers : [];
+      // Build a normalised array; merge with any users already in Store so we
+      // never lose people who were loaded by a previous admin/cloud-sync.
+      const fromApi = rawMembers
+        .filter(m => m && m.id)
+        .map(m => ({
+          id:       String(m.id),
+          name:     String(m.name     || m.username || m.id),
+          username: String(m.username || m.name     || m.id),
+          role:     String(m.role     || 'MEMBER'),
+          teamId:   String(m.teamId   || m.team_id  || teamId),
+          status:   'active'
+        }));
 
-          for (const tm of teamMembers) {
-            if (!tm || !tm.id) continue;
-            const sid    = String(tm.id);
-            const exist  = existingById.get(sid);
-            const merged = {
-              id:       sid,
-              teamId:   String(tm.teamId || teamId),
-              role:     String(tm.role   || (exist && exist.role) || 'MEMBER'),
-              name:     String(tm.name   || (exist && exist.name) || sid),
-              username: String(tm.name   || (exist && exist.username) || sid),
-              status:   'active',               // API returns non-deleted members only
-              avatarUrl: String(tm.avatarUrl || (exist && exist.avatarUrl) || ''),
-              // preserve any extra local fields already in the Store
-              ...(exist || {})
-            };
-            // Always ensure status is set
-            merged.status = 'active';
-            existingById.set(sid, merged);
-            if (!exist || exist.status !== 'active') changed = true;
-          }
+      // Merge with any users that are already in Store for this team so we never
+      // lose the currently-logged-in user's enriched profile data.
+      const fromStore = (window.Store && Store.getUsers ? Store.getUsers() : [])
+        .filter(u => u && u.id && (String(u.teamId || '') === teamId))
+        .map(u => ({ id: String(u.id), name: String(u.name || u.username || u.id),
+                     username: String(u.username || u.name || u.id),
+                     role: String(u.role || 'MEMBER'), teamId: teamId, status: 'active' }));
 
-          if (changed || teamMembers.length > 0) {
-            Store.saveUsers([...existingById.values()], { skipSanitize: false });
-            _rosterSyncDone = true;
-          }
-        } catch (_) { /* roster hydration failed — degrade gracefully */ }
+      const merged = new Map();
+      // Store users go first (richer data); API fills in any gaps
+      for (const u of fromStore) merged.set(u.id, u);
+      for (const u of fromApi) {
+        if (!merged.has(u.id)) merged.set(u.id, u);
       }
 
-      // ── 2. Hydrate schedule blocks so Mgr + Live Status labels work ────────
-      const teamScheduleBlocks = Array.isArray(data && data.teamScheduleBlocks)
-        ? data.teamScheduleBlocks : [];
+      _rosterByTeam[teamId]  = [...merged.values()];
+      _scheduleReady[teamId] = true;   // ← unlock Mgr labels regardless of count
 
-      if (teamScheduleBlocks.length && window.Store && Store.setUserDayBlocks) {
+      // ── 2. Hydrate schedule blocks into Store (for duty-label lookups) ────
+      const tsb = Array.isArray(data && data.teamScheduleBlocks) ? data.teamScheduleBlocks : [];
+      if (tsb.length && window.Store && Store.setUserDayBlocks) {
         const bucket = new Map();
-        teamScheduleBlocks.forEach(row => {
+        for (const row of tsb) {
           const r = row && typeof row === 'object' ? row : {};
-          const memberId = String(r.userId || r.user_id || '').trim();
-          const dayIdx   = Number(r.dayIndex);
-          if (!memberId || !Number.isInteger(dayIdx) || dayIdx < 0 || dayIdx > 6) return;
-          const key = `${memberId}|${dayIdx}`;
-          if (!bucket.has(key)) bucket.set(key, []);
-          const schedRole = String(r.schedule || r.role || '').trim();
-          bucket.get(key).push({
-            start:    String(r.start    || '00:00'),
-            end:      String(r.end      || '00:00'),
-            role:     schedRole,
-            schedule: schedRole,
-            notes:    String(r.notes   || '')
+          const mid = String(r.userId || r.user_id || '').trim();
+          const di  = Number(r.dayIndex);
+          if (!mid || !Number.isInteger(di) || di < 0 || di > 6) continue;
+          const k = `${mid}|${di}`;
+          if (!bucket.has(k)) bucket.set(k, []);
+          const sr = String(r.schedule || r.role || '').trim();
+          bucket.get(k).push({
+            start:    String(r.start || '00:00'),
+            end:      String(r.end   || '00:00'),
+            role:     sr, schedule: sr,
+            notes:    String(r.notes || '')
           });
-        });
-        bucket.forEach((blocks, key) => {
-          const [memberId, day] = key.split('|');
-          Store.setUserDayBlocks(memberId, teamId, Number(day), blocks);
+        }
+        bucket.forEach((blocks, k) => {
+          const [mid, day] = k.split('|');
+          Store.setUserDayBlocks(mid, teamId, Number(day), blocks);
         });
       }
 
-      // Re-render so Mgr labels and roster rows refresh
-      // Also persist the refreshed roster into the mailbox table so the
-      // next render() call picks up all members even before scheduleRender fires.
+      // ── 3. Patch table.members so the next render has the full roster ─────
+      // (ensureShiftTables only reads Store.getUsers which is restricted for MEMBERs)
       try {
         if (window.Store && Store.getMailboxState && Store.getMailboxTable && Store.saveMailboxTable) {
-          const curKey = Store.getMailboxState().currentKey;
+          const curKey = Store.getMailboxState && Store.getMailboxState().currentKey;
           if (curKey) {
             const t = Store.getMailboxTable(curKey);
-            if (t) {
-              // Merge any new Store users into table.members
-              const existing    = new Set((t.members || []).map(m => m && String(m.id)));
-              const storeUsers  = (Store.getUsers() || []).filter(u =>
-                u && u.id && String(u.teamId || '') === teamId &&
-                (!u.status || u.status === 'active') &&
-                !existing.has(String(u.id))
-              );
-              if (storeUsers.length) {
-                const nowParts3 = (window.UI && UI.mailboxNowParts ? UI.mailboxNowParts() : (window.UI ? UI.manilaNow() : null));
-                for (const u of storeUsers) {
-                  t.members = t.members || [];
-                  t.members.push({
-                    id:        String(u.id),
-                    name:      String(u.name || u.username || u.id),
-                    username:  String(u.username || ''),
-                    role:      String(u.role || ''),
-                    roleLabel: _mbxRoleLabel(u.role || ''),
-                    dutyLabel: _mbxDutyLabelForUser(u, nowParts3)
-                  });
-                }
-                // Re-sort
+            if (t && String(t.meta && t.meta.teamId || '') === teamId) {
+              const nowP   = window.UI && UI.mailboxNowParts ? UI.mailboxNowParts() : null;
+              const existIds = new Set((t.members || []).map(m => m && String(m.id)));
+              let added = false;
+              for (const tm of (_rosterByTeam[teamId] || [])) {
+                if (!tm || !tm.id || existIds.has(tm.id)) continue;
+                t.members = t.members || [];
+                t.members.push({
+                  id:        tm.id,
+                  name:      tm.name,
+                  username:  tm.username,
+                  role:      tm.role,
+                  roleLabel: _mbxRoleLabel(tm.role),
+                  dutyLabel: _mbxDutyLabelForUser({ id: tm.id, teamId }, nowP)
+                });
+                added = true;
+              }
+              if (added) {
                 t.members.sort((a, b) => {
                   const ak = _mbxMemberSortKey(a), bk = _mbxMemberSortKey(b);
                   if (ak.w !== bk.w) return ak.w - bk.w;
@@ -518,11 +523,21 @@ function _mbxDutyTone(label){
         }
       } catch (_) {}
 
-      scheduleRender('schedule-sync');
+      scheduleRender('roster-sync-complete');
+
     } catch (_) {
-      // Swallow silently — labels will show '—' until next retry
+      // Silently degrade — show '—' for Mgr labels, partial roster visible
     } finally {
-      _schedSyncPending = false;
+      _syncInFlight[teamId] = false;
+    }
+  }
+
+  // Convenience: reset sync state for a given team (used on shift-change)
+  function _mbxResetSync(teamId) {
+    if (teamId) {
+      delete _rosterByTeam[teamId];
+      delete _scheduleReady[teamId];
+      _syncInFlight[teamId] = false;
     }
   }
 
@@ -690,6 +705,35 @@ function _mbxDutyTone(label){
         if (ak.w !== bk.w) return ak.w - bk.w;
         return ak.name.localeCompare(bk.name);
       });
+      // Supplement table.members from in-memory roster cache (filled by server sync)
+      // This ensures MEMBERs who can't call /api/users/list still see the full roster.
+      const _tid = String(team.id || '');
+      if (_tid && _rosterByTeam && _rosterByTeam[_tid]) {
+        const nowP = (UI && UI.mailboxNowParts ? UI.mailboxNowParts() : null);
+        const existAfterMerge = new Set(table.members.map(m => m && String(m.id)));
+        let addedFromCache = false;
+        for (const tm of _rosterByTeam[_tid]) {
+          if (!tm || !tm.id || existAfterMerge.has(String(tm.id))) continue;
+          table.members.push({
+            id:        String(tm.id),
+            name:      String(tm.name || tm.id),
+            username:  String(tm.username || tm.name || tm.id),
+            role:      String(tm.role || 'MEMBER'),
+            roleLabel: _mbxRoleLabel(tm.role || ''),
+            dutyLabel: _mbxDutyLabelForUser({ id: String(tm.id), teamId: _tid }, nowP)
+          });
+          existAfterMerge.add(String(tm.id));
+          addedFromCache = true;
+        }
+        if (addedFromCache) {
+          table.members.sort((a, b) => {
+            const ak = _mbxMemberSortKey(a), bk = _mbxMemberSortKey(b);
+            if (ak.w !== bk.w) return ak.w - bk.w;
+            return ak.name.localeCompare(bk.name);
+          });
+        }
+      }
+
       if(Store && Store.saveMailboxTable) Store.saveMailboxTable(shiftKey, table, { silent:true });
     }
 
@@ -712,40 +756,20 @@ function _mbxDutyTone(label){
 
   function computeTotals(table){
     const buckets = table.buckets || [];
+    const members = table.members || [];
     const colTotals = {};
     for(const b of buckets) colTotals[b.id] = 0;
-    const rowTotals  = {};
-    let   shiftTotal = 0;
+    const rowTotals = {};
+    let shiftTotal = 0;
 
-    // Build union of table.members + any Store users on the same team
-    // (covers members added by roster sync that haven't triggered a full re-render yet)
-    const seenTotals = new Set();
-    const allMembers = [...(table.members || [])];
-    try {
-      const teamId = String(table.meta && table.meta.teamId || '');
-      if (teamId && window.Store && Store.getUsers) {
-        (Store.getUsers() || []).forEach(u => {
-          if (!u || !u.id) return;
-          if (String(u.teamId || '') !== teamId) return;
-          if (u.status && u.status !== 'active') return;
-          if (allMembers.find(m => String(m.id) === String(u.id))) return;
-          allMembers.push({ id: String(u.id) });
-        });
-      }
-    } catch (_) {}
-
-    for(const m of allMembers){
-      if (!m || !m.id) continue;
-      const mid = String(m.id);
-      if (seenTotals.has(mid)) continue;
-      seenTotals.add(mid);
+    for(const m of members){
       let rt = 0;
       for(const b of buckets){
-        const v = safeGetCount(table, mid, b.id);
+        const v = safeGetCount(table, m.id, b.id);
         colTotals[b.id] += v;
         rt += v;
       }
-      rowTotals[mid] = rt;
+      rowTotals[m.id] = rt;
       shiftTotal += rt;
     }
     return { colTotals, rowTotals, shiftTotal };
@@ -923,67 +947,91 @@ function _mbxDutyTone(label){
   }
 
   function renderTable(table, activeBucketId, totals, interactive){
-    const UI = window.UI;
-    const esc = UI ? UI.esc : (s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
+    const UI   = window.UI;
+    const esc  = UI ? UI.esc : (s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
     const buckets = table.buckets || [];
+    const teamId  = String(table.meta && table.meta.teamId || '');
 
-    // ── Deduplicate members by id ───────────────────────────────────────────
+    // ── Build de-duplicated member list ──────────────────────────────────────
+    // Priority: table.members (persisted) + _rosterByTeam cache (server sync).
+    // This ensures ALL shift members are visible even for restricted roles.
     const seenIds = new Set();
-    const members = (table.members || []).filter(m => {
-      if (!m || !m.id || seenIds.has(m.id)) return false;
-      seenIds.add(m.id);
-      return true;
-    });
+    const members = [];
 
-    // ── Fallback: supplement from Store.getUsers() for same team ────────────
-    // Ensures any member that joined via roster-sync but isn't in table.members
-    // yet is still visible in the counter table (read-only rows until next full render).
-    const teamId = String(table.meta && table.meta.teamId || '');
+    // 1. Start with what's already in the table
+    for (const m of (table.members || [])) {
+      if (!m || !m.id || seenIds.has(String(m.id))) continue;
+      seenIds.add(String(m.id));
+      members.push(m);
+    }
+
+    // 2. Supplement from server-synced roster cache
+    if (teamId && _rosterByTeam && _rosterByTeam[teamId]) {
+      const nowP = UI && UI.mailboxNowParts ? UI.mailboxNowParts()
+                 : (UI && UI.manilaNow ? UI.manilaNow() : null);
+      for (const tm of _rosterByTeam[teamId]) {
+        if (!tm || !tm.id || seenIds.has(String(tm.id))) continue;
+        seenIds.add(String(tm.id));
+        members.push({
+          id:        String(tm.id),
+          name:      String(tm.name     || tm.id),
+          username:  String(tm.username || tm.name || tm.id),
+          role:      String(tm.role     || 'MEMBER'),
+          roleLabel: _mbxRoleLabel(tm.role || ''),
+          dutyLabel: _mbxDutyLabelForUser({ id: String(tm.id), teamId }, nowP)
+        });
+      }
+    }
+
+    // 3. Also supplement from Store.getUsers() for privileged users who have full roster
     if (teamId && window.Store && Store.getUsers) {
-      const storeUsers = Store.getUsers() || [];
-      for (const u of storeUsers) {
+      const nowP = UI && UI.mailboxNowParts ? UI.mailboxNowParts()
+                 : (UI && UI.manilaNow ? UI.manilaNow() : null);
+      for (const u of (Store.getUsers() || [])) {
         if (!u || !u.id) continue;
         if (String(u.teamId || '') !== teamId) continue;
         if (u.status && u.status !== 'active') continue;
         if (seenIds.has(String(u.id))) continue;
-        const nowParts2 = (UI && UI.mailboxNowParts ? UI.mailboxNowParts() : (UI && UI.manilaNow ? UI.manilaNow() : null));
+        seenIds.add(String(u.id));
         members.push({
           id:        String(u.id),
-          name:      String(u.name || u.username || u.id),
-          username:  String(u.username || ''),
-          role:      String(u.role || ''),
+          name:      String(u.name     || u.username || u.id),
+          username:  String(u.username || u.name     || u.id),
+          role:      String(u.role     || 'MEMBER'),
           roleLabel: _mbxRoleLabel(u.role || ''),
-          dutyLabel: _mbxDutyLabelForUser(u, nowParts2)
+          dutyLabel: _mbxDutyLabelForUser(u, nowP)
         });
-        seenIds.add(String(u.id));
       }
-      // Re-sort: Team Leads first, then alphabetical
-      members.sort((a, b) => {
-        const ak = _mbxMemberSortKey(a), bk = _mbxMemberSortKey(b);
-        if (ak.w !== bk.w) return ak.w - bk.w;
-        return ak.name.localeCompare(bk.name);
-      });
     }
 
-    // ── Bucket manager lookup ───────────────────────────────────────────────
-    const nowParts = (UI && UI.mailboxNowParts ? UI.mailboxNowParts() : (UI && UI.manilaNow ? UI.manilaNow() : null));
-    const bucketManagers = buckets.map(b => {
-      const name = _mbxFindScheduledManagerForBucket(table, b);
-      return { bucket: b, name };
+    // Re-sort: Team Lead first, then alphabetical
+    members.sort((a, b) => {
+      const ak = _mbxMemberSortKey(a), bk = _mbxMemberSortKey(b);
+      if (ak.w !== bk.w) return ak.w - bk.w;
+      return ak.name.localeCompare(bk.name);
     });
 
-    // ── Member rows ─────────────────────────────────────────────────────────
+    // ── Bucket manager row ────────────────────────────────────────────────────
+    const isSyncing = teamId && !(_scheduleReady && _scheduleReady[teamId]);
+    const bucketManagers = buckets.map(b => ({
+      bucket: b,
+      name: _mbxFindScheduledManagerForBucket(table, b)
+    }));
+
+    // ── Member rows ───────────────────────────────────────────────────────────
+    const nowParts = UI && UI.mailboxNowParts ? UI.mailboxNowParts()
+                   : (UI && UI.manilaNow ? UI.manilaNow() : null);
+
     const rows = members.map(m => {
       const cells = buckets.map(b => {
         const v   = safeGetCount(table, m.id, b.id);
-        const cls = (activeBucketId && b.id === activeBucketId) ? 'active-col' : '';
-        return `<td class="${cls} mbx-count-td"><span class="mbx-num" data-zero="${v === 0 ? '1' : '0'}">${v}</span></td>`;
+        const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
+        return `<td class="${cls} mbx-count-td"><span class="mbx-num" data-zero="${v===0?'1':'0'}">${v}</span></td>`;
       }).join('');
-
-      const total      = totals.rowTotals[m.id] || 0;
-      const role       = (m.roleLabel || _mbxRoleLabel(m.role) || '').trim();
-      const dutyLabel  = resolveMemberDutyLabel(m, nowParts);
-      const safeDuty   = (dutyLabel && dutyLabel !== '—') ? dutyLabel : 'No active duty';
+      const total       = totals.rowTotals[m.id] || 0;
+      const role        = (m.roleLabel || _mbxRoleLabel(m.role) || '').trim();
+      const dutyLabel   = resolveMemberDutyLabel(m, nowParts);
+      const safeDutyLabel = (dutyLabel && dutyLabel !== '—') ? dutyLabel : 'No active duty';
 
       return `<tr class="${interactive ? 'mbx-assignable' : ''}" ${interactive ? `data-assign-member="${esc(m.id)}"` : ''}>
         <td>
@@ -991,43 +1039,41 @@ function _mbxDutyTone(label){
           <div style="font-size:11px; color:#94a3b8; margin-top:2px;">${esc(role || '—')}</div>
         </td>
         <td>
-          <span class="duty-pill" data-mbx-duty-user="${esc(m.id)}" data-tone="${_mbxDutyTone(safeDuty)}">${esc(safeDuty)}</span>
+          <span class="duty-pill" data-mbx-duty-user="${esc(m.id)}" data-tone="${_mbxDutyTone(safeDutyLabel)}">${esc(safeDutyLabel)}</span>
         </td>
         ${cells}
-        <td class="mbx-count-td" style="color:#38bdf8;"><span class="mbx-num" data-zero="${total === 0 ? '1' : '0'}">${total}</span></td>
+        <td class="mbx-count-td" style="color:#38bdf8;"><span class="mbx-num" data-zero="${total===0?'1':'0'}">${total}</span></td>
       </tr>`;
     }).join('');
 
+    // Empty-state row while roster is loading
     const noMembersRow = members.length === 0
-      ? `<tr><td colspan="${buckets.length + 3}" style="text-align:center; padding:28px; color:#64748b; font-style:italic;">
-           Loading roster… <span style="opacity:0.6; font-size:11px;">(syncing from server)</span>
+      ? `<tr><td colspan="${buckets.length + 3}" style="text-align:center;padding:28px;color:#64748b;font-style:italic;">
+           ${isSyncing ? '⏳ Loading roster…' : 'No active roster members found.'}
          </td></tr>`
       : '';
 
-    // ── Footer aggregates ───────────────────────────────────────────────────
     const footCells = buckets.map(b => {
-      const cls = (activeBucketId && b.id === activeBucketId) ? 'active-col' : '';
+      const cls = (activeBucketId && b.id===activeBucketId) ? 'active-col' : '';
       const vv  = totals.colTotals[b.id] || 0;
-      return `<td class="${cls} mbx-count-td"><span class="mbx-num" data-zero="${vv === 0 ? '1' : '0'}">${vv}</span></td>`;
+      return `<td class="${cls} mbx-count-td"><span class="mbx-num" data-zero="${vv===0?'1':'0'}">${vv}</span></td>`;
     }).join('');
 
-    // ── Build manager display HTML ──────────────────────────────────────────
-    // Shows real name when available; "Syncing…" during initial load; "—" when confirmed none.
-    const mgrHtml = bucketManagers.map(({ bucket: b, name }) => {
-      const cls        = (activeBucketId && b.id === activeBucketId) ? 'active-head-col' : '';
-      const hasMgr     = name && name !== '—';
-      const isSyncing  = !_rosterSyncDone && !hasMgr;
-      const mgrDisplay = hasMgr ? name : (isSyncing ? 'Syncing…' : '—');
-      const mgrColor   = hasMgr
-        ? '#38bdf8'
-        : (isSyncing ? 'rgba(251,191,36,0.8)' : 'rgba(148,163,184,0.55)');
+    // ── Table header: Mgr labels ──────────────────────────────────────────────
+    // Show: real name | amber "Syncing…" while loading | gray "—" when confirmed none
+    const mgrHeaders = bucketManagers.map(({ bucket: b, name }) => {
+      const cls      = (activeBucketId && b.id===activeBucketId) ? 'active-head-col' : '';
+      const hasMgr   = name && name !== '—';
+      const display  = hasMgr ? name : (isSyncing ? 'Syncing…' : '—');
+      const color    = hasMgr ? '#38bdf8'
+                     : isSyncing ? 'rgba(251,191,36,0.85)' : 'rgba(148,163,184,0.55)';
       return `<th class="${cls}" style="min-width:160px;">
-        <div style="font-size:12px; font-weight:900;">${esc(_mbxBucketLabel(b))}</div>
-        <div style="font-size:10.5px; font-weight:700; text-transform:none; margin-top:6px;
-                    color:${mgrColor}; white-space:nowrap; overflow:hidden;
-                    text-overflow:ellipsis; max-width:200px;"
+        <div style="font-size:12px;font-weight:900;">${esc(_mbxBucketLabel(b))}</div>
+        <div style="font-size:10.5px;font-weight:700;text-transform:none;margin-top:5px;
+                    color:${color};white-space:nowrap;overflow:hidden;
+                    text-overflow:ellipsis;max-width:200px;"
              title="Block manager: ${esc(hasMgr ? name : (isSyncing ? 'Loading…' : 'None assigned'))}">
-          Mgr: <span style="font-weight:800;">${esc(mgrDisplay)}</span>
+          Mgr: <span style="font-weight:800;">${esc(display)}</span>
         </div>
       </th>`;
     }).join('');
@@ -1037,17 +1083,17 @@ function _mbxDutyTone(label){
         <thead>
           <tr>
             <th style="min-width:220px;">Agent Profile</th>
-            <th style="min-width:165px;">Live Status</th>
-            ${mgrHtml}
-            <th style="width:90px; color:#38bdf8;">Overall</th>
+            <th style="min-width:160px;">Live Status</th>
+            ${mgrHeaders}
+            <th style="width:90px;color:#38bdf8;">Overall</th>
           </tr>
         </thead>
         <tbody>${rows || noMembersRow}</tbody>
         <tfoot>
           <tr style="background:rgba(15,23,42,0.8);">
-            <td colspan="2" style="font-weight:900; color:#cbd5e1; text-transform:uppercase; letter-spacing:1px;">Shift Aggregates</td>
+            <td colspan="2" style="font-weight:900;color:#cbd5e1;text-transform:uppercase;letter-spacing:1px;">Shift Aggregates</td>
             ${footCells}
-            <td class="mbx-count-td" style="font-size:18px; color:#0ea5e9;"><span class="mbx-num" data-zero="${(totals.shiftTotal || 0) === 0 ? '1' : '0'}">${totals.shiftTotal || 0}</span></td>
+            <td class="mbx-count-td" style="font-size:18px;color:#0ea5e9;"><span class="mbx-num" data-zero="${(totals.shiftTotal||0)===0?'1':'0'}">${totals.shiftTotal||0}</span></td>
           </tr>
         </tfoot>
       </table>
@@ -2276,21 +2322,19 @@ function _mbxDutyTone(label){
         }
       }catch(_){ }
 
-      // ── FIX: single call to ensureShiftTables (was called twice) ───────────
+      // FIX: single ensureShiftTables() call (was wastefully called twice)
       const { state, table: tickTable } = ensureShiftTables();
       try{
         const active = computeActiveBucketId(tickTable);
         const idxMap = {};
         (tickTable.buckets||[]).forEach((b,i)=>idxMap[b.id]=i);
         const activeIdx = idxMap[active];
-        // Remove stale highlight from all bucket headers
         root.querySelectorAll('.mbx-counter-table th.active-head-col').forEach(n=>n.classList.remove('active-head-col'));
         if(activeIdx !== undefined){
-          // Column layout: [0]=Agent Profile, [1]=Live Status, [2+]=buckets, [last]=Overall
-          // So bucket column is at activeIdx + 2
-          const timeHeads = Array.from(root.querySelectorAll('.mbx-counter-table thead tr th'));
-          const targetCol = timeHeads[activeIdx + 2];
-          if(targetCol) targetCol.classList.add('active-head-col');
+          // Column layout: 0=Agent Profile, 1=Live Status, 2..N=buckets, N+1=Overall
+          const allTh = Array.from(root.querySelectorAll('.mbx-counter-table thead tr th'));
+          const target = allTh[activeIdx + 2];
+          if(target) target.classList.add('active-head-col');
         }
       }catch(_){ }
 
@@ -2298,12 +2342,11 @@ function _mbxDutyTone(label){
       const curKey = (Store && Store.getMailboxState ? Store.getMailboxState().currentKey : '');
       if(curKey && root._lastShiftKey && curKey !== root._lastShiftKey){
         scheduleRender('shift-change');
-        // Re-sync roster + schedule blocks for new shift's team
         try{
           const d = getDuty();
           const newTeamId = String(d && d.current && d.current.id ? d.current.id : '');
           if(newTeamId){
-            _rosterSyncDone = false; // allow fresh roster fetch for new team
+            _mbxResetSync(newTeamId);          // clear stale cache for new team
             _mbxSyncTeamScheduleBlocks(newTeamId);
           }
         }catch(_){ }
@@ -2326,22 +2369,16 @@ function _mbxDutyTone(label){
     tick();
     _timer = setInterval(()=>{ try{ tick(); }catch(e){ console.error('Mailbox tick', e); } }, 1000);
 
-    // ── Periodic roster + schedule re-sync (every 3 minutes) ────────────────
-    // Keeps Mgr labels and Live Status accurate as schedule changes throughout shift.
-    // Resets pending flag so sync always runs on schedule.
+    // ── Periodic re-sync every 3 min — keeps Mgr + Live Status fresh ─────────
     (function _startScheduleSyncInterval() {
-      const SYNC_INTERVAL_MS = 3 * 60 * 1000; // 3 min — more responsive than 5min
-      const _syncTick = () => {
+      const INTERVAL = 3 * 60 * 1000; // 3 minutes
+      setInterval(() => {
         try {
           const d   = getDuty();
           const tid = String(d && d.current && d.current.id ? d.current.id : '');
-          if (tid) {
-            _schedSyncPending = false; // reset guard so periodic sync always fires
-            _mbxSyncTeamScheduleBlocks(tid);
-          }
+          if (tid) _mbxSyncTeamScheduleBlocks(tid); // guard is inside the fn
         } catch (_) {}
-      };
-      setInterval(_syncTick, SYNC_INTERVAL_MS);
+      }, INTERVAL);
     })();
   }
 
@@ -2351,35 +2388,36 @@ function _mbxDutyTone(label){
 
   render();
 
-  // ── Boot sync: roster + schedule blocks for ALL users on first load ──────
-  // Runs immediately; if duty team isn't ready yet, retries at 1s, 3s, 8s.
-  // This guarantees Mgr labels and the full roster are visible on every device
-  // regardless of user role or whether they've visited Master Schedule before.
-  (function _bootScheduleSync() {
-    function _trySync(attempt) {
+  // ── Roster + schedule sync on first load ─────────────────────────────────
+  // Uses a retry backoff so it works even when the page loads before Auth/duty
+  // are fully initialised.  This is the ONLY place that fetches the team roster
+  // for non-privileged users — critical for Mgr labels and full roster display.
+  (function _bootRosterSync() {
+    let attempts = 0;
+    const maxAttempts = 5;
+    const delays = [0, 800, 2000, 5000, 10000]; // ms between attempts
+
+    function _attempt() {
+      attempts++;
       try {
         const duty   = getDuty();
         const teamId = String(duty && duty.current && duty.current.id ? duty.current.id : '');
         if (teamId) {
           _mbxSyncTeamScheduleBlocks(teamId);
-          return; // success path — sync kicked off
+          return; // kicked off — the fn will retry internally if needed
         }
       } catch (_) {}
-      // Retry with backoff (max 3 attempts)
-      const delays = [1000, 3000, 8000];
-      const delay  = delays[attempt] || 0;
-      if (!delay) return;
-      setTimeout(() => _trySync(attempt + 1), delay);
+      // Team not ready yet — retry with backoff
+      if (attempts < maxAttempts) {
+        setTimeout(_attempt, delays[attempts] || 10000);
+      }
     }
-    _trySync(0);
+    _attempt();
   })();
 
-  root._cleanup = ()=>{
+  root._cleanup = () => {
     try{ if(_timer) clearInterval(_timer); }catch(_){ }
     try{ window.removeEventListener('mums:store', onMailboxStoreEvent); }catch(_){ }
     try{ window.removeEventListener('storage', onMailboxStorageEvent); }catch(_){ }
-    // Reset sync state so next page mount does a fresh fetch
-    _schedSyncPending = false;
-    _rosterSyncDone   = false;
   };
 });
