@@ -355,6 +355,66 @@ function _mbxDutyTone(label){
     }catch(e){ return '—'; }
   }
 
+  // ── Team Schedule Sync ─────────────────────────────────────────────────────
+  // Fetches ALL team members' schedule blocks from the server and hydrates
+  // the local Store so that _mbxFindScheduledManagerForBucket works for
+  // EVERY user (not just admins who've visited Master Schedule).
+  let _schedSyncPending = false;
+  let _schedSyncTeamId = '';
+
+  async function _mbxSyncTeamScheduleBlocks(teamId) {
+    if (!teamId) return;
+    if (_schedSyncPending && _schedSyncTeamId === teamId) return;
+    _schedSyncPending = true;
+    _schedSyncTeamId = teamId;
+    try {
+      const me = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser() || {}) : {};
+      const uid = String(me.id || me.userId || '');
+      if (!uid) return;
+      const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+      if (!jwt) return;
+      const res = await fetch(
+        `/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1`,
+        { headers: { Authorization: `Bearer ${jwt}` }, cache: 'no-store' }
+      );
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      const teamScheduleBlocks = Array.isArray(data && data.teamScheduleBlocks)
+        ? data.teamScheduleBlocks : [];
+      if (!teamScheduleBlocks.length) return;
+
+      // Hydrate Store schedule blocks for every team member
+      if (window.Store && Store.setUserDayBlocks) {
+        const bucket = new Map();
+        teamScheduleBlocks.forEach(row => {
+          const r = row && typeof row === 'object' ? row : {};
+          const memberId = String(r.userId || r.user_id || '').trim();
+          const dayIdx = Number(r.dayIndex);
+          if (!memberId || !Number.isInteger(dayIdx) || dayIdx < 0 || dayIdx > 6) return;
+          const key = `${memberId}|${dayIdx}`;
+          if (!bucket.has(key)) bucket.set(key, []);
+          bucket.get(key).push({
+            start: String(r.start || '00:00'),
+            end: String(r.end || '00:00'),
+            role: String(r.schedule || r.role || ''),
+            schedule: String(r.schedule || r.role || ''),
+            notes: String(r.notes || '')
+          });
+        });
+        bucket.forEach((blocks, key) => {
+          const [memberId, day] = key.split('|');
+          Store.setUserDayBlocks(memberId, teamId, Number(day), blocks);
+        });
+      }
+      // Re-render with fresh manager data
+      scheduleRender('schedule-sync');
+    } catch (_) {
+      // Swallow silently — manager labels will remain '—' as fallback
+    } finally {
+      _schedSyncPending = false;
+    }
+  }
+
   function isPrivilegedRole(u){
     try{
       const r = String(u?.role||'');
@@ -494,9 +554,31 @@ function _mbxDutyTone(label){
           return ak.name.localeCompare(bk.name);
         });
 
-      const existingIds = new Set((table.members||[]).map(m=>m.id));
-      const nextMembers = teamUsers.concat((table.members||[]).filter(m=>m && !teamUsers.find(x=>x.id===m.id)));
-      table.members = nextMembers.filter(m=>existingIds.has(m.id) || teamUsers.find(x=>x.id===m.id));
+      // Build merged member list: current team users first, then any existing
+      // assignments for members who may have left the team. Always deduplicate.
+      const teamUserIds = new Set(teamUsers.map(u => u.id));
+      const existingIds = new Set((table.members||[]).map(m => m && m.id).filter(Boolean));
+      // Keep old members still on team (for assignment continuity) + new team members
+      const retainedOld = (table.members||[]).filter(m => m && m.id && teamUserIds.has(m.id));
+      const retainedOldIds = new Set(retainedOld.map(m => m.id));
+      // Merge: new team users not already retained + retained old
+      const merged = [
+        ...teamUsers.filter(u => !retainedOldIds.has(u.id)),
+        ...retainedOld
+      ];
+      // Final dedup pass
+      const seenMerge = new Set();
+      table.members = merged.filter(m => {
+        if (!m || !m.id || seenMerge.has(m.id)) return false;
+        seenMerge.add(m.id);
+        return true;
+      });
+      // Re-sort
+      table.members.sort((a, b) => {
+        const ak = _mbxMemberSortKey(a), bk = _mbxMemberSortKey(b);
+        if (ak.w !== bk.w) return ak.w - bk.w;
+        return ak.name.localeCompare(bk.name);
+      });
       if(Store && Store.saveMailboxTable) Store.saveMailboxTable(shiftKey, table, { silent:true });
     }
 
@@ -712,7 +794,13 @@ function _mbxDutyTone(label){
   function renderTable(table, activeBucketId, totals, interactive){
     const UI = window.UI;
     const buckets = table.buckets || [];
-    const members = table.members || [];
+    // Deduplicate members by id — guards against accumulated duplicates in table.members
+    const seenIds = new Set();
+    const members = (table.members || []).filter(m => {
+      if (!m || !m.id || seenIds.has(m.id)) return false;
+      seenIds.add(m.id);
+      return true;
+    });
     const bucketManagers = buckets.map(b=>({ bucket:b, name:_mbxFindScheduledManagerForBucket(table, b) }));
     
     const rows = members.map(m=>{
@@ -753,9 +841,11 @@ function _mbxDutyTone(label){
             <th style="min-width:160px;">Live Status</th>
             ${bucketManagers.map(({ bucket:b, name })=>{
               const cls = (activeBucketId && b.id===activeBucketId) ? 'active-head-col' : '';
+              const mgrDisplay = (name && name !== '—') ? name : '—';
+              const mgrColor = (name && name !== '—') ? '#38bdf8' : 'rgba(148,163,184,0.6)';
               return `<th class="${cls}">
                 <div style="font-size:12px; font-weight:900;">${UI ? UI.esc(_mbxBucketLabel(b)) : _mbxBucketLabel(b)}</div>
-                <div style="font-size:10px; font-weight:600; text-transform:none; opacity:0.8; margin-top:4px;">Mgr: ${UI ? UI.esc(name) : name}</div>
+                <div style="font-size:10px; font-weight:700; text-transform:none; margin-top:5px; color:${mgrColor}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;">Mgr: ${UI ? UI.esc(mgrDisplay) : mgrDisplay}</div>
               </th>`;
             }).join('')}
             <th style="width:100px; color:#38bdf8;">Overall</th>
@@ -1667,6 +1757,14 @@ function _mbxDutyTone(label){
     isManager = canAssignNow({ duty, nowParts });
     
     const mbxMgrName = _mbxFindScheduledManagerForBucket(table, (table.buckets||[]).find(b=>b.id===activeBucketId));
+    // If manager is still unknown and we haven't synced yet, trigger a background sync
+    if (mbxMgrName === '—' && !_schedSyncPending) {
+      try {
+        const _d = getDuty();
+        const _tid = String(_d && _d.current && _d.current.id ? _d.current.id : (table.meta && table.meta.teamId ? table.meta.teamId : ''));
+        if (_tid) _mbxSyncTeamScheduleBlocks(_tid);
+      } catch (_) {}
+    }
 
     const globalOverrideLabelHtml = (function(){
       try{
@@ -2005,6 +2103,12 @@ function _mbxDutyTone(label){
       const curKey = (Store && Store.getMailboxState ? Store.getMailboxState().currentKey : '');
       if(curKey && root._lastShiftKey && curKey !== root._lastShiftKey){
         scheduleRender('shift-change');
+        // Re-sync schedule blocks for the new shift's team
+        try{
+          const d = getDuty();
+          const newTeamId = String(d && d.current && d.current.id ? d.current.id : '');
+          if(newTeamId) _mbxSyncTeamScheduleBlocks(newTeamId);
+        }catch(_){ }
       }
       root._lastShiftKey = curKey || root._lastShiftKey;
 
@@ -2023,10 +2127,55 @@ function _mbxDutyTone(label){
     };
     tick();
     _timer = setInterval(()=>{ try{ tick(); }catch(e){ console.error('Mailbox tick', e); } }, 1000);
+
+    // Periodic schedule block re-sync (every 5 minutes) — ensures manager labels
+    // stay accurate as schedule assignments change throughout the shift.
+    (function _startScheduleSyncInterval() {
+      const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+      const _syncTick = () => {
+        try {
+          const d = getDuty();
+          const tid = String(d && d.current && d.current.id ? d.current.id : '');
+          if (tid) {
+            _schedSyncPending = false; // reset lock so sync can run again
+            _mbxSyncTeamScheduleBlocks(tid);
+          }
+        } catch (_) {}
+      };
+      setInterval(_syncTick, SYNC_INTERVAL_MS);
+    })();
   }
 
   // BOOT THE PAGE
+  // Register store/storage event listeners (previously defined but never added)
+  window.addEventListener('mums:store', onMailboxStoreEvent);
+  window.addEventListener('storage', onMailboxStorageEvent);
+
   render();
+
+  // ── Sync team schedule blocks from server on first load ─────────────────
+  // This ensures manager labels are visible to ALL users regardless of whether
+  // they have visited Master Schedule. Runs asynchronously, fires scheduleRender
+  // when complete so the table refreshes with real manager names.
+  (function _bootScheduleSync() {
+    try {
+      const UI = window.UI;
+      const duty = getDuty();
+      const teamId = String(duty && duty.current && duty.current.id ? duty.current.id : '');
+      if (teamId) {
+        _mbxSyncTeamScheduleBlocks(teamId);
+      } else {
+        // If duty.current.id isn't ready yet, retry once after 1.5s
+        setTimeout(() => {
+          try {
+            const d2 = getDuty();
+            const tid2 = String(d2 && d2.current && d2.current.id ? d2.current.id : '');
+            if (tid2) _mbxSyncTeamScheduleBlocks(tid2);
+          } catch (_) {}
+        }, 1500);
+      }
+    } catch (_) {}
+  })();
 
   root._cleanup = ()=>{
 	  try{ if(_timer) clearInterval(_timer); }catch(_){ }
