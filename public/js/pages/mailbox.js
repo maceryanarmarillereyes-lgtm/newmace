@@ -2057,10 +2057,10 @@ function _mbxReadJwt(){
       root.innerHTML = `
         <div class="mbx-shell">
           <div class="mbx-header-bar">
-            <h1 class="mbx-main-title">⚡ Enterprise Mailbox Control Center</h1>
+            <h1 class="mbx-main-title"> Mailbox Control Center</h1>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
               <button class="btn-glass btn-glass-ghost" data-toggle-analytics>📊 ${showAnalytics?'Hide':'Show'} Analytics</button>
-              <button class="btn-glass btn-glass-ghost" data-toggle-archive>📂 ${showArchive?'Hide':'Show'} Archive</button>
+              <button class="btn-glass btn-glass-ghost" data-toggle-archive>📂 ${showArchive?'Hide':'Show'} Case Matrix</button>
             </div>
           </div>
 
