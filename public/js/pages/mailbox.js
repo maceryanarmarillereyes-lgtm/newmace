@@ -278,6 +278,28 @@ function _mbxDutyTone(label){
   return 'active';
 }
 
+function _mbxActorIdFromUser(user){
+  if(!user || typeof user !== 'object') return '';
+  const raw = user.id || user.userId || user.user_id || user.uid || user.sub || '';
+  return String(raw || '').trim();
+}
+
+function _mbxReadJwt(){
+  try{
+    const token = (window.CloudAuth && CloudAuth.accessToken) ? String(CloudAuth.accessToken() || '').trim() : '';
+    if(token) return token;
+  }catch(_){ }
+
+  // Best-effort fallback for delayed CloudAuth hydration.
+  try{
+    const session = window.CloudAuth && CloudAuth.readSession ? CloudAuth.readSession() : null;
+    const token = session && session.access_token ? String(session.access_token || '').trim() : '';
+    if(token) return token;
+  }catch(_){ }
+
+  return '';
+}
+
 (window.Pages=window.Pages||{}, window.Pages.mailbox = function(root){
   const me = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser()||{}) : {};
   let isManager = false;
@@ -440,10 +462,10 @@ function _mbxDutyTone(label){
 
     try {
       const me  = (window.Auth && window.Auth.getUser) ? (window.Auth.getUser() || {}) : {};
-      const uid = String(me.id || me.userId || '');
+      const uid = _mbxActorIdFromUser(me);
       if (!uid) return;
 
-      const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+      const jwt = _mbxReadJwt();
       if (!jwt) return;
 
       const res = await fetch(
@@ -709,17 +731,16 @@ function _mbxDutyTone(label){
           return ak.name.localeCompare(bk.name);
         });
 
-      // Build merged member list: current team users first, then any existing
-      // assignments for members who may have left the team. Always deduplicate.
-      const teamUserIds = new Set(teamUsers.map(u => u.id));
-      const existingIds = new Set((table.members||[]).map(m => m && m.id).filter(Boolean));
-      // Keep old members still on team (for assignment continuity) + new team members
-      const retainedOld = (table.members||[]).filter(m => m && m.id && teamUserIds.has(m.id));
-      const retainedOldIds = new Set(retainedOld.map(m => m.id));
-      // Merge: new team users not already retained + retained old
+      // Build merged member list: keep *all* persisted table members and merge
+      // any currently visible team users from Store.getUsers().
+      //
+      // Why: MEMBER-role sessions can have a restricted Store.getUsers() payload
+      // (often just the current user). If we prune to teamUsers-only here, we
+      // hide valid shift members from the counter table and break cross-device
+      // visibility for non-privileged users.
       const merged = [
-        ...teamUsers.filter(u => !retainedOldIds.has(u.id)),
-        ...retainedOld
+        ...teamUsers,
+        ...((table.members || []).filter(m => m && m.id))
       ];
       // Final dedup pass
       const seenMerge = new Set();
@@ -1039,6 +1060,22 @@ function _mbxDutyTone(label){
       }
     }
 
+    // 2b. Supplement from existing assignment owners (persisted from prior sessions)
+    for (const a of (table.assignments || [])) {
+      if (!a) continue;
+      const aid = String(a.assigneeId || '').trim();
+      if (!aid || seenIds.has(aid)) continue;
+      seenIds.add(aid);
+      members.push({
+        id: aid,
+        name: String(a.assigneeName || aid).trim(),
+        username: String(a.assigneeName || aid).trim(),
+        role: 'MEMBER',
+        roleLabel: 'MEMBER',
+        dutyLabel: '—'
+      });
+    }
+
     // 3. Also supplement from Store.getUsers() for privileged users who have full roster
     if (teamId && window.Store && Store.getUsers) {
       const nowP = UI && UI.mailboxNowParts ? UI.mailboxNowParts()
@@ -1071,7 +1108,12 @@ function _mbxDutyTone(label){
     const isSyncing = teamId && !(_scheduleReady && _scheduleReady[teamId]);
     const bucketManagers = buckets.map(b => ({
       bucket: b,
-      name: _mbxFindScheduledManagerForBucket(table, b)
+      name: (()=>{
+        const scheduled = _mbxFindScheduledManagerForBucket(table, b);
+        if(scheduled && scheduled !== '—') return scheduled;
+        const persisted = String((table && table.meta && table.meta.bucketManagers && table.meta.bucketManagers[b.id]) || '').trim();
+        return persisted || '—';
+      })()
     }));
 
     // ── Member rows ───────────────────────────────────────────────────────────
@@ -1483,8 +1525,11 @@ function _mbxDutyTone(label){
       document.body.appendChild(host);
 
       host.addEventListener('click', e=>{
-        if(e.target.closest('[data-close="mbxAssignModal"]')) _closeCustomModal('mbxAssignModal');
-        if(e.target === host) _closeCustomModal('mbxAssignModal');
+        if(e.target.closest('[data-close="mbxAssignModal"]')){
+          e.preventDefault();
+          e.stopPropagation();
+          _closeCustomModal('mbxAssignModal');
+        }
       });
 
       const submitBtn = host.querySelector('#mbxAssignSubmit');
@@ -1511,6 +1556,7 @@ function _mbxDutyTone(label){
             const assigneeName = targetUser ? (targetUser.name||targetUser.username||_assignUserId) : _assignUserId;
 
             const payload = {
+              shiftKey,
               assigneeId: _assignUserId,
               assigneeName,
               caseNo,
@@ -1561,124 +1607,160 @@ function _mbxDutyTone(label){
     }catch(_){}
   }
 
-  function ensureCaseActionModalMounted(){
+  function ensureAssignModalMounted(){
     try{
-      if(document.getElementById('mbxCaseActionModal')) return;
+      if(document.getElementById('mbxAssignModal')) return;
+      const UI = window.UI;
       const host = document.createElement('div');
-      host.className = 'mbx-custom-backdrop';
-      host.id = 'mbxCaseActionModal';
+      host.className = 'mbx-custom-backdrop'; 
+      host.id = 'mbxAssignModal';
       host.innerHTML = `
         <div class="mbx-modal-glass">
           <div class="mbx-modal-head">
-            <h3 style="color:#f8fafc; margin:0;">🎛️ Case Action Menu</h3>
-            <button class="btn-glass btn-glass-ghost" type="button" data-close="mbxCaseActionModal">✕ Close</button>
+            <h3 style="color:#f8fafc; margin:0;">🎯 Route Case Assignment</h3>
+            <button class="btn-glass btn-glass-ghost mbx-close-btn" type="button">✕ Cancel</button>
           </div>
           <div class="mbx-modal-body">
-            <div style="background:rgba(255,255,255,0.02); border-radius:10px; padding:16px; border:1px solid rgba(255,255,255,0.05);">
-              <div style="font-size:13px; color:#94a3b8; margin-bottom:8px;">Case Reference</div>
-              <div id="mbxCaseActionNo" style="font-size:18px; font-weight:900; color:#38bdf8; letter-spacing:0.5px;"></div>
-              <div style="font-size:12px; color:#64748b; margin-top:4px;">Assigned to: <span id="mbxCaseActionOwner" style="color:#cbd5e1; font-weight:700;"></span></div>
+            <div style="background:rgba(255,255,255,0.02); padding:16px; border-radius:10px; border:1px solid rgba(255,255,255,0.05); display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+              <div>
+                <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Receiving Agent</label>
+                <input id="mbxAssignedTo" disabled class="mbx-input" style="font-weight:700;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Time Block</label>
+                <input id="mbxBucketLbl" disabled class="mbx-input" style="color:#38bdf8; font-weight:700;" />
+              </div>
             </div>
-
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px;">
-              <button id="mbxCaseReassign" class="btn-glass btn-glass-ghost" style="font-size:13px;">🔄 Reassign</button>
-              <button id="mbxCaseDelete" class="btn-glass btn-glass-ghost" style="font-size:13px; color:#ef4444; border-color:rgba(239,68,68,0.3);">🗑️ Delete</button>
+            
+            <div>
+              <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Case Reference Number <span style="color:#ef4444">*</span></label>
+              <input id="mbxCaseNo" placeholder="e.g. INC0001234" class="mbx-input" style="border:1px solid rgba(56,189,248,0.4); font-size:15px; font-weight:800;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Short Description (Optional)</label>
+              <input id="mbxDesc" placeholder="Context notes..." class="mbx-input" style="font-size:13px;" />
+            </div>
+            <div style="background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.2); border-radius:8px; padding:12px; display:flex; align-items:center; gap:10px;">
+              <div style="font-size:20px;">ℹ️</div>
+              <div style="font-size:11px; color:#cbd5e1; line-height:1.5;">
+                The agent will receive an instant notification and the case will appear in their <strong>Pending Actions</strong> panel. They must acknowledge it to complete the routing workflow.
+              </div>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button class="btn-glass btn-glass-ghost mbx-cancel-btn" type="button" style="flex:1;">Cancel</button>
+              <button id="mbxAssignSubmit" class="btn-glass btn-glass-primary" type="button" style="flex:2;">Assign Case →</button>
             </div>
           </div>
         </div>
       `;
       document.body.appendChild(host);
 
-      host.addEventListener('click', e=>{
-        if(e.target.closest('[data-close="mbxCaseActionModal"]')) _closeCustomModal('mbxCaseActionModal');
-        if(e.target === host) _closeCustomModal('mbxCaseActionModal');
-      });
+      // FIXED BUG #2 & #3: Stop propagation on modal glass click + Direct button handlers
+      const modalGlass = host.querySelector('.mbx-modal-glass');
+      if(modalGlass){
+        modalGlass.addEventListener('click', e => {
+          e.stopPropagation(); // Prevent backdrop click from closing
+        });
+      }
 
-      const reassignBtn = host.querySelector('#mbxCaseReassign');
-      const deleteBtn = host.querySelector('#mbxCaseDelete');
+      // FIXED BUG #3: Direct close button handlers (not delegation)
+      const closeBtn = host.querySelector('.mbx-close-btn');
+      const cancelBtn = host.querySelector('.mbx-cancel-btn');
+      
+      if(closeBtn){
+        closeBtn.addEventListener('click', e => {
+          e.preventDefault();
+          e.stopPropagation();
+          _closeCustomModal('mbxAssignModal');
+        });
+      }
+      
+      if(cancelBtn){
+        cancelBtn.addEventListener('click', e => {
+          e.preventDefault();
+          e.stopPropagation();
+          _closeCustomModal('mbxAssignModal');
+        });
+      }
 
-      if(reassignBtn){
-        reassignBtn.addEventListener('click', async ()=>{
-          if(_reassignBusy || !_caseActionCtx) return;
-          const newOwner = prompt('Enter new assignee User ID or Username:');
-          if(!newOwner || !newOwner.trim()) return;
+      // FIXED BUG #1: Assignment submission handler
+      const submitBtn = host.querySelector('#mbxAssignSubmit');
+      if(submitBtn){
+        submitBtn.addEventListener('click', async (e)=>{
+          e.preventDefault();
+          e.stopPropagation();
+          
+          if(_assignSending) return;
+          const caseNo = (host.querySelector('#mbxCaseNo')?.value||'').trim();
+          const desc = (host.querySelector('#mbxDesc')?.value||'').trim();
+          if(!caseNo){ alert('Please enter a case number.'); return; }
+          if(!_assignUserId){ alert('No agent selected.'); return; }
 
           try{
-            _reassignBusy = true;
-            reassignBtn.disabled = true;
-            reassignBtn.textContent = 'Reassigning...';
+            _assignSending = true;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Routing...';
+
+            const {shiftKey, table} = ensureShiftTables();
+            const activeBucket = computeActiveBucketId(table);
+            if(!activeBucket){ alert('No active time block found.'); return; }
 
             const Store = window.Store;
             const users = (Store && Store.getUsers ? Store.getUsers() : []) || [];
-            const target = users.find(u=>u && (String(u.id||'')=== newOwner.trim() || String(u.username||'').toLowerCase()===newOwner.trim().toLowerCase()));
-            if(!target){ alert('User not found.'); return; }
+            const targetUser = users.find(u=>u && String(u.id||'')=== String(_assignUserId||''));
+            const assigneeName = targetUser ? (targetUser.name||targetUser.username||_assignUserId) : _assignUserId;
 
             const payload = {
-              assignmentId: _caseActionCtx.assignmentId,
-              newAssigneeId: String(target.id),
-              newAssigneeName: target.name||target.username||target.id,
+              shiftKey,
+              assigneeId: _assignUserId,
+              assigneeName,
+              caseNo,
+              desc,
+              bucketId: activeBucket,
+              assignedBy: (window.Auth && window.Auth.getUser) ? (window.Auth.getUser().id||'') : '',
+              assignedAt: Date.now(),
               clientId: _mbxClientId()
             };
 
-            const res = await fetch('/api/mailbox/reassign', {
+            const res = await fetch('/api/mailbox/assign', {
               method:'POST',
               headers:{ 'Content-Type':'application/json', ..._mbxAuthHeader() },
               body: JSON.stringify(payload)
             });
 
-            if(!res.ok) throw new Error(await res.text().catch(()=>'Network error'));
+            if(!res.ok){
+              const err = await res.text().catch(()=>'Network error');
+              throw new Error(err);
+            }
 
-            _closeCustomModal('mbxCaseActionModal');
-            scheduleRender('reassign-success');
+            const data = await res.json().catch(()=>({}));
+            const assignment = data.assignment || { ...payload, id: `local_${Date.now()}` };
 
-            const UI = window.UI;
-            if(UI && UI.showToast) UI.showToast(`Case reassigned to ${target.name||target.username}`, 'success');
+            if(!table.counts) table.counts = {};
+            if(!table.counts[_assignUserId]) table.counts[_assignUserId] = {};
+            table.counts[_assignUserId][activeBucket] = (Number(table.counts[_assignUserId][activeBucket])||0) + 1;
+            if(!table.assignments) table.assignments = [];\n            table.assignments.push(assignment);
 
-          }catch(e){
-            alert(`Reassignment failed: ${e.message}`);
-          }finally{
-            _reassignBusy = false;
-            reassignBtn.disabled = false;
-            reassignBtn.textContent = '🔄 Reassign';
-          }
-        });
-      }
+            if(Store && Store.saveMailboxTable) Store.saveMailboxTable(shiftKey, table);
 
-      if(deleteBtn){
-        deleteBtn.addEventListener('click', async ()=>{
-          if(_caseActionBusy || !_caseActionCtx) return;
-          if(!confirm(`Delete case ${_caseActionCtx.caseNo}?`)) return;
-
-          try{
-            _caseActionBusy = true;
-            deleteBtn.disabled = true;
-            deleteBtn.textContent = 'Deleting...';
-
-            const res = await fetch('/api/mailbox/delete-assignment', {
-              method:'POST',
-              headers:{ 'Content-Type':'application/json', ..._mbxAuthHeader() },
-              body: JSON.stringify({ assignmentId: _caseActionCtx.assignmentId, clientId: _mbxClientId() })
-            });
-
-            if(!res.ok) throw new Error(await res.text().catch(()=>'Network error'));
-
-            _closeCustomModal('mbxCaseActionModal');
-            scheduleRender('delete-success');
+            _closeCustomModal('mbxAssignModal');
+            scheduleRender('assign-success');
 
             const UI = window.UI;
-            if(UI && UI.showToast) UI.showToast(`Case ${_caseActionCtx.caseNo} deleted`, 'success');
+            if(UI && UI.showToast) UI.showToast(`Case ${caseNo} assigned to ${assigneeName}`, 'success');
 
           }catch(e){
-            alert(`Delete failed: ${e.message}`);
+            alert(`Assignment failed: ${e.message}`);
           }finally{
-            _caseActionBusy = false;
-            deleteBtn.disabled = false;
-            deleteBtn.textContent = '🗑️ Delete';
+            _assignSending = false;
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Assign Case →';
           }
         });
       }
     }catch(_){}
   }
+
 
   function attachAssignmentListeners(scopeRoot){
     try{
