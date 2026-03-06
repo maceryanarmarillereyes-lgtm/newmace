@@ -4923,3 +4923,79 @@ body[data-theme="mono"]{
   --surface-bg:#0b0c10;--surface-bg-alt:#111318;--surface-card:#13151b;--surface-card-alt:#0f1116;--surface-modal:#13151b;--text-primary:#f3f4f6;--text-muted:#b7bcc6;--text-inverse:#0f172a;--accent-primary:#a3a3a3;--accent-primary-hover:#8f8f8f;--accent-border:rgba(255,255,255,.10);
 }
 
+
+/* ════════════════════════════════════════════════════════════
+   SIDEBAR FIX v2 — nav items fully visible, nothing buried
+   under the fixed bottom bars (quicklinks + online-users-bar)
+
+   Root causes:
+   A) .side grid item stretches to its grid track (1fr) but
+      the inner flex column doesn't confine .nav — so .nav
+      content bleeds past the sidebar boundary and gets
+      covered by position:fixed bottom bars.
+   B) "body:not(.sidebar-collapsed) .side .nav { display:block }"
+      (higher specificity) must be matched and overridden.
+   C) .side.card.pad had no explicit height, so flex:1 on .nav
+      had no finite reference to size against.
+
+   Fix: give .side a definite height equal to its grid track,
+   make it a proper flex column, and let .nav fill+scroll the
+   remaining space between usercard and side-logs.
+   ════════════════════════════════════════════════════════════ */
+
+/* 1 ── Sidebar shell: tight flex column, clips overflow */
+aside.side,
+.side.card.pad {
+  display: flex !important;
+  flex-direction: column !important;
+  /* align-self:stretch (grid default) already makes it fill
+     the 1fr track; making height explicit as well ensures
+     child flex sizing has a finite reference in all browsers */
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;   /* clip — nav scrolls internally */
+}
+
+/* 2 ── Nav: fills all remaining vertical space and scrolls.
+        Must beat "body:not(.sidebar-collapsed) .side .nav"
+        (specificity 0-3-1) so we use the same selector shape */
+body:not(.sidebar-collapsed) .side #nav,
+body:not(.sidebar-collapsed) .side .nav,
+.side #nav,
+.side .nav {
+  display: flex !important;         /* restore flex for gap/direction */
+  flex-direction: column !important;
+  flex: 1 1 0 !important;           /* 0 basis = truly shrinkable */
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-right: 3px !important;    /* room for scrollbar track */
+}
+
+/* 3 ── Usercard + side-logs: fixed-size, never grow */
+.side .usercard { flex-shrink: 0 !important; flex-grow: 0 !important; }
+.side .side-logs {
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  margin-top: auto !important;      /* push to bottom */
+}
+
+/* 4 ── Slim scrollbar (invisible until needed) */
+.side #nav::-webkit-scrollbar,
+.side .nav::-webkit-scrollbar { width: 3px; }
+.side #nav::-webkit-scrollbar-track,
+.side .nav::-webkit-scrollbar-track { background: transparent; }
+.side #nav::-webkit-scrollbar-thumb,
+.side .nav::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.14);
+  border-radius: 999px;
+}
+.side #nav::-webkit-scrollbar-thumb:hover,
+.side .nav::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.28); }
+
+/* 5 ── Collapsed: icon-only, no scroll needed */
+body.sidebar-collapsed aside.side,
+body.sidebar-collapsed .side.card.pad {
+  height: 100% !important;
+  overflow: hidden !important;
+}
