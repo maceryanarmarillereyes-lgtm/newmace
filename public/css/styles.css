@@ -792,12 +792,12 @@ body[data-mode="light"] .sp-photo{background:rgba(15,23,42,.04)}
 .nav a:hover{border-color:rgba(255,255,255,.12)}
 
 /* Tree nav */
-.nav-group{border:1px solid transparent;border-radius:14px;overflow:hidden}
+.nav-group{border:1px solid transparent;border-radius:14px;overflow:visible}
 .nav-group.active{border-color:rgba(255,255,255,.10);background:rgba(255,255,255,.02)}
 .nav-group-head{width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:transparent;border:0;color:var(--muted);cursor:pointer}
 .nav-group-head:hover{background:rgba(255,255,255,.03)}
 .nav-group-head .chev{margin-left:auto;opacity:.7}
-.nav-group-kids{padding:4px 0 10px}
+.nav-group-kids{padding:4px 0 10px;overflow:visible}
 
 /* Profile modal */
 .profile-grid{display:grid;grid-template-columns:220px 1fr;gap:18px;align-items:start}
@@ -2310,28 +2310,51 @@ body[data-mode="light"] .app-cursor.is-text{ background: rgba(255,255,255,.55); 
 .app-cursor.is-text .app-cursor-dot{ opacity: 0; }
 .app-cursor.is-text .app-cursor-ibar{ opacity: 1; }
 
-/* Sidebar nav: prevent overflow + enterprise sizing */
-.side{ overflow: hidden; }
+/* ── Sidebar nav: layout + overflow fix ───────────────────────────────────── */
+/* .side uses flex-column so the nav gets all remaining height and scrolls    */
+/* internally — the parent must NOT clip Y axis or nav items get cut off.     */
+.side{
+  position:relative;
+  overflow:hidden;          /* clip X only; flex children manage Y */
+  display:flex;
+  flex-direction:column;
+}
 
 /* Ensure sidebar navigation is always visible/clickable when expanded */
 body:not(.sidebar-collapsed) .side #nav,
 body:not(.sidebar-collapsed) .side .nav{
-  display:block;
+  display:flex;
+  flex-direction:column;
   visibility:visible;
   pointer-events:auto;
 }
 body:not(.sidebar-collapsed) .side .nav{position:relative; z-index:4;}
 body:not(.sidebar-collapsed) .side .usercard{position:relative; z-index:3;}
 
-/* Sidebar enterprise */
-.side{position:relative;overflow:hidden}
-.side .nav{margin-top:6px}
-.nav .nav-item,.nav .nav-group-head{display:flex;align-items:center;gap:10px;width:100%;border-radius:10px;padding:8px 10px;color:var(--text);text-decoration:none;border:1px solid transparent;background:transparent;cursor:pointer;transition:background .12s,border-color .12s}
+/* Nav scrolls within its own flex area — no parent clip needed */
+.side .nav{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  margin-top:6px;
+  padding-right:2px;
+}
+
+/* Nav items: always full-width, box-sizing prevents padding overflow */
+.nav .nav-item,.nav .nav-group-head{
+  display:flex;align-items:center;gap:10px;
+  width:100%;box-sizing:border-box;
+  border-radius:10px;padding:8px 10px;
+  color:var(--text);text-decoration:none;
+  border:1px solid transparent;background:transparent;
+  cursor:pointer;transition:background .12s,border-color .12s;
+}
 .nav .nav-item:hover,.nav .nav-group-head:hover{background:rgba(37,99,235,.06);border-color:rgba(37,99,235,.18)}
-.nav .nav-item.active{background:rgba(37,99,235,.10);border-color:rgba(37,99,235,.30);box-shadow:inset 3px 0 0 var(--primary)}
-.nav .nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:750}
-.nav .nav-ico{width:18px;height:18px;background:currentColor;opacity:.9}
-.side .nav{flex:1 1 auto;min-height:0;overflow:auto;padding-right:4px}
+.nav .nav-item.active{background:rgba(37,99,235,.10);border-color:rgba(37,99,235,.30);box-shadow:inset 3px 0 0 var(--accent)}
+.nav .nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:700;letter-spacing:.2px}
+/* Icon: fixed-width so labels always align regardless of icon presence */
+.nav .nav-ico{width:18px;height:18px;flex:0 0 18px;background:currentColor;opacity:.85}
 
 /* Collapsed sidebar */
 body.sidebar-collapsed .side{width:72px;padding:12px}
@@ -2369,13 +2392,17 @@ body.sidebar-collapsed .nav .nav-group-head:hover::after{
   flex: 1 1 auto;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 4px; /* room for scrollbar without pushing layout */
+  padding-right: 2px;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .nav a,
 .nav-group-head{
   min-width: 0;
   max-width: 100%;
+  box-sizing: border-box;
   font-size: clamp(11px, 1.05vw, 13px);
   letter-spacing: .1px;
 }
@@ -2401,7 +2428,7 @@ body[data-mode="light"] .nav a.active{
 .nav a.active::before{
   content: "";
   position:absolute;
-  left: -1px; top: 8px; bottom: 8px;
+  left: 2px; top: 8px; bottom: 8px;
   width: 3px;
   border-radius: 6px;
   background: rgba(110,231,255,.95);
@@ -2468,8 +2495,8 @@ body[data-mode="light"] .nav a:hover{
   mask-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2'%3E%3Cpath d='M12 22a2 2 0 0 0 2-2H10a2 2 0 0 0 2 2z'/%3E%3Cpath d='M18 16v-5a6 6 0 1 0-12 0v5l-2 2h16l-2-2z'/%3E%3Cpath d='M18 8a3 3 0 0 1 3 3'/%3E%3Cpath d='M6 8a3 3 0 0 0-3 3'/%3E%3C/svg%3E\");
 }
 
-/* Small refinement: keep nav items inside rounded sidebar padding */
-.side.card.pad{ padding: 16px; }
+/* Sidebar padding - balanced so nav items fill full width */
+.side.card.pad{ padding: 12px 10px 12px 12px; }
 
 /* Topbar icons */
 .ico[data-ico="notes"]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Cpath%20d=%22M6%202h9l5%205v15a2%202%200%200%201-2%202H6a2%202%200%200%201-2-2V4a2%202%200%200%201%202-2z%22/%3E%3Cpath%20d=%22M14%202v6h6%22%20fill=%22none%22/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2024%2024%22%3E%3Cpath%20d=%22M6%202h9l5%205v15a2%202%200%200%201-2%202H6a2%202%200%200%201-2-2V4a2%202%200%200%201%202-2z%22/%3E%3Cpath%20d=%22M14%202v6h6%22%20fill=%22none%22/%3E%3C/svg%3E")}
@@ -3805,7 +3832,7 @@ body[data-theme="classic_style"][data-mode="dark"] #classicManilaClock{
 .nav .nav-group-kids{padding-top:6px;padding-bottom:8px}
 .nav-group.is-record-group .nav-group-kids{position:relative;margin-left:16px;padding-left:12px}
 .nav-group.is-record-group .nav-group-kids::before{content:"";position:absolute;left:4px;top:8px;bottom:10px;width:1px;background:rgba(148,163,184,.35)}
-.nav-group.is-record-group .nav-item.nav-subitem{padding-left:10px !important}
+.nav-group.is-record-group .nav-item.nav-subitem{padding-left:10px !important;box-sizing:border-box}
 
 .side-logs{gap:10px}
 .side-logs-title{font-weight:800;font-size:20px;color:var(--text-0,var(--text))}
@@ -5065,4 +5092,84 @@ body:not(.sidebar-collapsed) .side .nav {
 body.sidebar-collapsed aside.side,
 body.sidebar-collapsed .side.card.pad {
   overflow: hidden !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MUMS BUILD 2 — SIDEBAR NAV ALIGNMENT FIX
+   Overrides legacy overflow:hidden rules that were clipping nav items.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* 1. Side panel: flex column so nav fills remaining height, scrolls inside */
+aside.side.card.pad,
+aside.side {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;   /* clip X; flex children manage Y */
+}
+
+/* 2. Nav: takes all available height, scrolls vertically */
+aside.side .nav,
+aside.side #nav {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* 3. Nav group wrapper: never clip children (was cutting off MEMBERS etc.) */
+.nav-group {
+  overflow: visible !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* 4. All nav items & group heads: full width, never overflow parent */
+.nav .nav-item,
+.nav .nav-group-head {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  overflow: hidden !important;  /* clip text only, not layout */
+}
+
+/* 5. Nav label text: clip with ellipsis, never cause layout overflow */
+.nav .nav-label {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* 6. Icon: fixed width so labels always line up */
+.nav .nav-ico {
+  flex: 0 0 18px !important;
+  width: 18px !important;
+  height: 18px !important;
+}
+
+/* 7. Sub-items (inside nav-group-kids): indented but still full-width */
+.nav-group-kids {
+  overflow: visible !important;
+  padding: 2px 0 8px 0 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.nav .nav-item.nav-subitem {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* 8. Side-logs pushed to bottom of flex column */
+.side .side-logs {
+  flex-shrink: 0 !important;
+  margin-top: auto !important;
+}
+.side .usercard {
+  flex-shrink: 0 !important;
 }
