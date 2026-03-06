@@ -134,14 +134,25 @@ const CloudUsers = (() => {
 
     // Persist into the app's local Store so Auth.getUser() can resolve role/team/name.
     // Cloud roster must overwrite local roster to avoid duplicates/stale data.
+    //
+    // FIX (race condition): Write users SILENTLY so _usersCache is fully updated
+    // BEFORE any mums:store event fires. A non-silent write dispatches the event
+    // synchronously inside write(), which means listeners calling Store.getUsers()
+    // would see the OLD stale empty cache — causing the User Management table to
+    // appear blank even though data was returned. We fire the event manually AFTER
+    // the cache is guaranteed to be current.
     try {
       if (window.Store) {
         if (typeof Store.setUsers === 'function') {
-          // Hard-clear first to avoid any UI surfaces that may have cached a merged roster.
+          // Clear silently first.
           try{ Store.setUsers([], { skipSanitize:true, silent:true }); }catch(_){ }
-          Store.setUsers(users);
+          // Write users silently — cache is updated but no premature render fired.
+          Store.setUsers(users, { silent:true });
+          // NOW dispatch: cache is fully current, any listener that calls getUsers() sees real data.
+          try{ window.dispatchEvent(new CustomEvent('mums:store', { detail: { key: 'ums_users', source: 'cloud_refresh' } })); }catch(_){}
         } else if (typeof Store.saveUsers === 'function') {
-          Store.saveUsers(users);
+          Store.saveUsers(users, { silent:true });
+          try{ window.dispatchEvent(new CustomEvent('mums:store', { detail: { key: 'ums_users', source: 'cloud_refresh' } })); }catch(_){}
         } else if (typeof Store.importUsers === 'function') {
           Store.importUsers(users);
         } else {

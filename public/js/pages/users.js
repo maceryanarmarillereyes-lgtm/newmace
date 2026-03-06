@@ -180,13 +180,68 @@ function canCreateRole(actor, targetRole) {
     </div>
   `;
 
+  // ── Cloud-mode roster loader ─────────────────────────────────────────────────
+  // FIX: previously used a bare try/catch that swallowed API failures, leaving
+  // the table silently empty. Now we:
+  //   1. Detect and display API failures with a retry button.
+  //   2. Auto-retry once after 2 s (handles transient token-refresh races).
+  //   3. Always call renderRows() only after the store is confirmed to be updated.
+  // ─────────────────────────────────────────────────────────────────────────────
   if(isCloudMode){
-    const tbody = root.querySelector('tbody[data-users-tbody]');
-    if(tbody){ tbody.innerHTML = '<tr><td colspan="6"><span class="small">Loading cloud roster…</span></td></tr>'; }
-    (async()=>{
-      try{ await CloudUsers.refreshIntoLocalStore(); }catch(_){ }
+    const showUsersError = (msg, canRetry) => {
+      const tbody = root.querySelector('tbody[data-users-tbody]');
+      if(!tbody) return;
+      const safeMsg = (typeof UI !== 'undefined' && UI.esc) ? UI.esc(String(msg||'Unknown error')) : String(msg||'Unknown error');
+      tbody.innerHTML = `<tr><td colspan="6">
+        <div class="err" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span>⚠ Could not load users: ${safeMsg}</span>
+          ${canRetry ? '<button class="btn" id="btnRetryUsers">Retry</button>' : ''}
+        </div>
+      </td></tr>`;
+      if(canRetry){
+        const retryBtn = root.querySelector('#btnRetryUsers');
+        if(retryBtn) retryBtn.onclick = loadCloudRoster;
+      }
+    };
+
+    async function loadCloudRoster(){
+      const tbody = root.querySelector('tbody[data-users-tbody]');
+      if(tbody){ tbody.innerHTML = '<tr><td colspan="6"><span class="small">Loading cloud roster…</span></td></tr>'; }
+
+      let result = null;
+      try{
+        result = await CloudUsers.refreshIntoLocalStore();
+      }catch(err){
+        showUsersError(String(err && err.message ? err.message : err), true);
+        return;
+      }
+
+      // refreshIntoLocalStore returns {ok:false} on API failure (no throw).
+      if(!result || !result.ok){
+        const errMsg = (result && result.message) ? result.message : 'API returned an error. Check your connection and session.';
+        // Auto-retry once after 2 s (handles a Supabase token-refresh race on page load).
+        let retried = false;
+        const autoRetry = setTimeout(async()=>{
+          if(retried) return;
+          retried = true;
+          let r2 = null;
+          try{ r2 = await CloudUsers.refreshIntoLocalStore(); }catch(_){ }
+          if(r2 && r2.ok){
+            renderRows();
+          } else {
+            showUsersError(errMsg, true);
+          }
+        }, 2000);
+        // Show temporary error while auto-retry is pending.
+        if(tbody){ tbody.innerHTML = '<tr><td colspan="6"><span class="small">Retrying…</span></td></tr>'; }
+        return;
+      }
+
+      // Success — render.
       renderRows();
-    })();
+    }
+
+    loadCloudRoster();
   } else {
     renderRows();
   }
@@ -227,13 +282,25 @@ function canCreateRole(actor, targetRole) {
         return;
       }
 
-      // Roster changed locally (after refresh). Re-render while preserving scroll.
+      // Roster changed locally (after cloud refresh). Re-render while preserving scroll.
+      // NOTE: source==='cloud_refresh' means the write was silent and the cache is
+      // fully updated — safe to render. Any other source also goes here.
       if(k === 'ums_users'){
         const scroller = root.closest('.main') || document.scrollingElement || document.documentElement;
         const prevTop = (_pendingUsersScrollTop !== null) ? _pendingUsersScrollTop : (scroller ? (scroller.scrollTop||0) : 0);
         _pendingUsersScrollTop = null;
-        renderRows();
-        try{ if(scroller) scroller.scrollTop = prevTop; }catch(_){ }
+        // Guard: only render if store has actual users (skip empty intermediate writes)
+        const storeUsers = (window.Store && typeof Store.getUsers === 'function') ? Store.getUsers() : [];
+        if(storeUsers && storeUsers.length > 0){
+          renderRows();
+          try{ if(scroller) scroller.scrollTop = prevTop; }catch(_){ }
+        } else if(e && e.detail && e.detail.source === 'cloud_refresh'){
+          // cloud_refresh always fires after the store is populated — render regardless
+          renderRows();
+          try{ if(scroller) scroller.scrollTop = prevTop; }catch(_){ }
+        }
+        // If store is empty and not from cloud_refresh, skip — a follow-up event or
+        // the loadCloudRoster() IIFE will call renderRows() once data is ready.
       }
     }catch(_){ }
   };
