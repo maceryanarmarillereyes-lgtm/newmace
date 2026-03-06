@@ -3623,6 +3623,97 @@ function updateClocksPreviewTimes(){
     apply();
   }
 
+  // ── SIDEBAR STATE ─────────────────────────────────────────────────────────────
+  // applySidebarState([collapsed]) — reads localStorage when called with no arg.
+  function applySidebarState(collapsed) {
+    try {
+      const pref = (collapsed !== undefined)
+        ? collapsed
+        : (localStorage.getItem('mums_sidebar_default') === 'collapsed');
+      document.body.classList.toggle('sidebar-collapsed', !!pref);
+      // Keep hover-expand in sync (only meaningful while collapsed).
+      const hoverOn = (localStorage.getItem('mums_sidebar_hover') ?? '1') === '1';
+      document.body.classList.toggle('sidebar-hoverable', !!pref && hoverOn);
+      // Persist the current state so future loads start correctly.
+      localStorage.setItem('mums_sidebar_default', pref ? 'collapsed' : 'expanded');
+    } catch (_) {}
+  }
+
+  // bindSidebarToggle() — wires the #sidebarToggle hamburger button.
+  function bindSidebarToggle() {
+    const btn = document.getElementById('sidebarToggle');
+    if (!btn || btn.__sidebarBound) return;
+    btn.__sidebarBound = true;
+    let lastClick = 0;
+    btn.addEventListener('click', () => {
+      const now = Date.now();
+      const isCollapsed = document.body.classList.contains('sidebar-collapsed');
+      // Double-click within 400 ms → pin as rail (collapsed) permanently.
+      if (now - lastClick < 400) {
+        applySidebarState(true);
+      } else {
+        applySidebarState(!isCollapsed);
+      }
+      lastClick = now;
+    });
+  }
+
+  // ── RIGHTBAR STATE ────────────────────────────────────────────────────────────
+  function applyRightbarState(collapsed) {
+    try {
+      const pref = (collapsed !== undefined)
+        ? collapsed
+        : (localStorage.getItem('mums_rightbar_default') === 'collapsed');
+      document.body.classList.toggle('rightbar-collapsed', !!pref);
+      localStorage.setItem('mums_rightbar_default', pref ? 'collapsed' : 'expanded');
+    } catch (_) {}
+  }
+
+  function bindRightbarToggle() {
+    const btn = document.getElementById('toggleRightPanelBtn');
+    if (!btn || btn.__rightbarBound) return;
+    btn.__rightbarBound = true;
+    btn.addEventListener('click', () => {
+      const now = document.body.classList.contains('rightbar-collapsed');
+      applyRightbarState(!now);
+    });
+  }
+
+  // ── DENSITY ───────────────────────────────────────────────────────────────────
+  function applyDensity() {
+    try {
+      const d = localStorage.getItem('mums_density') || 'normal';
+      document.body.classList.toggle('density-compact', d === 'compact');
+    } catch (_) {}
+  }
+
+  // ── NAV KEYBOARD ─────────────────────────────────────────────────────────────
+  function bindNavKeyboard() {
+    try {
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+          e.preventDefault();
+          const inp = document.getElementById('globalSearchInput');
+          if (inp) { inp.focus(); inp.select(); }
+        }
+        // [ / ] keys to toggle sidebar quickly.
+        if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === '[') {
+          const active = document.activeElement;
+          if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+          const isCollapsed = document.body.classList.contains('sidebar-collapsed');
+          applySidebarState(!isCollapsed);
+        }
+      });
+    } catch (_) {}
+  }
+
+  // ── MOBILE STUBS ─────────────────────────────────────────────────────────────
+  // These are no-ops on desktop; extend when mobile breakpoints are added.
+  function bindMobilePanelToggle() { /* mobile panel toggle placeholder */ }
+  function bindMobileBottomSheets() { /* mobile bottom sheet placeholder */ }
+  function bindMobileFabStack() { /* mobile FAB stack placeholder */ }
+  // ─────────────────────────────────────────────────────────────────────────────
+
 async function boot(){
     if(window.__mumsBooted) return;
     window.__mumsBooted = true;

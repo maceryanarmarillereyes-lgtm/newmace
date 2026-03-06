@@ -156,11 +156,23 @@ try {
 
     // 2) Hard delete auth user (critical).
     const delAuth = await serviceFetch(`/auth/v1/admin/users/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
-    if (!delAuth.ok) {
-      return sendJson(res, delAuth.status || 500, {
+    // Supabase returns 404 with error_code "user_not_found" when the auth user was already
+    // deleted (e.g. orphaned profile). Treat this as a soft success so we still clean up
+    // the profile/directory rows below.
+    const authAlreadyGone = !delAuth.ok && (
+      delAuth.status === 404 ||
+      (delAuth.json && (delAuth.json.error_code === 'user_not_found' || delAuth.json.code === 404))
+    );
+    if (!delAuth.ok && !authAlreadyGone) {
+      // NOTE: Never forward a raw 404 HTTP status from this endpoint — Cloudflare Pages
+      // intercepts 404 responses from API functions and serves its own HTML 404 page
+      // instead of our JSON payload. Map unknown failures to 422 or 500.
+      const safeStatus = (delAuth.status === 404) ? 422 : (delAuth.status || 500);
+      const rawMsg = (delAuth.json && (delAuth.json.message || delAuth.json.msg || delAuth.json.error)) || delAuth.text || 'Failed to delete auth user.';
+      return sendJson(res, safeStatus, {
         ok: false,
         error: 'auth_delete_failed',
-        message: (delAuth.json && (delAuth.json.message || delAuth.json.error)) || delAuth.text || 'Failed to delete auth user.',
+        message: rawMsg,
         details: delAuth.json || delAuth.text,
         logout_attempted: !!logoutOut,
         logout_status: logoutOut ? logoutOut.status : undefined
@@ -189,7 +201,8 @@ try {
     return sendJson(res, 200, {
       ok: true,
       userId: targetId,
-      auth_deleted: true,
+      auth_deleted: !authAlreadyGone,
+      auth_already_gone: !!authAlreadyGone,
       logout_attempted: !!logoutOut,
       logout_status: logoutOut ? logoutOut.status : undefined,
       deleted: results,
