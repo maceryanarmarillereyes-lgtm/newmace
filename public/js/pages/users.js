@@ -201,14 +201,21 @@ function canCreateRole(actor, targetRole) {
       if(!k) return;
       if(!root || !document.body.contains(root)) return;
 
-      // A user_created event has been received (via mums_user_events fan-out).
-      if(k === 'mums_user_list_updated'){
+      // A user_created or user_deleted event has been received via realtime fan-out.
+      if(k === 'mums_user_list_updated' || k === 'mums_user_events'){
         const scroller = root.closest('.main') || document.scrollingElement || document.documentElement;
         if(_pendingUsersScrollTop === null) _pendingUsersScrollTop = scroller ? (scroller.scrollTop||0) : 0;
 
         // Cloud mode: refresh roster (RBAC-safe). The subsequent ums_users write will trigger the re-render.
         if(isCloudMode && window.Store && typeof Store.refreshUserList === 'function'){
-          try{ await Store.refreshUserList({ reason:'mums_user_list_updated' }); }catch(_){ }
+          try{ await Store.refreshUserList({ reason: k }); }catch(_){ }
+        } else {
+          // Local / non-cloud: re-render immediately from store.
+          const prevTop = (_pendingUsersScrollTop !== null) ? _pendingUsersScrollTop : 0;
+          _pendingUsersScrollTop = null;
+          renderRows();
+          try{ if(scroller) scroller.scrollTop = prevTop; }catch(_){ }
+          return;
         }
 
         // Optional toast (throttled to avoid spam during batch operations).
@@ -230,7 +237,8 @@ function canCreateRole(actor, targetRole) {
       }
     }catch(_){ }
   };
-  try{ if(isCloudMode) window.addEventListener('mums:store', mumsUserMgmtStoreListener); }catch(_){ }
+  // Register listener for BOTH cloud and local modes so realtime updates work everywhere.
+  try{ window.addEventListener('mums:store', mumsUserMgmtStoreListener); }catch(_){ }
 
 // UI permission hardening: only SUPER_ADMIN and TEAM_LEAD can create/import/export users.
 const createAllowed = !!actor && ['SUPER_ADMIN', 'TEAM_LEAD'].includes((actor.role || '').toUpperCase());
@@ -347,15 +355,28 @@ if (!createAllowed) {
         const out = await CloudUsers.deleteUser(id);
         if(!out.ok){
           const msg = out.message || 'Delete failed.';
-          try{ UI.toast ? UI.toast(msg) : alert(msg); }catch(_){ alert(msg); }
+          try{ UI.toast ? UI.toast(msg, 'error') : alert(msg); }catch(_){ alert(msg); }
           return;
         }
-        // Optimistic local removal; then refresh from cloud so the roster is authoritative.
+        // Optimistic local removal first so UI updates instantly.
         try{ Store.deleteUser(id); }catch(_){ }
+        // Refresh from cloud so roster is authoritative.
         try{ CloudUsers.refreshIntoLocalStore && (await CloudUsers.refreshIntoLocalStore()); }catch(_){ }
+        // Broadcast to other sessions so they update without a page refresh.
+        try{
+          const rawWrite = (typeof Store.__rawWrite === 'function') ? Store.__rawWrite : (typeof Store.__writeRaw === 'function') ? Store.__writeRaw : null;
+          if(rawWrite) rawWrite('mums_user_events', { type:'user_deleted', ts: Date.now(), userId: id });
+          // Also fire the list-updated key so any open Users page on other tabs refreshes.
+          if(rawWrite) rawWrite('mums_user_list_updated', { ts: Date.now(), reason:'user_deleted', userId: id });
+        }catch(_){}
       }else{
         Store.deleteUser(id);
+        // Local mode: fire a store event so any other listener on this tab re-renders.
+        try{
+          window.dispatchEvent(new CustomEvent('mums:store', { detail:{ key:'ums_users', reason:'user_deleted' } }));
+        }catch(_){}
       }
+      try{ UI.toast && UI.toast(`User "${u.name||u.username}" deleted.`, 'success'); }catch(_){}
       try{
         Store.addLog({
           ts: Date.now(),
@@ -389,7 +410,7 @@ if (!createAllowed) {
   // ensure cleanup runs on route change
   root._cleanup = ()=>{
     try{ root.removeEventListener('click', onClick); }catch(_){}
-    try{ if(isCloudMode) window.removeEventListener('mums:store', mumsUserMgmtStoreListener); }catch(_){}
+    try{ window.removeEventListener('mums:store', mumsUserMgmtStoreListener); }catch(_){}
   };
 // modal close
   root.querySelectorAll('[data-close="userModal"]').forEach(b=>b.onclick=()=>UI.closeModal('userModal'));
@@ -604,13 +625,18 @@ function openUserModal(actor, user){
 
         // Broadcast to other devices via realtime/sync queue.
         try{
-          if(createdEvent && window.Store){
+          if(window.Store){
             const rawWrite = (typeof Store.__rawWrite === 'function') ? Store.__rawWrite : (typeof Store.__writeRaw === 'function') ? Store.__writeRaw : null;
-            if(rawWrite) rawWrite('mums_user_events', createdEvent);
+            if(rawWrite){
+              if(createdEvent) rawWrite('mums_user_events', createdEvent);
+              // Also write the list-updated key so any open User Management page refreshes.
+              rawWrite('mums_user_list_updated', { ts: Date.now(), reason: isEdit ? 'user_updated' : 'user_created' });
+            }
           }
         }catch(_){ }
 
         UI.closeModal('userModal');
+        try{ UI.toast && UI.toast(isEdit ? 'User updated.' : 'User created.', 'success'); }catch(_){}
         renderRows();
         return;
       }
@@ -619,6 +645,8 @@ function openUserModal(actor, user){
       if(isEdit){
         const patch = { name, username, email: (email || user?.email || ''), role, teamId };
         Store.updateUser(user.id, patch);
+        // Notify other listeners on same tab.
+        try{ window.dispatchEvent(new CustomEvent('mums:store', { detail:{ key:'ums_users', reason:'user_updated' } })); }catch(_){}
       } else {
         const newUser = {
           id: crypto.randomUUID(),
@@ -630,9 +658,12 @@ function openUserModal(actor, user){
           createdAt: Date.now(),
         };
         Store.addUser(newUser);
+        // Notify other listeners on same tab.
+        try{ window.dispatchEvent(new CustomEvent('mums:store', { detail:{ key:'ums_users', reason:'user_created' } })); }catch(_){}
       }
 
       UI.closeModal('userModal');
+      try{ UI.toast && UI.toast(isEdit ? 'User updated.' : 'User created.', 'success'); }catch(_){}
       try { renderRows(); } catch (_) {}
     } finally {
       try {
@@ -728,8 +759,12 @@ function openUserModal(actor, user){
       if(!canSched) return;
       const newSched = sel.value || null;
       Store.updateUser(user.id, { schedule: newSched });
+      // Realtime update: close modal and re-render the table in-place.
+      // No page reload needed — Store.updateUser triggers 'ums_users' store event
+      // which the listener picks up, or we call renderRows() directly as a fallback.
       UI.closeModal('profileModal');
-      window.location.reload();
+      try{ renderRows(); }catch(_){}
+      try{ UI.toast && UI.toast('Schedule updated.', 'success'); }catch(_){}
     };
 
     // open modal

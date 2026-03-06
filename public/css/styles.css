@@ -4978,77 +4978,91 @@ body[data-theme="mono"]{
 
 
 /* ════════════════════════════════════════════════════════════
-   SIDEBAR FIX v2 — nav items fully visible, nothing buried
-   under the fixed bottom bars (quicklinks + online-users-bar)
+   SIDEBAR SCROLL FIX v3 — definitive
+   ════════════════════════════════════════════════════════════
 
-   Root causes:
-   A) .side grid item stretches to its grid track (1fr) but
-      the inner flex column doesn't confine .nav — so .nav
-      content bleeds past the sidebar boundary and gets
-      covered by position:fixed bottom bars.
-   B) "body:not(.sidebar-collapsed) .side .nav { display:block }"
-      (higher specificity) must be matched and overridden.
-   C) .side.card.pad had no explicit height, so flex:1 on .nav
-      had no finite reference to size against.
+   Root cause (confirmed):
+   Setting height:100% on a grid item that already uses the
+   default align-self:stretch causes Chrome to resolve it as
+   100% of the GRID CONTAINER height — not the track height.
+   This makes .side taller than its track, so .nav never
+   overflows it and overflow-y:auto never activates.
 
-   Fix: give .side a definite height equal to its grid track,
-   make it a proper flex column, and let .nav fill+scroll the
-   remaining space between usercard and side-logs.
+   Correct technique:
+   Do NOT set height:100% on .side. Instead, set overflow:hidden.
+   overflow:hidden on a grid item creates a new BFC and PREVENTS
+   the flex container from growing past its grid track boundary.
+   Now .side's intrinsic height = the track height (definite).
+   flex:1 1 0px on .nav then correctly fills the remaining
+   bounded space and overflow-y:auto activates when content
+   exceeds that space.
+
+   Specificity note:
+   Line ~2318 has: body:not(.sidebar-collapsed) .side .nav
+   { display:block } at specificity 0-3-1.
+   We must use an equal or higher specificity selector below,
+   placed later in the file, to override it.
    ════════════════════════════════════════════════════════════ */
 
-/* 1 ── Sidebar shell: tight flex column, clips overflow */
+/* 1 ── Sidebar shell: flex column, bounded by overflow:hidden
+        DO NOT add height:100% — grid stretch + overflow:hidden
+        is what actually constrains the height. */
 aside.side,
 .side.card.pad {
   display: flex !important;
   flex-direction: column !important;
-  /* align-self:stretch (grid default) already makes it fill
-     the 1fr track; making height explicit as well ensures
-     child flex sizing has a finite reference in all browsers */
-  height: 100% !important;
+  overflow: hidden !important;
   min-height: 0 !important;
-  overflow: hidden !important;   /* clip — nav scrolls internally */
 }
 
-/* 2 ── Nav: fills all remaining vertical space and scrolls.
-        Must beat "body:not(.sidebar-collapsed) .side .nav"
-        (specificity 0-3-1) so we use the same selector shape */
+/* 2 ── Nav: fills remaining space and scrolls.
+        Selector specificity 0-3-1 beats the display:block rule
+        at line ~2318. !important ensures it sticks. */
 body:not(.sidebar-collapsed) .side #nav,
-body:not(.sidebar-collapsed) .side .nav,
-.side #nav,
-.side .nav {
-  display: flex !important;         /* restore flex for gap/direction */
+body:not(.sidebar-collapsed) .side .nav {
+  display: flex !important;
   flex-direction: column !important;
-  flex: 1 1 0 !important;           /* 0 basis = truly shrinkable */
+  flex: 1 1 0px !important;
   min-height: 0 !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
-  padding-right: 3px !important;    /* room for scrollbar track */
+  padding-right: 3px !important;
+}
+/* Low-specificity fallback for non-collapsed state without body class */
+.side #nav,
+.side .nav {
+  flex: 1 1 0px !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
 }
 
-/* 3 ── Usercard + side-logs: fixed-size, never grow */
-.side .usercard { flex-shrink: 0 !important; flex-grow: 0 !important; }
+/* 3 ── Fixed-size siblings — never grow, never push nav out */
+.side .usercard {
+  flex: 0 0 auto !important;
+}
 .side .side-logs {
-  flex-shrink: 0 !important;
-  flex-grow: 0 !important;
-  margin-top: auto !important;      /* push to bottom */
+  flex: 0 0 auto !important;
+  margin-top: auto !important;
 }
 
-/* 4 ── Slim scrollbar (invisible until needed) */
+/* 4 ── Thin scrollbar — appears only when nav overflows */
 .side #nav::-webkit-scrollbar,
 .side .nav::-webkit-scrollbar { width: 3px; }
 .side #nav::-webkit-scrollbar-track,
 .side .nav::-webkit-scrollbar-track { background: transparent; }
 .side #nav::-webkit-scrollbar-thumb,
 .side .nav::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,.14);
+  background: rgba(255,255,255,.15);
   border-radius: 999px;
 }
 .side #nav::-webkit-scrollbar-thumb:hover,
-.side .nav::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.28); }
+.side .nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,.30);
+}
 
-/* 5 ── Collapsed: icon-only, no scroll needed */
+/* 5 ── Collapsed sidebar: icon-only, no scroll */
 body.sidebar-collapsed aside.side,
 body.sidebar-collapsed .side.card.pad {
-  height: 100% !important;
   overflow: hidden !important;
 }
