@@ -11,7 +11,8 @@ const {
   getUserFromJwt,
   getProfileForUserId,
   serviceSelect,
-  serviceInsert
+  serviceInsert,
+  serviceFetch
 } = require('../../lib/supabase');
 
 const CREATE_LOCKS = new Map();
@@ -158,7 +159,9 @@ function generateUuid() {
 }
 
 // POST /api/users/create
-// Invite-only create: whitelist user in public.mums_profiles only (no auth.signUp/auth admin create).
+// Creates a real Supabase Auth user (email + password) via the Admin API,
+// then inserts a matching row into mums_profiles.
+// Falls back to whitelist-only if password is omitted (Microsoft OAuth flow).
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -209,13 +212,22 @@ module.exports = async (req, res) => {
     const role = String(body.role || '').trim().toUpperCase();
     const duty = String(body.duty || '').trim();
     const finalTeamId = pickTeamId(body);
+    // Password is required for email+password login. If omitted, falls back to
+    // whitelist-only (Microsoft OAuth). We enforce it when provided.
+    const password = String(body.password || '').trim();
 
     const missing = [];
     if (!email) missing.push('email');
     if (!username) missing.push('username');
     if (!fullName) missing.push('full_name');
     if (!role) missing.push('role');
+    if (!password) missing.push('password');
     if (missing.length) return sendJson(res, 400, { ok: false, error: 'missing_fields', message: `Missing required fields: ${missing.join(', ')}`, missing });
+
+    // Password strength: minimum 8 characters
+    if (password.length < 8) {
+      return sendJson(res, 400, { ok: false, error: 'weak_password', message: 'Password must be at least 8 characters.' });
+    }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return sendJson(res, 400, { ok: false, error: 'invalid_email', message: 'Email must be a valid address (e.g., user@copeland.com).' });
@@ -248,7 +260,10 @@ module.exports = async (req, res) => {
       return sendJson(res, 409, { ok: false, error: 'request_in_flight', message: 'A create request for this user is already in progress. Please wait and try again.' });
     }
 
+    let createdAuthUserId = null;
+
     try {
+      // ── Duplicate checks ───────────────────────────────────────────────────
       const existingUsername = await serviceSelect('mums_profiles', `select=user_id,username&username=eq.${encodeURIComponent(username)}&limit=1`);
       if (existingUsername.ok && Array.isArray(existingUsername.json) && existingUsername.json.length > 0) {
         return sendJson(res, 409, { ok: false, error: 'username_exists', message: 'Username is already in use.' });
@@ -257,13 +272,49 @@ module.exports = async (req, res) => {
       let supportsEmailColumn = true;
       const existingEmail = await serviceSelect('mums_profiles', `select=user_id,email&email=eq.${encodeURIComponent(email)}&limit=1`);
       if (existingEmail.ok && Array.isArray(existingEmail.json) && existingEmail.json.length > 0) {
-        return sendJson(res, 409, { ok: false, error: 'email_exists', message: 'Email is already whitelisted.' });
+        return sendJson(res, 409, { ok: false, error: 'email_exists', message: 'Email is already registered.' });
       }
       if (!existingEmail.ok && isMissingColumn(existingEmail.json, 'mums_profiles', 'email')) {
         supportsEmailColumn = false;
       }
 
+      // ── Step 1: Create Supabase Auth user (email + password) ──────────────
+      // This gives the user a real auth account they can log into immediately
+      // with the password set here.
+      const authPayload = {
+        email,
+        password,
+        email_confirm: true,       // Skip confirmation email; admin-created users log in right away
+        user_metadata: { username, full_name: fullName }
+      };
+
+      const authRes = await serviceFetch('/auth/v1/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(authPayload)
+      });
+
+      if (!authRes.ok) {
+        // Surface the real Supabase error (e.g. "User already registered")
+        const rawMsg = (authRes.json && (authRes.json.message || authRes.json.msg || authRes.json.error)) || authRes.text || 'Failed to create auth user.';
+        // Map Supabase 422 "User already registered" → 409 Conflict
+        const httpStatus = (authRes.status === 422) ? 409 : (authRes.status || 500);
+        return sendJson(res, httpStatus, {
+          ok: false,
+          error: 'auth_create_failed',
+          message: String(rawMsg)
+        });
+      }
+
+      // Extract the new user's UUID from Supabase Auth response
+      createdAuthUserId = (authRes.json && authRes.json.id) ? String(authRes.json.id) : null;
+      if (!createdAuthUserId) {
+        return sendJson(res, 500, { ok: false, error: 'auth_id_missing', message: 'Auth user created but no user_id returned.' });
+      }
+
+      // ── Step 2: Insert mums_profiles row linked to the auth user ──────────
       const row = {
+        user_id: createdAuthUserId,
         username,
         name: fullName,
         role,
@@ -273,43 +324,40 @@ module.exports = async (req, res) => {
       if (supportsEmailColumn) row.email = email;
 
       let ins = await serviceInsert('mums_profiles', [row]);
+
+      // Back-compat: retry without email column if schema is older
       if (!ins.ok && supportsEmailColumn && isMissingColumn(ins.json, 'mums_profiles', 'email')) {
         supportsEmailColumn = false;
-        const retryRow = {
-          username,
-          name: fullName,
-          role,
-          team_id: finalTeamId,
-          duty: duty || ''
-        };
-        ins = await serviceInsert('mums_profiles', [retryRow]);
-      }
-
-      // Backward-compat: some older databases still require user_id NOT NULL.
-      // Invite-only flow whitelists users before auth account exists, so we insert a
-      // temporary UUID and let auth trigger overwrite it on first successful login.
-      if (!ins.ok && isNotNullViolation(ins.json, 'user_id')) {
-        const retryRow = Object.assign({}, row, { user_id: generateUuid() });
-        if (!supportsEmailColumn) delete retryRow.email;
+        const retryRow = { ...row };
+        delete retryRow.email;
         ins = await serviceInsert('mums_profiles', [retryRow]);
       }
 
       if (!ins.ok) {
+        // Profile insert failed — delete the auth user so we don't leave orphaned auth accounts
+        try {
+          await serviceFetch(`/auth/v1/admin/users/${encodeURIComponent(createdAuthUserId)}`, { method: 'DELETE' });
+        } catch (_) {}
         return sendJson(res, ins.status || 500, { ok: false, error: 'profile_create_failed', details: ins.json || ins.text });
       }
 
+      createdAuthUserId = null; // Claimed — don't delete on finally
       creatorState.cooldownUntilMs = 0;
       creatorState.reason = '';
 
       return sendJson(res, 200, {
         ok: true,
-        invite_only: true,
+        invite_only: false,
         schema_compat: { email: supportsEmailColumn },
-        user: null,
+        user: { id: (authRes.json && authRes.json.id) || null },
         profile: Array.isArray(ins.json) && ins.json[0] ? ins.json[0] : null
       });
     } finally {
       releaseLock(lockKey);
+      // Safety net: if we created an auth user but profile insert threw, clean up auth user
+      if (createdAuthUserId) {
+        try { await serviceFetch(`/auth/v1/admin/users/${encodeURIComponent(createdAuthUserId)}`, { method: 'DELETE' }); } catch (_) {}
+      }
     }
   } catch (e) {
     return sendJson(res, 500, { ok: false, error: 'server_error', message: String(e && e.message ? e.message : e) });

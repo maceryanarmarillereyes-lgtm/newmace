@@ -158,11 +158,21 @@ function canCreateRole(actor, targetRole) {
             </div>
             <div>
               <label class="small">Microsoft Email Address</label>
-              <input class="input" id="u_email" type="text" placeholder="user@copeland.com" />
+              <input class="input" id="u_email" type="text" placeholder="user@copeland.com" autocomplete="off" />
             </div>
             <div>
               <label class="small">Role</label>
               <select class="select" id="u_role"></select>
+            </div>
+            <div id="u_password_wrap">
+              <label class="small">Password <span class="muted" style="font-weight:400;font-size:11px">(min 8 chars — user logs in with this)</span></label>
+              <div style="position:relative">
+                <input class="input" id="u_password" type="password" placeholder="Set login password" autocomplete="new-password" style="padding-right:38px" />
+                <button type="button" id="u_password_toggle" title="Show/hide password"
+                  style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:0;cursor:pointer;opacity:.6;padding:4px;color:var(--text)">
+                  👁
+                </button>
+              </div>
             </div>
             <div>
               <label class="small">Team</label>
@@ -504,6 +514,21 @@ function openUserModal(actor, user){
   UI.el('#u_name').value = user?.name || '';
   UI.el('#u_username').value = user?.username || '';
   UI.el('#u_role').value = user?.role || roleSel.value;
+  // Password: only shown when creating (not editing) — editing uses Supabase Admin separately
+  const pwWrap = document.getElementById('u_password_wrap');
+  const pwField = document.getElementById('u_password');
+  if (pwWrap) pwWrap.style.display = isEdit ? 'none' : '';
+  if (pwField) { pwField.value = ''; pwField.required = !isEdit; }
+  // Toggle show/hide password
+  const pwToggle = document.getElementById('u_password_toggle');
+  if (pwToggle && !pwToggle.__bound) {
+    pwToggle.__bound = true;
+    pwToggle.addEventListener('click', () => {
+      if (!pwField) return;
+      pwField.type = pwField.type === 'password' ? 'text' : 'password';
+      pwToggle.textContent = pwField.type === 'password' ? '👁' : '🙈';
+    });
+  }
 
   // Team: SUPER_ADMIN may be Developer Access (empty string); others must be shift team.
   UI.el('#u_team').value = (user && (user.teamId !== undefined && user.teamId !== null)) ? user.teamId : ((Config.TEAMS[0] && Config.TEAMS[0].id) || 'morning');
@@ -605,11 +630,15 @@ function openUserModal(actor, user){
       const role = UI.el('#u_role').value;
       const teamId = UI.el('#u_team').value;
 
+      const password = isEdit ? '' : (UI.el('#u_password') ? UI.el('#u_password').value.trim() : '');
+
       if(!name) return err('Name is required.');
       if(!username) return err('Username is required.');
       if(!/^[a-zA-Z0-9._-]{3,}$/.test(username)) return err('Username must be at least 3 characters and use letters/numbers/._-');
       if(!email) return err('Microsoft Email Address is required.');
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return err('Enter a valid Microsoft Email Address.');
+      if(!isEdit && !password) return err('Password is required. The new user will log in with this password.');
+      if(!isEdit && password.length < 8) return err('Password must be at least 8 characters.');
 
       // Role restrictions
       if(!canCreateRole(actor, role) && (user?.role!==role)) return err('You do not have permission to set that role.');
@@ -659,7 +688,7 @@ function openUserModal(actor, user){
             if(!out.ok) return err(out.message || 'Update failed.');
           }
         } else {
-          const out = await CloudUsers.create({ email, username, full_name: name, name, role, team_id: teamId, team: teamId });
+          const out = await CloudUsers.create({ email, username, full_name: name, name, role, team_id: teamId, team: teamId, password });
           if(!out.ok) {
             let msg = out.message || 'Create failed.';
 
