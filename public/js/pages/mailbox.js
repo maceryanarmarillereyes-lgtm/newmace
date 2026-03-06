@@ -731,17 +731,16 @@ function _mbxReadJwt(){
           return ak.name.localeCompare(bk.name);
         });
 
-      // Build merged member list: current team users first, then any existing
-      // assignments for members who may have left the team. Always deduplicate.
-      const teamUserIds = new Set(teamUsers.map(u => u.id));
-      const existingIds = new Set((table.members||[]).map(m => m && m.id).filter(Boolean));
-      // Keep old members still on team (for assignment continuity) + new team members
-      const retainedOld = (table.members||[]).filter(m => m && m.id && teamUserIds.has(m.id));
-      const retainedOldIds = new Set(retainedOld.map(m => m.id));
-      // Merge: new team users not already retained + retained old
+      // Build merged member list: keep *all* persisted table members and merge
+      // any currently visible team users from Store.getUsers().
+      //
+      // Why: MEMBER-role sessions can have a restricted Store.getUsers() payload
+      // (often just the current user). If we prune to teamUsers-only here, we
+      // hide valid shift members from the counter table and break cross-device
+      // visibility for non-privileged users.
       const merged = [
-        ...teamUsers.filter(u => !retainedOldIds.has(u.id)),
-        ...retainedOld
+        ...teamUsers,
+        ...((table.members || []).filter(m => m && m.id))
       ];
       // Final dedup pass
       const seenMerge = new Set();
