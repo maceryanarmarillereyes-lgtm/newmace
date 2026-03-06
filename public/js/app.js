@@ -4389,6 +4389,108 @@ async function boot(){
         };
       }
     }catch(_){ }
+
+    // ── Login Mode Control (Super Admin only) ─────────────────────────────────
+    try{
+      if(isSA){
+        const lmCard    = document.getElementById('loginModeCard');
+        const lmStatus  = document.getElementById('loginModeStatus');
+        const lmSaveBtn = document.getElementById('saveLoginModeBtn');
+        const lmSaveMsg = document.getElementById('loginModeSaveMsg');
+        const lmRadios  = ()=> document.querySelectorAll('input[name="loginModeChoice"]');
+        const lmOptLabels = { both: document.getElementById('loginModeOpt_both'), password: document.getElementById('loginModeOpt_password'), microsoft: document.getElementById('loginModeOpt_microsoft') };
+
+        if(lmCard) lmCard.style.display = '';
+
+        // Highlight active option label
+        const highlightSelected = (mode) => {
+          ['both','password','microsoft'].forEach(m => {
+            const lbl = lmOptLabels[m];
+            if(!lbl) return;
+            if(m === mode){
+              lbl.style.background = 'rgba(37,99,235,.10)';
+              lbl.style.borderColor = 'rgba(37,99,235,.30)';
+            } else {
+              lbl.style.background = '';
+              lbl.style.borderColor = 'transparent';
+            }
+          });
+        };
+
+        const modeLabels = { both: 'Both (Microsoft + Password)', password: 'Password only', microsoft: 'Microsoft OAuth only' };
+
+        // Load current setting from server
+        const loadLoginMode = async () => {
+          if(lmStatus) lmStatus.textContent = 'Loading…';
+          try{
+            const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+            const r = await fetch('/api/settings/login_mode', {
+              headers: jwt ? { Authorization: `Bearer ${jwt}` } : {}
+            });
+            const data = await r.json().catch(()=> ({}));
+            const mode = (data && data.settings && data.settings.mode) ? data.settings.mode : 'both';
+            // Set radio
+            lmRadios().forEach(radio => { radio.checked = (radio.value === mode); });
+            highlightSelected(mode);
+            const updatedBy = (data && data.settings && data.settings.updatedByName) ? data.settings.updatedByName : null;
+            const updatedAt = (data && data.settings && data.settings.updatedAt) ? new Date(data.settings.updatedAt).toLocaleString() : null;
+            if(lmStatus){
+              lmStatus.textContent = `Current: ${modeLabels[mode] || mode}` + (updatedBy ? ` — last changed by ${updatedBy}` : '') + (updatedAt ? ` on ${updatedAt}` : '');
+            }
+          }catch(e){
+            if(lmStatus) lmStatus.textContent = 'Could not load setting.';
+          }
+        };
+
+        // Highlight on radio change
+        lmRadios().forEach(radio => {
+          radio.addEventListener('change', () => { highlightSelected(radio.value); });
+        });
+        lmOptLabels['both'] && lmOptLabels['both'].addEventListener('click', () => highlightSelected('both'));
+        lmOptLabels['password'] && lmOptLabels['password'].addEventListener('click', () => highlightSelected('password'));
+        lmOptLabels['microsoft'] && lmOptLabels['microsoft'].addEventListener('click', () => highlightSelected('microsoft'));
+
+        // Save
+        if(lmSaveBtn){
+          lmSaveBtn.addEventListener('click', async ()=>{
+            const selected = [...lmRadios()].find(r => r.checked);
+            if(!selected){ if(lmSaveMsg){ lmSaveMsg.textContent='Please select a mode.'; lmSaveMsg.style.opacity='1'; lmSaveMsg.style.color='var(--danger)'; setTimeout(()=>{ lmSaveMsg.style.opacity='0'; }, 2500); } return; }
+            lmSaveBtn.disabled = true;
+            lmSaveBtn.textContent = 'Saving…';
+            try{
+              const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+              const r = await fetch('/api/settings/login_mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) },
+                body: JSON.stringify({ mode: selected.value })
+              });
+              const data = await r.json().catch(()=> ({}));
+              if(r.ok && data && data.ok){
+                if(lmSaveMsg){ lmSaveMsg.textContent = `✓ Saved: ${modeLabels[selected.value] || selected.value}`; lmSaveMsg.style.opacity='1'; lmSaveMsg.style.color='var(--success,#22c55e)'; setTimeout(()=>{ lmSaveMsg.style.opacity='0'; }, 3000); }
+                await loadLoginMode();
+              } else {
+                const msg = (data && data.message) ? data.message : 'Save failed.';
+                if(lmSaveMsg){ lmSaveMsg.textContent = '✗ ' + msg; lmSaveMsg.style.opacity='1'; lmSaveMsg.style.color='var(--danger)'; setTimeout(()=>{ lmSaveMsg.style.opacity='0'; }, 4000); }
+              }
+            }catch(e){
+              if(lmSaveMsg){ lmSaveMsg.textContent = '✗ Network error.'; lmSaveMsg.style.opacity='1'; lmSaveMsg.style.color='var(--danger)'; setTimeout(()=>{ lmSaveMsg.style.opacity='0'; }, 4000); }
+            }finally{
+              lmSaveBtn.disabled = false;
+              lmSaveBtn.textContent = 'Save';
+            }
+          });
+        }
+
+        // Load on settings modal open
+        const settingsBtn2 = document.getElementById('settingsBtn');
+        if(settingsBtn2 && !settingsBtn2.__lmBound){
+          settingsBtn2.__lmBound = true;
+          const origOnClick = settingsBtn2.onclick;
+          settingsBtn2.addEventListener('click', ()=>{ loadLoginMode(); });
+        }
+        loadLoginMode();
+      }
+    }catch(e){ console.error('[LoginMode]', e); }
     
     UI.els('[data-close="settingsModal"]').forEach(b=>b.onclick=()=>UI.closeModal('settingsModal'));
     UI.els('[data-close="systemCheckModal"]').forEach(b=>b.onclick=()=>UI.closeModal('systemCheckModal'));

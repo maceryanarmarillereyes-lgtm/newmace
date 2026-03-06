@@ -214,6 +214,46 @@
             </div>
           </div>
 
+          <!-- Login Mode Control — Super Admin only -->
+          <div class="settings-card" id="loginModeCard" style="display:none">
+            <div class="settings-card-title" style="display:flex;align-items:center;gap:8px">
+              <span>🔐</span> Login Mode
+            </div>
+            <div class="small muted" style="margin-top:6px">
+              Control whether users log in with Microsoft or with email &amp; password.
+            </div>
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px" id="loginModeControls">
+              <div class="small" id="loginModeStatus" style="opacity:.7">Loading…</div>
+              <div style="display:flex;flex-direction:column;gap:6px" id="loginModeOptions">
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 10px;border-radius:10px;border:1px solid transparent;transition:background .12s" id="loginModeOpt_both">
+                  <input type="radio" name="loginModeChoice" value="both" style="accent-color:var(--primary)" />
+                  <span>
+                    <span class="small" style="font-weight:700">Both</span>
+                    <span class="small muted" style="display:block;font-size:11px">Show Microsoft button + allow email/password login</span>
+                  </span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 10px;border-radius:10px;border:1px solid transparent;transition:background .12s" id="loginModeOpt_password">
+                  <input type="radio" name="loginModeChoice" value="password" style="accent-color:var(--primary)" />
+                  <span>
+                    <span class="small" style="font-weight:700">Password only</span>
+                    <span class="small muted" style="display:block;font-size:11px">Hide Microsoft button — email/password login only</span>
+                  </span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 10px;border-radius:10px;border:1px solid transparent;transition:background .12s" id="loginModeOpt_microsoft">
+                  <input type="radio" name="loginModeChoice" value="microsoft" style="accent-color:var(--primary)" />
+                  <span>
+                    <span class="small" style="font-weight:700">Microsoft only</span>
+                    <span class="small muted" style="display:block;font-size:11px">Microsoft OAuth only — password form still works for admins</span>
+                  </span>
+                </label>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button class="btn primary" id="saveLoginModeBtn" type="button" style="min-width:90px">Save</button>
+                <span id="loginModeSaveMsg" class="small" style="opacity:0;transition:opacity .4s"></span>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>

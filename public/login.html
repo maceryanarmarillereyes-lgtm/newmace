@@ -53,13 +53,14 @@
             </div>
           </div>
 
-          <div style="display:flex;align-items:center;gap:10px;margin-top:16px;margin-bottom:12px;">
-            <div style="flex:1;height:1px;background:rgba(255,255,255,0.2);"></div>
-            <div class="small" style="letter-spacing:0.08em;">OR</div>
-            <div style="flex:1;height:1px;background:rgba(255,255,255,0.2);"></div>
+          <div id="microsoftLoginSection" style="display:none">
+            <div style="display:flex;align-items:center;gap:10px;margin-top:16px;margin-bottom:12px;">
+              <div style="flex:1;height:1px;background:rgba(255,255,255,0.2);"></div>
+              <div class="small" style="letter-spacing:0.08em;">OR</div>
+              <div style="flex:1;height:1px;background:rgba(255,255,255,0.2);"></div>
+            </div>
+            <button class="btn" id="azureLoginBtn" type="button" style="width:100%;background:#2F2F2F;color:#fff;border-color:#4a4a4a;">🪟 Sign in with Microsoft</button>
           </div>
-
-          <button class="btn" id="azureLoginBtn" type="button" style="width:100%;background:#2F2F2F;color:#fff;border-color:#4a4a4a;">🪟 Sign in with Microsoft</button>
         </form>
         <div class="err" id="err" style="display:none"></div>
 
@@ -109,6 +110,36 @@
         if(e){ e.textContent = 'App error: '+msg+(where?(' ('+where+')'):''); e.style.display='block'; }
       }catch(_){ }
     });
+
+    // ── Login Mode: fetch from server and show/hide Microsoft button ──────────
+    (function applyLoginMode(){
+      const section = document.getElementById('microsoftLoginSection');
+      // Optimistic local cache: avoids button flicker on repeat visits
+      try{
+        const cached = localStorage.getItem('mums_login_mode_cache');
+        if(cached){
+          const { mode, ts } = JSON.parse(cached);
+          const age = Date.now() - (ts || 0);
+          if(mode && age < 5 * 60 * 1000){ // 5-minute cache
+            const showMs = (mode === 'microsoft' || mode === 'both');
+            if(section) section.style.display = showMs ? '' : 'none';
+          }
+        }
+      }catch(_){}
+      // Always fetch fresh from server (no auth needed)
+      fetch('/api/settings/login_mode')
+        .then(r => r.json())
+        .then(data => {
+          const mode = (data && data.settings && data.settings.mode) ? data.settings.mode : 'both';
+          try{ localStorage.setItem('mums_login_mode_cache', JSON.stringify({ mode, ts: Date.now() })); }catch(_){}
+          const showMs = (mode === 'microsoft' || mode === 'both');
+          if(section) section.style.display = showMs ? '' : 'none';
+        })
+        .catch(() => {
+          // Network failure: default to showing Microsoft button (safe fallback)
+          if(section) section.style.display = '';
+        });
+    })();
 
     // Ensure MUMS exists (and repair if old broken localStorage exists)
     // If Store.ensureSeed fails for any reason, fall back to a minimal MUMS seed

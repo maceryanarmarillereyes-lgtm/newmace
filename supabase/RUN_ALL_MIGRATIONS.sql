@@ -743,3 +743,73 @@ alter table if exists public.mums_profiles
   add column if not exists qb_table_id text,
   add column if not exists qb_qid text,
   add column if not exists qb_report_link text;
+
+
+-- ===========================================================================
+-- Migration: 20260306_02_login_mode_trigger_guard.sql
+-- ===========================================================================
+
+-- 2026-03-06: Login Mode aware auth guard
+create or replace function public.mums_link_auth_user_to_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, auth, extensions
+as $$
+declare
+  v_email        text;
+  v_profile_exists boolean;
+  v_login_mode   text := 'both';
+begin
+  v_email := lower(trim(coalesce(new.email, '')));
+
+  if v_email = '' then
+    begin
+      select lower(trim(coalesce((value->>'mode'), 'both')))
+        into v_login_mode
+        from public.mums_documents
+       where key = 'mums_login_mode_settings'
+       limit 1;
+    exception when others then
+      v_login_mode := 'both';
+    end;
+    if v_login_mode = 'microsoft' then
+      raise exception using errcode = 'P0001', message = 'Invite-only login denied: missing email.';
+    end if;
+    return new;
+  end if;
+
+  begin
+    select lower(trim(coalesce((value->>'mode'), 'both')))
+      into v_login_mode
+      from public.mums_documents
+     where key = 'mums_login_mode_settings'
+     limit 1;
+  exception when others then
+    v_login_mode := 'both';
+  end;
+
+  select exists (
+    select 1 from public.mums_profiles p
+    where lower(trim(coalesce(p.email::text, ''))) = v_email
+  ) into v_profile_exists;
+
+  if v_profile_exists then
+    update public.mums_profiles p
+    set user_id = new.id, updated_at = now()
+    where lower(trim(coalesce(p.email::text, ''))) = v_email;
+  else
+    if v_login_mode = 'microsoft' then
+      raise exception using errcode = 'P0001',
+        message = format('Invite-only login denied for email: %s', v_email);
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_mums_link_auth_user_to_profile on auth.users;
+create trigger trg_mums_link_auth_user_to_profile
+after insert on auth.users
+for each row execute function public.mums_link_auth_user_to_profile();

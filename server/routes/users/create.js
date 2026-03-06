@@ -261,6 +261,7 @@ module.exports = async (req, res) => {
     }
 
     let createdAuthUserId = null;
+    let createdProfileId = null;
 
     try {
       // ── Duplicate checks ───────────────────────────────────────────────────
@@ -278,13 +279,47 @@ module.exports = async (req, res) => {
         supportsEmailColumn = false;
       }
 
-      // ── Step 1: Create Supabase Auth user (email + password) ──────────────
-      // This gives the user a real auth account they can log into immediately
-      // with the password set here.
+      // ── Step 1: Insert mums_profiles FIRST ────────────────────────────────
+      // CRITICAL ORDER: The Supabase DB trigger mums_link_auth_user_to_profile fires
+      // on INSERT into auth.users and checks whether a mums_profiles row with matching
+      // email already exists. If we create the auth user first the trigger raises
+      // "Invite-only login denied" because no profile exists yet.
+      // By inserting the profile first (with a temporary UUID as user_id) the trigger
+      // finds the row, overwrites user_id with the real auth UUID, and returns new.
+      const tempUuid = generateUuid();
+      const profileRow = {
+        user_id: tempUuid,   // trigger will overwrite with real auth UUID
+        username,
+        name: fullName,
+        role,
+        team_id: finalTeamId,
+        duty: duty || ''
+      };
+      if (supportsEmailColumn) profileRow.email = email;
+
+      let ins = await serviceInsert('mums_profiles', [profileRow]);
+
+      // Back-compat: retry without email column if schema is older
+      if (!ins.ok && supportsEmailColumn && isMissingColumn(ins.json, 'mums_profiles', 'email')) {
+        supportsEmailColumn = false;
+        const retryRow = { ...profileRow };
+        delete retryRow.email;
+        ins = await serviceInsert('mums_profiles', [retryRow]);
+      }
+
+      if (!ins.ok) {
+        return sendJson(res, ins.status || 500, { ok: false, error: 'profile_create_failed', details: ins.json || ins.text });
+      }
+
+      // Mark the temp profile UUID so we can clean it up if auth creation fails
+      createdProfileId = tempUuid;
+
+      // ── Step 2: Create Supabase Auth user (email + password) ──────────────
+      // Trigger fires on auth.users INSERT → finds our profile by email → links them.
       const authPayload = {
         email,
         password,
-        email_confirm: true,       // Skip confirmation email; admin-created users log in right away
+        email_confirm: true,  // Admin-created users can log in immediately
         user_metadata: { username, full_name: fullName }
       };
 
@@ -295,53 +330,21 @@ module.exports = async (req, res) => {
       });
 
       if (!authRes.ok) {
-        // Surface the real Supabase error (e.g. "User already registered")
-        const rawMsg = (authRes.json && (authRes.json.message || authRes.json.msg || authRes.json.error)) || authRes.text || 'Failed to create auth user.';
-        // Map Supabase 422 "User already registered" → 409 Conflict
-        const httpStatus = (authRes.status === 422) ? 409 : (authRes.status || 500);
-        return sendJson(res, httpStatus, {
-          ok: false,
-          error: 'auth_create_failed',
-          message: String(rawMsg)
-        });
-      }
-
-      // Extract the new user's UUID from Supabase Auth response
-      createdAuthUserId = (authRes.json && authRes.json.id) ? String(authRes.json.id) : null;
-      if (!createdAuthUserId) {
-        return sendJson(res, 500, { ok: false, error: 'auth_id_missing', message: 'Auth user created but no user_id returned.' });
-      }
-
-      // ── Step 2: Insert mums_profiles row linked to the auth user ──────────
-      const row = {
-        user_id: createdAuthUserId,
-        username,
-        name: fullName,
-        role,
-        team_id: finalTeamId,
-        duty: duty || ''
-      };
-      if (supportsEmailColumn) row.email = email;
-
-      let ins = await serviceInsert('mums_profiles', [row]);
-
-      // Back-compat: retry without email column if schema is older
-      if (!ins.ok && supportsEmailColumn && isMissingColumn(ins.json, 'mums_profiles', 'email')) {
-        supportsEmailColumn = false;
-        const retryRow = { ...row };
-        delete retryRow.email;
-        ins = await serviceInsert('mums_profiles', [retryRow]);
-      }
-
-      if (!ins.ok) {
-        // Profile insert failed — delete the auth user so we don't leave orphaned auth accounts
+        // Auth creation failed — delete the profile we just inserted
         try {
-          await serviceFetch(`/auth/v1/admin/users/${encodeURIComponent(createdAuthUserId)}`, { method: 'DELETE' });
+          const { serviceDelete } = require('../../lib/supabase');
+          if (typeof serviceDelete === 'function') {
+            await serviceDelete('mums_profiles', `user_id=eq.${encodeURIComponent(tempUuid)}`);
+          }
         } catch (_) {}
-        return sendJson(res, ins.status || 500, { ok: false, error: 'profile_create_failed', details: ins.json || ins.text });
+        const rawMsg = (authRes.json && (authRes.json.message || authRes.json.msg || authRes.json.error)) || authRes.text || 'Failed to create auth user.';
+        const httpStatus = (authRes.status === 422) ? 409 : (authRes.status || 500);
+        return sendJson(res, httpStatus, { ok: false, error: 'auth_create_failed', message: String(rawMsg) });
       }
 
-      createdAuthUserId = null; // Claimed — don't delete on finally
+      createdAuthUserId = (authRes.json && authRes.json.id) ? String(authRes.json.id) : null;
+      createdProfileId = null; // Profile is now linked — don't delete on finally
+
       creatorState.cooldownUntilMs = 0;
       creatorState.reason = '';
 
@@ -349,14 +352,19 @@ module.exports = async (req, res) => {
         ok: true,
         invite_only: false,
         schema_compat: { email: supportsEmailColumn },
-        user: { id: (authRes.json && authRes.json.id) || null },
+        user: { id: createdAuthUserId },
         profile: Array.isArray(ins.json) && ins.json[0] ? ins.json[0] : null
       });
     } finally {
       releaseLock(lockKey);
-      // Safety net: if we created an auth user but profile insert threw, clean up auth user
-      if (createdAuthUserId) {
-        try { await serviceFetch(`/auth/v1/admin/users/${encodeURIComponent(createdAuthUserId)}`, { method: 'DELETE' }); } catch (_) {}
+      // Safety net: clean up orphaned profile if auth creation threw unexpectedly
+      if (createdProfileId) {
+        try {
+          const { serviceDelete } = require('../../lib/supabase');
+          if (typeof serviceDelete === 'function') {
+            await serviceDelete('mums_profiles', `user_id=eq.${encodeURIComponent(createdProfileId)}`);
+          }
+        } catch (_) {}
       }
     }
   } catch (e) {

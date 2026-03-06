@@ -260,6 +260,16 @@ async function updateProfileQuickbaseSettings(userId, quickbaseSettings) {
   return rows[0] || null;
 }
 
+async function serviceDelete(table, filter) {
+  const base = supabaseUrl();
+  if (!base) requireEnv('SUPABASE_URL');
+  const url = `${base}/rest/v1/${table}?${filter}`;
+  return fetchJson(url, {
+    method: 'DELETE',
+    headers: serviceHeaders({ Prefer: 'return=representation' })
+  });
+}
+
 module.exports = {
   serviceFetch,
   serviceHeaders,
@@ -267,6 +277,7 @@ module.exports = {
   serviceUpsert,
   serviceInsert,
   serviceUpdate,
+  serviceDelete,
   getUserFromJwt,
   getProfileForUserId,
   updateProfileQuickbaseSettings
