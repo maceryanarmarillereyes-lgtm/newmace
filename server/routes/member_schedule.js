@@ -192,10 +192,19 @@ module.exports = async (req, res, routeParams) => {
       return res.end(JSON.stringify({ ok: false, error: 'member_not_found' }));
     }
 
-    const targetTeamId = safeString(targetProfile.team_id, 80);
-
     const isSelf = String(actor.id) === String(memberId);
     const isPrivileged = PRIVILEGED_ROLES.has(actorRole);
+
+    // Robust team resolution (Phase-1-606 fix):
+    // Some profiles have a null/empty team_id in mums_profiles even though
+    // the client UI shows the correct team (stored in schedule blocks or
+    // client Store). For a self-request, fall back to actorTeamId so that
+    // a MEMBER with a missing DB team_id can still see their full team schedule.
+    let targetTeamId = safeString(targetProfile.team_id, 80);
+    if (!targetTeamId && isSelf && actorTeamId) {
+      targetTeamId = actorTeamId;
+    }
+
     const sameTeam = !!targetTeamId && targetTeamId === actorTeamId;
     if (!isSelf && !isPrivileged && !sameTeam) {
       res.statusCode = 403;
@@ -204,9 +213,9 @@ module.exports = async (req, res, routeParams) => {
 
     const includeTeam = String((req.query && req.query.includeTeam) || '').trim().toLowerCase();
     const wantsTeamMembers = includeTeam === '1' || includeTeam === 'true' || includeTeam === 'yes';
-    // Team tab on "My Schedule" should always show the full team roster for the
-    // member being viewed. Some profiles can have stale/missing actor.team_id,
-    // so we must allow "self" requests to resolve members by targetTeamId.
+    // All authenticated users can view their own team's schedule.
+    // canViewTeamMembers is true for self-requests (any role) and privileged roles,
+    // and for same-team requests. targetTeamId must be non-empty to query DB.
     const canViewTeamMembers = !!targetTeamId && (isSelf || actorTeamId === targetTeamId || isPrivileged);
 
     const [scheduleDoc, palette, teamMembers] = await Promise.all([
@@ -217,18 +226,37 @@ module.exports = async (req, res, routeParams) => {
 
     const scheduleBlocks = flattenScheduleBlocks(scheduleDoc, memberId);
     const teamMemberIds = teamMembers.map((member) => safeString(member && member.id, 120)).filter(Boolean);
-    const teamScheduleBlocks = (wantsTeamMembers && canViewTeamMembers)
-      ? flattenScheduleBlocksForMembers(scheduleDoc, teamMemberIds)
-      : [];
+
+    // If teamMembers is empty but we have a valid teamId, fall back to deriving
+    // team members from the schedule blocks doc (covers all teams, all members).
+    let resolvedTeamMembers = teamMembers;
+    let resolvedTeamScheduleBlocks = [];
+    if (wantsTeamMembers && canViewTeamMembers && teamMembers.length === 0 && targetTeamId && scheduleDoc) {
+      // Collect unique member IDs that appear in the schedule doc under this team
+      try {
+        const teamMemberIdsFromBlocks = Object.entries(scheduleDoc)
+          .filter(([, entry]) => entry && String(entry.teamId || '') === targetTeamId)
+          .map(([uid]) => uid)
+          .filter(Boolean);
+        if (teamMemberIdsFromBlocks.length) {
+          resolvedTeamScheduleBlocks = flattenScheduleBlocksForMembers(scheduleDoc, teamMemberIdsFromBlocks);
+        }
+      } catch (_) {}
+    } else {
+      resolvedTeamScheduleBlocks = (wantsTeamMembers && canViewTeamMembers)
+        ? flattenScheduleBlocksForMembers(scheduleDoc, teamMemberIds)
+        : [];
+    }
+
     res.statusCode = 200;
     return res.end(JSON.stringify({
       ok: true,
       memberId,
       teamId: targetTeamId,
       teamThemePalette: palette || {},
-      teamMembers,
+      teamMembers: resolvedTeamMembers,
       scheduleBlocks,
-      teamScheduleBlocks
+      teamScheduleBlocks: resolvedTeamScheduleBlocks
     }));
   } catch (err) {
     res.statusCode = 500;

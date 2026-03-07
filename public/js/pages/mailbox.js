@@ -436,12 +436,26 @@ function _mbxReadJwt(){
       if (matched.length === 0 && Store && Store.getScheduleBlocks) {
         try {
           const allBlocks = Store.getScheduleBlocks();
-          // Build a quick name lookup from every roster cache + Store.getUsers()
+
+          // ── Name lookup: table.members is the PRIMARY source (Phase-1-606) ──
+          // table.members already contains the correct duty-team members with
+          // proper display names — this is what gets shown in the mailbox roster.
+          // We MUST use it as the first source to avoid falling back to a UUID
+          // when the acting user is on a different shift and their _rosterByTeam
+          // / Store.getUsers() doesn't contain the manager's record.
           const nameIdx = new Map();
           try {
-            for (const list of Object.values(_rosterByTeam)) {
-              for (const u of (list || [])) { if (u && u.id) nameIdx.set(String(u.id), u); }
+            // Priority 1: table.members (the actual duty-team roster with names)
+            for (const u of (Array.isArray(table && table.members) ? table.members : [])) {
+              if (u && u.id) nameIdx.set(String(u.id), u);
             }
+            // Priority 2: all cached rosters (may overlap but ensures coverage)
+            for (const list of Object.values(_rosterByTeam)) {
+              for (const u of (list || [])) {
+                if (u && u.id && !nameIdx.has(String(u.id))) nameIdx.set(String(u.id), u);
+              }
+            }
+            // Priority 3: Store.getUsers() (privileged roles have full list here)
             for (const u of ((Store.getUsers && Store.getUsers()) || [])) {
               if (u && u.id && !nameIdx.has(String(u.id))) nameIdx.set(String(u.id), u);
             }
@@ -471,8 +485,12 @@ function _mbxReadJwt(){
                 const lbl2 = String(sc2 && sc2.label ? sc2.label : roleId2).toLowerCase();
                 if (roleId2 === 'mailbox_manager' || lbl2.includes('mailbox manager') ||
                     roleId2 === 'mailbox manager' || lbl2.includes('mailbox_manager')) {
+                  // Resolve name: table.members → nameIdx → fallback to raw uid
                   const uRec = nameIdx.get(String(uid));
-                  const displayName = uRec ? String(uRec.name || uRec.username || uid) : String(uid);
+                  const displayName = uRec
+                    ? String(uRec.name || uRec.fullName || uRec.username || '').trim()
+                    : '';
+                  // Never expose a raw UUID in the UI - skip if no name resolved
                   if (displayName && displayName !== '—') matched.push(displayName);
                   foundMgr = true; break;
                 }

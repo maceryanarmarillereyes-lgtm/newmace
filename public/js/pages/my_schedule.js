@@ -1511,6 +1511,34 @@
         };
       }).filter((u) => !!u.id);
 
+      // Phase-1-606 client fallback: if API returned zero team members
+      // (e.g. profile has no team_id in DB), build the roster from the
+      // globally-synced mums_schedule_blocks. That doc covers ALL users
+      // in ALL teams and is available to every session via realtime sync.
+      if (teamMembersCache.length === 0 && resolvedTeamId && window.Store && Store.getScheduleBlocks) {
+        try {
+          const allBlocks = Store.getScheduleBlocks();
+          const storeUsers = (Store.getUsers ? Store.getUsers() : []) || [];
+          const userIdx = new Map();
+          for (const u of storeUsers) { if (u && u.id) userIdx.set(String(u.id), u); }
+          const fromBlocks = [];
+          for (const [bid, entry] of Object.entries(allBlocks)) {
+            if (!entry || String(entry.teamId || '') !== resolvedTeamId) continue;
+            const su = userIdx.get(bid);
+            fromBlocks.push({
+              id: bid,
+              teamId: resolvedTeamId,
+              role: String((su && su.role) || 'MEMBER'),
+              name: String((su && (su.name || su.username)) || bid),
+              fullName: String((su && (su.name || su.username)) || bid),
+              username: String((su && su.username) || ''),
+              avatarUrl: String((su && (su.avatarUrl || su.avatar_url)) || ''),
+            });
+          }
+          if (fromBlocks.length) teamMembersCache = fromBlocks;
+        } catch(_) {}
+      }
+
       const teamScheduleBlocks = Array.isArray(data && data.teamScheduleBlocks) ? data.teamScheduleBlocks : [];
       if (window.Store && Store.setUserDayBlocks && teamScheduleBlocks.length) {
         const bucket = new Map();
