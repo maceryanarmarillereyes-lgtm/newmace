@@ -1489,7 +1489,10 @@
     try {
       const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
       const headers = jwt ? { Authorization: `Bearer ${jwt}` } : {};
-      const res = await fetch(`/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1`, { headers, cache: 'no-store' });
+      // Phase-1-608: pass hintTeamId so server can resolve team when DB team_id is NULL
+      const hintTid = String(initialTeamId || currentTeamId() || '').trim();
+      const hintQS  = hintTid ? `&hintTeamId=${encodeURIComponent(hintTid)}` : '';
+      const res = await fetch(`/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1${hintQS}`, { headers, cache: 'no-store' });
       if (!res.ok) return;
       const data = await res.json().catch(() => ({}));
       const resolvedTeamId = String((data && data.teamId) || initialTeamId || '');

@@ -541,8 +541,13 @@ function _mbxReadJwt(){
       const jwt = _mbxReadJwt();
       if (!jwt) return;
 
+      // Phase-1-608: pass hintTeamId so the server can resolve the team even when
+      // mums_profiles.team_id is NULL in the DB (e.g. test accounts). The hint is
+      // the user's own team from the client Auth/Store, which is always available.
+      const meTeamId = String(me.teamId || me.team_id || '').trim();
+      const hintParam = meTeamId ? `&hintTeamId=${encodeURIComponent(meTeamId)}` : '';
       const res = await fetch(
-        `/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1`,
+        `/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1${hintParam}`,
         { headers: { Authorization: `Bearer ${jwt}` }, cache: 'no-store' }
       );
       if (!res.ok) return;
@@ -605,38 +610,107 @@ function _mbxReadJwt(){
             if (!res2.ok) return;
             const data2 = await res2.json().catch(() => ({}));
             const rows2 = Array.isArray(data2 && data2.teamMembers) ? data2.teamMembers : [];
-            if (rows2.length) {
-              _rosterByTeam[teamId] = rows2
-                .filter(m => m && m.id)
-                .map(m => ({
-                  id:       String(m.id),
-                  name:     String(m.name || m.username || m.id),
-                  username: String(m.username || m.name || m.id),
-                  role:     String(m.role || 'MEMBER'),
-                  teamId:   teamId,
-                  status:   'active'
-                }));
-              // Also hydrate schedule blocks for this team
-              const tsb2 = Array.isArray(data2.teamScheduleBlocks) ? data2.teamScheduleBlocks : [];
-              if (tsb2.length && window.Store && Store.setUserDayBlocks) {
-                const bucket2 = new Map();
-                for (const row of tsb2) {
-                  const r = row && typeof row === 'object' ? row : {};
-                  const mid2 = String(r.userId || r.user_id || '').trim();
-                  const di2  = Number(r.dayIndex);
-                  if (!mid2 || !Number.isInteger(di2) || di2 < 0 || di2 > 6) continue;
-                  const k2 = `${mid2}|${di2}`;
-                  if (!bucket2.has(k2)) bucket2.set(k2, []);
-                  const sr2 = String(r.schedule || r.role || '').trim();
-                  bucket2.get(k2).push({ start: String(r.start||'00:00'), end: String(r.end||'00:00'), role: sr2, schedule: sr2, notes: String(r.notes||'') });
-                }
-                bucket2.forEach((blocks2, k2) => {
-                  const [mid2, day2] = k2.split('|');
-                  Store.setUserDayBlocks(mid2, teamId, Number(day2), blocks2);
-                });
+            const tsb2  = Array.isArray(data2.teamScheduleBlocks) ? data2.teamScheduleBlocks : [];
+            if (!rows2.length) return;
+
+            // Populate duty-team roster with real DB names
+            _rosterByTeam[teamId] = rows2
+              .filter(m => m && m.id)
+              .map(m => ({
+                id:       String(m.id),
+                name:     String(m.name || m.username || m.id),
+                username: String(m.username || m.name || m.id),
+                role:     String(m.role || 'MEMBER'),
+                teamId:   teamId,
+                status:   'active'
+              }));
+
+            // Hydrate schedule blocks into Store (for future renders)
+            if (tsb2.length && window.Store && Store.setUserDayBlocks) {
+              const bkt2 = new Map();
+              for (const row of tsb2) {
+                const r = row && typeof row === 'object' ? row : {};
+                const mid2 = String(r.userId || r.user_id || '').trim();
+                const di2  = Number(r.dayIndex);
+                if (!mid2 || !Number.isInteger(di2) || di2 < 0 || di2 > 6) continue;
+                const k2 = `${mid2}|${di2}`;
+                if (!bkt2.has(k2)) bkt2.set(k2, []);
+                const sr2 = String(r.schedule || r.role || '').trim();
+                bkt2.get(k2).push({ start: String(r.start||'00:00'), end: String(r.end||'00:00'), role: sr2, schedule: sr2, notes: String(r.notes||'') });
               }
-              scheduleRender('duty-team-names-resolved');
+              bkt2.forEach((blks2, k2) => {
+                const [mid2, day2] = k2.split('|');
+                Store.setUserDayBlocks(mid2, teamId, Number(day2), blks2);
+              });
             }
+
+            // ── Phase-1-608: Pre-compute & cache Mgr names from raw API data ──────
+            // BYPASS Store.getUserDayBlocks timing issues by computing Mgr names
+            // directly from the fresh API data and caching in table.meta.bucketManagers.
+            // This is guaranteed to show correct names on the very next render.
+            try {
+              if (window.Store && Store.getMailboxState && Store.getMailboxTable && Store.saveMailboxTable) {
+                const curKey = Store.getMailboxState().currentKey;
+                if (curKey) {
+                  const t = Store.getMailboxTable(curKey);
+                  if (t && String(t.meta && t.meta.teamId || '') === teamId && Array.isArray(t.buckets)) {
+                    if (!t.meta.bucketManagers) t.meta.bucketManagers = {};
+
+                    // Build name map: userId → displayName
+                    const nameMap2 = new Map();
+                    for (const m of _rosterByTeam[teamId]) {
+                      if (m && m.id) nameMap2.set(String(m.id), String(m.name || m.username || ''));
+                    }
+
+                    // Compute shiftDow from table's shiftKey
+                    const sKey2 = String(t.meta.shiftKey || '');
+                    const sDate2 = (sKey2.split('|')[1] || '').split('T')[0];
+                    let sDow2 = 0;
+                    try { sDow2 = new Date(`${sDate2}T00:00:00+08:00`).getDay(); } catch(_) {}
+                    const shiftStartMin2 = _mbxParseHM(t.meta.dutyStart || '00:00');
+
+                    for (const bkt of t.buckets) {
+                      let bS = Number(bkt.startMin) || 0;
+                      let bE = Number(bkt.endMin)   || 0;
+                      if (bE <= bS) bE += 1440;
+                      if (bS < shiftStartMin2) { bS += 1440; bE += 1440; }
+
+                      const mgrNames = [];
+                      for (const row of tsb2) {
+                        const dow2 = Number(row.dayIndex);
+                        const isNextDay = (dow2 === (sDow2 + 1) % 7);
+                        const isSameDow = (dow2 === sDow2);
+                        if (!isSameDow && !isNextDay) continue;
+                        const offset2 = isNextDay ? 1440 : 0;
+                        let s2 = _mbxParseHM(String(row.start || ''));
+                        let e2 = _mbxParseHM(String(row.end   || ''));
+                        if (!Number.isFinite(s2) || !Number.isFinite(e2)) continue;
+                        if (e2 <= s2) e2 += 1440;
+                        s2 += offset2; e2 += offset2;
+                        if (!(s2 < bE && bS < e2)) continue;
+                        const roleStr2 = String(row.schedule || row.role || '').toLowerCase().trim();
+                        const isMgr2 = roleStr2 === 'mailbox_manager'
+                          || roleStr2.includes('mailbox manager')
+                          || roleStr2 === 'mailbox manager';
+                        if (!isMgr2) continue;
+                        const displayName2 = nameMap2.get(String(row.userId || row.user_id || ''));
+                        if (displayName2 && !/^[0-9a-f]{8}-/i.test(displayName2)) {
+                          mgrNames.push(displayName2);
+                        }
+                      }
+                      const uniq2 = [...new Set(mgrNames.filter(Boolean))];
+                      if (uniq2.length) {
+                        t.meta.bucketManagers[bkt.id] = uniq2.join(' & ');
+                      }
+                    }
+                    Store.saveMailboxTable(curKey, t, { silent: true });
+                  }
+                }
+              }
+            } catch (_) {}
+            // ── End Phase-1-608 pre-compute ───────────────────────────────────────
+
+            scheduleRender('duty-team-names-resolved');
           } catch (_) {}
         })();
       }

@@ -184,7 +184,10 @@ module.exports = async (req, res, routeParams) => {
 
     const actorProfile = await getProfileForUserId(actor.id);
     const actorRole = normalizeRole(actorProfile && actorProfile.role);
-    const actorTeamId = safeString(actorProfile && actorProfile.team_id, 80);
+    // Phase-1-608: Read hintTeamId ONCE early (used for both actor and target resolution).
+    // When mums_profiles.team_id is NULL in DB, the client sends its known teamId as hint.
+    const hintTeamId = safeString((req.query && req.query.hintTeamId) || '', 80).trim();
+    const actorTeamId = safeString(actorProfile && actorProfile.team_id, 80) || hintTeamId;
 
     const targetProfile = await getProfileForUserId(memberId);
     if (!targetProfile || !targetProfile.user_id) {
@@ -195,14 +198,15 @@ module.exports = async (req, res, routeParams) => {
     const isSelf = String(actor.id) === String(memberId);
     const isPrivileged = PRIVILEGED_ROLES.has(actorRole);
 
-    // Robust team resolution (Phase-1-606 fix):
+    // Robust team resolution (Phase-1-608 fix):
     // Some profiles have a null/empty team_id in mums_profiles even though
-    // the client UI shows the correct team (stored in schedule blocks or
-    // client Store). For a self-request, fall back to actorTeamId so that
-    // a MEMBER with a missing DB team_id can still see their full team schedule.
+    // the client UI shows the correct team. Resolution priority:
+    //   1. DB profile team_id (most authoritative)
+    //   2. actorTeamId (same user's derived team)
+    //   3. hintTeamId param sent by client (always available from Auth/Store)
     let targetTeamId = safeString(targetProfile.team_id, 80);
-    if (!targetTeamId && isSelf && actorTeamId) {
-      targetTeamId = actorTeamId;
+    if (!targetTeamId && isSelf) {
+      targetTeamId = actorTeamId || hintTeamId || '';
     }
 
     const sameTeam = !!targetTeamId && targetTeamId === actorTeamId;
