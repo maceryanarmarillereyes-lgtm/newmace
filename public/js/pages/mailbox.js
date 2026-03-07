@@ -437,20 +437,19 @@ function _mbxReadJwt(){
         try {
           const allBlocks = Store.getScheduleBlocks();
 
-          // ── Name lookup: table.members is the PRIMARY source (Phase-1-606) ──
-          // table.members already contains the correct duty-team members with
-          // proper display names — this is what gets shown in the mailbox roster.
-          // We MUST use it as the first source to avoid falling back to a UUID
-          // when the acting user is on a different shift and their _rosterByTeam
-          // / Store.getUsers() doesn't contain the manager's record.
+          // ── Name lookup: priority order for resolving UUIDs → full names ──
+          // Phase-1-607: _rosterByTeam[teamId] is now populated via a dedicated
+          // second fetch (resolveTeamId param) so it has PROPER full names from
+          // the DB. Use it as the highest-priority source.
           const nameIdx = new Map();
           try {
-            // Priority 1: table.members (the actual duty-team roster with names)
-            for (const u of (Array.isArray(table && table.members) ? table.members : [])) {
+            // Priority 1: duty-team roster from the second fetch (has real names)
+            for (const u of (_rosterByTeam[teamId] || [])) {
               if (u && u.id) nameIdx.set(String(u.id), u);
             }
-            // Priority 2: all cached rosters (may overlap but ensures coverage)
-            for (const list of Object.values(_rosterByTeam)) {
+            // Priority 2: all other cached rosters
+            for (const [rKey, list] of Object.entries(_rosterByTeam)) {
+              if (rKey === teamId) continue;
               for (const u of (list || [])) {
                 if (u && u.id && !nameIdx.has(String(u.id))) nameIdx.set(String(u.id), u);
               }
@@ -580,72 +579,66 @@ function _mbxReadJwt(){
         if (!merged.has(u.id)) merged.set(u.id, u);
       }
 
-      // GLOBAL MGR VISIBILITY FIX (Phase-1-605):
+      // Phase-1-607: Store the actual team roster under the correct apiTeamId key.
       // The API returns data for the CURRENT USER's team (e.g. Morning Shift), but
-      // teamId here is the ACTIVE DUTY WINDOW team (e.g. Mid Shift).
-      // If they differ, storing Morning Shift members under Mid Shift key causes
-      // _mbxFindScheduledManagerForBucket to scan the wrong roster → Mgr: — for
-      // non-duty-shift members.
-      //
-      // Correct strategy:
-      //   a) Always store the API result under its ACTUAL teamId key.
-      //   b) Rebuild the requested teamId roster from the globally-synced
-      //      mums_schedule_blocks (which is pushed to ALL sessions via realtime).
-      //   c) Mark scheduleReady for BOTH keys so labels unlock everywhere.
+      // teamId here is the ACTIVE DUTY WINDOW team (e.g. Mid Shift). We must NEVER
+      // store Morning Shift members under the Mid Shift key — that causes wrong Mgr names.
       const apiTeamId = String(data && data.teamId ? data.teamId : teamId).trim();
 
-      // (a) Store actual API roster under the correct team key
+      // Always store under the ACTUAL team key the API returned
       if (apiTeamId) {
         _rosterByTeam[apiTeamId] = [...merged.values()];
         _scheduleReady[apiTeamId] = true;
       }
 
-      // (b) If the requested teamId differs, build its roster from the global
-      //     mums_schedule_blocks document (all users, all teams, already in Store).
+      // If the active duty team differs from the user's own team, make a SECOND
+      // fetch using resolveTeamId to get proper full names for the duty team.
+      // Store.getUsers() for MEMBER role only returns the current user, so we cannot
+      // resolve names locally — only the server has the full mums_profiles table.
       if (apiTeamId !== teamId) {
-        try {
-          const allBlocks = (window.Store && Store.getScheduleBlocks) ? Store.getScheduleBlocks() : {};
-          const allUsers  = (window.Store && Store.getUsers) ? (Store.getUsers() || []) : [];
-          // Build a name index from any source we have
-          const nameIdx = new Map();
-          for (const u of allUsers) { if (u && u.id) nameIdx.set(String(u.id), u); }
-          for (const u of merged.values()) { if (u && u.id && !nameIdx.has(u.id)) nameIdx.set(u.id, u); }
-
-          const targetRoster = [];
-          for (const [uid, entry] of Object.entries(allBlocks)) {
-            if (!entry || String(entry.teamId || '') !== teamId) continue;
-            const u = nameIdx.get(uid);
-            targetRoster.push({
-              id:       uid,
-              name:     String((u && (u.name || u.username)) || uid),
-              username: String((u && u.username) || uid),
-              role:     String((u && u.role) || 'MEMBER'),
-              teamId:   teamId,
-              status:   'active'
-            });
-          }
-          // Supplement with fromStore entries for the target team (handles
-          // privileged roles whose data comes via CloudUsers, not schedule blocks)
-          const storeForTarget = (window.Store && Store.getUsers ? Store.getUsers() : [])
-            .filter(u => u && u.id && String(u.teamId || '') === teamId);
-          const targetMap = new Map();
-          for (const u of targetRoster) targetMap.set(u.id, u);
-          for (const u of storeForTarget) {
-            if (!targetMap.has(u.id)) {
-              targetMap.set(u.id, {
-                id: String(u.id), name: String(u.name || u.username || u.id),
-                username: String(u.username || u.name || u.id),
-                role: String(u.role || 'MEMBER'), teamId: teamId, status: 'active'
-              });
+        (async () => {
+          try {
+            const res2 = await fetch(
+              `/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1&resolveTeamId=${encodeURIComponent(teamId)}`,
+              { headers: { Authorization: `Bearer ${jwt}` }, cache: 'no-store' }
+            );
+            if (!res2.ok) return;
+            const data2 = await res2.json().catch(() => ({}));
+            const rows2 = Array.isArray(data2 && data2.teamMembers) ? data2.teamMembers : [];
+            if (rows2.length) {
+              _rosterByTeam[teamId] = rows2
+                .filter(m => m && m.id)
+                .map(m => ({
+                  id:       String(m.id),
+                  name:     String(m.name || m.username || m.id),
+                  username: String(m.username || m.name || m.id),
+                  role:     String(m.role || 'MEMBER'),
+                  teamId:   teamId,
+                  status:   'active'
+                }));
+              // Also hydrate schedule blocks for this team
+              const tsb2 = Array.isArray(data2.teamScheduleBlocks) ? data2.teamScheduleBlocks : [];
+              if (tsb2.length && window.Store && Store.setUserDayBlocks) {
+                const bucket2 = new Map();
+                for (const row of tsb2) {
+                  const r = row && typeof row === 'object' ? row : {};
+                  const mid2 = String(r.userId || r.user_id || '').trim();
+                  const di2  = Number(r.dayIndex);
+                  if (!mid2 || !Number.isInteger(di2) || di2 < 0 || di2 > 6) continue;
+                  const k2 = `${mid2}|${di2}`;
+                  if (!bucket2.has(k2)) bucket2.set(k2, []);
+                  const sr2 = String(r.schedule || r.role || '').trim();
+                  bucket2.get(k2).push({ start: String(r.start||'00:00'), end: String(r.end||'00:00'), role: sr2, schedule: sr2, notes: String(r.notes||'') });
+                }
+                bucket2.forEach((blocks2, k2) => {
+                  const [mid2, day2] = k2.split('|');
+                  Store.setUserDayBlocks(mid2, teamId, Number(day2), blocks2);
+                });
+              }
+              scheduleRender('duty-team-names-resolved');
             }
-          }
-          _rosterByTeam[teamId] = [...targetMap.values()];
-        } catch (_) {
-          // Fallback: leave _rosterByTeam[teamId] empty so the
-          // schedule-blocks direct scan in _mbxFindScheduledManagerForBucket
-          // still has a chance to resolve the manager name.
-          _rosterByTeam[teamId] = _rosterByTeam[teamId] || [];
-        }
+          } catch (_) {}
+        })();
       }
 
       _scheduleReady[teamId] = true;   // ← unlock Mgr labels regardless of count

@@ -1511,31 +1511,59 @@
         };
       }).filter((u) => !!u.id);
 
-      // Phase-1-606 client fallback: if API returned zero team members
-      // (e.g. profile has no team_id in DB), build the roster from the
-      // globally-synced mums_schedule_blocks. That doc covers ALL users
-      // in ALL teams and is available to every session via realtime sync.
-      if (teamMembersCache.length === 0 && resolvedTeamId && window.Store && Store.getScheduleBlocks) {
+      // Phase-1-607: if API returned zero team members OR the team from the
+      // API response differs from the user's actual team (profile team_id null),
+      // make a SECOND fetch using resolveTeamId to get proper full names from DB.
+      // Store.getUsers() for MEMBER role only returns themselves — we cannot
+      // resolve names locally; only the server has the full mums_profiles table.
+      const needsTeamRefetch = teamMembersCache.length === 0;
+      // Also detect UUID-only names (36-char hex with dashes) and re-fetch
+      const hasUuidNames = teamMembersCache.length > 0 &&
+        teamMembersCache.every(m => /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(String(m.name || '')));
+      if ((needsTeamRefetch || hasUuidNames) && resolvedTeamId) {
         try {
-          const allBlocks = Store.getScheduleBlocks();
-          const storeUsers = (Store.getUsers ? Store.getUsers() : []) || [];
-          const userIdx = new Map();
-          for (const u of storeUsers) { if (u && u.id) userIdx.set(String(u.id), u); }
-          const fromBlocks = [];
-          for (const [bid, entry] of Object.entries(allBlocks)) {
-            if (!entry || String(entry.teamId || '') !== resolvedTeamId) continue;
-            const su = userIdx.get(bid);
-            fromBlocks.push({
-              id: bid,
-              teamId: resolvedTeamId,
-              role: String((su && su.role) || 'MEMBER'),
-              name: String((su && (su.name || su.username)) || bid),
-              fullName: String((su && (su.name || su.username)) || bid),
-              username: String((su && su.username) || ''),
-              avatarUrl: String((su && (su.avatarUrl || su.avatar_url)) || ''),
-            });
+          const jwt2 = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
+          const headers2 = jwt2 ? { Authorization: `Bearer ${jwt2}` } : {};
+          const res2 = await fetch(
+            `/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1&resolveTeamId=${encodeURIComponent(resolvedTeamId)}`,
+            { headers: headers2, cache: 'no-store' }
+          );
+          if (res2.ok) {
+            const data2 = await res2.json().catch(() => ({}));
+            const rows2 = Array.isArray(data2 && data2.teamMembers) ? data2.teamMembers : [];
+            if (rows2.length) {
+              teamMembersCache = rows2.map((row) => {
+                const r = row && typeof row === 'object' ? row : {};
+                return {
+                  id: String(r.id || r.user_id || ''),
+                  teamId: String(r.teamId || r.team_id || resolvedTeamId || ''),
+                  role: String(r.role || 'MEMBER'),
+                  name: String(r.name || r.username || r.id || ''),
+                  fullName: String(r.name || r.username || r.id || ''),
+                  username: String(r.username || ''),
+                  avatarUrl: String(r.avatarUrl || r.avatar_url || ''),
+                };
+              }).filter((u) => !!u.id);
+              // Also hydrate schedule blocks for this team if returned
+              const tsb2 = Array.isArray(data2 && data2.teamScheduleBlocks) ? data2.teamScheduleBlocks : [];
+              if (window.Store && Store.setUserDayBlocks && tsb2.length) {
+                const bucket2 = new Map();
+                tsb2.forEach((row) => {
+                  const r = row && typeof row === 'object' ? row : {};
+                  const memberId2 = String(r.userId || r.user_id || '').trim();
+                  const dayIdx2 = Number(r.dayIndex);
+                  if (!memberId2 || !Number.isInteger(dayIdx2) || dayIdx2 < 0 || dayIdx2 > 6) return;
+                  const key2 = `${memberId2}|${dayIdx2}`;
+                  if (!bucket2.has(key2)) bucket2.set(key2, []);
+                  bucket2.get(key2).push({ start: String(r.start || '00:00'), end: String(r.end || '00:00'), schedule: String(r.schedule || ''), notes: String(r.notes || '') });
+                });
+                bucket2.forEach((blocks2, key2) => {
+                  const [memberId2, day2] = key2.split('|');
+                  Store.setUserDayBlocks(memberId2, resolvedTeamId, Number(day2), blocks2);
+                });
+              }
+            }
           }
-          if (fromBlocks.length) teamMembersCache = fromBlocks;
         } catch(_) {}
       }
 

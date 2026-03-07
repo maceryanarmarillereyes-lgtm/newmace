@@ -213,50 +213,44 @@ module.exports = async (req, res, routeParams) => {
 
     const includeTeam = String((req.query && req.query.includeTeam) || '').trim().toLowerCase();
     const wantsTeamMembers = includeTeam === '1' || includeTeam === 'true' || includeTeam === 'yes';
+
+    // Phase-1-607: resolveTeamId allows any authenticated self-requester to fetch
+    // member names for a DIFFERENT team (e.g. a Morning Shift MEMBER needs Mid Shift
+    // member names to display the correct Mgr label in the mailbox).
+    // This is safe to expose — it only returns names + roles, not sensitive data.
+    const resolveTeamIdParam = safeString((req.query && req.query.resolveTeamId) || '', 80).trim();
+    const effectiveTeamId = (isSelf && resolveTeamIdParam) ? resolveTeamIdParam : targetTeamId;
+
     // All authenticated users can view their own team's schedule.
-    // canViewTeamMembers is true for self-requests (any role) and privileged roles,
-    // and for same-team requests. targetTeamId must be non-empty to query DB.
-    const canViewTeamMembers = !!targetTeamId && (isSelf || actorTeamId === targetTeamId || isPrivileged);
+    // When resolveTeamId is set (self-request for a different team's names), allow it.
+    const canViewTeamMembers = !!effectiveTeamId && (isSelf || actorTeamId === effectiveTeamId || isPrivileged);
 
     const [scheduleDoc, palette, teamMembers] = await Promise.all([
       getScheduleDoc(),
-      getTeamThemePalette(targetTeamId),
-      (wantsTeamMembers && canViewTeamMembers) ? getTeamMembers(targetTeamId) : Promise.resolve([])
+      getTeamThemePalette(effectiveTeamId),
+      (wantsTeamMembers && canViewTeamMembers) ? getTeamMembers(effectiveTeamId) : Promise.resolve([])
     ]);
 
     const scheduleBlocks = flattenScheduleBlocks(scheduleDoc, memberId);
     const teamMemberIds = teamMembers.map((member) => safeString(member && member.id, 120)).filter(Boolean);
-
-    // If teamMembers is empty but we have a valid teamId, fall back to deriving
-    // team members from the schedule blocks doc (covers all teams, all members).
-    let resolvedTeamMembers = teamMembers;
-    let resolvedTeamScheduleBlocks = [];
-    if (wantsTeamMembers && canViewTeamMembers && teamMembers.length === 0 && targetTeamId && scheduleDoc) {
-      // Collect unique member IDs that appear in the schedule doc under this team
-      try {
-        const teamMemberIdsFromBlocks = Object.entries(scheduleDoc)
-          .filter(([, entry]) => entry && String(entry.teamId || '') === targetTeamId)
-          .map(([uid]) => uid)
-          .filter(Boolean);
-        if (teamMemberIdsFromBlocks.length) {
-          resolvedTeamScheduleBlocks = flattenScheduleBlocksForMembers(scheduleDoc, teamMemberIdsFromBlocks);
-        }
-      } catch (_) {}
-    } else {
-      resolvedTeamScheduleBlocks = (wantsTeamMembers && canViewTeamMembers)
-        ? flattenScheduleBlocksForMembers(scheduleDoc, teamMemberIds)
-        : [];
-    }
+    const teamScheduleBlocks = (wantsTeamMembers && canViewTeamMembers)
+      ? flattenScheduleBlocksForMembers(scheduleDoc, teamMemberIds.length ? teamMemberIds : (
+          // Fallback: derive member IDs from schedule blocks doc when DB query returned none
+          Object.entries(scheduleDoc)
+            .filter(([, e]) => e && String(e.teamId || '') === effectiveTeamId)
+            .map(([uid]) => uid)
+        ))
+      : [];
 
     res.statusCode = 200;
     return res.end(JSON.stringify({
       ok: true,
       memberId,
-      teamId: targetTeamId,
+      teamId: effectiveTeamId,
       teamThemePalette: palette || {},
-      teamMembers: resolvedTeamMembers,
+      teamMembers,
       scheduleBlocks,
-      teamScheduleBlocks: resolvedTeamScheduleBlocks
+      teamScheduleBlocks
     }));
   } catch (err) {
     res.statusCode = 500;
