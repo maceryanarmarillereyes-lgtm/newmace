@@ -1476,136 +1476,6 @@ function _mbxReadJwt(){
     if(m) m.classList.remove('is-open');
   }
 
-  function ensureAssignModalMounted(){
-    try{
-      if(document.getElementById('mbxAssignModal')) return;
-      const UI = window.UI;
-      const host = document.createElement('div');
-      host.className = 'mbx-custom-backdrop'; 
-      host.id = 'mbxAssignModal';
-      host.innerHTML = `
-        <div class="mbx-modal-glass">
-          <div class="mbx-modal-head">
-            <h3 style="color:#f8fafc; margin:0;">🎯 Route Case Assignment</h3>
-            <button class="btn-glass btn-glass-ghost" type="button" data-close="mbxAssignModal">✕ Cancel</button>
-          </div>
-          <div class="mbx-modal-body">
-            <div style="background:rgba(255,255,255,0.02); padding:16px; border-radius:10px; border:1px solid rgba(255,255,255,0.05); display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-              <div>
-                <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Receiving Agent</label>
-                <input id="mbxAssignedTo" disabled class="mbx-input" style="font-weight:700;" />
-              </div>
-              <div>
-                <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Time Block</label>
-                <input id="mbxBucketLbl" disabled class="mbx-input" style="color:#38bdf8; font-weight:700;" />
-              </div>
-            </div>
-            
-            <div>
-              <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Case Reference Number <span style="color:#ef4444">*</span></label>
-              <input id="mbxCaseNo" placeholder="e.g. INC0001234" class="mbx-input" style="border:1px solid rgba(56,189,248,0.4); font-size:15px; font-weight:800;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Short Description (Optional)</label>
-              <input id="mbxDesc" placeholder="Context notes..." class="mbx-input" style="font-size:13px;" />
-            </div>
-            <div style="background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.2); border-radius:8px; padding:12px; display:flex; align-items:center; gap:10px;">
-              <div style="font-size:20px;">ℹ️</div>
-              <div style="font-size:11px; color:#cbd5e1; line-height:1.5;">
-                The agent will receive an instant notification and the case will appear in their <strong>Pending Actions</strong> panel. They must acknowledge it to complete the routing workflow.
-              </div>
-            </div>
-            <div style="display:flex; gap:10px;">
-              <button class="btn-glass btn-glass-ghost" type="button" data-close="mbxAssignModal" style="flex:1;">Cancel</button>
-              <button id="mbxAssignSubmit" class="btn-glass btn-glass-primary" type="button" style="flex:2;">Assign Case →</button>
-            </div>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(host);
-
-      host.addEventListener('click', e=>{
-        if(e.target.closest('[data-close="mbxAssignModal"]')){
-          e.preventDefault();
-          e.stopPropagation();
-          _closeCustomModal('mbxAssignModal');
-        }
-      });
-
-      const submitBtn = host.querySelector('#mbxAssignSubmit');
-      if(submitBtn){
-        submitBtn.addEventListener('click', async ()=>{
-          if(_assignSending) return;
-          const caseNo = (host.querySelector('#mbxCaseNo')?.value||'').trim();
-          const desc = (host.querySelector('#mbxDesc')?.value||'').trim();
-          if(!caseNo){ alert('Please enter a case number.'); return; }
-          if(!_assignUserId){ alert('No agent selected.'); return; }
-
-          try{
-            _assignSending = true;
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Routing...';
-
-            const {shiftKey, table} = ensureShiftTables();
-            const activeBucket = computeActiveBucketId(table);
-            if(!activeBucket){ alert('No active time block found.'); return; }
-
-            const Store = window.Store;
-            const users = (Store && Store.getUsers ? Store.getUsers() : []) || [];
-            const targetUser = users.find(u=>u && String(u.id||'')=== String(_assignUserId||''));
-            const assigneeName = targetUser ? (targetUser.name||targetUser.username||_assignUserId) : _assignUserId;
-
-            const payload = {
-              shiftKey,
-              assigneeId: _assignUserId,
-              assigneeName,
-              caseNo,
-              desc,
-              bucketId: activeBucket,
-              assignedBy: (window.Auth && window.Auth.getUser) ? (window.Auth.getUser().id||'') : '',
-              assignedAt: Date.now(),
-              clientId: _mbxClientId()
-            };
-
-            const res = await fetch('/api/mailbox/assign', {
-              method:'POST',
-              headers:{ 'Content-Type':'application/json', ..._mbxAuthHeader() },
-              body: JSON.stringify(payload)
-            });
-
-            if(!res.ok){
-              const err = await res.text().catch(()=>'Network error');
-              throw new Error(err);
-            }
-
-            const data = await res.json().catch(()=>({}));
-            const assignment = data.assignment || { ...payload, id: `local_${Date.now()}` };
-
-            if(!table.counts) table.counts = {};
-            if(!table.counts[_assignUserId]) table.counts[_assignUserId] = {};
-            table.counts[_assignUserId][activeBucket] = (Number(table.counts[_assignUserId][activeBucket])||0) + 1;
-            if(!table.assignments) table.assignments = [];
-            table.assignments.push(assignment);
-
-            if(Store && Store.saveMailboxTable) Store.saveMailboxTable(shiftKey, table);
-
-            _closeCustomModal('mbxAssignModal');
-            scheduleRender('assign-success');
-
-            const UI = window.UI;
-            if(UI && UI.showToast) UI.showToast(`Case ${caseNo} assigned to ${assigneeName}`, 'success');
-
-          }catch(e){
-            alert(`Assignment failed: ${e.message}`);
-          }finally{
-            _assignSending = false;
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Assign Case →';
-          }
-        });
-      }
-    }catch(_){}
-  }
 
   function _populateCaseActionTargets(modal, ownerId){
     try{
@@ -1865,11 +1735,29 @@ function _mbxReadJwt(){
             const targetUser = users.find(u=>u && String(u.id||'')=== String(_assignUserId||''));
             const assigneeName = targetUser ? (targetUser.name||targetUser.username||_assignUserId) : _assignUserId;
 
+            // Pre-flight guard: catch missing required fields before hitting the server
+            // This prevents the "Missing required fields" 400 error when state is not yet ready
+            const resolvedAssigneeId = String(_assignUserId || '').trim();
+            const resolvedShiftKey = String(shiftKey || '').trim();
+            const resolvedCaseNo = String(caseNo || '').trim();
+            if(!resolvedShiftKey){
+              alert('Shift data not loaded yet. Please wait a moment and try again.');
+              return;
+            }
+            if(!resolvedAssigneeId){
+              alert('No agent selected. Please close and reselect the agent.');
+              return;
+            }
+            if(!resolvedCaseNo){
+              alert('Please enter a case number.');
+              return;
+            }
+
             const payload = {
-              shiftKey,
-              assigneeId: _assignUserId,
+              shiftKey: resolvedShiftKey,
+              assigneeId: resolvedAssigneeId,
               assigneeName,
-              caseNo,
+              caseNo: resolvedCaseNo,
               desc,
               bucketId: activeBucket,
               assignedBy: (window.Auth && window.Auth.getUser) ? (window.Auth.getUser().id||'') : '',
@@ -1884,8 +1772,13 @@ function _mbxReadJwt(){
             });
 
             if(!res.ok){
-              const err = await res.text().catch(()=>'Network error');
-              throw new Error(err);
+              let errMsg = 'Network error';
+              try{
+                const errText = await res.text();
+                const errJson = JSON.parse(errText);
+                errMsg = errJson.error || errJson.message || errText || `HTTP ${res.status}`;
+              }catch(_){ errMsg = `Assignment failed (HTTP ${res.status})`; }
+              throw new Error(errMsg);
             }
 
             const data = await res.json().catch(()=>({}));
