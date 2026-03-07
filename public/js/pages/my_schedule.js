@@ -1478,40 +1478,29 @@
     } catch (_) { }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // refreshTeamMembers — Phase-1-609 REWRITE
-  //
-  // Fetches ALL team members for the current user's team and stores in
-  // teamMembersCache. Renders the Team tab when complete.
-  //
-  // Key fixes:
-  //   - Always pass hintTeamId (Auth.getUser() is more reliable than me at init)
-  //   - Cache guard uses resolvedTeamId (not initial stale value) to prevent
-  //     permanent lock-out when teamId was empty at init time
-  //   - UUID-name detection with automatic retry using resolveTeamId param
-  //   - Hydrates Store.setUserDayBlocks for Team Schedule block rendering
-  // ═══════════════════════════════════════════════════════════════════════════
   async function refreshTeamMembers() {
     const uid = String((me && me.id) || '');
     if (!uid) return;
 
-    // Phase-1-609: get the most up-to-date teamId from Auth (not stale me at init time)
+    // Use Auth.getUser() for live teamId — avoids stale me.teamId from script init time
     const liveUser = (window.Auth && Auth.getUser) ? Auth.getUser() : me;
-    const liveTeamId = String((liveUser && (liveUser.teamId || liveUser.team_id)) || currentTeamId() || '').trim();
+    const liveTeamId = String(
+      (liveUser && (liveUser.teamId || liveUser.team_id)) || currentTeamId() || ''
+    ).trim();
 
-    // Cache guard: skip if already loaded for this uid+team combination
-    // Using liveTeamId (not initialTeamId) prevents permanent lock when teamId was '' at init
+    // Cache guard: keyed on uid + resolved teamId to prevent permanent lock when
+    // teamId was empty at init time (race with Supabase session hydration)
     const cacheKey = liveTeamId ? `${uid}:${liveTeamId}` : '';
     if (cacheKey && teamMembersLoadedFor === cacheKey) return;
 
     teamMembersLoading = true;
-    render(); // show loading state immediately
+    render();  // show loading spinner immediately
 
     try {
       const jwt = (window.CloudAuth && CloudAuth.accessToken) ? CloudAuth.accessToken() : '';
       const headers = jwt ? { Authorization: `Bearer ${jwt}` } : {};
 
-      // Always pass hintTeamId — server uses it when DB team_id is NULL
+      // Always send hintTeamId so server resolves team when DB team_id is NULL
       const hintQS = liveTeamId ? `&hintTeamId=${encodeURIComponent(liveTeamId)}` : '';
       const res = await fetch(
         `/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1${hintQS}`,
@@ -1520,16 +1509,9 @@
       if (!res.ok) return;
       const data = await res.json().catch(() => ({}));
 
-      // resolvedTeamId: what the server says our team is (may differ from liveTeamId if DB null)
       const resolvedTeamId = String((data && data.teamId) || liveTeamId || '').trim();
+      if (resolvedTeamId && me) { me.teamId = resolvedTeamId; me.team_id = resolvedTeamId; }
 
-      // Update me with resolved team so subsequent renders use correct value
-      if (resolvedTeamId && me) {
-        me.teamId = resolvedTeamId;
-        me.team_id = resolvedTeamId;
-      }
-
-      const rows = Array.isArray(data && data.teamMembers) ? data.teamMembers : [];
       const mapRow = (row) => {
         const r = row && typeof row === 'object' ? row : {};
         return {
@@ -1543,14 +1525,14 @@
         };
       };
 
-      teamMembersCache = rows.map(mapRow).filter((u) => !!u.id);
+      const rows = Array.isArray(data && data.teamMembers) ? data.teamMembers : [];
+      teamMembersCache = rows.map(mapRow).filter(u => !!u.id);
 
-      // If names are UUIDs (DB returned IDs instead of names), retry with resolveTeamId
+      // Detect UUID-only names or empty — retry with explicit resolveTeamId
       const hasUuidNames = teamMembersCache.length > 0 &&
         teamMembersCache.every(m => /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(String(m.name || '')));
-      const isEmpty = teamMembersCache.length === 0;
 
-      if ((isEmpty || hasUuidNames) && resolvedTeamId) {
+      if ((teamMembersCache.length === 0 || hasUuidNames) && resolvedTeamId) {
         try {
           const res2 = await fetch(
             `/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1&resolveTeamId=${encodeURIComponent(resolvedTeamId)}`,
@@ -1560,28 +1542,26 @@
             const data2 = await res2.json().catch(() => ({}));
             const rows2 = Array.isArray(data2 && data2.teamMembers) ? data2.teamMembers : [];
             if (rows2.length) {
-              teamMembersCache = rows2.map(mapRow).filter((u) => !!u.id);
-              // Hydrate schedule blocks from retry response
-              _hydrateScheduleBlocks(data2.teamScheduleBlocks, resolvedTeamId);
+              teamMembersCache = rows2.map(mapRow).filter(u => !!u.id);
+              _hydrateTeamScheduleBlocks(data2.teamScheduleBlocks, resolvedTeamId);
             }
           }
-        } catch(_) {}
+        } catch (_) {}
       }
 
-      // Hydrate schedule blocks from initial response
-      _hydrateScheduleBlocks(data.teamScheduleBlocks, resolvedTeamId);
+      _hydrateTeamScheduleBlocks(data.teamScheduleBlocks, resolvedTeamId);
 
-      // Lock cache so we don't re-fetch on every render
+      // Lock cache with server-confirmed teamId
       teamMembersLoadedFor = `${uid}:${resolvedTeamId}`;
       render();
-    } catch (_) { }
+    } catch (_) {}
     finally {
       teamMembersLoading = false;
       render();
     }
   }
 
-  function _hydrateScheduleBlocks(teamScheduleBlocks, resolvedTeamId) {
+  function _hydrateTeamScheduleBlocks(teamScheduleBlocks, resolvedTeamId) {
     try {
       if (!window.Store || !Store.setUserDayBlocks) return;
       const tsb = Array.isArray(teamScheduleBlocks) ? teamScheduleBlocks : [];
@@ -1595,17 +1575,12 @@
         const key = `${memberId}|${dayIdx}`;
         if (!bucket.has(key)) bucket.set(key, []);
         const sr = String(r.schedule || r.role || '').trim();
-        bucket.get(key).push({
-          start: String(r.start || '00:00'),
-          end: String(r.end || '00:00'),
-          schedule: sr, role: sr,
-          notes: String(r.notes || ''),
-        });
+        bucket.get(key).push({ start: String(r.start || '00:00'), end: String(r.end || '00:00'), schedule: sr, role: sr, notes: String(r.notes || '') });
       });
       bucket.forEach((blocks, key) => {
         const [memberId, day] = key.split('|');
         const memberTeamId = String(
-          ((teamMembersCache.find((m) => String(m.id) === String(memberId)) || {}).teamId)
+          ((teamMembersCache.find(m => String(m.id) === String(memberId)) || {}).teamId)
           || resolvedTeamId || currentTeamId() || ''
         );
         if (!memberTeamId) return;
@@ -1614,41 +1589,5 @@
     } catch (_) {}
   }
 
-  async function refreshMemberScheduleTheme() {
-    const uid = String((me && me.id) || '');
-    if (!uid || themePaletteLoadedFor === uid) return;
-    try {
-      const jwt = getBearerToken();
-      const headers = jwt ? { Authorization: `Bearer ${jwt}` } : {};
-      const res = await fetch(`/api/member/${encodeURIComponent(uid)}/schedule`, { headers, cache: 'no-store' });
-      if (!res.ok) return;
-      const data = await res.json().catch(() => ({}));
-      const palette = (data && data.teamThemePalette && typeof data.teamThemePalette === 'object') ? data.teamThemePalette : {};
-      teamThemePalette = palette;
-      themePaletteLoadedFor = uid;
-      render();
-    } catch (_) { }
-  }
-
-  function startRealtimeRefresh() {
-    if (storeListener && Store.unlisten) {
-      try { Store.unlisten(storeListener); } catch (_) { }
-      storeListener = null;
-    }
-    if (!Store.listen) return;
-    try {
-      storeListener = Store.listen(function (key) {
-        const k = String(key || '');
-        if (k.includes('schedule') || k.includes('tasks') || k.includes('audit') || k.includes('weekly') || k.includes('users')) {
-          render();
-        }
-      });
-    } catch (_) { }
-  }
-
-  // Init
-  render();
-  startRealtimeRefresh();
-  refreshMemberScheduleTheme();
-  refreshTeamMembers();
+    refreshTeamMembers();
 });

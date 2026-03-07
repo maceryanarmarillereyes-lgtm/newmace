@@ -327,104 +327,123 @@ function _mbxReadJwt(){
   // =========================================================================
   // BOSS THUNTER: ABSOLUTE BLOCK SCANNER (ULTIMATE GHOST FIX)
   // =========================================================================
-  // ═══════════════════════════════════════════════════════════════════════════
-  // _mbxFindScheduledManagerForBucket — Phase-1-609 REWRITE
-  //
-  // Priority order:
-  //   1. table.meta.bucketManagers[bucket.id]  ← pre-computed from API data (fastest)
-  //   2. Store.getScheduleBlocks() scan         ← global realtime doc (all users)
-  //
-  // The pre-computed cache is populated by _mbxPrecomputeBucketManagers() which
-  // runs synchronously after each successful API fetch. This eliminates ALL
-  // Store.getUserDayBlocks() timing issues.
-  // ═══════════════════════════════════════════════════════════════════════════
   function _mbxFindScheduledManagerForBucket(table, bucket){
     try{
       if(!table || !bucket) return '—';
 
-      // ── Priority 1: Pre-computed cache (always correct, no timing issues) ──
+      // ── Priority 1: Pre-computed cache (populated by sync, no timing issues) ──
       const cached = table.meta && table.meta.bucketManagers && table.meta.bucketManagers[bucket.id];
       if (cached && typeof cached === 'string' && cached !== '—') return cached;
 
-      // ── Priority 2: Scan Store.getScheduleBlocks() (realtime global doc) ──
-      // This covers the window between page load and API fetch completion.
       const teamId = String(table?.meta?.teamId||'');
       if(!teamId) return '—';
 
-      const Store  = window.Store;
       const UI     = window.UI;
+      const Store  = window.Store;
       const Config = window.Config;
-
-      if (!Store || !Store.getScheduleBlocks) return '—';
 
       const shiftStartMin = _mbxParseHM(table?.meta?.dutyStart || '00:00');
       const shiftKey      = String(table?.meta?.shiftKey||'');
       const shiftDatePart = (shiftKey.split('|')[1] || '').split('T')[0];
       let shiftDow = 0;
-      try { shiftDow = new Date(`${shiftDatePart}T00:00:00+08:00`).getDay(); }
-      catch (_){ shiftDow = new Date().getDay(); }
+      try {
+        shiftDow = new Date(`${shiftDatePart}T00:00:00+08:00`).getDay();
+      } catch (_){
+        shiftDow = UI && UI.manilaNowDate ? new Date(UI.manilaNowDate()).getDay() : new Date().getDay();
+      }
 
       let bStart = Number(bucket.startMin)||0;
       let bEnd   = Number(bucket.endMin)||0;
       if(bEnd <= bStart) bEnd += 1440;
       if(bStart < shiftStartMin){ bStart += 1440; bEnd += 1440; }
 
-      // Build name index from all available sources
-      const nameIdx = new Map();
-      for (const [, list] of Object.entries(_rosterByTeam)) {
-        for (const u of (list || [])) { if (u && u.id) nameIdx.set(String(u.id), u); }
-      }
-      for (const u of ((Store.getUsers && Store.getUsers()) || [])) {
-        if (u && u.id && !nameIdx.has(String(u.id))) nameIdx.set(String(u.id), u);
-      }
+      // ── CANDIDATES: merge roster cache + Store.getUsers() ──────────────
+      // _rosterByTeam[teamId] is populated by the server sync for ALL roles.
+      // Store.getUsers() is populated for privileged roles via CloudUsers.
+      // Combining both ensures we never miss a candidate.
+      const cacheMembers = (_rosterByTeam && _rosterByTeam[teamId]) || [];
+      const storeMembers = ((Store && Store.getUsers ? Store.getUsers() : []) || [])
+        .filter(u => u && String(u.teamId||'') === teamId);
 
-      const allBlocks = Store.getScheduleBlocks() || {};
+      // Dedupe by id — prefer cache entry (has reliable data)
+      const byId = new Map();
+      for (const u of cacheMembers) if (u && u.id) byId.set(String(u.id), u);
+      for (const u of storeMembers) if (u && u.id && !byId.has(String(u.id))) byId.set(String(u.id), u);
+      const candidates = [...byId.values()];
+
       const matched = [];
 
-      for (const [uid, entry] of Object.entries(allBlocks)) {
-        if (!entry || String(entry.teamId || '') !== teamId) continue;
-        const days = (entry.days && typeof entry.days === 'object') ? entry.days : {};
+      for(const u of candidates){
+        let isMgr = false;
+        const uid = String(u.id || '');
+        if(!uid) continue;
 
         const dayRefs = [
           { dow: shiftDow,           offset:    0 },
           { dow: (shiftDow + 1) % 7, offset: 1440 }
         ];
-        let found = false;
-        for (const ref of dayRefs) {
-          if (found) break;
-          const dayBlocks = Array.isArray(days[String(ref.dow)]) ? days[String(ref.dow)] : [];
-          for (const b of dayBlocks) {
-            let s = _mbxParseHM(b.start);
-            let e = _mbxParseHM(b.end);
-            if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
-            if (e <= s) e += 1440;
+
+        for(const ref of dayRefs){
+          const blocks = Store && Store.getUserDayBlocks
+            ? (Store.getUserDayBlocks(uid, ref.dow) || []) : [];
+
+          for(const b of blocks){
+            let s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
+            let e = (UI && UI.parseHM) ? UI.parseHM(b.end)   : _mbxParseHM(b.end);
+            if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
+            if(e <= s) e += 1440;
             s += ref.offset;
             e += ref.offset;
-            if (!(s < bEnd && bStart < e)) continue;
+            if(!(s < bEnd && bStart < e)) continue;
+
             const roleId = String(b.role || b.schedule || '').toLowerCase().trim();
-            const sc = Config && Config.scheduleById ? Config.scheduleById(b.role || b.schedule) : null;
-            const lbl = String(sc && sc.label ? sc.label : roleId).toLowerCase();
-            if (roleId === 'mailbox_manager' || lbl.includes('mailbox manager') ||
-                roleId === 'mailbox manager' || lbl.includes('mailbox_manager')) {
-              const uRec = nameIdx.get(String(uid));
-              const displayName = uRec ? String(uRec.name || uRec.username || '').trim() : '';
-              if (displayName && !/^[0-9a-f]{8}-/i.test(displayName)) {
-                matched.push(displayName);
-              }
-              found = true; break;
+            const sc     = Config && Config.scheduleById
+              ? Config.scheduleById(b.role || b.schedule) : null;
+            const lbl    = String(sc && sc.label ? sc.label : roleId).toLowerCase();
+
+            if(roleId === 'mailbox_manager' || lbl.includes('mailbox manager') ||
+               roleId === 'mailbox manager' || lbl.includes('mailbox_manager')){
+              isMgr = true; break;
+            }
+          }
+          if(isMgr) break;
+        }
+
+        // Fallback: user.schedule / user.task on the profile object (legacy)
+        if(!isMgr){
+          const legacyFields = [
+            String(u.schedule || '').toLowerCase(),
+            String(u.task     || '').toLowerCase(),
+          ];
+          if(legacyFields.some(f => f === 'mailbox_manager' || f.includes('mailbox manager'))){
+            const nowMin = (() => {
+              try{
+                const p = UI && UI.mailboxNowParts ? UI.mailboxNowParts()
+                  : (UI ? UI.manilaNow() : null);
+                return p ? (Number(p.hh||0)*60 + Number(p.mm||0)) : -1;
+              }catch(_){ return -1; }
+            })();
+            if(nowMin >= 0 && _mbxBlockHit(nowMin, bucket.startMin, bucket.endMin)){
+              isMgr = true;
             }
           }
         }
+
+        if(isMgr) matched.push(String(u.name || u.username || '—'));
       }
 
       const unique = [...new Set(matched.filter(Boolean))];
       return unique.length > 0 ? unique.join(' & ') : '—';
-    }catch(_){ return '—'; }
+    }catch(e){ return '—'; }
   }
 
-  // ── Pre-compute bucketManagers from raw API schedule block data ──────────────
-  // Called after each successful fetch (both same-team and cross-team).
-  // Writes directly to table.meta.bucketManagers so render reads instantly.
+  // ════════════════════════════════════════════════════════════════════════════
+  // _mbxPrecomputeBucketManagers
+  // Pre-computes manager names from raw API schedule data into table.meta.bucketManagers.
+  // Called synchronously after each API fetch. Eliminates Store.getUserDayBlocks timing
+  // issues — the render simply reads table.meta.bucketManagers[bucket.id] directly.
+  // Works for ALL user roles because it operates purely on API data + nameMap.
+  // ════════════════════════════════════════════════════════════════════════════
   function _mbxPrecomputeBucketManagers(table, teamScheduleBlocks, nameMap) {
     try {
       if (!table || !Array.isArray(table.buckets) || !Array.isArray(teamScheduleBlocks)) return;
@@ -433,9 +452,17 @@ function _mbxReadJwt(){
 
       const shiftKey = String(table.meta.shiftKey || '');
       const shiftDatePart = (shiftKey.split('|')[1] || '').split('T')[0];
+      // Compute DOW using Manila timezone (UTC+8) to match how dayIndex is assigned.
+      // We use UTC methods on a Manila-midnight timestamp to avoid local-TZ skew.
       let shiftDow = 0;
-      try { shiftDow = new Date(`${shiftDatePart}T00:00:00+08:00`).getDay(); }
-      catch (_) { shiftDow = new Date().getDay(); }
+      try {
+        const [y, mo, d] = shiftDatePart.split('-').map(Number);
+        // Manila midnight in UTC = (d at 00:00+08:00) = previous day at 16:00 UTC
+        const manilaMidnightUTC = Date.UTC(y, mo - 1, d, 0, 0, 0) - 8 * 3600 * 1000;
+        shiftDow = new Date(manilaMidnightUTC + 8 * 3600 * 1000).getUTCDay();
+      } catch (_) {
+        shiftDow = new Date().getDay();
+      }
 
       const shiftStartMin = _mbxParseHM(table.meta.dutyStart || '00:00');
 
@@ -448,6 +475,7 @@ function _mbxReadJwt(){
         const mgrNames = [];
         for (const row of teamScheduleBlocks) {
           const rDow = Number(row.dayIndex);
+          // Check same day OR next calendar day (for overnight shifts)
           const isSameDow = (rDow === shiftDow);
           const isNextDay = (rDow === (shiftDow + 1) % 7);
           if (!isSameDow && !isNextDay) continue;
@@ -458,7 +486,7 @@ function _mbxReadJwt(){
           if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
           if (e <= s) e += 1440;
           s += offset; e += offset;
-          if (!(s < bE && bS < e)) continue;
+          if (!(s < bE && bS < e)) continue;  // no overlap
 
           const roleStr = String(row.schedule || row.role || '').toLowerCase().trim();
           const sc = window.Config && Config.scheduleById ? Config.scheduleById(row.schedule || row.role) : null;
@@ -470,17 +498,18 @@ function _mbxReadJwt(){
           const userId = String(row.userId || row.user_id || '');
           const uRec = nameMap.get(userId);
           const name = uRec ? String(uRec.name || uRec.username || '').trim() : '';
-          if (name && !/^[0-9a-f]{8}-/i.test(name)) mgrNames.push(name);
+          // Only add real names, not raw UUIDs
+          if (name && !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(name)) {
+            mgrNames.push(name);
+          }
         }
 
         const uniq = [...new Set(mgrNames.filter(Boolean))];
+        // Only write if we found names (don't overwrite an existing valid cache with empty)
         if (uniq.length) {
           table.meta.bucketManagers[bkt.id] = uniq.join(' & ');
-        } else {
-          // Don't overwrite an existing cached name with empty
-          if (!table.meta.bucketManagers[bkt.id]) {
-            table.meta.bucketManagers[bkt.id] = '—';
-          }
+        } else if (!table.meta.bucketManagers[bkt.id]) {
+          table.meta.bucketManagers[bkt.id] = '—';
         }
       }
     } catch (_) {}
@@ -522,9 +551,10 @@ function _mbxReadJwt(){
       const jwt = _mbxReadJwt();
       if (!jwt) return;
 
-      // Phase-1-609: always pass hintTeamId so server resolves team even when DB team_id is NULL
+      // Always send hintTeamId so server resolves team even when DB team_id is NULL
       const meTeamId = String(me.teamId || me.team_id || '').trim();
       const hintParam = meTeamId ? `&hintTeamId=${encodeURIComponent(meTeamId)}` : '';
+
       const res = await fetch(
         `/api/member/${encodeURIComponent(uid)}/schedule?includeTeam=1${hintParam}`,
         { headers: { Authorization: `Bearer ${jwt}` }, cache: 'no-store' }
@@ -532,8 +562,10 @@ function _mbxReadJwt(){
       if (!res.ok) return;
       const data = await res.json().catch(() => ({}));
 
-      // ── 1. Cache the roster ─────────────────────────────────────────────────
+      // ── 1. Roster: merge API members with Store members ──────────────────────
       const rawMembers = Array.isArray(data && data.teamMembers) ? data.teamMembers : [];
+      const apiTeamId = String(data && data.teamId ? data.teamId : teamId).trim();
+
       const fromApi = rawMembers
         .filter(m => m && m.id)
         .map(m => ({
@@ -541,85 +573,76 @@ function _mbxReadJwt(){
           name:     String(m.name     || m.username || m.id),
           username: String(m.username || m.name     || m.id),
           role:     String(m.role     || 'MEMBER'),
-          teamId:   String(m.teamId   || m.team_id  || teamId),
+          teamId:   String(m.teamId   || m.team_id  || apiTeamId),
           status:   'active'
         }));
       const fromStore = (window.Store && Store.getUsers ? Store.getUsers() : [])
-        .filter(u => u && u.id && (String(u.teamId || '') === teamId))
+        .filter(u => u && u.id && (String(u.teamId || '') === apiTeamId))
         .map(u => ({ id: String(u.id), name: String(u.name || u.username || u.id),
                      username: String(u.username || u.name || u.id),
-                     role: String(u.role || 'MEMBER'), teamId: teamId, status: 'active' }));
+                     role: String(u.role || 'MEMBER'), teamId: apiTeamId, status: 'active' }));
+
       const merged = new Map();
       for (const u of fromStore) merged.set(u.id, u);
       for (const u of fromApi) { if (!merged.has(u.id)) merged.set(u.id, u); }
 
-      // Phase-1-609: Always store under ACTUAL apiTeamId key (never mix teams)
-      const apiTeamId = String(data && data.teamId ? data.teamId : teamId).trim();
       if (apiTeamId) {
         _rosterByTeam[apiTeamId] = [...merged.values()];
         _scheduleReady[apiTeamId] = true;
       }
 
-      // ── 2. Pre-compute Mgr names from API data (Phase-1-609 core fix) ────────
-      // This runs SYNCHRONOUSLY after the fetch and caches Mgr names directly in
-      // table.meta.bucketManagers. No Store.getUserDayBlocks() needed — eliminates
-      // all timing races. Works for same-team AND cross-team users.
+      // ── 2. Pre-compute Mgr names from API data (no Store.getUserDayBlocks timing issues) ──
       const tsb = Array.isArray(data && data.teamScheduleBlocks) ? data.teamScheduleBlocks : [];
+
+      // Build nameMap for the precompute
       const nameMapMain = new Map();
       for (const u of merged.values()) { if (u && u.id) nameMapMain.set(String(u.id), u); }
 
-      const _applyPrecompute = (targetTid, roster, schedBlocks) => {
+      // Helper: apply precomputed Mgr names to the current mailbox table
+      const applyToTable = (targetTid, roster, schedBlocks) => {
         try {
           if (!window.Store || !Store.getMailboxState || !Store.getMailboxTable || !Store.saveMailboxTable) return;
-          const state = Store.getMailboxState();
-          if (!state) return;
-          // Apply to all active mailbox tables for this team
-          const keys = [state.currentKey].filter(Boolean);
-          // Also check if any cached table belongs to targetTid
-          try {
-            if (Store.getMailboxKeys) {
-              for (const k of (Store.getMailboxKeys() || [])) {
-                if (!keys.includes(k)) keys.push(k);
-              }
-            }
-          } catch(_) {}
-          const nameMap = new Map();
-          for (const u of (roster || [])) { if (u && u.id) nameMap.set(String(u.id), u); }
-          // Also include all other known rosters
+          const curKey = Store.getMailboxState().currentKey;
+          if (!curKey) return;
+          const t = Store.getMailboxTable(curKey);
+          if (!t || String(t.meta && t.meta.teamId || '') !== targetTid) return;
+
+          // Build comprehensive nameMap for precompute
+          const nm = new Map();
+          for (const u of (roster || [])) { if (u && u.id) nm.set(String(u.id), u); }
           for (const [, list] of Object.entries(_rosterByTeam)) {
-            for (const u of (list || [])) { if (u && u.id && !nameMap.has(u.id)) nameMap.set(u.id, u); }
+            for (const u of (list || [])) { if (u && u.id && !nm.has(u.id)) nm.set(u.id, u); }
           }
-          for (const curKey of keys) {
-            const t = Store.getMailboxTable(curKey);
-            if (!t || String(t.meta && t.meta.teamId || '') !== targetTid) continue;
-            _mbxPrecomputeBucketManagers(t, schedBlocks, nameMap);
-            // Patch table.members too
-            const nowP = window.UI && UI.mailboxNowParts ? UI.mailboxNowParts() : null;
-            const existIds = new Set((t.members || []).map(m => m && String(m.id)));
-            for (const u of (roster || [])) {
-              if (!u || !u.id || existIds.has(u.id)) continue;
-              t.members = t.members || [];
-              t.members.push({
-                id: u.id, name: u.name, username: u.username,
-                role: u.role, roleLabel: _mbxRoleLabel(u.role),
-                dutyLabel: _mbxDutyLabelForUser({ id: u.id, teamId: targetTid }, nowP)
-              });
-              existIds.add(u.id);
-            }
-            Store.saveMailboxTable(curKey, t, { silent: true });
+
+          _mbxPrecomputeBucketManagers(t, schedBlocks, nm);
+
+          // Also patch table.members with full roster
+          const nowP = window.UI && UI.mailboxNowParts ? UI.mailboxNowParts() : null;
+          const existIds = new Set((t.members || []).map(m => m && String(m.id)));
+          for (const tm of (roster || [])) {
+            if (!tm || !tm.id || existIds.has(String(tm.id))) continue;
+            t.members = t.members || [];
+            t.members.push({
+              id: String(tm.id), name: String(tm.name || tm.id),
+              username: String(tm.username || tm.name || tm.id),
+              role: String(tm.role || 'MEMBER'), roleLabel: _mbxRoleLabel(tm.role || ''),
+              dutyLabel: _mbxDutyLabelForUser({ id: String(tm.id), teamId: targetTid }, nowP)
+            });
+            existIds.add(String(tm.id));
           }
+
+          Store.saveMailboxTable(curKey, t, { silent: true });
         } catch (_) {}
       };
 
-      // Apply for the API team's table
+      // Apply for own team's table
       if (apiTeamId && tsb.length) {
-        _applyPrecompute(apiTeamId, [...merged.values()], tsb);
+        applyToTable(apiTeamId, [...merged.values()], tsb);
       }
 
-      // ── 3. Handle cross-shift: fetch duty team's data separately ─────────────
-      // If user's own team (apiTeamId) differs from the active duty window team (teamId),
-      // make a second fetch to get duty team's member names and schedule blocks.
-      if (apiTeamId !== teamId) {
+      // ── 3. Cross-shift: if duty-window team ≠ user's own team, fetch duty team data ──
+      // E.g. Morning MEMBER viewing Night Shift mailbox needs Night Shift manager names
+      if (apiTeamId && teamId && apiTeamId !== teamId) {
         (async () => {
           try {
             const res2 = await fetch(
@@ -629,25 +652,19 @@ function _mbxReadJwt(){
             if (!res2.ok) return;
             const data2 = await res2.json().catch(() => ({}));
             const rows2 = Array.isArray(data2 && data2.teamMembers) ? data2.teamMembers : [];
-            const tsb2  = Array.isArray(data2.teamScheduleBlocks) ? data2.teamScheduleBlocks : [];
+            const tsb2  = Array.isArray(data2 && data2.teamScheduleBlocks) ? data2.teamScheduleBlocks : [];
             if (!rows2.length) return;
 
-            // Store duty team roster with proper names
             _rosterByTeam[teamId] = rows2
               .filter(m => m && m.id)
               .map(m => ({
-                id:       String(m.id),
-                name:     String(m.name || m.username || m.id),
+                id: String(m.id), name: String(m.name || m.username || m.id),
                 username: String(m.username || m.name || m.id),
-                role:     String(m.role || 'MEMBER'),
-                teamId:   teamId,
-                status:   'active'
+                role: String(m.role || 'MEMBER'), teamId, status: 'active'
               }));
+            _scheduleReady[teamId] = true;
 
-            // Pre-compute Mgr names for duty team tables
-            if (tsb2.length) {
-              _applyPrecompute(teamId, _rosterByTeam[teamId], tsb2);
-            }
+            if (tsb2.length) applyToTable(teamId, _rosterByTeam[teamId], tsb2);
 
             scheduleRender('cross-team-names-resolved');
           } catch (_) {}
@@ -656,7 +673,7 @@ function _mbxReadJwt(){
 
       _scheduleReady[teamId] = true;
 
-      // ── 4. Hydrate Store.setUserDayBlocks for legacy compatibility ────────────
+      // ── 4. Hydrate Store.setUserDayBlocks (legacy compatibility) ─────────────
       if (tsb.length && window.Store && Store.setUserDayBlocks) {
         const bucket = new Map();
         for (const row of tsb) {
@@ -1579,6 +1596,136 @@ function _mbxReadJwt(){
     if(m) m.classList.remove('is-open');
   }
 
+  function ensureAssignModalMounted(){
+    try{
+      if(document.getElementById('mbxAssignModal')) return;
+      const UI = window.UI;
+      const host = document.createElement('div');
+      host.className = 'mbx-custom-backdrop'; 
+      host.id = 'mbxAssignModal';
+      host.innerHTML = `
+        <div class="mbx-modal-glass">
+          <div class="mbx-modal-head">
+            <h3 style="color:#f8fafc; margin:0;">🎯 Route Case Assignment</h3>
+            <button class="btn-glass btn-glass-ghost" type="button" data-close="mbxAssignModal">✕ Cancel</button>
+          </div>
+          <div class="mbx-modal-body">
+            <div style="background:rgba(255,255,255,0.02); padding:16px; border-radius:10px; border:1px solid rgba(255,255,255,0.05); display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+              <div>
+                <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Receiving Agent</label>
+                <input id="mbxAssignedTo" disabled class="mbx-input" style="font-weight:700;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Time Block</label>
+                <input id="mbxBucketLbl" disabled class="mbx-input" style="color:#38bdf8; font-weight:700;" />
+              </div>
+            </div>
+            
+            <div>
+              <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Case Reference Number <span style="color:#ef4444">*</span></label>
+              <input id="mbxCaseNo" placeholder="e.g. INC0001234" class="mbx-input" style="border:1px solid rgba(56,189,248,0.4); font-size:15px; font-weight:800;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; margin-bottom:6px;">Short Description (Optional)</label>
+              <input id="mbxDesc" placeholder="Context notes..." class="mbx-input" style="font-size:13px;" />
+            </div>
+            <div style="background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.2); border-radius:8px; padding:12px; display:flex; align-items:center; gap:10px;">
+              <div style="font-size:20px;">ℹ️</div>
+              <div style="font-size:11px; color:#cbd5e1; line-height:1.5;">
+                The agent will receive an instant notification and the case will appear in their <strong>Pending Actions</strong> panel. They must acknowledge it to complete the routing workflow.
+              </div>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button class="btn-glass btn-glass-ghost" type="button" data-close="mbxAssignModal" style="flex:1;">Cancel</button>
+              <button id="mbxAssignSubmit" class="btn-glass btn-glass-primary" type="button" style="flex:2;">Assign Case →</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(host);
+
+      host.addEventListener('click', e=>{
+        if(e.target.closest('[data-close="mbxAssignModal"]')){
+          e.preventDefault();
+          e.stopPropagation();
+          _closeCustomModal('mbxAssignModal');
+        }
+      });
+
+      const submitBtn = host.querySelector('#mbxAssignSubmit');
+      if(submitBtn){
+        submitBtn.addEventListener('click', async ()=>{
+          if(_assignSending) return;
+          const caseNo = (host.querySelector('#mbxCaseNo')?.value||'').trim();
+          const desc = (host.querySelector('#mbxDesc')?.value||'').trim();
+          if(!caseNo){ alert('Please enter a case number.'); return; }
+          if(!_assignUserId){ alert('No agent selected.'); return; }
+
+          try{
+            _assignSending = true;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Routing...';
+
+            const {shiftKey, table} = ensureShiftTables();
+            const activeBucket = computeActiveBucketId(table);
+            if(!activeBucket){ alert('No active time block found.'); return; }
+
+            const Store = window.Store;
+            const users = (Store && Store.getUsers ? Store.getUsers() : []) || [];
+            const targetUser = users.find(u=>u && String(u.id||'')=== String(_assignUserId||''));
+            const assigneeName = targetUser ? (targetUser.name||targetUser.username||_assignUserId) : _assignUserId;
+
+            const payload = {
+              shiftKey,
+              assigneeId: _assignUserId,
+              assigneeName,
+              caseNo,
+              desc,
+              bucketId: activeBucket,
+              assignedBy: (window.Auth && window.Auth.getUser) ? (window.Auth.getUser().id||'') : '',
+              assignedAt: Date.now(),
+              clientId: _mbxClientId()
+            };
+
+            const res = await fetch('/api/mailbox/assign', {
+              method:'POST',
+              headers:{ 'Content-Type':'application/json', ..._mbxAuthHeader() },
+              body: JSON.stringify(payload)
+            });
+
+            if(!res.ok){
+              const err = await res.text().catch(()=>'Network error');
+              throw new Error(err);
+            }
+
+            const data = await res.json().catch(()=>({}));
+            const assignment = data.assignment || { ...payload, id: `local_${Date.now()}` };
+
+            if(!table.counts) table.counts = {};
+            if(!table.counts[_assignUserId]) table.counts[_assignUserId] = {};
+            table.counts[_assignUserId][activeBucket] = (Number(table.counts[_assignUserId][activeBucket])||0) + 1;
+            if(!table.assignments) table.assignments = [];
+            table.assignments.push(assignment);
+
+            if(Store && Store.saveMailboxTable) Store.saveMailboxTable(shiftKey, table);
+
+            _closeCustomModal('mbxAssignModal');
+            scheduleRender('assign-success');
+
+            const UI = window.UI;
+            if(UI && UI.showToast) UI.showToast(`Case ${caseNo} assigned to ${assigneeName}`, 'success');
+
+          }catch(e){
+            alert(`Assignment failed: ${e.message}`);
+          }finally{
+            _assignSending = false;
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Assign Case →';
+          }
+        });
+      }
+    }catch(_){}
+  }
 
   function _populateCaseActionTargets(modal, ownerId){
     try{
@@ -1838,29 +1985,11 @@ function _mbxReadJwt(){
             const targetUser = users.find(u=>u && String(u.id||'')=== String(_assignUserId||''));
             const assigneeName = targetUser ? (targetUser.name||targetUser.username||_assignUserId) : _assignUserId;
 
-            // Pre-flight guard: catch missing required fields before hitting the server
-            // This prevents the "Missing required fields" 400 error when state is not yet ready
-            const resolvedAssigneeId = String(_assignUserId || '').trim();
-            const resolvedShiftKey = String(shiftKey || '').trim();
-            const resolvedCaseNo = String(caseNo || '').trim();
-            if(!resolvedShiftKey){
-              alert('Shift data not loaded yet. Please wait a moment and try again.');
-              return;
-            }
-            if(!resolvedAssigneeId){
-              alert('No agent selected. Please close and reselect the agent.');
-              return;
-            }
-            if(!resolvedCaseNo){
-              alert('Please enter a case number.');
-              return;
-            }
-
             const payload = {
-              shiftKey: resolvedShiftKey,
-              assigneeId: resolvedAssigneeId,
+              shiftKey,
+              assigneeId: _assignUserId,
               assigneeName,
-              caseNo: resolvedCaseNo,
+              caseNo,
               desc,
               bucketId: activeBucket,
               assignedBy: (window.Auth && window.Auth.getUser) ? (window.Auth.getUser().id||'') : '',
@@ -1875,13 +2004,8 @@ function _mbxReadJwt(){
             });
 
             if(!res.ok){
-              let errMsg = 'Network error';
-              try{
-                const errText = await res.text();
-                const errJson = JSON.parse(errText);
-                errMsg = errJson.error || errJson.message || errText || `HTTP ${res.status}`;
-              }catch(_){ errMsg = `Assignment failed (HTTP ${res.status})`; }
-              throw new Error(errMsg);
+              const err = await res.text().catch(()=>'Network error');
+              throw new Error(err);
             }
 
             const data = await res.json().catch(()=>({}));

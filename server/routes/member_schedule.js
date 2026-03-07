@@ -182,10 +182,10 @@ module.exports = async (req, res, routeParams) => {
       return res.end(JSON.stringify({ ok: false, error: 'member_id_required' }));
     }
 
+
     const actorProfile = await getProfileForUserId(actor.id);
     const actorRole = normalizeRole(actorProfile && actorProfile.role);
-    // Phase-1-608: Read hintTeamId ONCE early (used for both actor and target resolution).
-    // When mums_profiles.team_id is NULL in DB, the client sends its known teamId as hint.
+    // hintTeamId: client sends its known teamId when DB team_id is NULL in mums_profiles
     const hintTeamId = safeString((req.query && req.query.hintTeamId) || '', 80).trim();
     const actorTeamId = safeString(actorProfile && actorProfile.team_id, 80) || hintTeamId;
 
@@ -198,12 +198,7 @@ module.exports = async (req, res, routeParams) => {
     const isSelf = String(actor.id) === String(memberId);
     const isPrivileged = PRIVILEGED_ROLES.has(actorRole);
 
-    // Robust team resolution (Phase-1-608 fix):
-    // Some profiles have a null/empty team_id in mums_profiles even though
-    // the client UI shows the correct team. Resolution priority:
-    //   1. DB profile team_id (most authoritative)
-    //   2. actorTeamId (same user's derived team)
-    //   3. hintTeamId param sent by client (always available from Auth/Store)
+    // Resolve targetTeamId: DB first, then fallback for self-requests with null DB team_id
     let targetTeamId = safeString(targetProfile.team_id, 80);
     if (!targetTeamId && isSelf) {
       targetTeamId = actorTeamId || hintTeamId || '';
@@ -218,15 +213,11 @@ module.exports = async (req, res, routeParams) => {
     const includeTeam = String((req.query && req.query.includeTeam) || '').trim().toLowerCase();
     const wantsTeamMembers = includeTeam === '1' || includeTeam === 'true' || includeTeam === 'yes';
 
-    // Phase-1-607: resolveTeamId allows any authenticated self-requester to fetch
-    // member names for a DIFFERENT team (e.g. a Morning Shift MEMBER needs Mid Shift
-    // member names to display the correct Mgr label in the mailbox).
-    // This is safe to expose — it only returns names + roles, not sensitive data.
+    // resolveTeamId: self-requester can fetch a DIFFERENT team's roster and schedule
+    // Used by cross-shift users who need another team's member names for Mgr labels
     const resolveTeamIdParam = safeString((req.query && req.query.resolveTeamId) || '', 80).trim();
     const effectiveTeamId = (isSelf && resolveTeamIdParam) ? resolveTeamIdParam : targetTeamId;
 
-    // All authenticated users can view their own team's schedule.
-    // When resolveTeamId is set (self-request for a different team's names), allow it.
     const canViewTeamMembers = !!effectiveTeamId && (isSelf || actorTeamId === effectiveTeamId || isPrivileged);
 
     const [scheduleDoc, palette, teamMembers] = await Promise.all([
@@ -238,14 +229,8 @@ module.exports = async (req, res, routeParams) => {
     const scheduleBlocks = flattenScheduleBlocks(scheduleDoc, memberId);
     const teamMemberIds = teamMembers.map((member) => safeString(member && member.id, 120)).filter(Boolean);
     const teamScheduleBlocks = (wantsTeamMembers && canViewTeamMembers)
-      ? flattenScheduleBlocksForMembers(scheduleDoc, teamMemberIds.length ? teamMemberIds : (
-          // Fallback: derive member IDs from schedule blocks doc when DB query returned none
-          Object.entries(scheduleDoc)
-            .filter(([, e]) => e && String(e.teamId || '') === effectiveTeamId)
-            .map(([uid]) => uid)
-        ))
+      ? flattenScheduleBlocksForMembers(scheduleDoc, teamMemberIds)
       : [];
-
     res.statusCode = 200;
     return res.end(JSON.stringify({
       ok: true,
