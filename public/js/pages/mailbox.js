@@ -327,182 +327,163 @@ function _mbxReadJwt(){
   // =========================================================================
   // BOSS THUNTER: ABSOLUTE BLOCK SCANNER (ULTIMATE GHOST FIX)
   // =========================================================================
+  // ═══════════════════════════════════════════════════════════════════════════
+  // _mbxFindScheduledManagerForBucket — Phase-1-609 REWRITE
+  //
+  // Priority order:
+  //   1. table.meta.bucketManagers[bucket.id]  ← pre-computed from API data (fastest)
+  //   2. Store.getScheduleBlocks() scan         ← global realtime doc (all users)
+  //
+  // The pre-computed cache is populated by _mbxPrecomputeBucketManagers() which
+  // runs synchronously after each successful API fetch. This eliminates ALL
+  // Store.getUserDayBlocks() timing issues.
+  // ═══════════════════════════════════════════════════════════════════════════
   function _mbxFindScheduledManagerForBucket(table, bucket){
     try{
       if(!table || !bucket) return '—';
+
+      // ── Priority 1: Pre-computed cache (always correct, no timing issues) ──
+      const cached = table.meta && table.meta.bucketManagers && table.meta.bucketManagers[bucket.id];
+      if (cached && typeof cached === 'string' && cached !== '—') return cached;
+
+      // ── Priority 2: Scan Store.getScheduleBlocks() (realtime global doc) ──
+      // This covers the window between page load and API fetch completion.
       const teamId = String(table?.meta?.teamId||'');
       if(!teamId) return '—';
 
-      const UI     = window.UI;
       const Store  = window.Store;
+      const UI     = window.UI;
       const Config = window.Config;
+
+      if (!Store || !Store.getScheduleBlocks) return '—';
 
       const shiftStartMin = _mbxParseHM(table?.meta?.dutyStart || '00:00');
       const shiftKey      = String(table?.meta?.shiftKey||'');
       const shiftDatePart = (shiftKey.split('|')[1] || '').split('T')[0];
       let shiftDow = 0;
-      try {
-        shiftDow = new Date(`${shiftDatePart}T00:00:00+08:00`).getDay();
-      } catch (_){
-        shiftDow = UI && UI.manilaNowDate ? new Date(UI.manilaNowDate()).getDay() : new Date().getDay();
-      }
+      try { shiftDow = new Date(`${shiftDatePart}T00:00:00+08:00`).getDay(); }
+      catch (_){ shiftDow = new Date().getDay(); }
 
       let bStart = Number(bucket.startMin)||0;
       let bEnd   = Number(bucket.endMin)||0;
       if(bEnd <= bStart) bEnd += 1440;
       if(bStart < shiftStartMin){ bStart += 1440; bEnd += 1440; }
 
-      // ── CANDIDATES: merge roster cache + Store.getUsers() ──────────────
-      // _rosterByTeam[teamId] is populated by the server sync for ALL roles.
-      // Store.getUsers() is populated for privileged roles via CloudUsers.
-      // Combining both ensures we never miss a candidate.
-      const cacheMembers = (_rosterByTeam && _rosterByTeam[teamId]) || [];
-      const storeMembers = ((Store && Store.getUsers ? Store.getUsers() : []) || [])
-        .filter(u => u && String(u.teamId||'') === teamId);
+      // Build name index from all available sources
+      const nameIdx = new Map();
+      for (const [, list] of Object.entries(_rosterByTeam)) {
+        for (const u of (list || [])) { if (u && u.id) nameIdx.set(String(u.id), u); }
+      }
+      for (const u of ((Store.getUsers && Store.getUsers()) || [])) {
+        if (u && u.id && !nameIdx.has(String(u.id))) nameIdx.set(String(u.id), u);
+      }
 
-      // Dedupe by id — prefer cache entry (has reliable data)
-      const byId = new Map();
-      for (const u of cacheMembers) if (u && u.id) byId.set(String(u.id), u);
-      for (const u of storeMembers) if (u && u.id && !byId.has(String(u.id))) byId.set(String(u.id), u);
-      const candidates = [...byId.values()];
-
+      const allBlocks = Store.getScheduleBlocks() || {};
       const matched = [];
 
-      for(const u of candidates){
-        let isMgr = false;
-        const uid = String(u.id || '');
-        if(!uid) continue;
+      for (const [uid, entry] of Object.entries(allBlocks)) {
+        if (!entry || String(entry.teamId || '') !== teamId) continue;
+        const days = (entry.days && typeof entry.days === 'object') ? entry.days : {};
 
         const dayRefs = [
           { dow: shiftDow,           offset:    0 },
           { dow: (shiftDow + 1) % 7, offset: 1440 }
         ];
-
-        for(const ref of dayRefs){
-          const blocks = Store && Store.getUserDayBlocks
-            ? (Store.getUserDayBlocks(uid, ref.dow) || []) : [];
-
-          for(const b of blocks){
-            let s = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
-            let e = (UI && UI.parseHM) ? UI.parseHM(b.end)   : _mbxParseHM(b.end);
-            if(!Number.isFinite(s) || !Number.isFinite(e)) continue;
-            if(e <= s) e += 1440;
+        let found = false;
+        for (const ref of dayRefs) {
+          if (found) break;
+          const dayBlocks = Array.isArray(days[String(ref.dow)]) ? days[String(ref.dow)] : [];
+          for (const b of dayBlocks) {
+            let s = _mbxParseHM(b.start);
+            let e = _mbxParseHM(b.end);
+            if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
+            if (e <= s) e += 1440;
             s += ref.offset;
             e += ref.offset;
-            if(!(s < bEnd && bStart < e)) continue;
-
+            if (!(s < bEnd && bStart < e)) continue;
             const roleId = String(b.role || b.schedule || '').toLowerCase().trim();
-            const sc     = Config && Config.scheduleById
-              ? Config.scheduleById(b.role || b.schedule) : null;
-            const lbl    = String(sc && sc.label ? sc.label : roleId).toLowerCase();
-
-            if(roleId === 'mailbox_manager' || lbl.includes('mailbox manager') ||
-               roleId === 'mailbox manager' || lbl.includes('mailbox_manager')){
-              isMgr = true; break;
-            }
-          }
-          if(isMgr) break;
-        }
-
-        // Fallback: user.schedule / user.task on the profile object (legacy)
-        if(!isMgr){
-          const legacyFields = [
-            String(u.schedule || '').toLowerCase(),
-            String(u.task     || '').toLowerCase(),
-          ];
-          if(legacyFields.some(f => f === 'mailbox_manager' || f.includes('mailbox manager'))){
-            const nowMin = (() => {
-              try{
-                const p = UI && UI.mailboxNowParts ? UI.mailboxNowParts()
-                  : (UI ? UI.manilaNow() : null);
-                return p ? (Number(p.hh||0)*60 + Number(p.mm||0)) : -1;
-              }catch(_){ return -1; }
-            })();
-            if(nowMin >= 0 && _mbxBlockHit(nowMin, bucket.startMin, bucket.endMin)){
-              isMgr = true;
+            const sc = Config && Config.scheduleById ? Config.scheduleById(b.role || b.schedule) : null;
+            const lbl = String(sc && sc.label ? sc.label : roleId).toLowerCase();
+            if (roleId === 'mailbox_manager' || lbl.includes('mailbox manager') ||
+                roleId === 'mailbox manager' || lbl.includes('mailbox_manager')) {
+              const uRec = nameIdx.get(String(uid));
+              const displayName = uRec ? String(uRec.name || uRec.username || '').trim() : '';
+              if (displayName && !/^[0-9a-f]{8}-/i.test(displayName)) {
+                matched.push(displayName);
+              }
+              found = true; break;
             }
           }
         }
-
-        if(isMgr) matched.push(String(u.name || u.username || '—'));
       }
 
-      // ── GLOBAL SAFETY NET (Phase-1-605) ──────────────────────────────────────
-      // If roster-based scan yielded nothing (user is on a different shift so
-      // _rosterByTeam[teamId] was empty or contained wrong-team members),
-      // scan mums_schedule_blocks directly. That document is pushed to ALL
-      // sessions via realtime sync and contains every user's schedule data,
-      // making Mgr labels globally visible to ALL users regardless of their shift.
-      if (matched.length === 0 && Store && Store.getScheduleBlocks) {
-        try {
-          const allBlocks = Store.getScheduleBlocks();
-
-          // ── Name lookup: priority order for resolving UUIDs → full names ──
-          // Phase-1-607: _rosterByTeam[teamId] is now populated via a dedicated
-          // second fetch (resolveTeamId param) so it has PROPER full names from
-          // the DB. Use it as the highest-priority source.
-          const nameIdx = new Map();
-          try {
-            // Priority 1: duty-team roster from the second fetch (has real names)
-            for (const u of (_rosterByTeam[teamId] || [])) {
-              if (u && u.id) nameIdx.set(String(u.id), u);
-            }
-            // Priority 2: all other cached rosters
-            for (const [rKey, list] of Object.entries(_rosterByTeam)) {
-              if (rKey === teamId) continue;
-              for (const u of (list || [])) {
-                if (u && u.id && !nameIdx.has(String(u.id))) nameIdx.set(String(u.id), u);
-              }
-            }
-            // Priority 3: Store.getUsers() (privileged roles have full list here)
-            for (const u of ((Store.getUsers && Store.getUsers()) || [])) {
-              if (u && u.id && !nameIdx.has(String(u.id))) nameIdx.set(String(u.id), u);
-            }
-          } catch(_) {}
-
-          for (const [uid, entry] of Object.entries(allBlocks)) {
-            if (!entry || String(entry.teamId || '') !== teamId) continue;
-            const dayRefs2 = [
-              { dow: shiftDow,           offset:    0 },
-              { dow: (shiftDow + 1) % 7, offset: 1440 }
-            ];
-            let foundMgr = false;
-            for (const ref of dayRefs2) {
-              if (foundMgr) break;
-              const dayBlocks = Array.isArray(entry.days && entry.days[String(ref.dow)])
-                ? entry.days[String(ref.dow)] : [];
-              for (const b of dayBlocks) {
-                let s2 = (UI && UI.parseHM) ? UI.parseHM(b.start) : _mbxParseHM(b.start);
-                let e2 = (UI && UI.parseHM) ? UI.parseHM(b.end)   : _mbxParseHM(b.end);
-                if (!Number.isFinite(s2) || !Number.isFinite(e2)) continue;
-                if (e2 <= s2) e2 += 1440;
-                s2 += ref.offset;
-                e2 += ref.offset;
-                if (!(s2 < bEnd && bStart < e2)) continue;
-                const roleId2 = String(b.role || b.schedule || '').toLowerCase().trim();
-                const sc2 = Config && Config.scheduleById ? Config.scheduleById(b.role || b.schedule) : null;
-                const lbl2 = String(sc2 && sc2.label ? sc2.label : roleId2).toLowerCase();
-                if (roleId2 === 'mailbox_manager' || lbl2.includes('mailbox manager') ||
-                    roleId2 === 'mailbox manager' || lbl2.includes('mailbox_manager')) {
-                  // Resolve name: table.members → nameIdx → fallback to raw uid
-                  const uRec = nameIdx.get(String(uid));
-                  const displayName = uRec
-                    ? String(uRec.name || uRec.fullName || uRec.username || '').trim()
-                    : '';
-                  // Never expose a raw UUID in the UI - skip if no name resolved
-                  if (displayName && displayName !== '—') matched.push(displayName);
-                  foundMgr = true; break;
-                }
-              }
-            }
-          }
-        } catch(_) {}
-      }
-      // ── END GLOBAL SAFETY NET ─────────────────────────────────────────────────
-
-      const unique = [...new Set(matched.filter(s => s && s !== '—'))];
+      const unique = [...new Set(matched.filter(Boolean))];
       return unique.length > 0 ? unique.join(' & ') : '—';
-    }catch(e){ return '—'; }
+    }catch(_){ return '—'; }
+  }
+
+  // ── Pre-compute bucketManagers from raw API schedule block data ──────────────
+  // Called after each successful fetch (both same-team and cross-team).
+  // Writes directly to table.meta.bucketManagers so render reads instantly.
+  function _mbxPrecomputeBucketManagers(table, teamScheduleBlocks, nameMap) {
+    try {
+      if (!table || !Array.isArray(table.buckets) || !Array.isArray(teamScheduleBlocks)) return;
+      if (!table.meta) table.meta = {};
+      if (!table.meta.bucketManagers) table.meta.bucketManagers = {};
+
+      const shiftKey = String(table.meta.shiftKey || '');
+      const shiftDatePart = (shiftKey.split('|')[1] || '').split('T')[0];
+      let shiftDow = 0;
+      try { shiftDow = new Date(`${shiftDatePart}T00:00:00+08:00`).getDay(); }
+      catch (_) { shiftDow = new Date().getDay(); }
+
+      const shiftStartMin = _mbxParseHM(table.meta.dutyStart || '00:00');
+
+      for (const bkt of table.buckets) {
+        let bS = Number(bkt.startMin) || 0;
+        let bE = Number(bkt.endMin) || 0;
+        if (bE <= bS) bE += 1440;
+        if (bS < shiftStartMin) { bS += 1440; bE += 1440; }
+
+        const mgrNames = [];
+        for (const row of teamScheduleBlocks) {
+          const rDow = Number(row.dayIndex);
+          const isSameDow = (rDow === shiftDow);
+          const isNextDay = (rDow === (shiftDow + 1) % 7);
+          if (!isSameDow && !isNextDay) continue;
+          const offset = isNextDay ? 1440 : 0;
+
+          let s = _mbxParseHM(String(row.start || ''));
+          let e = _mbxParseHM(String(row.end || ''));
+          if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
+          if (e <= s) e += 1440;
+          s += offset; e += offset;
+          if (!(s < bE && bS < e)) continue;
+
+          const roleStr = String(row.schedule || row.role || '').toLowerCase().trim();
+          const sc = window.Config && Config.scheduleById ? Config.scheduleById(row.schedule || row.role) : null;
+          const lbl = String(sc && sc.label ? sc.label : roleStr).toLowerCase();
+          const isMgr = roleStr === 'mailbox_manager' || lbl.includes('mailbox manager')
+            || roleStr === 'mailbox manager' || lbl.includes('mailbox_manager');
+          if (!isMgr) continue;
+
+          const userId = String(row.userId || row.user_id || '');
+          const uRec = nameMap.get(userId);
+          const name = uRec ? String(uRec.name || uRec.username || '').trim() : '';
+          if (name && !/^[0-9a-f]{8}-/i.test(name)) mgrNames.push(name);
+        }
+
+        const uniq = [...new Set(mgrNames.filter(Boolean))];
+        if (uniq.length) {
+          table.meta.bucketManagers[bkt.id] = uniq.join(' & ');
+        } else {
+          // Don't overwrite an existing cached name with empty
+          if (!table.meta.bucketManagers[bkt.id]) {
+            table.meta.bucketManagers[bkt.id] = '—';
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -530,7 +511,7 @@ function _mbxReadJwt(){
 
   async function _mbxSyncTeamScheduleBlocks(teamId) {
     if (!teamId) return;
-    if (_syncInFlight[teamId]) return;          // one fetch at a time per team
+    if (_syncInFlight[teamId]) return;
     _syncInFlight[teamId] = true;
 
     try {
@@ -541,9 +522,7 @@ function _mbxReadJwt(){
       const jwt = _mbxReadJwt();
       if (!jwt) return;
 
-      // Phase-1-608: pass hintTeamId so the server can resolve the team even when
-      // mums_profiles.team_id is NULL in the DB (e.g. test accounts). The hint is
-      // the user's own team from the client Auth/Store, which is always available.
+      // Phase-1-609: always pass hintTeamId so server resolves team even when DB team_id is NULL
       const meTeamId = String(me.teamId || me.team_id || '').trim();
       const hintParam = meTeamId ? `&hintTeamId=${encodeURIComponent(meTeamId)}` : '';
       const res = await fetch(
@@ -551,13 +530,10 @@ function _mbxReadJwt(){
         { headers: { Authorization: `Bearer ${jwt}` }, cache: 'no-store' }
       );
       if (!res.ok) return;
-
       const data = await res.json().catch(() => ({}));
 
-      // ── 1. Cache the roster (no Store.saveUsers — avoids sanitize corruption) ──
+      // ── 1. Cache the roster ─────────────────────────────────────────────────
       const rawMembers = Array.isArray(data && data.teamMembers) ? data.teamMembers : [];
-      // Build a normalised array; merge with any users already in Store so we
-      // never lose people who were loaded by a previous admin/cloud-sync.
       const fromApi = rawMembers
         .filter(m => m && m.id)
         .map(m => ({
@@ -568,38 +544,81 @@ function _mbxReadJwt(){
           teamId:   String(m.teamId   || m.team_id  || teamId),
           status:   'active'
         }));
-
-      // Merge with any users that are already in Store for this team so we never
-      // lose the currently-logged-in user's enriched profile data.
       const fromStore = (window.Store && Store.getUsers ? Store.getUsers() : [])
         .filter(u => u && u.id && (String(u.teamId || '') === teamId))
         .map(u => ({ id: String(u.id), name: String(u.name || u.username || u.id),
                      username: String(u.username || u.name || u.id),
                      role: String(u.role || 'MEMBER'), teamId: teamId, status: 'active' }));
-
       const merged = new Map();
-      // Store users go first (richer data); API fills in any gaps
       for (const u of fromStore) merged.set(u.id, u);
-      for (const u of fromApi) {
-        if (!merged.has(u.id)) merged.set(u.id, u);
-      }
+      for (const u of fromApi) { if (!merged.has(u.id)) merged.set(u.id, u); }
 
-      // Phase-1-607: Store the actual team roster under the correct apiTeamId key.
-      // The API returns data for the CURRENT USER's team (e.g. Morning Shift), but
-      // teamId here is the ACTIVE DUTY WINDOW team (e.g. Mid Shift). We must NEVER
-      // store Morning Shift members under the Mid Shift key — that causes wrong Mgr names.
+      // Phase-1-609: Always store under ACTUAL apiTeamId key (never mix teams)
       const apiTeamId = String(data && data.teamId ? data.teamId : teamId).trim();
-
-      // Always store under the ACTUAL team key the API returned
       if (apiTeamId) {
         _rosterByTeam[apiTeamId] = [...merged.values()];
         _scheduleReady[apiTeamId] = true;
       }
 
-      // If the active duty team differs from the user's own team, make a SECOND
-      // fetch using resolveTeamId to get proper full names for the duty team.
-      // Store.getUsers() for MEMBER role only returns the current user, so we cannot
-      // resolve names locally — only the server has the full mums_profiles table.
+      // ── 2. Pre-compute Mgr names from API data (Phase-1-609 core fix) ────────
+      // This runs SYNCHRONOUSLY after the fetch and caches Mgr names directly in
+      // table.meta.bucketManagers. No Store.getUserDayBlocks() needed — eliminates
+      // all timing races. Works for same-team AND cross-team users.
+      const tsb = Array.isArray(data && data.teamScheduleBlocks) ? data.teamScheduleBlocks : [];
+      const nameMapMain = new Map();
+      for (const u of merged.values()) { if (u && u.id) nameMapMain.set(String(u.id), u); }
+
+      const _applyPrecompute = (targetTid, roster, schedBlocks) => {
+        try {
+          if (!window.Store || !Store.getMailboxState || !Store.getMailboxTable || !Store.saveMailboxTable) return;
+          const state = Store.getMailboxState();
+          if (!state) return;
+          // Apply to all active mailbox tables for this team
+          const keys = [state.currentKey].filter(Boolean);
+          // Also check if any cached table belongs to targetTid
+          try {
+            if (Store.getMailboxKeys) {
+              for (const k of (Store.getMailboxKeys() || [])) {
+                if (!keys.includes(k)) keys.push(k);
+              }
+            }
+          } catch(_) {}
+          const nameMap = new Map();
+          for (const u of (roster || [])) { if (u && u.id) nameMap.set(String(u.id), u); }
+          // Also include all other known rosters
+          for (const [, list] of Object.entries(_rosterByTeam)) {
+            for (const u of (list || [])) { if (u && u.id && !nameMap.has(u.id)) nameMap.set(u.id, u); }
+          }
+          for (const curKey of keys) {
+            const t = Store.getMailboxTable(curKey);
+            if (!t || String(t.meta && t.meta.teamId || '') !== targetTid) continue;
+            _mbxPrecomputeBucketManagers(t, schedBlocks, nameMap);
+            // Patch table.members too
+            const nowP = window.UI && UI.mailboxNowParts ? UI.mailboxNowParts() : null;
+            const existIds = new Set((t.members || []).map(m => m && String(m.id)));
+            for (const u of (roster || [])) {
+              if (!u || !u.id || existIds.has(u.id)) continue;
+              t.members = t.members || [];
+              t.members.push({
+                id: u.id, name: u.name, username: u.username,
+                role: u.role, roleLabel: _mbxRoleLabel(u.role),
+                dutyLabel: _mbxDutyLabelForUser({ id: u.id, teamId: targetTid }, nowP)
+              });
+              existIds.add(u.id);
+            }
+            Store.saveMailboxTable(curKey, t, { silent: true });
+          }
+        } catch (_) {}
+      };
+
+      // Apply for the API team's table
+      if (apiTeamId && tsb.length) {
+        _applyPrecompute(apiTeamId, [...merged.values()], tsb);
+      }
+
+      // ── 3. Handle cross-shift: fetch duty team's data separately ─────────────
+      // If user's own team (apiTeamId) differs from the active duty window team (teamId),
+      // make a second fetch to get duty team's member names and schedule blocks.
       if (apiTeamId !== teamId) {
         (async () => {
           try {
@@ -613,7 +632,7 @@ function _mbxReadJwt(){
             const tsb2  = Array.isArray(data2.teamScheduleBlocks) ? data2.teamScheduleBlocks : [];
             if (!rows2.length) return;
 
-            // Populate duty-team roster with real DB names
+            // Store duty team roster with proper names
             _rosterByTeam[teamId] = rows2
               .filter(m => m && m.id)
               .map(m => ({
@@ -625,100 +644,19 @@ function _mbxReadJwt(){
                 status:   'active'
               }));
 
-            // Hydrate schedule blocks into Store (for future renders)
-            if (tsb2.length && window.Store && Store.setUserDayBlocks) {
-              const bkt2 = new Map();
-              for (const row of tsb2) {
-                const r = row && typeof row === 'object' ? row : {};
-                const mid2 = String(r.userId || r.user_id || '').trim();
-                const di2  = Number(r.dayIndex);
-                if (!mid2 || !Number.isInteger(di2) || di2 < 0 || di2 > 6) continue;
-                const k2 = `${mid2}|${di2}`;
-                if (!bkt2.has(k2)) bkt2.set(k2, []);
-                const sr2 = String(r.schedule || r.role || '').trim();
-                bkt2.get(k2).push({ start: String(r.start||'00:00'), end: String(r.end||'00:00'), role: sr2, schedule: sr2, notes: String(r.notes||'') });
-              }
-              bkt2.forEach((blks2, k2) => {
-                const [mid2, day2] = k2.split('|');
-                Store.setUserDayBlocks(mid2, teamId, Number(day2), blks2);
-              });
+            // Pre-compute Mgr names for duty team tables
+            if (tsb2.length) {
+              _applyPrecompute(teamId, _rosterByTeam[teamId], tsb2);
             }
 
-            // ── Phase-1-608: Pre-compute & cache Mgr names from raw API data ──────
-            // BYPASS Store.getUserDayBlocks timing issues by computing Mgr names
-            // directly from the fresh API data and caching in table.meta.bucketManagers.
-            // This is guaranteed to show correct names on the very next render.
-            try {
-              if (window.Store && Store.getMailboxState && Store.getMailboxTable && Store.saveMailboxTable) {
-                const curKey = Store.getMailboxState().currentKey;
-                if (curKey) {
-                  const t = Store.getMailboxTable(curKey);
-                  if (t && String(t.meta && t.meta.teamId || '') === teamId && Array.isArray(t.buckets)) {
-                    if (!t.meta.bucketManagers) t.meta.bucketManagers = {};
-
-                    // Build name map: userId → displayName
-                    const nameMap2 = new Map();
-                    for (const m of _rosterByTeam[teamId]) {
-                      if (m && m.id) nameMap2.set(String(m.id), String(m.name || m.username || ''));
-                    }
-
-                    // Compute shiftDow from table's shiftKey
-                    const sKey2 = String(t.meta.shiftKey || '');
-                    const sDate2 = (sKey2.split('|')[1] || '').split('T')[0];
-                    let sDow2 = 0;
-                    try { sDow2 = new Date(`${sDate2}T00:00:00+08:00`).getDay(); } catch(_) {}
-                    const shiftStartMin2 = _mbxParseHM(t.meta.dutyStart || '00:00');
-
-                    for (const bkt of t.buckets) {
-                      let bS = Number(bkt.startMin) || 0;
-                      let bE = Number(bkt.endMin)   || 0;
-                      if (bE <= bS) bE += 1440;
-                      if (bS < shiftStartMin2) { bS += 1440; bE += 1440; }
-
-                      const mgrNames = [];
-                      for (const row of tsb2) {
-                        const dow2 = Number(row.dayIndex);
-                        const isNextDay = (dow2 === (sDow2 + 1) % 7);
-                        const isSameDow = (dow2 === sDow2);
-                        if (!isSameDow && !isNextDay) continue;
-                        const offset2 = isNextDay ? 1440 : 0;
-                        let s2 = _mbxParseHM(String(row.start || ''));
-                        let e2 = _mbxParseHM(String(row.end   || ''));
-                        if (!Number.isFinite(s2) || !Number.isFinite(e2)) continue;
-                        if (e2 <= s2) e2 += 1440;
-                        s2 += offset2; e2 += offset2;
-                        if (!(s2 < bE && bS < e2)) continue;
-                        const roleStr2 = String(row.schedule || row.role || '').toLowerCase().trim();
-                        const isMgr2 = roleStr2 === 'mailbox_manager'
-                          || roleStr2.includes('mailbox manager')
-                          || roleStr2 === 'mailbox manager';
-                        if (!isMgr2) continue;
-                        const displayName2 = nameMap2.get(String(row.userId || row.user_id || ''));
-                        if (displayName2 && !/^[0-9a-f]{8}-/i.test(displayName2)) {
-                          mgrNames.push(displayName2);
-                        }
-                      }
-                      const uniq2 = [...new Set(mgrNames.filter(Boolean))];
-                      if (uniq2.length) {
-                        t.meta.bucketManagers[bkt.id] = uniq2.join(' & ');
-                      }
-                    }
-                    Store.saveMailboxTable(curKey, t, { silent: true });
-                  }
-                }
-              }
-            } catch (_) {}
-            // ── End Phase-1-608 pre-compute ───────────────────────────────────────
-
-            scheduleRender('duty-team-names-resolved');
+            scheduleRender('cross-team-names-resolved');
           } catch (_) {}
         })();
       }
 
-      _scheduleReady[teamId] = true;   // ← unlock Mgr labels regardless of count
+      _scheduleReady[teamId] = true;
 
-      // ── 2. Hydrate schedule blocks into Store (for duty-label lookups) ────
-      const tsb = Array.isArray(data && data.teamScheduleBlocks) ? data.teamScheduleBlocks : [];
+      // ── 4. Hydrate Store.setUserDayBlocks for legacy compatibility ────────────
       if (tsb.length && window.Store && Store.setUserDayBlocks) {
         const bucket = new Map();
         for (const row of tsb) {
@@ -729,63 +667,20 @@ function _mbxReadJwt(){
           const k = `${mid}|${di}`;
           if (!bucket.has(k)) bucket.set(k, []);
           const sr = String(r.schedule || r.role || '').trim();
-          bucket.get(k).push({
-            start:    String(r.start || '00:00'),
-            end:      String(r.end   || '00:00'),
-            role:     sr, schedule: sr,
-            notes:    String(r.notes || '')
-          });
+          bucket.get(k).push({ start: String(r.start || '00:00'), end: String(r.end || '00:00'), role: sr, schedule: sr, notes: String(r.notes || '') });
         }
         bucket.forEach((blocks, k) => {
           const [mid, day] = k.split('|');
-          Store.setUserDayBlocks(mid, teamId, Number(day), blocks);
+          Store.setUserDayBlocks(mid, apiTeamId || teamId, Number(day), blocks);
         });
       }
-
-      // ── 3. Patch table.members so the next render has the full roster ─────
-      // (ensureShiftTables only reads Store.getUsers which is restricted for MEMBERs)
-      try {
-        if (window.Store && Store.getMailboxState && Store.getMailboxTable && Store.saveMailboxTable) {
-          const curKey = Store.getMailboxState && Store.getMailboxState().currentKey;
-          if (curKey) {
-            const t = Store.getMailboxTable(curKey);
-            if (t && String(t.meta && t.meta.teamId || '') === teamId) {
-              const nowP   = window.UI && UI.mailboxNowParts ? UI.mailboxNowParts() : null;
-              const existIds = new Set((t.members || []).map(m => m && String(m.id)));
-              let added = false;
-              for (const tm of (_rosterByTeam[teamId] || [])) {
-                if (!tm || !tm.id || existIds.has(tm.id)) continue;
-                t.members = t.members || [];
-                t.members.push({
-                  id:        tm.id,
-                  name:      tm.name,
-                  username:  tm.username,
-                  role:      tm.role,
-                  roleLabel: _mbxRoleLabel(tm.role),
-                  dutyLabel: _mbxDutyLabelForUser({ id: tm.id, teamId }, nowP)
-                });
-                added = true;
-              }
-              if (added) {
-                t.members.sort((a, b) => {
-                  const ak = _mbxMemberSortKey(a), bk = _mbxMemberSortKey(b);
-                  if (ak.w !== bk.w) return ak.w - bk.w;
-                  return ak.name.localeCompare(bk.name);
-                });
-                Store.saveMailboxTable(curKey, t, { silent: true });
-              }
-            }
-          }
-        }
-      } catch (_) {}
 
       scheduleRender('roster-sync-complete');
 
     } catch (_) {
-      // Silently degrade — show '—' for Mgr labels, partial roster visible
+      // Silently degrade
     } finally {
       _syncInFlight[teamId] = false;
-      // Reset pending flag so future renders can re-check (e.g. after shift change)
       _schedSyncPending = false;
     }
   }
